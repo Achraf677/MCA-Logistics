@@ -1,0 +1,76 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+/* ── Design Tokens MCA Logistics ───────────────────────── */
+:root {
+  /* Couleurs */
+  --bg:            #1a1d22;
+  --bg-elevated:   #22262d;
+  --bg-card:       #2a2f37;
+  --bg-card-hover: #323843;
+  --bg-deep:       #0e0f12;
+  --border:        #3a4150;
+  --border-soft:   rgba(173, 181, 189, 0.16);
+  --brand:         #e63946;
+  --brand-hover:   #ff4d5c;
+  --brand-soft:    rgba(230, 57, 70, 0.15);
+  --success:       #06d6a0;
+  --danger:        #ff6b35;
+  --warning:       #ffd60a;
+  --info:          #4cc9f0;
+  --text:          #f1f3f5;
+  --text-muted:    #adb5bd;
+  --text-disabled: #6c757d;
+
+  /* Typographie */
+  --font-display: "Syne", system-ui, sans-serif;
+  --font-body:    "DM Sans", system-ui, sans-serif;
+  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --fs-display:   clamp(28px, 3.4vw, 44px);
+  --fs-h1:        28px;
+  --fs-h2:        20px;
+  --fs-h3:        15px;
+  --fs-body:      14px;
+  --fs-sm:        13px;
+  --fs-xs:        11px;
+  --fs-kpi:       32px;
+
+  /* Espacements */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+  --sp-9: 56px;
+
+  /* Rayons */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+
+  /* Shell */
+  --sidebar-w:      220px;
+  --sidebar-w-icon: 56px;
+  --topbar-h:       52px;
+}
+
+/* ── Reset ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  background-color: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar sobres ───────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }

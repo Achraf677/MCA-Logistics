@@ -1,0 +1,25 @@
+export const features = {
+  dashboard:    true,
+  rentabilite:  true,
+  statistiques: true,
+  livraisons:   true,
+  planning:     false,
+  calendrier:   false,
+  incidents:    false,
+  inspections:  false,
+  vehicules:    true,
+  carburant:    false,
+  entretiens:   false,
+  clients:      true,
+  fournisseurs: false,
+  charges:      false,
+  encaissement: false,
+  tva:          false,
+  equipe:       false,
+  heures:       false,
+  alertes:      false,
+  brouillons:   false,
+  parametres:   true,
+} as const
+
+export type FeatureKey = keyof typeof features
