@@ -19,6 +19,7 @@ import { Encaissement } from '../features/encaissement/Encaissement'
 import { Tva }          from '../features/tva/Tva'
 import { Equipe }       from '../features/equipe/Equipe'
 import { Heures }       from '../features/heures/Heures'
+import { Inspections }  from '../features/inspections/Inspections'
 import { Alertes }      from '../features/alertes/Alertes'
 import { Parametres }   from '../features/parametres/Parametres'
 
@@ -47,7 +48,7 @@ export function AppRoutes() {
       <Route path="/planning"      element={guard(features.planning,     <Planning />)} />
       <Route path="/calendrier"    element={guard(features.calendrier,   <Calendrier />)} />
       <Route path="/incidents"     element={guard(features.incidents,    <Incidents />)} />
-      <Route path="/inspections"   element={guard(features.inspections,  <Placeholder title="Inspections" />)} />
+      <Route path="/inspections"   element={guard(features.inspections,  <Inspections />)} />
       <Route path="/vehicules"     element={guard(features.vehicules,    <Vehicules />)} />
       <Route path="/carburant"     element={guard(features.carburant,    <Carburant />)} />
       <Route path="/entretiens"    element={guard(features.entretiens,   <Entretiens />)} />

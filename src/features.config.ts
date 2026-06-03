@@ -6,7 +6,7 @@ export const features = {
   planning:     true,
   calendrier:   true,
   incidents:    true,
-  inspections:  false,
+  inspections:  true,
   vehicules:    true,
   carburant:    true,
   entretiens:   true,
