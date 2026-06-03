@@ -104,11 +104,16 @@ export function Parametres() {
             <Input value={form.tva_intra ?? ''} onChange={v => set('tva_intra', v)} placeholder="FR12345678901" />
           </Field>
           <Field label="Capital social (€)">
-            <Input
+            <input
               type="number"
-              value={form.capital_cts != null ? String(form.capital_cts / 100) : ''}
-              onChange={v => set('capital_cts', v ? String(Math.round(parseFloat(v) * 100)) : '')}
+              value={form.capital_cts != null ? form.capital_cts / 100 : ''}
+              onChange={e => {
+                const v = e.target.value
+                setForm(p => ({ ...p, capital_cts: v ? Math.round(parseFloat(v) * 100) : null }))
+                setDirty(true)
+              }}
               placeholder="7200"
+              className={inputCls}
             />
           </Field>
         </Section>
