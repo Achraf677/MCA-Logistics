@@ -1,4 +1,36 @@
+import { computeEcheance } from '../../shared/lib/echeances'
+import type { EcheanceStatus } from '../../shared/lib/echeances'
 import type { Vehicle } from './vehicules.types'
+
+export interface VehicleEcheance {
+  label: string
+  date: string | null
+  daysLeft: number | null
+  status: EcheanceStatus
+}
+
+export function vehicleEcheances(vehicle: Vehicle, today = new Date()): VehicleEcheance[] {
+  const entries: Array<{ label: string; date: string | null }> = [
+    { label: 'Contrôle technique', date: vehicle.ct_expiry },
+    { label: 'Assurance',          date: vehicle.insurance_expiry },
+    { label: 'Révision',           date: vehicle.next_revision_date },
+  ]
+
+  const results = entries.map(({ label, date }) => {
+    const { daysLeft, status } = computeEcheance(date, today)
+    return { label, date, daysLeft, status }
+  })
+
+  const order: Record<EcheanceStatus, number> = { overdue: 0, soon: 1, ok: 2, none: 3 }
+  return results.sort((a, b) => order[a.status] - order[b.status])
+}
+
+export function worstStatus(echeances: VehicleEcheance[]): EcheanceStatus {
+  if (echeances.some(e => e.status === 'overdue')) return 'overdue'
+  if (echeances.some(e => e.status === 'soon'))    return 'soon'
+  if (echeances.some(e => e.status === 'ok'))      return 'ok'
+  return 'none'
+}
 
 export const CRITAIR_COLORS: Record<NonNullable<Vehicle['critair']>, string> = {
   '0':  'bg-green-600  text-white',
