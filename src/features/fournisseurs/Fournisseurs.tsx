@@ -1,0 +1,256 @@
+import { useState, useEffect, useCallback } from 'react'
+import { Building2 } from 'lucide-react'
+import { Shell } from '../../app/Shell'
+import { KpiCard } from '../../shared/ui/KpiCard'
+import { Badge } from '../../shared/ui/Badge'
+import { Button } from '../../shared/ui/Button'
+import { EmptyState } from '../../shared/ui/EmptyState'
+import { SkeletonTable, SkeletonKpis } from '../../shared/ui/Skeleton'
+import { Drawer } from '../../shared/ui/Drawer'
+import { useToast } from '../../shared/ui/useToast'
+import { useProfile } from '../../app/providers'
+import { getSuppliers, createSupplier, updateSupplier, deactivateSupplier } from './fournisseurs.queries'
+import { CATEGORY_LABELS, getCategoryLabel, isTvaDeductible, countByCategory } from './fournisseurs.logic'
+import type { Supplier, SupplierInsert, SupplierFilters } from './fournisseurs.types'
+import type { ActionKey } from '../../shared/actions/ActionBar'
+
+const inputClass = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
+  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)] transition-colors`
+
+function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
+      {children}
+    </div>
+  )
+}
+
+export function Fournisseurs() {
+  const { toast } = useToast()
+  const { companyId } = useProfile()
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [filters, setFilters] = useState<SupplierFilters>({ active: true })
+  const [search, setSearch] = useState('')
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [selected, setSelected] = useState<Supplier | null>(null)
+  const [form, setForm] = useState<Partial<SupplierInsert>>({})
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true); setError(null)
+    const { data, error } = await getSuppliers({ ...filters, search: search || undefined })
+    if (error) setError(error.message)
+    else setSuppliers(data ?? [])
+    setLoading(false)
+  }, [filters, search])
+
+  useEffect(() => { load() }, [load])
+
+  const openDrawer = (s?: Supplier) => {
+    setSelected(s ?? null)
+    setForm(s ? {
+      name: s.name, siret: s.siret ?? '', tva_intra: s.tva_intra ?? '',
+      address: s.address ?? '', email: s.email ?? '', phone: s.phone ?? '',
+      category: s.category, pennylane_id: s.pennylane_id ?? '',
+      notes: s.notes ?? '', active: s.active, company_id: s.company_id,
+    } : { active: true, company_id: companyId ?? '' })
+    setDrawerOpen(true)
+  }
+
+  const set = (k: keyof SupplierInsert, v: unknown) => setForm(p => ({ ...p, [k]: v }))
+
+  const handleSave = async () => {
+    if (!form.name?.trim()) { toast('Le nom est requis', 'error'); return }
+    setSaving(true)
+    try {
+      if (selected) {
+        const { error } = await updateSupplier(selected.id, form)
+        if (error) throw error
+        toast('Fournisseur mis à jour')
+      } else {
+        if (!companyId) throw new Error('Profil non chargé')
+        const { error } = await createSupplier({ ...form, company_id: companyId } as SupplierInsert)
+        if (error) throw error
+        toast('Fournisseur créé')
+      }
+      load(); setDrawerOpen(false)
+    } catch (e: unknown) {
+      toast((e as Error).message, 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDeactivate = async () => {
+    if (!selected) return
+    if (!confirm(`Désactiver ${selected.name} ?`)) return
+    const { error } = await deactivateSupplier(selected.id)
+    if (error) { toast(error.message, 'error'); return }
+    toast(`${selected.name} désactivé`)
+    load(); setDrawerOpen(false)
+  }
+
+  const handleAction = (key: ActionKey) => {
+    if (key === 'nouveau') openDrawer()
+  }
+
+  const byCategory = countByCategory(suppliers)
+  const actifs = suppliers.filter(s => s.active).length
+
+  return (
+    <Shell pageTitle="Fournisseurs" actions={['nouveau', 'export']} onAction={handleAction}>
+      {/* KPIs */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {loading ? <SkeletonKpis count={4} /> : <>
+          <KpiCard label="Actifs" value={actifs} />
+          <KpiCard label="Carburant" value={byCategory.carburant ?? 0} />
+          <KpiCard label="Entretien" value={byCategory.entretien ?? 0} />
+          <KpiCard label="Autres" value={suppliers.length - (byCategory.carburant ?? 0) - (byCategory.entretien ?? 0)} />
+        </>}
+      </div>
+
+      {/* Filtres */}
+      <div className="flex flex-wrap gap-2 mb-4">
+        <input
+          type="search" placeholder="Rechercher…" value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="h-8 px-3 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] w-48"
+        />
+        <select
+          value={filters.category ?? 'all'}
+          onChange={e => setFilters(f => ({ ...f, category: (e.target.value || 'all') as SupplierFilters['category'] }))}
+          className="h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)] focus:outline-none"
+        >
+          <option value="all">Toutes catégories</option>
+          {(Object.entries(CATEGORY_LABELS) as [string, string][]).map(([v, l]) => (
+            <option key={v} value={v}>{l}</option>
+          ))}
+        </select>
+        <Button
+          variant={filters.active === true ? 'primary' : 'secondary'} size="compact"
+          onClick={() => setFilters(f => ({ ...f, active: f.active === true ? undefined : true }))}
+        >Actifs uniquement</Button>
+      </div>
+
+      {loading ? <SkeletonTable rows={5} />
+        : error ? (
+          <div className="flex flex-col items-center py-16 gap-3">
+            <p className="text-[var(--danger)] text-[var(--fs-sm)]">{error}</p>
+            <Button variant="secondary" onClick={load}>Réessayer</Button>
+          </div>
+        ) : suppliers.length === 0 ? (
+          <EmptyState
+            icon={<Building2 size={48} />}
+            title="Aucun fournisseur"
+            description="Ajoutez vos fournisseurs récurrents."
+            action={{ label: '+ Nouveau fournisseur', onClick: () => openDrawer() }}
+          />
+        ) : (
+          <>
+            {/* Desktop */}
+            <div className="hidden md:block overflow-x-auto rounded-[var(--r-lg)] border border-[var(--border)]">
+              <table className="w-full text-[var(--fs-sm)]">
+                <thead>
+                  <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
+                    {['Nom', 'Catégorie', 'SIRET', 'E-mail', 'Téléphone', ''].map(h => (
+                      <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {suppliers.map((s, i) => (
+                    <tr key={s.id} onClick={() => openDrawer(s)}
+                      className={`border-t border-[var(--border)] cursor-pointer hover:bg-[var(--bg-card-hover)] transition-colors
+                        ${i % 2 === 0 ? 'bg-[var(--bg)]' : 'bg-[var(--bg-card)]/40'}`}>
+                      <td className="px-4 py-3 font-medium text-[var(--text)]">
+                        {s.name}
+                        {isTvaDeductible(s.category) && (
+                          <span className="ml-2 text-[var(--fs-xs)] text-[var(--success)]" title="TVA 100% déductible">TVA ✓</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge color="muted">{getCategoryLabel(s.category)}</Badge>
+                      </td>
+                      <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">{s.siret ?? '—'}</td>
+                      <td className="px-4 py-3 text-[var(--text-muted)]">{s.email ?? '—'}</td>
+                      <td className="px-4 py-3 text-[var(--text-muted)]">{s.phone ?? '—'}</td>
+                      <td className="px-4 py-3 text-right">
+                        <Button variant="ghost" size="compact" onClick={e => { e.stopPropagation(); openDrawer(s) }}>Voir</Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile */}
+            <div className="md:hidden flex flex-col gap-3">
+              {suppliers.map(s => (
+                <button key={s.id} onClick={() => openDrawer(s)}
+                  className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 hover:bg-[var(--bg-card-hover)] transition-colors">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-medium text-[var(--text)]">{s.name}</span>
+                    <Badge color="muted">{getCategoryLabel(s.category)}</Badge>
+                  </div>
+                  <div className="text-[var(--fs-xs)] text-[var(--text-muted)]">{s.email ?? s.phone ?? '—'}</div>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+      {/* Drawer fournisseur */}
+      <Drawer open={drawerOpen} onClose={() => setDrawerOpen(false)}
+        title={selected ? selected.name : 'Nouveau fournisseur'}>
+        <div className="flex flex-col gap-4">
+          <FieldGroup label="Nom *">
+            <input value={form.name ?? ''} onChange={e => set('name', e.target.value)} className={inputClass} placeholder="Nom du fournisseur" />
+          </FieldGroup>
+          <FieldGroup label="Catégorie">
+            <select value={form.category ?? ''} onChange={e => set('category', e.target.value || null)} className={inputClass}>
+              <option value="">—</option>
+              {(Object.entries(CATEGORY_LABELS) as [string, string][]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </FieldGroup>
+          {form.category === 'carburant' && (
+            <p className="text-[var(--success)] text-[var(--fs-xs)] bg-[var(--success)]/10 rounded-[var(--r-md)] px-3 py-2">
+              TVA récupérable à 100 % pour les VU ≤ 3,5 t (diesel et essence).
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <FieldGroup label="SIRET">
+              <input value={form.siret ?? ''} onChange={e => set('siret', e.target.value)} className={inputClass} />
+            </FieldGroup>
+            <FieldGroup label="N° TVA intra">
+              <input value={form.tva_intra ?? ''} onChange={e => set('tva_intra', e.target.value)} className={inputClass} />
+            </FieldGroup>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <FieldGroup label="E-mail">
+              <input type="email" value={form.email ?? ''} onChange={e => set('email', e.target.value)} className={inputClass} />
+            </FieldGroup>
+            <FieldGroup label="Téléphone">
+              <input type="tel" value={form.phone ?? ''} onChange={e => set('phone', e.target.value)} className={inputClass} />
+            </FieldGroup>
+          </div>
+          <FieldGroup label="Adresse">
+            <input value={form.address ?? ''} onChange={e => set('address', e.target.value)} className={inputClass} />
+          </FieldGroup>
+          <FieldGroup label="Notes">
+            <textarea value={form.notes ?? ''} onChange={e => set('notes', e.target.value)} rows={3} className={`${inputClass} h-auto resize-none`} />
+          </FieldGroup>
+          <div className="flex gap-2 pt-2 border-t border-[var(--border)]">
+            <Button variant="primary" onClick={handleSave} disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
+            <Button variant="secondary" onClick={() => setDrawerOpen(false)}>Annuler</Button>
+            {selected?.active && (
+              <Button variant="ghost" onClick={handleDeactivate} className="ml-auto text-[var(--danger)]">Désactiver</Button>
+            )}
+          </div>
+        </div>
+      </Drawer>
+    </Shell>
+  )
+}
