@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Drawer } from '../ui/Drawer'
-import { Button } from '../ui/Button'
-import { Badge } from '../ui/Badge'
-import { useToast } from '../ui/useToast'
+import { Drawer } from '../../shared/ui/Drawer'
+import { Button } from '../../shared/ui/Button'
+import { Badge } from '../../shared/ui/Badge'
+import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
-import { createPayment, updatePayment } from '../../features/encaissement/encaissement.queries'
-import { METHOD_LABELS, METHOD_COLOR, formatCents } from '../../features/encaissement/encaissement.logic'
-import type { PaymentRow, PaymentInsert, PaymentMethod } from '../../features/encaissement/encaissement.types'
+import { createPayment, updatePayment } from './encaissement.queries'
+import { METHOD_LABELS, METHOD_COLOR, formatCents } from './encaissement.logic'
+import type { PaymentRow, PaymentInsert, PaymentMethod } from './encaissement.types'
 
 interface Props {
   open: boolean

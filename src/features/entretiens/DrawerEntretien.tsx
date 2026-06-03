@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Drawer } from '../ui/Drawer'
-import { Button } from '../ui/Button'
-import { Badge } from '../ui/Badge'
-import { useToast } from '../ui/useToast'
+import { Drawer } from '../../shared/ui/Drawer'
+import { Button } from '../../shared/ui/Button'
+import { Badge } from '../../shared/ui/Badge'
+import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
-import { createMaintenance, updateMaintenance } from '../../features/entretiens/entretiens.queries'
+import { createMaintenance, updateMaintenance } from './entretiens.queries'
 import {
   MAINTENANCE_TYPE_LABELS, MAINTENANCE_TYPE_COLOR, formatCents,
-} from '../../features/entretiens/entretiens.logic'
-import type { MaintenanceRow, MaintenanceInsert, MaintenanceType } from '../../features/entretiens/entretiens.types'
+} from './entretiens.logic'
+import type { MaintenanceRow, MaintenanceInsert, MaintenanceType } from './entretiens.types'
 
 interface Props {
   open: boolean

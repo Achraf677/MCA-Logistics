@@ -7,7 +7,8 @@ export async function getClients(filters: ClientFilters = {}) {
   if (filters.active !== undefined) q = q.eq('active', filters.active)
   if (filters.type && filters.type !== 'all') q = q.eq('type', filters.type)
   if (filters.search) {
-    q = q.or(`name.ilike.%${filters.search}%,siret.ilike.%${filters.search}%,email.ilike.%${filters.search}%`)
+    const s = filters.search.replace(/[(),]/g, '')
+    q = q.or(`name.ilike.%${s}%,siret.ilike.%${s}%,email.ilike.%${s}%`)
   }
 
   return q

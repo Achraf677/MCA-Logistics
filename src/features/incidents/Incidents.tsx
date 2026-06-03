@@ -6,7 +6,7 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
-import { DrawerIncident } from '../../shared/drawers/DrawerIncident'
+import { DrawerIncident } from './DrawerIncident'
 import { getIncidents } from './incidents.queries'
 import {
   TYPE_LABELS, TYPE_COLOR, STATUS_LABELS, STATUS_COLOR, formatCents, kpiSummary,

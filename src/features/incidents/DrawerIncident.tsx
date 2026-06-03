@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Drawer } from '../ui/Drawer'
-import { Button } from '../ui/Button'
-import { Badge } from '../ui/Badge'
-import { useToast } from '../ui/useToast'
+import { Drawer } from '../../shared/ui/Drawer'
+import { Button } from '../../shared/ui/Button'
+import { Badge } from '../../shared/ui/Badge'
+import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
-import { createIncident, updateIncident } from '../../features/incidents/incidents.queries'
+import { createIncident, updateIncident } from './incidents.queries'
 import {
   TYPE_LABELS, TYPE_COLOR, STATUS_LABELS, STATUS_COLOR, formatCents,
-} from '../../features/incidents/incidents.logic'
-import type { IncidentRow, IncidentInsert, IncidentType, IncidentStatus } from '../../features/incidents/incidents.types'
+} from './incidents.logic'
+import type { IncidentRow, IncidentInsert, IncidentType, IncidentStatus } from './incidents.types'
 
 interface Props {
   open: boolean

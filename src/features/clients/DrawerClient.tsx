@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
-import { Drawer } from '../ui/Drawer'
-import { Button } from '../ui/Button'
-import { Badge } from '../ui/Badge'
-import { useToast } from '../ui/useToast'
-import { createClient, updateClient, deactivateClient } from '../../features/clients/clients.queries'
+import { Drawer } from '../../shared/ui/Drawer'
+import { Button } from '../../shared/ui/Button'
+import { Badge } from '../../shared/ui/Badge'
+import { useToast } from '../../shared/ui/useToast'
+import { createClient, updateClient, deactivateClient } from './clients.queries'
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, validateSiret,
-} from '../../features/clients/clients.logic'
-import type { Client, ClientInsert } from '../../features/clients/clients.types'
+} from './clients.logic'
+import type { Client, ClientInsert } from './clients.types'
 import { useProfile } from '../../app/providers'
 
 interface DrawerClientProps {

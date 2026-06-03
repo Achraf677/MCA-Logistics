@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { CheckCircle, XCircle } from 'lucide-react'
-import { Drawer } from '../ui/Drawer'
-import { Button } from '../ui/Button'
-import { Badge } from '../ui/Badge'
-import { useToast } from '../ui/useToast'
+import { Drawer } from '../../shared/ui/Drawer'
+import { Button } from '../../shared/ui/Button'
+import { Badge } from '../../shared/ui/Badge'
+import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
-import { createInspection, updateInspection } from '../../features/inspections/inspections.queries'
+import { createInspection, updateInspection } from './inspections.queries'
 import {
   TYPE_LABELS, STATUS_LABELS, STATUS_COLOR, CHECKLIST_LABELS, computeStatus,
-} from '../../features/inspections/inspections.logic'
-import type { InspectionRow, InspectionInsert, InspectionType, InspectionStatus } from '../../features/inspections/inspections.types'
+} from './inspections.logic'
+import type { InspectionRow, InspectionInsert, InspectionType, InspectionStatus } from './inspections.types'
 
 interface Props {
   open: boolean

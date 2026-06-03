@@ -6,7 +6,7 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
-import { DrawerInspection } from '../../shared/drawers/DrawerInspection'
+import { DrawerInspection } from './DrawerInspection'
 import { supabase } from '../../app/providers'
 import { getInspections } from './inspections.queries'
 import {

@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Drawer } from '../ui/Drawer'
-import { Button } from '../ui/Button'
-import { useToast } from '../ui/useToast'
-import { createVehicle, updateVehicle } from '../../features/vehicules/vehicules.queries'
-import { validatePtac, STATUS_LABELS, FUEL_LABELS } from '../../features/vehicules/vehicules.logic'
-import type { Vehicle, VehicleInsert } from '../../features/vehicules/vehicules.types'
+import { Drawer } from '../../shared/ui/Drawer'
+import { Button } from '../../shared/ui/Button'
+import { useToast } from '../../shared/ui/useToast'
+import { createVehicle, updateVehicle } from './vehicules.queries'
+import { validatePtac, STATUS_LABELS, FUEL_LABELS } from './vehicules.logic'
+import type { Vehicle, VehicleInsert } from './vehicules.types'
 import { useProfile } from '../../app/providers'
 
 interface DrawerVehiculeProps {

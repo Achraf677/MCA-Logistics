@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Drawer } from '../ui/Drawer'
-import { Button } from '../ui/Button'
-import { Badge } from '../ui/Badge'
-import { useToast } from '../ui/useToast'
+import { Drawer } from '../../shared/ui/Drawer'
+import { Button } from '../../shared/ui/Button'
+import { Badge } from '../../shared/ui/Badge'
+import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
-import { createCharge, updateCharge } from '../../features/charges/charges.queries'
-import { CATEGORY_LABELS, CATEGORY_COLOR, formatCents, computeTtcCts } from '../../features/charges/charges.logic'
-import type { ChargeRow, ChargeInsert, ChargeCategory } from '../../features/charges/charges.types'
+import { createCharge, updateCharge } from './charges.queries'
+import { CATEGORY_LABELS, CATEGORY_COLOR, formatCents, computeTtcCts } from './charges.logic'
+import type { ChargeRow, ChargeInsert, ChargeCategory } from './charges.types'
 
 interface Props {
   open: boolean

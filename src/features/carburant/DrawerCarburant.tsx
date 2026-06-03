@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Drawer } from '../ui/Drawer'
-import { Button } from '../ui/Button'
-import { Badge } from '../ui/Badge'
-import { useToast } from '../ui/useToast'
+import { Drawer } from '../../shared/ui/Drawer'
+import { Button } from '../../shared/ui/Button'
+import { Badge } from '../../shared/ui/Badge'
+import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
-import { createFuelLog, updateFuelLog } from '../../features/carburant/carburant.queries'
-import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, formatCents } from '../../features/carburant/carburant.logic'
-import type { FuelLogRow, FuelLogInsert, FuelType } from '../../features/carburant/carburant.types'
+import { createFuelLog, updateFuelLog } from './carburant.queries'
+import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, formatCents } from './carburant.logic'
+import type { FuelLogRow, FuelLogInsert, FuelType } from './carburant.types'
 
 interface Props {
   open: boolean

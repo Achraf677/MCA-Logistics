@@ -6,13 +6,14 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
-import { DrawerLivraison } from '../../shared/drawers/DrawerLivraison'
+import { DrawerLivraison } from './DrawerLivraison'
 import { useToast } from '../../shared/ui/useToast'
 import { getDeliveries, exportDeliveriesCSV } from './livraisons.queries'
 import {
   STATUS_LABELS, STATUS_COLOR, TYPE_LABELS, TYPE_COLOR,
-  kpiSummary, formatCents, downloadCSV,
+  kpiSummary, formatCents,
 } from './livraisons.logic'
+import { downloadCSV } from '../../shared/lib/download'
 import type { DeliveryRow, DeliveryFilters } from './livraisons.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 

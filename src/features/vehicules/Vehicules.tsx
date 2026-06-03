@@ -6,7 +6,7 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { SkeletonCards, SkeletonKpis } from '../../shared/ui/Skeleton'
-import { DrawerVehicule } from '../../shared/drawers/DrawerVehicule'
+import { DrawerVehicule } from './DrawerVehicule'
 import { getVehicles } from './vehicules.queries'
 import {
   STATUS_LABELS, STATUS_COLORS, FUEL_LABELS, getCritairClass, formatMileage,

@@ -6,12 +6,13 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
-import { DrawerCharge } from '../../shared/drawers/DrawerCharge'
+import { DrawerCharge } from './DrawerCharge'
 import { useToast } from '../../shared/ui/useToast'
 import { getCharges, exportChargesCSV } from './charges.queries'
 import {
-  CATEGORY_LABELS, CATEGORY_COLOR, formatCents, kpiSummary, downloadCSV,
+  CATEGORY_LABELS, CATEGORY_COLOR, formatCents, kpiSummary,
 } from './charges.logic'
+import { downloadCSV } from '../../shared/lib/download'
 import type { ChargeRow, ChargeFilters, ChargeCategory } from './charges.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 

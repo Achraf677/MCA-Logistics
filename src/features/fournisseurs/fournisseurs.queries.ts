@@ -7,7 +7,8 @@ export async function getSuppliers(filters: SupplierFilters = {}) {
   if (filters.active !== undefined) q = q.eq('active', filters.active)
   if (filters.category && filters.category !== 'all') q = q.eq('category', filters.category)
   if (filters.search) {
-    q = q.or(`name.ilike.%${filters.search}%,siret.ilike.%${filters.search}%`)
+    const s = filters.search.replace(/[(),]/g, '')
+    q = q.or(`name.ilike.%${s}%,siret.ilike.%${s}%`)
   }
 
   return q

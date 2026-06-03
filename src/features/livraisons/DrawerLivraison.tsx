@@ -1,21 +1,21 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { ExternalLink, FileText, Package, Truck } from 'lucide-react'
-import { Drawer } from '../ui/Drawer'
-import { Button } from '../ui/Button'
-import { Badge } from '../ui/Badge'
-import { useToast } from '../ui/useToast'
+import { Drawer } from '../../shared/ui/Drawer'
+import { Button } from '../../shared/ui/Button'
+import { Badge } from '../../shared/ui/Badge'
+import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import {
   createDelivery,
   updateDelivery,
   advanceStatut,
-} from '../../features/livraisons/livraisons.queries'
+} from './livraisons.queries'
 import {
   STATUS_LABELS, STATUS_COLOR, TYPE_LABELS, TYPE_COLOR,
   formatCents, computeTtcCts, nextStatut, advanceLabel,
-} from '../../features/livraisons/livraisons.logic'
-import type { DeliveryRow, DeliveryInsert, DeliveryStatus } from '../../features/livraisons/livraisons.types'
+} from './livraisons.logic'
+import type { DeliveryRow, DeliveryInsert, DeliveryStatus } from './livraisons.types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

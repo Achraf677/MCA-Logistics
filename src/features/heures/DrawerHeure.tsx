@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Drawer } from '../ui/Drawer'
-import { Button } from '../ui/Button'
-import { useToast } from '../ui/useToast'
+import { Drawer } from '../../shared/ui/Drawer'
+import { Button } from '../../shared/ui/Button'
+import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
-import { createWorkHour, updateWorkHour } from '../../features/heures/heures.queries'
-import { formatMinutes } from '../../features/heures/heures.logic'
-import type { WorkHourRow, WorkHourInsert } from '../../features/heures/heures.types'
+import { createWorkHour, updateWorkHour } from './heures.queries'
+import { formatMinutes } from './heures.logic'
+import type { WorkHourRow, WorkHourInsert } from './heures.types'
 
 interface Props {
   open: boolean

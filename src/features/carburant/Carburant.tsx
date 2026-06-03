@@ -6,14 +6,15 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
-import { DrawerCarburant } from '../../shared/drawers/DrawerCarburant'
+import { DrawerCarburant } from './DrawerCarburant'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
 import { getFuelLogs, exportFuelCSV } from './carburant.queries'
 import {
   FUEL_TYPE_LABELS, FUEL_TYPE_COLOR,
-  formatCents, formatLiters, formatPricePerLiter, kpiSummary, downloadCSV,
+  formatCents, formatLiters, formatPricePerLiter, kpiSummary,
 } from './carburant.logic'
+import { downloadCSV } from '../../shared/lib/download'
 import type { FuelLogRow, FuelFilters } from './carburant.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
