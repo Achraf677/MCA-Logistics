@@ -15,15 +15,19 @@ const EMPTY: Omit<CompanyData, 'id'> = {
 }
 
 export function Parametres() {
-  const { companyId } = useProfile()
+  const { companyId, loading: profileLoading } = useProfile()
   const { toast } = useToast()
-  const [form, setForm]     = useState(EMPTY)
+  const [form, setForm]       = useState(EMPTY)
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [dirty, setDirty]   = useState(false)
+  const [saving, setSaving]   = useState(false)
+  const [dirty, setDirty]     = useState(false)
 
   useEffect(() => {
-    if (!companyId) return
+    // Attendre que le profil soit chargé
+    if (profileLoading) return
+    // Pas de companyId une fois le profil chargé : on arrête le spinner
+    if (!companyId) { setLoading(false); return }
+
     getCompany(companyId).then(({ data }) => {
       if (data) {
         setForm({
@@ -39,7 +43,7 @@ export function Parametres() {
       }
       setLoading(false)
     })
-  }, [companyId])
+  }, [companyId, profileLoading])
 
   const set = (k: keyof typeof form, v: string) => {
     setForm(p => ({ ...p, [k]: v }))
