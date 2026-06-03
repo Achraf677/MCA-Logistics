@@ -10,15 +10,37 @@ import { DrawerVehicule } from './DrawerVehicule'
 import { getVehicles } from './vehicules.queries'
 import {
   STATUS_LABELS, STATUS_COLORS, FUEL_LABELS, getCritairClass, formatMileage,
+  vehicleEcheances, worstStatus,
 } from './vehicules.logic'
 import type { Vehicle, VehicleFilters } from './vehicules.types'
+import type { EcheanceStatus } from '../../shared/lib/echeances'
 import type { ActionKey } from '../../shared/actions/ActionBar'
+
+const PASTILLE_STYLES: Record<EcheanceStatus, string | null> = {
+  ok:      'bg-[var(--success)]',
+  soon:    'bg-[var(--warning)]',
+  overdue: 'bg-[var(--danger)]',
+  none:    null,
+}
+
+function EcheancePastille({ status }: { status: EcheanceStatus }) {
+  const style = PASTILLE_STYLES[status]
+  if (!style) return null
+  const title = status === 'ok' ? 'Échéances OK' : status === 'soon' ? 'Échéance proche' : 'Échéance dépassée'
+  return (
+    <span
+      title={title}
+      className={`inline-block w-2.5 h-2.5 rounded-full ${style}`}
+    />
+  )
+}
 
 export function Vehicules() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<VehicleFilters>({})
+  const today = new Date()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<Vehicle | null>(null)
 
@@ -43,15 +65,27 @@ export function Vehicules() {
 
   const actifs = vehicles.filter(v => v.status === 'active').length
   const kmTotal = vehicles.reduce((sum, v) => sum + v.mileage_km, 0)
+  const echeancesUrgentes = vehicles.filter(v => {
+    const ws = worstStatus(vehicleEcheances(v, today))
+    return ws === 'overdue' || ws === 'soon'
+  }).length
+
+  const displayedVehicles = filters.echeance === 'urgent'
+    ? vehicles.filter(v => {
+        const ws = worstStatus(vehicleEcheances(v, today))
+        return ws === 'overdue' || ws === 'soon'
+      })
+    : vehicles
 
   return (
     <Shell pageTitle="Véhicules" actions={['nouveau', 'export']} onAction={handleAction}>
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
-        {loading ? <SkeletonKpis count={3} /> : <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {loading ? <SkeletonKpis count={4} /> : <>
           <KpiCard label="Véhicules actifs" value={actifs} sub={`${vehicles.length} au total`} />
           <KpiCard label="Km total flotte" value={formatMileage(kmTotal)} />
           <KpiCard label="En maintenance" value={vehicles.filter(v => v.status === 'maintenance').length} />
+          <KpiCard label="Échéances < 30 j" value={echeancesUrgentes} accent={echeancesUrgentes > 0} />
         </>}
       </div>
 
@@ -73,6 +107,14 @@ export function Vehicules() {
           <option value="all">Tous carburants</option>
           {(Object.entries(FUEL_LABELS) as [string, string][]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
+        <select
+          value={filters.echeance ?? 'all'}
+          onChange={e => setFilters(f => ({ ...f, echeance: (e.target.value || 'all') as VehicleFilters['echeance'] }))}
+          className="h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)] focus:outline-none"
+        >
+          <option value="all">Toutes échéances</option>
+          <option value="urgent">Proche / dépassée</option>
+        </select>
       </div>
 
       {loading ? <SkeletonCards rows={3} />
@@ -91,7 +133,7 @@ export function Vehicules() {
         ) : (
           /* Vue garage — cartes (desktop ET mobile) */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {vehicles.map(v => (
+            {displayedVehicles.map(v => (
               <button
                 key={v.id}
                 onClick={() => openDrawer(v)}
@@ -131,6 +173,7 @@ export function Vehicules() {
                       <AlertTriangle size={12} /> En maintenance
                     </span>
                   )}
+                  <EcheancePastille status={worstStatus(vehicleEcheances(v, today))} />
                   <span className="ml-auto text-[var(--fs-xs)] text-[var(--text-disabled)]">
                     {v.fuel_type ? FUEL_LABELS[v.fuel_type] : '—'}
                   </span>

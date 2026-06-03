@@ -3,7 +3,7 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { useToast } from '../../shared/ui/useToast'
 import { createVehicle, updateVehicle } from './vehicules.queries'
-import { validatePtac, STATUS_LABELS, FUEL_LABELS } from './vehicules.logic'
+import { validatePtac, STATUS_LABELS, FUEL_LABELS, vehicleEcheances } from './vehicules.logic'
 import type { Vehicle, VehicleInsert } from './vehicules.types'
 import { useProfile } from '../../app/providers'
 
@@ -27,6 +27,44 @@ function FieldGroup({ label, children, error }: { label: string; children: React
   )
 }
 
+const STATUS_DOT: Record<string, string> = {
+  ok:      'bg-[var(--success)]',
+  soon:    'bg-[var(--warning)]',
+  overdue: 'bg-[var(--danger)]',
+  none:    'bg-[var(--border)]',
+}
+
+const STATUS_TEXT: Record<string, string> = {
+  ok:      'OK',
+  soon:    'Proche',
+  overdue: 'Dépassée',
+  none:    '—',
+}
+
+function EcheancesBloc({ vehicle }: { vehicle: Vehicle }) {
+  const echeances = vehicleEcheances(vehicle)
+  return (
+    <div className="flex flex-col gap-2 bg-[var(--bg)] rounded-[var(--r-md)] p-3">
+      {echeances.map(e => (
+        <div key={e.label} className="flex items-center justify-between text-[var(--fs-sm)]">
+          <span className="text-[var(--text-muted)]">{e.label}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[var(--text-disabled)] font-mono text-[var(--fs-xs)]">
+              {e.date ?? '—'}
+            </span>
+            {e.daysLeft !== null && e.status !== 'none' && (
+              <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                ({e.daysLeft < 0 ? `${Math.abs(e.daysLeft)} j dépassé` : `${e.daysLeft} j`})
+              </span>
+            )}
+            <span className={`inline-block w-2 h-2 rounded-full ${STATUS_DOT[e.status]}`} title={STATUS_TEXT[e.status]} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehiculeProps) {
   const { companyId } = useProfile()
   const { toast } = useToast()
@@ -44,6 +82,9 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
       purchase_price_cts: vehicle.purchase_price_cts ?? undefined,
       purchase_date: vehicle.purchase_date ?? '',
       status: vehicle.status, notes: vehicle.notes ?? '', company_id: vehicle.company_id,
+      ct_expiry: vehicle.ct_expiry ?? '',
+      insurance_expiry: vehicle.insurance_expiry ?? '',
+      next_revision_date: vehicle.next_revision_date ?? '',
     } : { status: 'active', mileage_km: 0, company_id: companyId ?? '' })
     setPtacError('')
   }, [vehicle, open, companyId])
@@ -155,6 +196,23 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
               onChange={e => set('purchase_price_cts', Math.round(parseFloat(e.target.value || '0') * 100))}
               className={inputClass} />
           </FieldGroup>
+        </div>
+
+        {/* Échéances réglementaires */}
+        <div className="flex flex-col gap-3 pt-3 border-t border-[var(--border-soft)]">
+          <p className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">Échéances</p>
+          <div className="grid grid-cols-3 gap-3">
+            <FieldGroup label="Contrôle technique">
+              <input type="date" value={form.ct_expiry ?? ''} onChange={e => set('ct_expiry', e.target.value || null)} className={inputClass} />
+            </FieldGroup>
+            <FieldGroup label="Assurance">
+              <input type="date" value={form.insurance_expiry ?? ''} onChange={e => set('insurance_expiry', e.target.value || null)} className={inputClass} />
+            </FieldGroup>
+            <FieldGroup label="Révision">
+              <input type="date" value={form.next_revision_date ?? ''} onChange={e => set('next_revision_date', e.target.value || null)} className={inputClass} />
+            </FieldGroup>
+          </div>
+          {isEdit && vehicle && <EcheancesBloc vehicle={{ ...vehicle, ...form as Partial<Vehicle> } as Vehicle} />}
         </div>
 
         <FieldGroup label="Notes">

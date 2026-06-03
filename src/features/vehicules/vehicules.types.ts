@@ -15,6 +15,9 @@ export interface Vehicle {
   status: 'active' | 'maintenance' | 'inactive'
   storage_url: string | null
   notes: string | null
+  ct_expiry: string | null
+  insurance_expiry: string | null
+  next_revision_date: string | null
   created_at: string
   updated_at: string
 }
@@ -25,4 +28,5 @@ export type VehicleUpdate = Partial<Omit<Vehicle, 'id' | 'company_id' | 'created
 export interface VehicleFilters {
   status?: Vehicle['status'] | 'all'
   fuel_type?: Vehicle['fuel_type'] | 'all'
+  echeance?: 'urgent' | 'all'
 }
