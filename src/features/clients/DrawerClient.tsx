@@ -3,11 +3,13 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { useToast } from '../../shared/ui/useToast'
-import { createClient, updateClient, deactivateClient } from './clients.queries'
+import { createClient, updateClient, deactivateClient, getClientDeliveries } from './clients.queries'
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, validateSiret,
+  TARIFF_MODE_LABELS, computeEncours, paymentStatusOf,
 } from './clients.logic'
-import type { Client, ClientInsert } from './clients.types'
+import { formatMoney } from '../../shared/lib/money'
+import type { Client, ClientInsert, DeliveryForEncours, TariffMode } from './clients.types'
 import { useProfile } from '../../app/providers'
 
 interface DrawerClientProps {
@@ -21,17 +23,20 @@ const EMPTY_FORM: Partial<ClientInsert> = {
   name: '', siret: '', tva_intra: '', address: '', city: '',
   postal_code: '', email: '', phone: '', type: null,
   payment_terms: 30, notes: '', active: true,
+  tariff_mode: 'manuel', tariff_rate_cts: null,
 }
 
-type Tab = 'detail'
+type Tab = 'detail' | 'historique' | 'encours'
 
 export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientProps) {
   const { companyId } = useProfile()
   const { toast } = useToast()
-  const [tab] = useState<Tab>('detail')
+  const [tab, setTab] = useState<Tab>('detail')
   const [form, setForm] = useState<Partial<ClientInsert>>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [siretError, setSiretError] = useState('')
+  const [deliveries, setDeliveries] = useState<(DeliveryForEncours & { date: string; description: string | null })[]>([])
+  const [deliveriesLoading, setDeliveriesLoading] = useState(false)
 
   const isEdit = !!client
 
@@ -42,12 +47,27 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
         address: client.address ?? '', city: client.city ?? '', postal_code: client.postal_code ?? '',
         email: client.email ?? '', phone: client.phone ?? '', type: client.type,
         payment_terms: client.payment_terms, notes: client.notes ?? '', active: client.active,
+        tariff_mode: client.tariff_mode ?? 'manuel',
+        tariff_rate_cts: client.tariff_rate_cts,
       })
     } else {
       setForm(EMPTY_FORM)
     }
     setSiretError('')
+    setTab('detail')
+    setDeliveries([])
   }, [client, open])
+
+  useEffect(() => {
+    if ((tab === 'historique' || tab === 'encours') && client && deliveries.length === 0) {
+      setDeliveriesLoading(true)
+      getClientDeliveries(client.id).then(({ data }) => {
+        const paymentTerms = client.payment_terms ?? 30
+        setDeliveries((data ?? []).map(d => ({ ...d, payment_terms: paymentTerms })))
+        setDeliveriesLoading(false)
+      })
+    }
+  }, [tab, client])
 
   const set = (k: keyof typeof form, v: unknown) => setForm(p => ({ ...p, [k]: v }))
 
@@ -55,6 +75,9 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
     if (!form.name?.trim()) { toast('Le nom est requis', 'error'); return }
     if (form.siret && !validateSiret(form.siret)) {
       setSiretError('SIRET invalide (14 chiffres)'); return
+    }
+    if (form.tariff_mode !== 'manuel' && !form.tariff_rate_cts) {
+      toast('Le tarif est requis pour ce mode', 'error'); return
     }
     setSiretError('')
     setSaving(true)
@@ -88,11 +111,32 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
     onClose()
   }
 
+  const encours = computeEncours(deliveries)
+
   return (
     <Drawer open={open} onClose={onClose} title={isEdit ? client!.name : 'Nouveau client'}>
+      {/* Tabs */}
+      {isEdit && (
+        <div className="flex gap-1 mb-5 border-b border-[var(--border)] -mx-5 px-5">
+          {(['detail', 'historique', 'encours'] as Tab[]).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-3 py-2 text-[var(--fs-sm)] font-medium border-b-2 transition-colors -mb-px ${
+                tab === t
+                  ? 'border-[var(--brand)] text-[var(--brand)]'
+                  : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
+              }`}
+            >
+              {t === 'detail' ? 'Détail' : t === 'historique' ? 'Historique' : 'Encours & paiements'}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Onglet Détail ── */}
       {tab === 'detail' && (
         <div className="flex flex-col gap-5">
-          {/* Statut */}
           {isEdit && (
             <div className="flex items-center gap-2">
               <Badge color={client!.active ? 'success' : 'muted'}>
@@ -106,7 +150,6 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
             </div>
           )}
 
-          {/* Champs */}
           <FieldGroup label="Nom *">
             <Input value={form.name ?? ''} onChange={v => set('name', v)} placeholder="Nom du client" />
           </FieldGroup>
@@ -162,6 +205,43 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
             </FieldGroup>
           </div>
 
+          {/* Tarif */}
+          <div className="pt-3 border-t border-[var(--border)]">
+            <p className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide mb-3">Tarification</p>
+            <div className="grid grid-cols-2 gap-3">
+              <FieldGroup label="Mode tarifaire">
+                <select
+                  value={form.tariff_mode ?? 'manuel'}
+                  onChange={e => set('tariff_mode', e.target.value as TariffMode)}
+                  className={inputClass}
+                >
+                  {(Object.entries(TARIFF_MODE_LABELS) as [TariffMode, string][]).map(([v, l]) => (
+                    <option key={v} value={v}>{l}</option>
+                  ))}
+                </select>
+              </FieldGroup>
+              {form.tariff_mode !== 'manuel' && (
+                <FieldGroup label={
+                  form.tariff_mode === 'forfait' ? 'Montant forfait (€)' :
+                  form.tariff_mode === 'km'      ? 'Prix / km (€)' :
+                                                   'Prix / palette (€)'
+                }>
+                  <Input
+                    type="number"
+                    value={form.tariff_rate_cts ? String(form.tariff_rate_cts / 100) : ''}
+                    onChange={v => set('tariff_rate_cts', v ? Math.round(parseFloat(v) * 100) : null)}
+                    placeholder="0,00"
+                  />
+                </FieldGroup>
+              )}
+            </div>
+            {form.tariff_mode === 'manuel' && (
+              <p className="text-[var(--fs-xs)] text-[var(--text-disabled)] mt-1">
+                En mode manuel, le montant de chaque livraison est saisi à la main.
+              </p>
+            )}
+          </div>
+
           <FieldGroup label="Notes">
             <textarea
               value={form.notes ?? ''}
@@ -172,7 +252,6 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
             />
           </FieldGroup>
 
-          {/* Actions */}
           <div className="flex items-center gap-2 pt-2 border-t border-[var(--border)]">
             <Button variant="primary" onClick={handleSave} disabled={saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}
@@ -186,8 +265,128 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
           </div>
         </div>
       )}
+
+      {/* ── Onglet Historique ── */}
+      {tab === 'historique' && (
+        <div className="flex flex-col gap-3">
+          {deliveriesLoading ? (
+            <div className="flex items-center justify-center py-10 text-[var(--text-muted)] text-[var(--fs-sm)]">
+              Chargement…
+            </div>
+          ) : deliveries.length === 0 ? (
+            <div className="flex items-center justify-center py-10 text-[var(--text-muted)] text-[var(--fs-sm)]">
+              Aucune livraison
+            </div>
+          ) : (
+            deliveries.map(d => {
+              const amount = d.amount_ttc_cts ?? d.montant_ttc_cts ?? 0
+              return (
+                <div key={d.id} className="flex items-center justify-between gap-2 py-2.5 border-b border-[var(--border)] last:border-0">
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[var(--fs-sm)] text-[var(--text)]">{d.description || '—'}</span>
+                    <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">{formatDate(d.date)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <StatusBadge statut={d.statut} />
+                    <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">{formatMoney(amount)}</span>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+      )}
+
+      {/* ── Onglet Encours & paiements ── */}
+      {tab === 'encours' && (
+        <div className="flex flex-col gap-4">
+          {deliveriesLoading ? (
+            <div className="flex items-center justify-center py-10 text-[var(--text-muted)] text-[var(--fs-sm)]">
+              Chargement…
+            </div>
+          ) : (
+            <>
+              {/* Résumé encours */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-[var(--bg-card)] rounded-[var(--r-md)] border border-[var(--border)] px-4 py-3">
+                  <p className="text-[var(--fs-xs)] text-[var(--text-muted)] uppercase tracking-wide mb-1">Encours total</p>
+                  <p className="text-[var(--fs-lg)] font-semibold text-[var(--text)]">{formatMoney(encours.total_cts)}</p>
+                  <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">{encours.count} facture{encours.count > 1 ? 's' : ''}</p>
+                </div>
+                <div className="bg-[var(--bg-card)] rounded-[var(--r-md)] border border-[var(--border)] px-4 py-3">
+                  <p className="text-[var(--fs-xs)] text-[var(--text-muted)] uppercase tracking-wide mb-1">Dont en retard</p>
+                  <p className={`text-[var(--fs-lg)] font-semibold ${encours.overdue_cts > 0 ? 'text-[var(--danger)]' : 'text-[var(--text)]'}`}>
+                    {formatMoney(encours.overdue_cts)}
+                  </p>
+                </div>
+              </div>
+
+              {/* Liste factures non payées */}
+              {encours.count === 0 ? (
+                <div className="flex items-center justify-center py-8 text-[var(--text-muted)] text-[var(--fs-sm)]">
+                  Aucune facture en attente
+                </div>
+              ) : (
+                <div className="flex flex-col">
+                  {deliveries.filter(d => d.statut === 'facturee').map(d => {
+                    const today = new Date()
+                    const status = paymentStatusOf(d, today)
+                    const amount = d.amount_ttc_cts ?? d.montant_ttc_cts ?? 0
+                    return (
+                      <div key={d.id} className="flex items-center justify-between gap-2 py-2.5 border-b border-[var(--border)] last:border-0">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[var(--fs-sm)] text-[var(--text)]">{d.description || '—'}</span>
+                          <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                            Facturé le {d.invoiced_at ? formatDate(d.invoiced_at) : '—'}
+                            {d.invoiced_at && ` · Échéance ${formatDate(addDays(d.invoiced_at, d.payment_terms))}`}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <PaymentBadge status={status} />
+                          <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">{formatMoney(amount)}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
     </Drawer>
   )
+}
+
+// ── Helpers UI ────────────────────────────────────────────────────────────────
+
+const STATUT_LABELS: Record<string, string> = {
+  brouillon: 'Brouillon', validee: 'Validée', facturee: 'Facturée',
+  payee: 'Payée', annulee: 'Annulée',
+}
+
+function StatusBadge({ statut }: { statut: string }) {
+  const color =
+    statut === 'payee'    ? 'success' :
+    statut === 'facturee' ? 'warning' :
+    statut === 'annulee'  ? 'muted'   : 'info'
+  return <Badge color={color as 'success' | 'warning' | 'muted' | 'info'}>{STATUT_LABELS[statut] ?? statut}</Badge>
+}
+
+function PaymentBadge({ status }: { status: 'a_jour' | 'du' | 'en_retard' }) {
+  if (status === 'a_jour') return <Badge color="success">À jour</Badge>
+  if (status === 'en_retard') return <Badge color="danger">En retard</Badge>
+  return <Badge color="warning">Dû</Badge>
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function addDays(iso: string, days: number): string {
+  const d = new Date(iso)
+  d.setDate(d.getDate() + days)
+  return d.toISOString()
 }
 
 // ── Mini helpers ──────────────────────────────────────────────────────────────
