@@ -61,6 +61,10 @@ export type DeliveryInsert = Omit<
   | 'pennylane_invoice_id' | 'pennylane_synced_at'
   | 'facture_url' | 'bon_livraison_url' | 'lettre_voiture_url'
   | 'sync_pending' | 'sync_error'
+  // Colonnes legacy non inscriptibles en v2 :
+  // montant_ttc_cts est GENERATED ALWAYS ; montant_ht_cts a désormais DEFAULT 0 ;
+  // tva_rate a DEFAULT 20 — on ne les écrit plus, on utilise amount_* v2.
+  | 'montant_ht_cts' | 'tva_rate' | 'montant_ttc_cts'
 >
 
 export type DeliveryUpdate = Partial<Omit<Delivery, 'id' | 'company_id' | 'created_at'>>
