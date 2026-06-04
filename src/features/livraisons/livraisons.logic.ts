@@ -79,6 +79,8 @@ export interface AmountParams {
   distance_km?: number | null
   pallets?: number | null
   manual_ht_cts?: number | null
+  /** TVA manuelle en centimes. Si fournie, surcharge le calcul automatique à tvaRate. */
+  manual_tva_cts?: number | null
 }
 
 export interface ComputedAmount {
@@ -89,8 +91,12 @@ export interface ComputedAmount {
 
 /**
  * Calcule HT/TVA/TTC depuis le tarif client.
- * TVA par différence : ttc = addTva(ht, rate) puis tva = ttc − ht
- * → ht + tva === ttc toujours vrai.
+ *
+ * Deux modes TVA — invariant ht + tva === ttc toujours garanti :
+ *   • TVA manuelle (params.manual_tva_cts != null) :
+ *       tva_cts = manual_tva_cts ; ttc = ht + tva
+ *   • TVA automatique (défaut 20 %) :
+ *       ttc = addTva(ht, tvaRate) puis tva = ttc − ht  (différence, jamais ht*rate)
  */
 export function computeAmount(
   client: ClientTariff,
@@ -120,6 +126,14 @@ export function computeAmount(
       return null
   }
 
+  if (params.manual_tva_cts != null) {
+    // TVA surchargée par l'utilisateur — ttc = ht + tva (ht+tva===ttc garanti)
+    const tva_cts = params.manual_tva_cts
+    const amount_ttc_cts = amount_ht_cts + tva_cts
+    return { amount_ht_cts, tva_cts, amount_ttc_cts }
+  }
+
+  // TVA automatique par différence — addTva arrondit le TTC, tva = ttc − ht
   const amount_ttc_cts = addTva(amount_ht_cts, tvaRate)
   const tva_cts = amount_ttc_cts - amount_ht_cts
   return { amount_ht_cts, tva_cts, amount_ttc_cts }

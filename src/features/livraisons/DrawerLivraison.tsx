@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { Drawer }     from '../../shared/ui/Drawer'
-import { Button }     from '../../shared/ui/Button'
-import { Badge }      from '../../shared/ui/Badge'
-import { useToast }   from '../../shared/ui/useToast'
-import { useProfile } from '../../app/providers'
-import { formatMoney } from '../../shared/lib/money'
+import { Drawer }      from '../../shared/ui/Drawer'
+import { Button }      from '../../shared/ui/Button'
+import { Badge }       from '../../shared/ui/Badge'
+import { useToast }    from '../../shared/ui/useToast'
+import { useProfile }  from '../../app/providers'
+import { formatMoney, addTva } from '../../shared/lib/money'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
   TRANSITION_ACTION_LABELS,
@@ -38,7 +38,7 @@ interface ClientLookup extends ClientTariff {
 
 interface Lookup { id: string; label: string }
 
-// ── Formulaire vide ───────────────────────────────────────────────────────────
+// ── Formulaire ────────────────────────────────────────────────────────────────
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -51,9 +51,10 @@ const EMPTY_FORM = {
   description:      '',
   pickup_address:   '',
   delivery_address: '',
-  km:               '',   // distance en km
-  pallets:          '',   // nb palettes (stocké dans weight_kg)
-  manual_ht:        '',   // montant HT manuel en euros
+  km:               '',
+  pallets:          '',
+  manual_ht:        '',   // HT en euros (mode manuel)
+  tva_override:     '',   // TVA en euros, éditable dans tous les modes
   notes:            '',
 }
 
@@ -61,11 +62,12 @@ const EMPTY_FORM = {
 
 export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   const { companyId } = useProfile()
-  const { toast } = useToast()
-  const isEdit = !!delivery
+  const { toast }     = useToast()
+  const isEdit        = !!delivery
 
   const [tab, setTab]           = useState<Tab>('detail')
   const [form, setForm]         = useState(EMPTY_FORM)
+  const [tvaTouched, setTvaTouched] = useState(false)
   const [saving, setSaving]     = useState(false)
   const [transitioning, setTransitioning] = useState<DeliveryStatus | null>(null)
 
@@ -73,7 +75,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   const [vehicles, setVehicles] = useState<Lookup[]>([])
   const [drivers,  setDrivers]  = useState<Lookup[]>([])
 
-  // ── Chargement des référentiels ──────────────────────────────────────────────
+  // ── Référentiels ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!open) return
@@ -93,10 +95,12 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
     )
   }, [open])
 
-  // ── Initialisation du formulaire ─────────────────────────────────────────────
+  // ── Initialisation formulaire ─────────────────────────────────────────────────
 
   useEffect(() => {
     if (delivery) {
+      const storedTvaCts = delivery.tva_cts ?? null
+      setTvaTouched(storedTvaCts != null)
       setForm({
         date:             delivery.date,
         client_id:        delivery.client_id,
@@ -109,11 +113,13 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         km:               delivery.km != null ? String(delivery.km) : '',
         pallets:          delivery.weight_kg != null ? String(delivery.weight_kg) : '',
         manual_ht:        effectiveHtCts(delivery) > 0
-                            ? (effectiveHtCts(delivery) / 100).toFixed(2)
-                            : '',
+                            ? (effectiveHtCts(delivery) / 100).toFixed(2) : '',
+        tva_override:     storedTvaCts != null
+                            ? (storedTvaCts / 100).toFixed(2) : '',
         notes:            delivery.notes ?? '',
       })
     } else {
+      setTvaTouched(false)
       setForm({ ...EMPTY_FORM, date: TODAY })
     }
     setTab('detail')
@@ -121,45 +127,53 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
 
-  // ── Client sélectionné et calcul montant ─────────────────────────────────────
+  // ── Client sélectionné ────────────────────────────────────────────────────────
 
   const selectedClient = useMemo(
     () => clients.find(c => c.id === form.client_id) ?? null,
     [clients, form.client_id],
   )
 
+  // ── Calcul du montant ─────────────────────────────────────────────────────────
+
   const computed = useMemo(() => {
     if (!selectedClient) return null
     return computeAmount(
       selectedClient,
       {
-        distance_km:  form.km      ? parseFloat(form.km)      : null,
-        pallets:      form.pallets ? parseFloat(form.pallets) : null,
+        distance_km:   form.km      ? parseFloat(form.km)      : null,
+        pallets:       form.pallets ? parseFloat(form.pallets) : null,
         manual_ht_cts: form.manual_ht
-          ? Math.round(parseFloat(form.manual_ht) * 100)
-          : null,
+          ? Math.round(parseFloat(form.manual_ht) * 100) : null,
+        // TVA manuelle seulement si l'utilisateur l'a surchargée
+        manual_tva_cts: tvaTouched && form.tva_override
+          ? Math.round(parseFloat(form.tva_override) * 100) : null,
       },
     )
-  }, [selectedClient, form.km, form.pallets, form.manual_ht])
+  }, [selectedClient, form.km, form.pallets, form.manual_ht, form.tva_override, tvaTouched])
 
-  // ── Permissions d'édition ─────────────────────────────────────────────────────
+  // Auto-remplit le champ TVA à 20 % du HT quand le HT change
+  // et que l'utilisateur n'a pas encore surchargé la TVA.
+  useEffect(() => {
+    if (tvaTouched || !selectedClient) return
+    const htCts = computed?.amount_ht_cts ?? 0
+    if (htCts > 0) {
+      const autoTvaCts = addTva(htCts, 0.20) - htCts
+      setForm(p => ({ ...p, tva_override: (autoTvaCts / 100).toFixed(2) }))
+    } else {
+      setForm(p => ({ ...p, tva_override: '' }))
+    }
+  }, [computed?.amount_ht_cts, tvaTouched, selectedClient])
+
+  // ── Permissions ───────────────────────────────────────────────────────────────
 
   const lockedStatuses: string[] = ['facturee', 'payee', 'annulee']
-  const isDetailReadOnly = isEdit && lockedStatuses.includes(delivery?.statut ?? '')
-  const isMontantReadOnly = isEdit && ['facturee', 'payee', 'annulee'].includes(delivery?.statut ?? '')
-
-  // ── Onglets ───────────────────────────────────────────────────────────────────
+  const isDetailReadOnly  = isEdit && lockedStatuses.includes(delivery?.statut ?? '')
+  const isMontantReadOnly = isEdit && lockedStatuses.includes(delivery?.statut ?? '')
 
   const tabs: { key: Tab; label: string }[] = isEdit
-    ? [
-        { key: 'detail',  label: 'Détail'  },
-        { key: 'montant', label: 'Montant' },
-        { key: 'suivi',   label: 'Suivi'   },
-      ]
-    : [
-        { key: 'detail',  label: 'Détail'  },
-        { key: 'montant', label: 'Montant' },
-      ]
+    ? [{ key: 'detail', label: 'Détail' }, { key: 'montant', label: 'Montant' }, { key: 'suivi', label: 'Suivi' }]
+    : [{ key: 'detail', label: 'Détail' }, { key: 'montant', label: 'Montant' }]
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
@@ -169,30 +183,22 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
 
     setSaving(true)
     try {
-      const amount = computed ?? null
-      const htCts  = amount?.amount_ht_cts
-        ?? (form.manual_ht ? Math.round(parseFloat(form.manual_ht) * 100) : 0)
-      const ttcCts = amount?.amount_ttc_cts ?? htCts
-
+      // Seules les colonnes v2 sont écrites pour les montants.
+      // montant_ht_cts (DEFAULT 0) et montant_ttc_cts (GENERATED) ne sont JAMAIS écrits.
       const payload = {
         date:             form.date,
         client_id:        form.client_id,
         vehicle_id:       form.vehicle_id  || null,
         driver_id:        form.driver_id   || null,
-        type:             (form.type       || null) as 'medical' | 'ecommerce' | 'retail' | 'particulier' | null,
+        type:             (form.type || null) as 'medical' | 'ecommerce' | 'retail' | 'particulier' | null,
         description:      form.description || null,
         pickup_address:   form.pickup_address   || null,
         delivery_address: form.delivery_address || null,
         km:               form.km      ? parseFloat(form.km)      : null,
         weight_kg:        form.pallets ? parseFloat(form.pallets) : null,
-        // Colonnes v2
-        amount_ht_cts:    amount?.amount_ht_cts  ?? (form.manual_ht ? htCts : null),
-        tva_cts:          amount?.tva_cts         ?? null,
-        amount_ttc_cts:   amount?.amount_ttc_cts ?? (form.manual_ht ? ttcCts : null),
-        // Legacy NOT NULL
-        montant_ht_cts:   htCts,
-        tva_rate:         20,
-        montant_ttc_cts:  ttcCts,
+        amount_ht_cts:    computed?.amount_ht_cts  ?? null,
+        tva_cts:          computed?.tva_cts         ?? null,
+        amount_ttc_cts:   computed?.amount_ttc_cts ?? null,
         notes:            form.notes || null,
       }
 
@@ -204,10 +210,10 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         if (!companyId) throw new Error('Profil non chargé')
         const { error } = await createDelivery({
           ...payload,
-          company_id: companyId,
-          statut: 'planifiee',
+          company_id:  companyId,
+          statut:      'planifiee',
           invoiced_at: null,
-          paid_at: null,
+          paid_at:     null,
         })
         if (error) throw error
         toast('Livraison créée')
@@ -225,9 +231,9 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
     if (!delivery) return
 
     if (to === 'facturee') {
-      const ht = delivery.amount_ht_cts ?? delivery.montant_ht_cts ?? 0
+      const ht = delivery.amount_ht_cts ?? 0
       if (ht <= 0) {
-        toast('Montant requis avant de facturer — saisissez le montant dans l\'onglet Montant', 'error')
+        toast("Montant requis avant de facturer — saisissez le montant dans l'onglet Montant", 'error')
         setTab('montant')
         return
       }
@@ -236,9 +242,9 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
     setTransitioning(to)
 
     const amountForTransition = to === 'facturee' ? {
-      amount_ht_cts:  delivery.amount_ht_cts  ?? delivery.montant_ht_cts   ?? 0,
+      amount_ht_cts:  delivery.amount_ht_cts  ?? 0,
       tva_cts:        delivery.tva_cts         ?? 0,
-      amount_ttc_cts: delivery.amount_ttc_cts ?? delivery.montant_ttc_cts ?? 0,
+      amount_ttc_cts: delivery.amount_ttc_cts ?? 0,
     } : undefined
 
     const { error } = await transitionDelivery(delivery.id, delivery.statut, to, amountForTransition)
@@ -258,16 +264,13 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   return (
     <Drawer open={open} onClose={onClose} title={drawerTitle} width="max-w-xl">
 
-      {/* Badge statut */}
       {isEdit && (
         <div className="flex items-center gap-2 mb-4">
           <Badge color={STATUS_COLORS[delivery!.statut] ?? 'muted'}>
             {STATUS_LABELS[delivery!.statut] ?? delivery!.statut}
           </Badge>
           {delivery!.type && (
-            <Badge color={TYPE_LABELS[delivery!.type] ? 'muted' : 'muted'}>
-              {TYPE_LABELS[delivery!.type] ?? delivery!.type}
-            </Badge>
+            <Badge color="muted">{TYPE_LABELS[delivery!.type] ?? delivery!.type}</Badge>
           )}
           <span className="ml-auto font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
             {new Date(delivery!.date).toLocaleDateString('fr-FR')}
@@ -275,17 +278,13 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         </div>
       )}
 
-      {/* Barre d'onglets */}
       <div className="flex gap-0 mb-5 border-b border-[var(--border)]">
         {tabs.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
+          <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-4 py-2 text-[var(--fs-sm)] transition-colors -mb-px
               ${tab === t.key
                 ? 'text-[var(--brand)] border-b-2 border-[var(--brand)] font-medium'
-                : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}
-          >
+                : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
             {t.label}
           </button>
         ))}
@@ -339,7 +338,6 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
             <Input value={form.description} onChange={v => set('description', v)}
               placeholder="Objet de la course…" disabled={isDetailReadOnly} />
           </Field>
-
           <Field label="Adresse d'enlèvement">
             <Input value={form.pickup_address} onChange={v => set('pickup_address', v)}
               placeholder="Rue, ville…" disabled={isDetailReadOnly} />
@@ -348,26 +346,22 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
             <Input value={form.delivery_address} onChange={v => set('delivery_address', v)}
               placeholder="Rue, ville…" disabled={isDetailReadOnly} />
           </Field>
-
           <Field label="Notes">
             <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
               rows={3} disabled={isDetailReadOnly} placeholder="Notes internes…"
               className={`${inputCls} resize-none`} />
           </Field>
 
-          {!isDetailReadOnly && (
-            <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
+          <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
+            {!isDetailReadOnly && (
               <Button variant="primary" onClick={handleSave} disabled={saving}>
                 {saving ? 'Enregistrement…' : 'Enregistrer'}
               </Button>
-              <Button variant="secondary" onClick={onClose}>Annuler</Button>
-            </div>
-          )}
-          {isDetailReadOnly && (
-            <div className="pt-3 border-t border-[var(--border)]">
-              <Button variant="secondary" onClick={onClose}>Fermer</Button>
-            </div>
-          )}
+            )}
+            <Button variant="secondary" onClick={onClose}>
+              {isDetailReadOnly ? 'Fermer' : 'Annuler'}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -376,6 +370,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         <MontantTab
           form={form}
           set={set}
+          tvaTouched={tvaTouched}
+          onTvaChange={v => { set('tva_override', v); setTvaTouched(true) }}
           selectedClient={selectedClient}
           computed={computed}
           delivery={delivery}
@@ -402,10 +398,14 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
 // ── Onglet Montant ────────────────────────────────────────────────────────────
 
 function MontantTab({
-  form, set, selectedClient, computed, delivery, isReadOnly, saving, onSave, onClose,
+  form, set, tvaTouched, onTvaChange,
+  selectedClient, computed, delivery,
+  isReadOnly, saving, onSave, onClose,
 }: {
   form: typeof EMPTY_FORM
   set: (k: keyof typeof EMPTY_FORM, v: string) => void
+  tvaTouched: boolean
+  onTvaChange: (v: string) => void
   selectedClient: ClientTariff | null
   computed: ReturnType<typeof computeAmount>
   delivery?: DeliveryRow | null
@@ -416,22 +416,23 @@ function MontantTab({
 }) {
   const mode = selectedClient?.tariff_mode ?? 'manuel'
 
-  const displayHt  = computed?.amount_ht_cts  ?? (delivery ? effectiveHtCts(delivery) : null)
-  const displayTva = computed?.tva_cts         ?? delivery?.tva_cts ?? null
+  // Valeurs à afficher : préfère computed (live), sinon valeurs stockées
+  const displayHt  = computed?.amount_ht_cts  ?? (delivery ? effectiveHtCts(delivery)  : null)
+  const displayTva = computed?.tva_cts         ?? delivery?.tva_cts                     ?? null
   const displayTtc = computed?.amount_ttc_cts ?? (delivery ? effectiveTtcCts(delivery) : null)
 
   return (
     <div className="flex flex-col gap-4">
 
-      {/* Info tarif client */}
+      {/* Info tarif */}
       {selectedClient && (
         <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] px-4 py-3
           text-[var(--fs-sm)] text-[var(--text-muted)]">
-          Tarif client : <span className="font-medium text-[var(--text)]">
-            {mode === 'forfait'  && 'Forfait fixe'}
-            {mode === 'km'       && 'Au kilomètre'}
-            {mode === 'palette'  && 'À la palette'}
-            {mode === 'manuel'   && 'Saisie manuelle'}
+          Tarif : <span className="font-medium text-[var(--text)]">
+            {mode === 'forfait' && 'Forfait fixe'}
+            {mode === 'km'      && 'Au kilomètre'}
+            {mode === 'palette' && 'À la palette'}
+            {mode === 'manuel'  && 'Saisie manuelle'}
           </span>
           {selectedClient.tariff_rate_cts != null && mode !== 'manuel' && (
             <span className="ml-2 font-mono">
@@ -448,21 +449,19 @@ function MontantTab({
         </p>
       )}
 
-      {/* Champs de saisie selon le mode */}
+      {/* Champs de saisie selon le mode tarifaire */}
       {selectedClient && mode === 'km' && (
         <Field label="Distance (km) *">
           <Input type="number" value={form.km} onChange={v => set('km', v)}
             placeholder="0" disabled={isReadOnly} />
         </Field>
       )}
-
       {selectedClient && mode === 'palette' && (
         <Field label="Nombre de palettes *">
           <Input type="number" value={form.pallets} onChange={v => set('pallets', v)}
             placeholder="0" disabled={isReadOnly} />
         </Field>
       )}
-
       {selectedClient && mode === 'manuel' && (
         <Field label="Montant HT (€) *">
           <Input type="number" value={form.manual_ht} onChange={v => set('manual_ht', v)}
@@ -470,13 +469,26 @@ function MontantTab({
         </Field>
       )}
 
-      {/* Récapitulatif calculé */}
-      {(displayHt != null || computed) && (
+      {/* Champ TVA éditable — visible dès qu'un HT est calculable */}
+      {selectedClient && (
+        <Field label={`TVA (€)${tvaTouched ? ' ✎' : ' — auto 20 %'}`}>
+          <Input
+            type="number"
+            value={form.tva_override}
+            onChange={onTvaChange}
+            placeholder="0.00"
+            disabled={isReadOnly}
+          />
+        </Field>
+      )}
+
+      {/* Récapitulatif HT / TVA / TTC */}
+      {displayHt != null && (
         <div className="rounded-[var(--r-lg)] border border-[var(--border)] divide-y divide-[var(--border)] overflow-hidden">
           <InfoRow label="Montant HT">
-            <span className="font-mono">{displayHt != null ? formatMoney(displayHt) : '—'}</span>
+            <span className="font-mono">{formatMoney(displayHt)}</span>
           </InfoRow>
-          <InfoRow label="TVA (20 %)">
+          <InfoRow label="TVA">
             <span className="font-mono">{displayTva != null ? formatMoney(displayTva) : '—'}</span>
           </InfoRow>
           <InfoRow label="Total TTC">
@@ -487,14 +499,7 @@ function MontantTab({
         </div>
       )}
 
-      {/* Vérification invariant ht + tva === ttc (visible en dev) */}
-      {computed && computed.amount_ht_cts + computed.tva_cts !== computed.amount_ttc_cts && (
-        <p className="text-[var(--danger)] text-[var(--fs-xs)]">
-          ⚠ Invariant HT+TVA≠TTC (erreur interne)
-        </p>
-      )}
-
-      {/* Pennylane info */}
+      {/* Pennylane */}
       {delivery?.pennylane_invoice_id && (
         <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] px-4 py-2.5
           flex items-center justify-between text-[var(--fs-sm)]">
@@ -502,7 +507,6 @@ function MontantTab({
           <span className="font-mono text-[var(--fs-xs)]">{delivery.pennylane_invoice_id}</span>
         </div>
       )}
-
       {delivery?.sync_pending && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-[var(--r-md)]
           bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-[var(--fs-xs)]">
@@ -539,13 +543,10 @@ function SuiviTab({
 }) {
   const nextStatuses = allowedNextStatuses(delivery.statut)
   const actionLabels = TRANSITION_ACTION_LABELS[delivery.statut] ?? {}
-
-  const currentIdx = STATUS_TIMELINE.indexOf(delivery.statut)
+  const currentIdx   = STATUS_TIMELINE.indexOf(delivery.statut)
 
   return (
     <div className="flex flex-col gap-5">
-
-      {/* Timeline */}
       <div className="flex flex-col py-1">
         {STATUS_TIMELINE.map((s, i) => {
           const reached   = currentIdx >= 0 && i <= currentIdx
@@ -556,10 +557,7 @@ function SuiviTab({
                 <div className={`w-3 h-3 rounded-full flex-shrink-0
                   ${isCurrent
                     ? 'bg-[var(--brand)] ring-2 ring-[var(--brand)]/30'
-                    : reached
-                      ? 'bg-[var(--brand)]'
-                      : 'bg-[var(--border)]'}`}
-                />
+                    : reached ? 'bg-[var(--brand)]' : 'bg-[var(--border)]'}`} />
                 {i < STATUS_TIMELINE.length - 1 && (
                   <div className={`w-0.5 h-8 mt-0.5
                     ${reached && i < currentIdx ? 'bg-[var(--brand)]/40' : 'bg-[var(--border)]'}`} />
@@ -570,9 +568,7 @@ function SuiviTab({
                   ${reached ? 'text-[var(--text)]' : 'text-[var(--text-disabled)]'}`}>
                   {STATUS_LABELS[s]}
                 </span>
-                {isCurrent && (
-                  <span className="ml-2 text-[var(--fs-xs)] text-[var(--brand)]">← actuel</span>
-                )}
+                {isCurrent && <span className="ml-2 text-[var(--fs-xs)] text-[var(--brand)]">← actuel</span>}
                 {s === 'facturee' && delivery.invoiced_at && (
                   <span className="ml-2 text-[var(--fs-xs)] text-[var(--text-muted)]">
                     {new Date(delivery.invoiced_at).toLocaleDateString('fr-FR')}
@@ -587,7 +583,6 @@ function SuiviTab({
             </div>
           )
         })}
-
         {delivery.statut === 'annulee' && (
           <div className="mt-1 flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-[var(--danger)]" />
@@ -596,21 +591,18 @@ function SuiviTab({
         )}
       </div>
 
-      {/* Boutons d'action générés depuis allowedNextStatuses */}
       {nextStatuses.length > 0 && (
         <div className="flex flex-col gap-2 pt-2 border-t border-[var(--border)]">
           {nextStatuses.map(to => {
-            const label = actionLabels[to] ?? STATUS_LABELS[to]
+            const label    = actionLabels[to] ?? STATUS_LABELS[to]
             const isCancel = to === 'annulee'
             const isActive = transitioning === to
             return (
-              <Button
-                key={to}
+              <Button key={to}
                 variant={isCancel ? 'secondary' : 'primary'}
                 onClick={() => onTransition(to)}
                 disabled={transitioning !== null}
-                className={isCancel ? 'text-[var(--danger)] border-[var(--danger)]/40' : ''}
-              >
+                className={isCancel ? 'text-[var(--danger)] border-[var(--danger)]/40' : ''}>
                 {isActive ? '…' : label}
               </Button>
             )

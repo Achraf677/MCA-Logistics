@@ -60,13 +60,12 @@ export async function transitionDelivery(
   const updates: Record<string, unknown> = { statut: to }
 
   if (to === 'facturee' && amount) {
-    updates.invoiced_at     = now
-    updates.amount_ht_cts   = amount.amount_ht_cts
-    updates.tva_cts         = amount.tva_cts
-    updates.amount_ttc_cts  = amount.amount_ttc_cts
-    // Maintient la contrainte NOT NULL sur la colonne legacy
-    updates.montant_ht_cts  = amount.amount_ht_cts
-    updates.montant_ttc_cts = amount.amount_ttc_cts
+    updates.invoiced_at    = now
+    updates.amount_ht_cts  = amount.amount_ht_cts
+    updates.tva_cts        = amount.tva_cts
+    updates.amount_ttc_cts = amount.amount_ttc_cts
+    // montant_ttc_cts est GENERATED ALWAYS — ne jamais l'écrire.
+    // montant_ht_cts a DEFAULT 0 depuis la migration — ne pas l'écrire non plus.
   }
 
   if (to === 'payee') {
