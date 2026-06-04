@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Building2 } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
@@ -10,7 +10,7 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { getSuppliers, createSupplier, updateSupplier, deactivateSupplier } from './fournisseurs.queries'
-import { CATEGORY_LABELS, getCategoryLabel, isTvaDeductible, countByCategory } from './fournisseurs.logic'
+import { CATEGORY_LABELS, getCategoryLabel, isTvaDeductible, countByCategory, normalizeSiren, findDuplicate } from './fournisseurs.logic'
 import type { Supplier, SupplierInsert, SupplierFilters } from './fournisseurs.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
@@ -52,7 +52,7 @@ export function Fournisseurs() {
   const openDrawer = (s?: Supplier) => {
     setSelected(s ?? null)
     setForm(s ? {
-      name: s.name, siret: s.siret ?? '', tva_intra: s.tva_intra ?? '',
+      name: s.name, siren: s.siren ?? '', siret: s.siret ?? '', tva_intra: s.tva_intra ?? '',
       address: s.address ?? '', email: s.email ?? '', phone: s.phone ?? '',
       category: s.category, pennylane_id: s.pennylane_id ?? '',
       notes: s.notes ?? '', active: s.active, company_id: s.company_id,
@@ -60,10 +60,22 @@ export function Fournisseurs() {
     setDrawerOpen(true)
   }
 
+  const duplicate = useMemo(() => {
+    const raw = form.siren ?? ''
+    if (!raw.trim()) return null
+    return findDuplicate(raw, suppliers, selected?.id)
+  }, [form.siren, suppliers, selected])
+
   const set = (k: keyof SupplierInsert, v: unknown) => setForm(p => ({ ...p, [k]: v }))
 
   const handleSave = async () => {
     if (!form.name?.trim()) { toast('Le nom est requis', 'error'); return }
+    if (duplicate) {
+      const ok = window.confirm(
+        `Un fournisseur avec le même SIREN existe déjà : « ${duplicate.name} ».\n\nVoulez-vous quand même enregistrer ?`
+      )
+      if (!ok) return
+    }
     setSaving(true)
     try {
       if (selected) {
@@ -221,9 +233,39 @@ export function Fournisseurs() {
             </p>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <FieldGroup label="SIRET">
-              <input value={form.siret ?? ''} onChange={e => set('siret', e.target.value)} className={inputClass} />
+            <FieldGroup label="SIREN">
+              <input
+                value={form.siren ?? ''}
+                onChange={e => set('siren', normalizeSiren(e.target.value))}
+                maxLength={9}
+                className={inputClass}
+                placeholder="9 chiffres"
+              />
             </FieldGroup>
+            <FieldGroup label="SIRET">
+              <input value={form.siret ?? ''} onChange={e => set('siret', e.target.value)} className={inputClass} placeholder="14 chiffres" />
+            </FieldGroup>
+          </div>
+          {duplicate && (
+            <div className="rounded-[var(--r-md)] border px-3 py-2 flex flex-col gap-1"
+              style={{ borderColor: 'var(--warning)', backgroundColor: 'color-mix(in srgb, var(--warning) 12%, transparent)' }}>
+              <p className="text-[var(--fs-sm)] font-semibold" style={{ color: 'var(--warning)' }}>
+                Doublon possible
+              </p>
+              <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                Un fournisseur avec le même SIREN existe déjà :{' '}
+                <button
+                  type="button"
+                  onClick={() => openDrawer(duplicate)}
+                  className="underline hover:opacity-80 transition-opacity"
+                  style={{ color: 'var(--brand)' }}
+                >
+                  {duplicate.name}
+                </button>
+              </p>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
             <FieldGroup label="N° TVA intra">
               <input value={form.tva_intra ?? ''} onChange={e => set('tva_intra', e.target.value)} className={inputClass} />
             </FieldGroup>

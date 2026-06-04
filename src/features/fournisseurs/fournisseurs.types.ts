@@ -2,6 +2,7 @@ export interface Supplier {
   id: string
   company_id: string
   name: string
+  siren: string | null
   siret: string | null
   tva_intra: string | null
   address: string | null
