@@ -3,6 +3,7 @@ export interface TeamMember {
   company_id: string
   profile_id: string | null
   full_name: string
+  role: 'president' | 'dg' | 'chauffeur' | 'comptable' | null
   role_label: string | null
   idcc: string
   coefficient: number | null
@@ -13,6 +14,8 @@ export interface TeamMember {
   phone: string | null
   email: string | null
   license_type: string | null
+  licence_b_expiry: string | null
+  medical_visit_expiry: string | null
   active: boolean
   created_at: string
   updated_at: string
@@ -22,6 +25,8 @@ export type TeamMemberInsert = Omit<TeamMember, 'id' | 'created_at' | 'updated_a
 export type TeamMemberUpdate = Partial<Omit<TeamMember, 'id' | 'company_id' | 'created_at'>>
 
 export interface TeamFilters {
+  role?: TeamMember['role'] | 'all'
   contract_type?: TeamMember['contract_type'] | 'all'
   active?: boolean
+  echeance?: 'urgent' | 'all'
 }
