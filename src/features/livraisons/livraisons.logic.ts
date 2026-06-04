@@ -1,74 +1,164 @@
-import type { DeliveryRow, DeliveryStatus, DeliveryType } from './livraisons.types'
+import { addTva, formatMoney } from '../../shared/lib/money'
+import type { DeliveryRow, DeliveryStatus } from './livraisons.types'
 
-export const STATUS_LABELS: Record<DeliveryStatus, string> = {
-  brouillon: 'Brouillon',
-  validee: 'Validée',
-  facturee: 'Facturée',
-  payee: 'Payée',
-  annulee: 'Annulée',
+// ── Machine à états ──────────────────────────────────────────────────────────
+
+export const TRANSITIONS: Record<DeliveryStatus, DeliveryStatus[]> = {
+  planifiee: ['en_cours', 'annulee'],
+  en_cours:  ['livree', 'annulee'],
+  livree:    ['facturee'],
+  facturee:  ['payee'],
+  payee:     [],
+  annulee:   [],
 }
 
-export const STATUS_COLOR: Record<DeliveryStatus, 'muted' | 'info' | 'warning' | 'success' | 'danger'> = {
-  brouillon: 'muted',
-  validee:   'info',
+export function canTransition(from: string, to: string): boolean {
+  const allowed = TRANSITIONS[from as DeliveryStatus]
+  return Array.isArray(allowed) && allowed.includes(to as DeliveryStatus)
+}
+
+export function allowedNextStatuses(from: string): DeliveryStatus[] {
+  return TRANSITIONS[from as DeliveryStatus] ?? []
+}
+
+// ── Labels & couleurs ────────────────────────────────────────────────────────
+
+export const STATUS_LABELS: Record<string, string> = {
+  planifiee: 'Planifiée',
+  en_cours:  'En cours',
+  livree:    'Livrée',
+  facturee:  'Facturée',
+  payee:     'Payée',
+  annulee:   'Annulée',
+  // Rétro-compat (données legacy)
+  brouillon: 'Brouillon',
+  validee:   'Validée',
+}
+
+export const STATUS_COLORS: Record<string, 'muted' | 'info' | 'warning' | 'success' | 'danger'> = {
+  planifiee: 'muted',
+  en_cours:  'info',
+  livree:    'warning',
   facturee:  'warning',
   payee:     'success',
   annulee:   'danger',
+  brouillon: 'muted',
+  validee:   'info',
 }
 
-export const TYPE_LABELS: Record<DeliveryType, string> = {
+export const TRANSITION_ACTION_LABELS: Record<string, Record<string, string>> = {
+  planifiee: { en_cours: 'Démarrer', annulee: 'Annuler la livraison' },
+  en_cours:  { livree: 'Marquer livrée', annulee: 'Annuler la livraison' },
+  livree:    { facturee: 'Facturer' },
+  facturee:  { payee: 'Encaisser' },
+}
+
+export const TYPE_LABELS: Record<string, string> = {
   medical:    'Médical',
   ecommerce:  'E-commerce',
   retail:     'Retail',
   particulier:'Particulier',
 }
 
-export const TYPE_COLOR: Record<DeliveryType, 'info' | 'success' | 'warning' | 'muted'> = {
+export const TYPE_COLORS: Record<string, 'info' | 'success' | 'warning' | 'muted'> = {
   medical:    'info',
   ecommerce:  'success',
   retail:     'warning',
   particulier:'muted',
 }
 
-const STATUS_ORDER: DeliveryStatus[] = ['brouillon', 'validee', 'facturee', 'payee']
+// ── Calcul du montant ────────────────────────────────────────────────────────
 
-const ADVANCE_LABELS: Partial<Record<DeliveryStatus, string>> = {
-  brouillon: 'Valider la livraison',
-  validee:   'Marquer facturée',
-  facturee:  'Marquer payée',
+/** Interface minimale du client nécessaire au calcul (pas d'import cross-feature) */
+export interface ClientTariff {
+  tariff_mode: 'forfait' | 'km' | 'palette' | 'manuel'
+  tariff_rate_cts: number | null
 }
 
-export function nextStatut(current: DeliveryStatus): DeliveryStatus | null {
-  const idx = STATUS_ORDER.indexOf(current)
-  if (idx < 0 || idx >= STATUS_ORDER.length - 1) return null
-  return STATUS_ORDER[idx + 1]
+export interface AmountParams {
+  distance_km?: number | null
+  pallets?: number | null
+  manual_ht_cts?: number | null
 }
 
-export function advanceLabel(statut: DeliveryStatus): string | null {
-  return ADVANCE_LABELS[statut] ?? null
+export interface ComputedAmount {
+  amount_ht_cts: number
+  tva_cts: number
+  amount_ttc_cts: number
+}
+
+/**
+ * Calcule HT/TVA/TTC depuis le tarif client.
+ * TVA par différence : ttc = addTva(ht, rate) puis tva = ttc − ht
+ * → ht + tva === ttc toujours vrai.
+ */
+export function computeAmount(
+  client: ClientTariff,
+  params: AmountParams,
+  tvaRate = 0.20,
+): ComputedAmount | null {
+  let amount_ht_cts: number
+
+  switch (client.tariff_mode) {
+    case 'forfait':
+      if (client.tariff_rate_cts == null) return null
+      amount_ht_cts = client.tariff_rate_cts
+      break
+    case 'km':
+      if (client.tariff_rate_cts == null || params.distance_km == null) return null
+      amount_ht_cts = Math.round(client.tariff_rate_cts * params.distance_km)
+      break
+    case 'palette':
+      if (client.tariff_rate_cts == null || params.pallets == null) return null
+      amount_ht_cts = Math.round(client.tariff_rate_cts * params.pallets)
+      break
+    case 'manuel':
+      if (params.manual_ht_cts == null) return null
+      amount_ht_cts = params.manual_ht_cts
+      break
+    default:
+      return null
+  }
+
+  const amount_ttc_cts = addTva(amount_ht_cts, tvaRate)
+  const tva_cts = amount_ttc_cts - amount_ht_cts
+  return { amount_ht_cts, tva_cts, amount_ttc_cts }
+}
+
+// ── Helpers d'affichage ──────────────────────────────────────────────────────
+
+/** Montant HT effectif — préfère la colonne v2, replie sur legacy */
+export function effectiveHtCts(row: Pick<DeliveryRow, 'amount_ht_cts' | 'montant_ht_cts'>): number {
+  return row.amount_ht_cts ?? row.montant_ht_cts ?? 0
+}
+
+/** Montant TTC effectif — préfère la colonne v2, replie sur legacy */
+export function effectiveTtcCts(row: Pick<DeliveryRow, 'amount_ttc_cts' | 'montant_ttc_cts'>): number {
+  return row.amount_ttc_cts ?? row.montant_ttc_cts ?? 0
 }
 
 export function formatCents(cts: number): string {
-  return (cts / 100).toLocaleString('fr-FR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }) + ' €'
+  return formatMoney(cts)
 }
 
-export function computeTtcCts(htCts: number, tvaRate: number): number {
-  return htCts + Math.round(htCts * tvaRate / 100)
-}
+// ── KPIs ─────────────────────────────────────────────────────────────────────
 
 export function kpiSummary(rows: DeliveryRow[]) {
-  const active = rows.filter(r => r.statut !== 'annulee')
-  const caHtCts = active.reduce((s, r) => s + r.montant_ht_cts, 0)
-  const nb = active.length
-  const nbFacturee = active.filter(r => r.statut === 'facturee' || r.statut === 'payee').length
-  const nbPayee = active.filter(r => r.statut === 'payee').length
-  return {
-    nb,
-    caHtCts,
-    factureePct: nb ? Math.round(nbFacturee / nb * 100) : 0,
-    payeePct:    nb ? Math.round(nbPayee / nb * 100) : 0,
-  }
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+
+  const active   = rows.filter(r => r.statut !== 'annulee')
+  const thisMonth = active.filter(r => r.date >= monthStart)
+
+  const caFactureCts = active
+    .filter(r => r.statut === 'facturee' || r.statut === 'payee')
+    .reduce((s, r) => s + effectiveTtcCts(r), 0)
+
+  const enAttenteFacturation = active.filter(r => r.statut === 'livree').length
+
+  const enAttentePaiementCts = active
+    .filter(r => r.statut === 'facturee')
+    .reduce((s, r) => s + effectiveTtcCts(r), 0)
+
+  return { nbMois: thisMonth.length, caFactureCts, enAttenteFacturation, enAttentePaiementCts }
 }

@@ -8,7 +8,7 @@ import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { DrawerLivraison } from '../livraisons/DrawerLivraison'
 import { getDashboardKpis, getRecentDeliveries, getMonthlyTrend } from './dashboard.queries'
-import { formatCents, STATUS_LABELS, STATUS_COLOR } from '../livraisons/livraisons.logic'
+import { formatCents, STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
 import type { DashboardKpis } from './dashboard.queries'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
 
@@ -185,7 +185,7 @@ export function Dashboard() {
                           {formatCents(row.montant_ht_cts)}
                         </td>
                         <td className="px-4 py-3">
-                          <Badge color={STATUS_COLOR[row.statut]}>{STATUS_LABELS[row.statut]}</Badge>
+                          <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>{STATUS_LABELS[row.statut]}</Badge>
                         </td>
                       </tr>
                     ))}
@@ -203,7 +203,7 @@ export function Dashboard() {
                   >
                     <div className="flex items-start justify-between gap-2 mb-1">
                       <span className="font-medium text-[var(--text)]">{row.clients?.name ?? '—'}</span>
-                      <Badge color={STATUS_COLOR[row.statut]}>{STATUS_LABELS[row.statut]}</Badge>
+                      <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>{STATUS_LABELS[row.statut]}</Badge>
                     </div>
                     <div className="flex items-end justify-between gap-2">
                       <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
