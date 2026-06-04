@@ -7,7 +7,7 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { DrawerLivraison } from '../livraisons/DrawerLivraison'
 import { getDeliveriesForWeek } from './planning.queries'
-import { STATUS_LABELS, STATUS_COLOR, formatCents } from '../livraisons/livraisons.logic'
+import { STATUS_LABELS, STATUS_COLORS, formatCents } from '../livraisons/livraisons.logic'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
@@ -142,7 +142,7 @@ export function Planning() {
                           bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)]
                           border border-[var(--border)] transition-colors"
                       >
-                        <Badge color={STATUS_COLOR[d.statut]}>
+                        <Badge color={STATUS_COLORS[d.statut] ?? 'muted'}>
                           {STATUS_LABELS[d.statut]}
                         </Badge>
                         <div className="text-[var(--fs-xs)] font-medium text-[var(--text)] truncate mt-0.5">
@@ -208,7 +208,7 @@ export function Planning() {
                               <span className="font-mono text-[var(--fs-xs)] text-[var(--text)]">
                                 {formatCents(d.montant_ht_cts)}
                               </span>
-                              <Badge color={STATUS_COLOR[d.statut]}>{STATUS_LABELS[d.statut]}</Badge>
+                              <Badge color={STATUS_COLORS[d.statut] ?? 'muted'}>{STATUS_LABELS[d.statut]}</Badge>
                             </div>
                           </div>
                           {d.team_members?.full_name && (

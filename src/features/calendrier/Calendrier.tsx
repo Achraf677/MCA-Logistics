@@ -48,7 +48,7 @@ export function Calendrier() {
   const load = useCallback(async () => {
     setLoading(true)
     const { data } = await getDeliveries({ date_from: monthStart, date_to: monthEnd })
-    setRows((data as DeliveryRow[]) ?? [])
+    setRows((data as unknown as DeliveryRow[]) ?? [])
     setLoading(false)
   }, [monthStart, monthEnd])
 
