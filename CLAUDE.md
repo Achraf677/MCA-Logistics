@@ -52,3 +52,4 @@ Non commencés : Flotte, Opérations, Finance, **Intégrations**, Pilotage, Syst
 - Branche par étape (`feat/…` ou `fix/…`). Fin d'étape = commit **+ push -u origin + merge dans main + push main**. Confirmer les hash. Sans push, rien n'est sauvegardé ni vérifiable.
 - Ne jamais inventer une info manquante : demander.
 - Specs des onglets : `mca-spec/tabs/` (format 9 sections — ★☆). Specs intégrations : `mca-spec/integrations/`.
+- Économie de tokens : voir `TOKEN-ECONOMY.md`. Vérifier une étape via le sous-agent `/verificateur`.
