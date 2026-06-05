@@ -32,12 +32,26 @@ export interface InvoiceLine {
 }
 
 /**
- * Code TVA Pennylane à partir d'un taux en pourcentage.
- * 20 → "FR_200" · 10 → "FR_100" · 5.5 → "FR_055" · 2.1 → "FR_021" · 0 → "exempt".
+ * Codes TVA légaux français mappés vers les codes Pennylane.
+ * Clé = taux en dixièmes de point (20 % → 200) pour éviter les imprécisions flottantes.
+ * 20 % → FR_200 · 10 % → FR_100 · 5,5 % → FR_055 · 2,1 % → FR_021 · 0 % → FR_000.
  */
-export function vatRateCode(ratePct: number): string {
-  if (ratePct <= 0) return 'exempt';
-  return `FR_${String(Math.round(ratePct * 10)).padStart(3, '0')}`;
+const LEGAL_VAT_CODES: Record<number, string> = {
+  200: 'FR_200',
+  100: 'FR_100',
+  55: 'FR_055',
+  21: 'FR_021',
+  0: 'FR_000',
+};
+
+/**
+ * Renvoie le code Pennylane UNIQUEMENT si le taux correspond exactement à un taux
+ * légal français connu. Sinon `null` : on ne devine jamais un code pour un taux
+ * atypique/libre — l'appelant doit alors refuser de facturer.
+ */
+export function vatRateCode(ratePct: number): string | null {
+  const key = Math.round(ratePct * 10);
+  return LEGAL_VAT_CODES[key] ?? null;
 }
 
 /** Cherche un client Pennylane par external_reference (= clients.id). Renvoie l'id ou null. */

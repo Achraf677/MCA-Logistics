@@ -67,6 +67,21 @@ Deno.serve(async (req: Request) => {
     ? Math.round((tvaCts / amountHtCts) * 1000) / 10
     : ratePct;
 
+  // ── Garde-fou TVA : refuser un taux non standard AVANT tout appel Pennylane ──
+  // (aucun client/facture créé si le taux ne mappe pas un code légal connu).
+  const vatCode = vatRateCode(effectiveRatePct);
+  if (vatCode === null) {
+    return jsonResponse({
+      ok: false,
+      error: 'taux TVA non standard, code introuvable',
+      details: {
+        tva_rate_pct: effectiveRatePct,
+        tva_cts: tvaCts,
+        amount_ht_cts: amountHtCts,
+      },
+    }, 422);
+  }
+
   // ── Charger le client lié ───────────────────────────────────────────────────
   const { data: client, error: cErr } = await supabase
     .from('clients')
@@ -126,7 +141,7 @@ Deno.serve(async (req: Request) => {
           quantity: 1,
           unit: 'piece',
           raw_currency_unit_price: centimesToEuros(amountHtCts).toFixed(2),
-          vat_rate: vatRateCode(effectiveRatePct),
+          vat_rate: vatCode,
         },
       ],
     });
