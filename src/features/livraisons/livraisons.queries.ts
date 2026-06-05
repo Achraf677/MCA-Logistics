@@ -104,6 +104,40 @@ async function tryPushPennylane(deliveryId: string): Promise<boolean> {
   }
 }
 
+// ── Rattrapage Pennylane (resync des livraisons bloquées) ─────────────────────
+// Une livraison passée `facturee` dont l'appel Pennylane a échoué reste
+// sync_pending=true sans pennylane_invoice_id. pennylane-invoice étant idempotent
+// et gérant lui-même sync_pending=false au succès, le resync = re-invoquer.
+
+export async function getPendingSyncDeliveries() {
+  return supabase
+    .from('deliveries')
+    .select('id')
+    .eq('statut', 'facturee')
+    .eq('sync_pending', true)
+    .is('pennylane_invoice_id', null)
+}
+
+export async function resyncPending(): Promise<{ resynced: number; failed: number }> {
+  const { data } = await getPendingSyncDeliveries()
+  const ids = (data as { id: string }[] | null)?.map(d => d.id) ?? []
+
+  let resynced = 0
+  let failed = 0
+  for (const id of ids) {
+    try {
+      const { error } = await supabase.functions.invoke('pennylane-invoice', {
+        body: { delivery_id: id },
+      })
+      if (error) failed++
+      else resynced++
+    } catch {
+      failed++
+    }
+  }
+  return { resynced, failed }
+}
+
 // ── Clients actifs (pour les sélecteurs du drawer) ────────────────────────────
 export async function getActiveClients() {
   return supabase
