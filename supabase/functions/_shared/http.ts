@@ -41,10 +41,14 @@ export async function fetchJson<T>(url: string, opts: FetchOptions = {}): Promis
   }
 
   if (!response.ok) {
-    let body: unknown;
-    try { body = await response.json(); } catch { body = await response.text(); }
+    // Le corps HTTP ne se lit qu'une fois : on lit en texte puis on tente JSON.
+    const raw = await response.text();
+    let body: unknown = raw;
+    try { body = JSON.parse(raw); } catch { /* garde le texte brut */ }
     throw new ExternalApiError(`External API ${response.status}`, response.status, body);
   }
 
-  return response.json() as Promise<T>;
+  // Certaines réponses (ex. PUT finalize) peuvent être vides : tolérer un corps non-JSON.
+  const raw = await response.text();
+  return (raw ? JSON.parse(raw) : null) as T;
 }
