@@ -1,6 +1,5 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { Shell } from './Shell'
 import { features } from '../features.config'
 import { Dashboard }    from '../features/dashboard/Dashboard'
 import { Rentabilite }  from '../features/rentabilite/Rentabilite'
@@ -22,18 +21,8 @@ import { Equipe }       from '../features/equipe/Equipe'
 import { Heures }       from '../features/heures/Heures'
 import { Inspections }  from '../features/inspections/Inspections'
 import { Alertes }      from '../features/alertes/Alertes'
+import { BrouillonsIA } from '../features/brouillons/BrouillonsIA'
 import { Parametres }   from '../features/parametres/Parametres'
-
-function Placeholder({ title }: { title: string }) {
-  return (
-    <Shell pageTitle={title}>
-      <div className="flex flex-col items-center justify-center h-64 gap-3 text-[var(--text-muted)]">
-        <span className="text-[var(--fs-h2)] font-display">{title}</span>
-        <span className="text-[var(--fs-sm)]">Onglet en cours de développement</span>
-      </div>
-    </Shell>
-  )
-}
 
 function guard(enabled: boolean, element: React.ReactElement) {
   return enabled ? element : <Navigate to="/" replace />
@@ -62,7 +51,7 @@ export function AppRoutes() {
       <Route path="/equipe"        element={guard(features.equipe,       <Equipe />)} />
       <Route path="/heures"        element={guard(features.heures,       <Heures />)} />
       <Route path="/alertes"       element={guard(features.alertes,      <Alertes />)} />
-      <Route path="/brouillons"    element={guard(features.brouillons,   <Placeholder title="Brouillons IA" />)} />
+      <Route path="/brouillons"    element={guard(features.brouillons,   <BrouillonsIA />)} />
       <Route path="/parametres"    element={guard(features.parametres,   <Parametres />)} />
       <Route path="*"              element={<Navigate to="/" replace />} />
     </Routes>
