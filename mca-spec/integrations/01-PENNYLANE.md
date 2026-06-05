@@ -41,17 +41,24 @@ _Émission automatique de la facture client dans Pennylane quand une livraison p
 ## ⑤ Re-synchronisation (rattrapage)
 - Fonction/déclencheur `pennylane-resync` : reprend les `deliveries` où `statut='facturee' AND sync_pending=true AND pennylane_invoice_id IS NULL` et rejoue le flux. Appelable manuellement (bouton « Resynchroniser » côté Livraisons) ou planifiée.
 
-## ⑥ Sécurité
+## ⑥ Détection de paiement
+- On **n'interroge PAS Qonto directement**. Pennylane est relié à Qonto et **rapproche les paiements automatiquement** : on lit donc le statut de paiement **côté Pennylane**.
+- Endpoint : `GET /customer_invoices/{id}/matched_transactions` (scope `customer_invoices:readonly`, inclus dans le token existant).
+- **Règle v1** : si la liste des transactions rapprochées est **non vide** ⇒ la facture est **payée**.
+- Fonction `pennylane-payment-check` : sélectionne les `deliveries` où `statut='facturee' AND pennylane_invoice_id IS NOT NULL` ; pour chacune, appelle l'endpoint ; si rapprochement non vide ⇒ `UPDATE deliveries SET statut='payee', paid_at=now() WHERE id=... AND statut='facturee'` (idempotent, garde-fou sur le statut). N'écrit **aucune** autre table et **rien** chez Pennylane.
+- Réponse : `{ ok:true, data:{ checked, marked_payee, still_unpaid } }`.
+
+## ⑦ Sécurité
 - `PENNYLANE_API_TOKEN` uniquement en secret Supabase, lu via `Deno.env`. Jamais dans le repo ni le front.
 - La fonction n'expose jamais le token ni la réponse brute Pennylane au client (seulement `{ ok, data|error }`).
 
-## ⑦ Cas limites
+## ⑧ Cas limites
 - Client sans email/SIRET → Pennylane peut refuser : remonter l'erreur claire, `sync_pending=true`, ne pas boucler.
 - Montant manuel/TVA surchargée : on envoie les montants de la livraison tels quels (déjà réconciliés).
 - Livraison annulée après facturation : hors périmètre ici (gérer l'avoir plus tard via credit note).
 - Double clic / double invoke : protégé par l'idempotence (étape 2).
 
-## ⑧ Dépendances
+## ⑨ Dépendances
 - **Nourrit** : Encaissement/Qonto (rapprochement paiement), Dashboard.
 - **Consomme** : SOCLE (`_shared/`), `deliveries`, `clients.pennylane_id`, `shared/lib/money.ts`.
 - **Partagé** : client Pennylane dans `supabase/functions/_shared/pennylane.ts`.
