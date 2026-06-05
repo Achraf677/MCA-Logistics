@@ -70,7 +70,7 @@ Deno.serve(async (req: Request) => {
   // ── Charger le client lié ───────────────────────────────────────────────────
   const { data: client, error: cErr } = await supabase
     .from('clients')
-    .select('id, name, email, pennylane_id')
+    .select('id, name, email, pennylane_id, address, postal_code, city, payment_terms')
     .eq('id', delivery.client_id)
     .single();
 
@@ -90,6 +90,12 @@ Deno.serve(async (req: Request) => {
           name: client.name,
           emails: client.email ? [client.email] : [],
           external_reference: client.id,
+          billing_address: {
+            address: client.address ?? '',
+            postal_code: client.postal_code ?? '',
+            city: client.city ?? '',
+            country_alpha2: 'FR',
+          },
         });
       }
 
@@ -103,13 +109,17 @@ Deno.serve(async (req: Request) => {
     // ── Créer la facture brouillon ────────────────────────────────────────────
     const invoiceDate = (delivery.invoiced_at ?? delivery.date ?? new Date().toISOString())
       .slice(0, 10);
+    // Échéance = date + délai de paiement client (jours), défaut 30.
+    const deadline = new Date(`${invoiceDate}T00:00:00Z`);
+    deadline.setUTCDate(deadline.getUTCDate() + (client.payment_terms ?? 30));
+    const deadlineDate = deadline.toISOString().slice(0, 10);
     const label = delivery.description?.trim() ||
       `Livraison ${delivery.type ?? ''} du ${delivery.date ?? invoiceDate}`.trim();
 
     const draftInvoiceId = await createDraftInvoice(token, {
       customer_id: pennylaneCustomerId,
       date: invoiceDate,
-      currency: 'EUR',
+      deadline: deadlineDate,
       invoice_lines: [
         {
           label,

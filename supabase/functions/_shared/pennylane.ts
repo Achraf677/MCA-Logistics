@@ -49,10 +49,23 @@ export async function findCustomerByRef(token: string, ref: string): Promise<num
   return items.length > 0 ? items[0].id : null;
 }
 
-/** Crée un client société Pennylane. Renvoie l'id. */
+export interface BillingAddress {
+  address: string;
+  postal_code: string;
+  city: string;
+  /** Code pays ISO 3166-1 alpha-2 (ex. "FR"). Renommé country_alpha2 par l'API 2026. */
+  country_alpha2: string;
+}
+
+/** Crée un client société Pennylane. Renvoie l'id. billing_address est requis par l'API. */
 export async function createCompanyCustomer(
   token: string,
-  body: { name: string; emails: string[]; external_reference: string },
+  body: {
+    name: string;
+    emails: string[];
+    external_reference: string;
+    billing_address: BillingAddress;
+  },
 ): Promise<number> {
   const data = await fetchJson<Record<string, unknown>>(`${BASE_URL}/company_customers`, {
     method: 'POST',
@@ -69,8 +82,7 @@ export async function createDraftInvoice(
   body: {
     customer_id: number;
     date: string;
-    deadline?: string;
-    currency: string;
+    deadline: string;
     invoice_lines: InvoiceLine[];
   },
 ): Promise<number> {
@@ -83,10 +95,10 @@ export async function createDraftInvoice(
   return invoice.id;
 }
 
-/** Finalise une facture brouillon (draft → finalisée, non modifiable ensuite). */
+/** Finalise une facture brouillon (draft → finalisée, non modifiable ensuite). Méthode PUT. */
 export async function finalizeInvoice(token: string, invoiceId: number): Promise<void> {
   await fetchJson<unknown>(`${BASE_URL}/customer_invoices/${invoiceId}/finalize`, {
-    method: 'POST',
+    method: 'PUT',
     headers: headers(token),
   });
 }
