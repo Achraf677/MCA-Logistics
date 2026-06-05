@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Package } from 'lucide-react'
+import { Package, RefreshCw, Loader2 } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
 import { KpiCard }     from '../../shared/ui/KpiCard'
 import { Badge }       from '../../shared/ui/Badge'
@@ -9,7 +9,7 @@ import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { DrawerLivraison } from './DrawerLivraison'
 import { useToast }    from '../../shared/ui/useToast'
 import { downloadCSV } from '../../shared/lib/download'
-import { getDeliveries, exportDeliveriesCSV } from './livraisons.queries'
+import { getDeliveries, exportDeliveriesCSV, getPendingSyncDeliveries, resyncPending } from './livraisons.queries'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
   kpiSummary, formatCents, effectiveTtcCts,
@@ -27,6 +27,8 @@ export function Livraisons() {
   const [filters, setFilters]   = useState<DeliveryFilters>({})
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
+  const [pendingSync, setPendingSync] = useState(0)
+  const [resyncing, setResyncing] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -36,7 +38,24 @@ export function Livraisons() {
     setLoading(false)
   }, [filters])
 
+  const loadPendingSync = useCallback(async () => {
+    const { data } = await getPendingSyncDeliveries()
+    setPendingSync((data as unknown[] | null)?.length ?? 0)
+  }, [])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { loadPendingSync() }, [loadPendingSync])
+
+  const handleResync = async () => {
+    setResyncing(true)
+    const { resynced, failed } = await resyncPending()
+    await Promise.all([load(), loadPendingSync()])
+    setResyncing(false)
+    toast(
+      `${resynced} resynchronisée(s)${failed > 0 ? `, ${failed} encore en échec` : ''}`,
+      failed > 0 ? 'error' : 'success',
+    )
+  }
 
   const handleAction = async (key: ActionKey) => {
     if (key === 'nouveau') { setSelected(null); setDrawerOpen(true) }
@@ -70,6 +89,22 @@ export function Livraisons() {
           <KpiCard label="CA facturé"  value={formatCents(kpis.caFactureCts)} accent />
           <KpiCard label="À facturer"  value={kpis.enAttenteFacturation} />
           <KpiCard label="En att. paiement" value={formatCents(kpis.enAttentePaiementCts)} />
+        </div>
+      )}
+
+      {/* Bandeau resync Pennylane (uniquement si au moins 1 bloquée) */}
+      {pendingSync > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 px-4 py-3
+          rounded-[var(--r-lg)] border border-[var(--warning)]/30 bg-[var(--warning)]/10">
+          <span className="text-[var(--fs-sm)] text-[var(--text)]">
+            {pendingSync} livraison(s) en attente de synchronisation Pennylane
+          </span>
+          <Button variant="secondary" size="compact" onClick={handleResync} disabled={resyncing}>
+            {resyncing
+              ? <Loader2 size={14} className="animate-spin" />
+              : <RefreshCw size={14} />}
+            Resynchroniser
+          </Button>
         </div>
       )}
 
