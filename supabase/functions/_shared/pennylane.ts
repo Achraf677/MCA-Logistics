@@ -116,3 +116,21 @@ export async function finalizeInvoice(token: string, invoiceId: number): Promise
     headers: headers(token),
   });
 }
+
+/**
+ * Détection de paiement : liste les transactions rapprochées (par Pennylane, qui
+ * réconcilie Qonto automatiquement) pour une facture client. Scope lecture seule
+ * `customer_invoices:readonly`. Liste non vide ⇒ facture payée (règle v1).
+ * Renvoie le tableau brut des transactions (vide si aucune).
+ */
+export async function getMatchedTransactions(
+  token: string,
+  invoiceId: number | string,
+): Promise<unknown[]> {
+  const data = await fetchJson<Record<string, unknown>>(
+    `${BASE_URL}/customer_invoices/${invoiceId}/matched_transactions`,
+    { headers: headers(token) },
+  );
+  const list = (data.matched_transactions ?? data.items ?? []) as unknown[];
+  return Array.isArray(list) ? list : [];
+}
