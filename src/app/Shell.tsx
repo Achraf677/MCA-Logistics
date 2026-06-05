@@ -6,7 +6,7 @@ import {
   Truck, CalendarDays, Calendar, AlertTriangle, ClipboardCheck,
   Car, Fuel, Wrench,
   Users, Building2,
-  CreditCard, Banknote, Receipt,
+  CreditCard, Banknote, Receipt, Wallet,
   UserCheck, Clock,
   Bell, Bot, Settings,
   Menu, X, ChevronDown, ChevronRight,
@@ -67,6 +67,7 @@ const NAV: NavSection[] = [
     items: [
       { key: 'charges',     label: 'Charges',     icon: CreditCard, path: '/charges',     featureKey: 'charges'     },
       { key: 'encaissement',label: 'Encaissement',icon: Banknote,   path: '/encaissement',featureKey: 'encaissement'},
+      { key: 'tresorerie',  label: 'Trésorerie',  icon: Wallet,     path: '/tresorerie',  featureKey: 'tresorerie'  },
       { key: 'tva',         label: 'TVA',         icon: Receipt,    path: '/tva',         featureKey: 'tva'         },
     ],
   },

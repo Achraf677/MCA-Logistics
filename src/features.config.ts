@@ -14,6 +14,7 @@ export const features = {
   fournisseurs: true,
   charges:      true,
   encaissement: true,
+  tresorerie:   true,
   tva:          true,
   equipe:       true,
   heures:       true,

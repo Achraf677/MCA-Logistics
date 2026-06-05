@@ -16,6 +16,7 @@ import { Clients }      from '../features/clients/Clients'
 import { Fournisseurs } from '../features/fournisseurs/Fournisseurs'
 import { Charges }      from '../features/charges/Charges'
 import { Encaissement } from '../features/encaissement/Encaissement'
+import { Tresorerie }   from '../features/tresorerie/Tresorerie'
 import { Tva }          from '../features/tva/Tva'
 import { Equipe }       from '../features/equipe/Equipe'
 import { Heures }       from '../features/heures/Heures'
@@ -56,6 +57,7 @@ export function AppRoutes() {
       <Route path="/fournisseurs"  element={guard(features.fournisseurs, <Fournisseurs />)} />
       <Route path="/charges"       element={guard(features.charges,      <Charges />)} />
       <Route path="/encaissement"  element={guard(features.encaissement, <Encaissement />)} />
+      <Route path="/tresorerie"    element={guard(features.tresorerie,   <Tresorerie />)} />
       <Route path="/tva"           element={guard(features.tva,          <Tva />)} />
       <Route path="/equipe"        element={guard(features.equipe,       <Equipe />)} />
       <Route path="/heures"        element={guard(features.heures,       <Heures />)} />
