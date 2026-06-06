@@ -35,6 +35,17 @@ export async function updateDelivery(id: string, data: Partial<DeliveryInsert>) 
   return supabase.from('deliveries').update(data).eq('id', id).select(WITH_JOINS).single()
 }
 
+// Suppression (RLS : président uniquement, via deliveries_delete_president).
+export async function deleteDelivery(id: string) {
+  return supabase.from('deliveries').delete().eq('id', id)
+}
+
+/** Suppression multiple. Ne fait rien si `ids` est vide. Remonte l'erreur éventuelle. */
+export async function deleteDeliveries(ids: string[]) {
+  if (ids.length === 0) return { data: null, error: null }
+  return supabase.from('deliveries').delete().in('id', ids)
+}
+
 /**
  * Orchestre une transition gardée.
  * - Vérifie canTransition() → erreur si saut illégal.

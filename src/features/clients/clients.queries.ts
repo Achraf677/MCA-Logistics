@@ -26,6 +26,21 @@ export async function deactivateClient(id: string) {
   return supabase.from('clients').update({ active: false }).eq('id', id)
 }
 
+/** Compte les livraisons rattachées à un client (garde-fou avant suppression). */
+export async function countDeliveriesForClient(id: string): Promise<number> {
+  const { count } = await supabase
+    .from('deliveries')
+    .select('id', { count: 'exact', head: true })
+    .eq('client_id', id)
+  return count ?? 0
+}
+
+// Suppression (RLS : président uniquement, via clients_delete_president).
+// Interdite côté UI si le client a des livraisons (voir countDeliveriesForClient).
+export async function deleteClient(id: string) {
+  return supabase.from('clients').delete().eq('id', id)
+}
+
 /** Read-only: fetches factured (unpaid) deliveries for all clients — used to compute encours KPIs */
 export async function getFacturedDeliveries(): Promise<{ data: DeliveryForEncours[] | null; error: unknown }> {
   const { data, error } = await supabase
