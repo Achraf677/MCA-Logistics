@@ -5,6 +5,7 @@ import { KpiCard } from '../../shared/ui/KpiCard'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { getRentabiliteData } from './rentabilite.queries'
+import { monthlyRows, annualTotals, margeRatio, type MonthRow } from './rentabilite.logic'
 
 const FR_MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 const FR_MONTHS_SHORT = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
@@ -13,18 +14,9 @@ function fmt(cts: number): string {
   return (cts / 100).toLocaleString('fr-FR', { maximumFractionDigits: 0 }) + ' €'
 }
 
-function pct(a: number, b: number): string {
-  if (b === 0) return '—'
-  return Math.round((a / b) * 100) + ' %'
-}
-
-interface MonthRow {
-  month: number
-  caHt: number
-  charges: number
-  carburant: number
-  entretiens: number
-  resultat: number
+function fmtMarge(ratio: number | null): string {
+  if (ratio === null) return '—'
+  return Math.round(ratio * 100) + ' %'
 }
 
 export function Rentabilite() {
@@ -35,32 +27,13 @@ export function Rentabilite() {
   const load = useCallback(async () => {
     setLoading(true)
     const raw = await getRentabiliteData(year)
-
-    const rows: MonthRow[] = Array.from({ length: 12 }, (_, i) => {
-      const m = i
-      const caHt      = raw.deliveries.filter(d => new Date(d.date as string).getMonth() === m).reduce((s, d) => s + (d.montant_ht_cts as number), 0)
-      const charges   = raw.charges.filter(d => new Date(d.date as string).getMonth() === m).reduce((s, d) => s + (d.montant_ht_cts as number), 0)
-      const carburant = raw.fuel.filter(d => new Date(d.date as string).getMonth() === m).reduce((s, d) => s + (d.total_cts as number), 0)
-      const entretiens = raw.maintenances.filter(d => new Date(d.date as string).getMonth() === m).reduce((s, d) => s + ((d.cost_cts as number) ?? 0), 0)
-      return { month: m, caHt, charges, carburant, entretiens, resultat: caHt - charges - carburant - entretiens }
-    })
-
-    setData(rows)
+    setData(monthlyRows(raw))
     setLoading(false)
   }, [year])
 
   useEffect(() => { load() }, [load])
 
-  const totals = data.reduce(
-    (acc, r) => ({
-      caHt: acc.caHt + r.caHt,
-      charges: acc.charges + r.charges,
-      carburant: acc.carburant + r.carburant,
-      entretiens: acc.entretiens + r.entretiens,
-      resultat: acc.resultat + r.resultat,
-    }),
-    { caHt: 0, charges: 0, carburant: 0, entretiens: 0, resultat: 0 }
-  )
+  const totals = annualTotals(data)
 
   const maxAbsResult = Math.max(...data.map(r => Math.abs(r.resultat)), 1)
   const currentMonth = new Date().getFullYear() === year ? new Date().getMonth() : -1
@@ -92,7 +65,7 @@ export function Rentabilite() {
             <KpiCard label="CA HT" value={fmt(totals.caHt)} accent />
             <KpiCard label="Total charges" value={fmt(totals.charges + totals.carburant + totals.entretiens)} />
             <KpiCard label="Résultat brut" value={fmt(totals.resultat)} accent={totals.resultat > 0} />
-            <KpiCard label="Taux de marge" value={pct(totals.resultat, totals.caHt)} />
+            <KpiCard label="Taux de marge" value={fmtMarge(margeRatio(totals))} />
           </div>
         )}
 
@@ -106,9 +79,9 @@ export function Rentabilite() {
               {data.map(r => {
                 const positive = r.resultat >= 0
                 const barPct = maxAbsResult > 0 ? Math.max(Math.abs(r.resultat) / maxAbsResult * 100, r.resultat !== 0 ? 4 : 0) : 0
-                const isCurrent = r.month === currentMonth
+                const isCurrent = r.mois === currentMonth
                 return (
-                  <div key={r.month} className="flex flex-col items-center gap-1 flex-1">
+                  <div key={r.mois} className="flex flex-col items-center gap-1 flex-1">
                     {positive ? (
                       <>
                         <span className="text-[9px] text-[var(--text-disabled)] font-mono">
@@ -117,7 +90,7 @@ export function Rentabilite() {
                         <div className="w-full flex-1 flex items-end">
                           <div className={`w-full rounded-t-[3px] ${isCurrent ? 'bg-[var(--success)]' : 'bg-[var(--success)]/40'}`}
                             style={{ height: barPct > 0 ? `${barPct}%` : '2px' }}
-                            title={`${FR_MONTHS_SHORT[r.month]} : ${fmt(r.resultat)}`} />
+                            title={`${FR_MONTHS_SHORT[r.mois]} : ${fmt(r.resultat)}`} />
                         </div>
                       </>
                     ) : (
@@ -125,7 +98,7 @@ export function Rentabilite() {
                         <div className="w-full flex-1 flex items-start">
                           <div className={`w-full rounded-b-[3px] ${isCurrent ? 'bg-[var(--danger)]' : 'bg-[var(--danger)]/40'}`}
                             style={{ height: barPct > 0 ? `${barPct}%` : '2px' }}
-                            title={`${FR_MONTHS_SHORT[r.month]} : ${fmt(r.resultat)}`} />
+                            title={`${FR_MONTHS_SHORT[r.mois]} : ${fmt(r.resultat)}`} />
                         </div>
                         <span className="text-[9px] text-[var(--danger)] font-mono">
                           {r.resultat < 0 ? Math.round(r.resultat / 100) : ''}
@@ -133,7 +106,7 @@ export function Rentabilite() {
                       </>
                     )}
                     <span className={`text-[9px] leading-none ${isCurrent ? 'text-[var(--brand)] font-semibold' : 'text-[var(--text-muted)]'}`}>
-                      {FR_MONTHS_SHORT[r.month]}
+                      {FR_MONTHS_SHORT[r.mois]}
                     </span>
                   </div>
                 )
@@ -163,15 +136,15 @@ export function Rentabilite() {
                     </tr>
                   ))
                 : data.map((r, i) => {
-                  const isCurrentMonth = r.month === currentMonth
+                  const isCurrentMonth = r.mois === currentMonth
                   const hasData = r.caHt > 0 || r.charges > 0 || r.carburant > 0 || r.entretiens > 0
                   return (
-                    <tr key={r.month}
+                    <tr key={r.mois}
                       className={`border-t border-[var(--border)] transition-colors
                         ${isCurrentMonth ? 'bg-[var(--brand-soft)]' : i % 2 === 0 ? '' : 'bg-[var(--bg-card)]/30'}
                         ${!hasData ? 'opacity-40' : ''}`}>
                       <td className={`px-4 py-2.5 font-medium ${isCurrentMonth ? 'text-[var(--brand)]' : 'text-[var(--text)]'}`}>
-                        {FR_MONTHS[r.month]}
+                        {FR_MONTHS[r.mois]}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono text-[var(--text)]">{r.caHt > 0 ? fmt(r.caHt) : '—'}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-[var(--text-muted)]">{r.charges > 0 ? fmt(r.charges) : '—'}</td>
