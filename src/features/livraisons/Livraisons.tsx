@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Package, RefreshCw, Loader2 } from 'lucide-react'
+import { Package, RefreshCw, Loader2, Trash2 } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
 import { KpiCard }     from '../../shared/ui/KpiCard'
 import { Badge }       from '../../shared/ui/Badge'
 import { Button }      from '../../shared/ui/Button'
 import { EmptyState }  from '../../shared/ui/EmptyState'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { DrawerLivraison } from './DrawerLivraison'
 import { useToast }    from '../../shared/ui/useToast'
+import { useProfile }  from '../../app/providers'
 import { downloadCSV } from '../../shared/lib/download'
-import { getDeliveries, exportDeliveriesCSV, getPendingSyncDeliveries, resyncPending } from './livraisons.queries'
+import { getDeliveries, exportDeliveriesCSV, getPendingSyncDeliveries, resyncPending, deleteDeliveries } from './livraisons.queries'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
   kpiSummary, formatCents, effectiveTtcCts,
@@ -19,8 +21,13 @@ import type { ActionKey } from '../../shared/actions/ActionBar'
 
 const V2_STATUSES: DeliveryStatus[] = ['planifiee', 'en_cours', 'livree', 'facturee', 'payee', 'annulee']
 
+// Une livraison facturée ou payée n'est jamais supprimable (lien Pennylane).
+const isDeletable = (row: DeliveryRow) => !['facturee', 'payee'].includes(row.statut)
+
 export function Livraisons() {
   const { toast } = useToast()
+  const { profile } = useProfile()
+  const isPresident = profile?.role === 'president'
   const [rows, setRows]         = useState<DeliveryRow[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
@@ -29,9 +36,13 @@ export function Livraisons() {
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
   const [pendingSync, setPendingSync] = useState(0)
   const [resyncing, setResyncing] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [confirmBulk, setConfirmBulk] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
+    setSelectedIds(new Set()) // la sélection ne survit pas à un rechargement / changement de filtre
     const { data, error: err } = await getDeliveries(filters)
     if (err) setError(err.message)
     else setRows((data as unknown as DeliveryRow[]) ?? [])
@@ -67,6 +78,33 @@ export function Livraisons() {
   }
 
   const openRow = (row: DeliveryRow) => { setSelected(row); setDrawerOpen(true) }
+
+  // ── Sélection multiple (président uniquement, lignes supprimables) ──────────────
+  const deletableRows = rows.filter(isDeletable)
+  const allDeletableSelected = deletableRows.length > 0 && deletableRows.every(r => selectedIds.has(r.id))
+
+  const toggleOne = (id: string) => setSelectedIds(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id); else next.add(id)
+    return next
+  })
+
+  const toggleAll = () => setSelectedIds(
+    allDeletableSelected ? new Set() : new Set(deletableRows.map(r => r.id)),
+  )
+
+  const handleBulkDelete = async () => {
+    // Sécurité : on ne supprime que des ids réellement supprimables (jamais facturée/payée).
+    const ids = deletableRows.filter(r => selectedIds.has(r.id)).map(r => r.id)
+    if (ids.length === 0) { setConfirmBulk(false); return }
+    setBulkDeleting(true)
+    const { error } = await deleteDeliveries(ids)
+    setBulkDeleting(false)
+    if (error) { toast(error.message, 'error'); return }
+    setConfirmBulk(false)
+    await load()
+    toast(`${ids.length} livraison(s) supprimée(s)`)
+  }
 
   const hasFilters = !!(
     filters.date_from || filters.date_to ||
@@ -135,6 +173,21 @@ export function Livraisons() {
         )}
       </div>
 
+      {/* Barre d'action sélection multiple (président, ≥ 1 sélectionnée) */}
+      {isPresident && selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 px-4 py-2.5
+          rounded-[var(--r-lg)] border border-[var(--danger)]/30 bg-[var(--danger)]/10">
+          <span className="text-[var(--fs-sm)] text-[var(--text)]">
+            {selectedIds.size} sélectionnée(s)
+          </span>
+          <Button variant="primary" size="compact" onClick={() => setConfirmBulk(true)}
+            className="!bg-[var(--danger)] hover:!bg-[var(--danger)]/90">
+            <Trash2 size={14} />
+            Supprimer la sélection
+          </Button>
+        </div>
+      )}
+
       {/* Contenu principal */}
       {loading ? (
         <SkeletonTable rows={6} />
@@ -161,6 +214,18 @@ export function Livraisons() {
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
+                  {isPresident && (
+                    <th className="px-4 py-2.5 w-10">
+                      <input
+                        type="checkbox"
+                        checked={allDeletableSelected}
+                        onChange={toggleAll}
+                        disabled={deletableRows.length === 0}
+                        aria-label="Tout sélectionner"
+                        className="accent-[var(--brand)] w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
+                      />
+                    </th>
+                  )}
                   {['Date', 'Client', 'Chauffeur', 'Montant TTC', 'km', 'Statut', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
@@ -173,6 +238,19 @@ export function Livraisons() {
                       hover:bg-[var(--bg-card-hover)]
                       ${i % 2 === 0 ? 'bg-[var(--bg)]' : 'bg-[var(--bg-card)]/40'}`}
                   >
+                    {isPresident && (
+                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                        {isDeletable(row) && (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(row.id)}
+                            onChange={() => toggleOne(row.id)}
+                            aria-label="Sélectionner la livraison"
+                            className="accent-[var(--brand)] w-4 h-4 cursor-pointer"
+                          />
+                        )}
+                      </td>
+                    )}
                     <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
                       {new Date(row.date).toLocaleDateString('fr-FR')}
                     </td>
@@ -208,8 +286,18 @@ export function Livraisons() {
           {/* Mobile : cartes */}
           <div className="md:hidden flex flex-col gap-3">
             {rows.map(row => (
-              <button key={row.id} onClick={() => openRow(row)}
-                className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)]
+              <div key={row.id} className="flex items-center gap-2">
+                {isPresident && isDeletable(row) && (
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(row.id)}
+                    onChange={() => toggleOne(row.id)}
+                    aria-label="Sélectionner la livraison"
+                    className="accent-[var(--brand)] w-4 h-4 cursor-pointer shrink-0"
+                  />
+                )}
+              <button onClick={() => openRow(row)}
+                className="flex-1 text-left bg-[var(--bg-card)] rounded-[var(--r-lg)]
                   border border-[var(--border)] p-4 hover:bg-[var(--bg-card-hover)] transition-colors"
               >
                 <div className="flex items-start justify-between gap-2 mb-2">
@@ -229,6 +317,7 @@ export function Livraisons() {
                   </span>
                 </div>
               </button>
+              </div>
             ))}
           </div>
         </>
@@ -239,6 +328,15 @@ export function Livraisons() {
         onClose={() => setDrawerOpen(false)}
         delivery={selected}
         onSaved={load}
+      />
+
+      <ConfirmDialog
+        open={confirmBulk}
+        title={`Supprimer ${selectedIds.size} livraison(s) ?`}
+        message="Action irréversible."
+        onConfirm={handleBulkDelete}
+        onCancel={() => setConfirmBulk(false)}
+        loading={bulkDeleting}
       />
     </Shell>
   )

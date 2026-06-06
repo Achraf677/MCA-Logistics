@@ -43,7 +43,8 @@ Génère les données qui nourrissent Encaissement, Encours client, Rentabilité
 | + Nouvelle | INSERT `deliveries` (statut `planifiee`) → montant pré-calculé si tarif client |
 | Faire avancer | transition gardée via `canTransition()` (ex. Démarrer, Marquer livrée, Facturer, Encaisser) |
 | Annuler | `status = annulee` si la transition est permise depuis l'état courant |
-| Supprimer | DELETE `deliveries` — **président uniquement** (RLS `deliveries_delete_president`), via `ConfirmDialog` (confirmation obligatoire). **Interdit** si statut `facturee`/`payee`. Bouton masqué sinon. |
+| Supprimer (unitaire, drawer) | DELETE `deliveries` — **président uniquement** (RLS `deliveries_delete_president`), via `ConfirmDialog`. Bouton affiché **pour tous les statuts**. Statut `facturee`/`payee` → **double vérification** : case à cocher obligatoire (`acknowledgeLabel`) rappelant que la facture Pennylane devra être annulée séparément ; le bouton reste désactivé tant qu'elle n'est pas cochée. La suppression ne touche **pas** Pennylane. |
+| Supprimer (sélection multiple, liste) | Checkbox par ligne (président uniquement, **uniquement** sur les lignes supprimables — pas de checkbox sur `facturee`/`payee`, jamais sélectionnables en lot) + « tout sélectionner » dans l'en-tête (lignes supprimables affichées, filtres respectés). Barre d'action si ≥ 1 sélectionnée → `ConfirmDialog` → `deleteDeliveries(ids)`. Les ids sont **re-filtrés** pour exclure tout `facturee`/`payee` par sécurité. |
 | Export | CSV livraisons filtrées |
 
 ## ⑦ Logique métier (`livraisons.logic.ts`)
@@ -66,7 +67,8 @@ Fonctions **pures** :
 - Pennylane KO à la facturation → statut passe quand même `facturee`, `pennylane_invoice_id` null, entrée `sync_queue` (retry).
 - Client/véhicule/chauffeur désactivé → non proposé dans les sélecteurs (livraisons existantes conservées).
 - Liste vide → CTA « + Nouvelle livraison ».
-- Suppression : réservée au président, jamais sur une livraison `facturee`/`payee` (lien Pennylane), toujours après confirmation `ConfirmDialog` (jamais de delete au premier clic).
+- Suppression unitaire : réservée au président, possible sur tous les statuts ; `facturee`/`payee` exige une **double vérification** (case à cocher) car Pennylane n'est pas touché. Toujours après confirmation `ConfirmDialog` (jamais de delete au premier clic).
+- Suppression en lot (liste) : réservée au président, les `facturee`/`payee` ne sont **jamais** sélectionnables ; ids re-filtrés avant le DELETE par sécurité.
 
 ## ⑨ Dépendances
 - **Nourrit** : Encaissement, Clients (encours), Rentabilité, Statistiques, Dashboard, Pennylane.

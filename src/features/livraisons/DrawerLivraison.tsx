@@ -271,11 +271,10 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
     onClose()
   }
 
-  // Suppression : président uniquement, jamais une livraison facturée/payée.
-  const canDelete =
-    isEdit &&
-    profile?.role === 'president' &&
-    !['facturee', 'payee'].includes(delivery?.statut ?? '')
+  // Suppression unitaire : président uniquement, tous statuts.
+  // Une livraison facturée/payée exige une double vérification (case à cocher).
+  const canDelete = isEdit && profile?.role === 'president'
+  const isInvoicedLike = ['facturee', 'payee'].includes(delivery?.statut ?? '')
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -424,7 +423,12 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
       <ConfirmDialog
         open={confirmDelete}
         title="Supprimer cette livraison ?"
-        message="Action irréversible."
+        message={isInvoicedLike
+          ? "Cette livraison est facturée. La supprimer ici ne touche PAS Pennylane : la facture devra être annulée séparément. Action irréversible."
+          : 'Action irréversible.'}
+        acknowledgeLabel={isInvoicedLike
+          ? "Je comprends que cette livraison est facturée : la facture Pennylane devra être annulée séparément, et cette suppression est irréversible."
+          : undefined}
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(false)}
         loading={deleting}
