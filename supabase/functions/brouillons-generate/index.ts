@@ -2,10 +2,10 @@
 // Assistant de rédaction IA : reçoit une saisie libre + un type, renvoie un brouillon.
 // RGPD v1 : AUCUNE donnée de la base n'est injectée — le prompt vient entièrement de
 // l'utilisateur. N'écrit RIEN en base, ne lit AUCUNE table.
-// La clé Gemini n'est jamais logguée ni renvoyée au client.
+// La clé Mistral n'est jamais logguée ni renvoyée au client.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { ExternalApiError } from '../_shared/http.ts';
-import { generateText } from '../_shared/gemini.ts';
+import { generateText } from '../_shared/mistral.ts';
 
 type DraftType = 'relance' | 'email' | 'annonce' | 'libre';
 
@@ -30,8 +30,8 @@ const SYSTEM_PROMPTS: Record<DraftType, string> = {
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return optionsResponse();
 
-  const apiKey = Deno.env.get('GEMINI_API_KEY');
-  if (!apiKey) return jsonResponse({ ok: false, error: 'missing GEMINI_API_KEY' }, 500);
+  const apiKey = Deno.env.get('MISTRAL_API_KEY');
+  if (!apiKey) return jsonResponse({ ok: false, error: 'missing MISTRAL_API_KEY' }, 500);
 
   let body: { prompt?: unknown; type?: unknown };
   try {
