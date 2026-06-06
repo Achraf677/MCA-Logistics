@@ -20,6 +20,7 @@ export const features = {
   heures:       true,
   alertes:      true,
   brouillons:   true,
+  copilote:     true,
   parametres:   true,
 } as const
 
