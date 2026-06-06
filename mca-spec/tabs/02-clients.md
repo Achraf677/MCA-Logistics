@@ -42,7 +42,8 @@ C'est la source des `client_id`, du **tarif** et des **délais de paiement** uti
 |---|---|
 | + Nouveau | formulaire → INSERT `clients` → push Pennylane si SIRET |
 | Modifier | UPDATE → sync Pennylane si `pennylane_id` existe |
-| Désactiver | `active = false` (jamais DELETE) → bloqué si livraisons actives |
+| Désactiver | `active = false` (archive, réversible) via `ConfirmDialog` |
+| Supprimer | DELETE `clients` — **président uniquement** (RLS `clients_delete_president`), via `ConfirmDialog`. **Interdit si le client a ≥ 1 livraison** (`countDeliveriesForClient` > 0 → toast, modale non ouverte). Distincte de la désactivation. |
 | Export | CSV liste clients filtrée (avec colonne encours) |
 
 ## ⑦ Logique métier (`clients.logic.ts`)
@@ -57,6 +58,8 @@ Fonctions **pures** (aucun accès DB, aucun DOM) :
 - Pennylane KO → client créé en base, `pennylane_id` null, entrée en `sync_queue`.
 - Liste vide → CTA « + Nouveau client ».
 - Client avec livraisons actives → désactivation bloquée, message clair.
+- Désactivation (archive `active=false`) et suppression (DELETE définitif) sont **deux actions distinctes**, toutes deux confirmées via `ConfirmDialog`.
+- Suppression : réservée au président, **interdite si le client a au moins une livraison** (intégrité), toujours après confirmation (jamais de delete au premier clic).
 - `tariff_mode = manuel` → le montant de chaque livraison est saisi à la main (pas de calcul auto).
 
 ## ⑨ Dépendances

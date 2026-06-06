@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
+import { Trash2 }      from 'lucide-react'
 import { Drawer }      from '../../shared/ui/Drawer'
 import { Button }      from '../../shared/ui/Button'
 import { Badge }       from '../../shared/ui/Badge'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast }    from '../../shared/ui/useToast'
 import { useProfile }  from '../../app/providers'
 import { formatMoney, addTva } from '../../shared/lib/money'
@@ -15,7 +17,7 @@ import {
 } from './livraisons.logic'
 import type { ClientTariff } from './livraisons.logic'
 import {
-  createDelivery, updateDelivery, transitionDelivery,
+  createDelivery, updateDelivery, transitionDelivery, deleteDelivery,
   getActiveClients, getActiveVehicles, getActiveDrivers,
 } from './livraisons.queries'
 import type { DeliveryRow, DeliveryStatus } from './livraisons.types'
@@ -61,7 +63,7 @@ const EMPTY_FORM = {
 // ── Composant ─────────────────────────────────────────────────────────────────
 
 export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
-  const { companyId } = useProfile()
+  const { companyId, profile } = useProfile()
   const { toast }     = useToast()
   const isEdit        = !!delivery
 
@@ -70,6 +72,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   const [tvaTouched, setTvaTouched] = useState(false)
   const [saving, setSaving]     = useState(false)
   const [transitioning, setTransitioning] = useState<DeliveryStatus | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const [clients,  setClients]  = useState<ClientLookup[]>([])
   const [vehicles, setVehicles] = useState<Lookup[]>([])
@@ -255,6 +259,24 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
     setTransitioning(null)
   }
 
+  const handleDelete = async () => {
+    if (!delivery) return
+    setDeleting(true)
+    const { error } = await deleteDelivery(delivery.id)
+    setDeleting(false)
+    if (error) { toast(error.message, 'error'); return }
+    setConfirmDelete(false)
+    toast('Livraison supprimée')
+    onSaved()
+    onClose()
+  }
+
+  // Suppression : président uniquement, jamais une livraison facturée/payée.
+  const canDelete =
+    isEdit &&
+    profile?.role === 'president' &&
+    !['facturee', 'payee'].includes(delivery?.statut ?? '')
+
   // ── Render ────────────────────────────────────────────────────────────────────
 
   const drawerTitle = isEdit
@@ -361,6 +383,13 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
             <Button variant="secondary" onClick={onClose}>
               {isDetailReadOnly ? 'Fermer' : 'Annuler'}
             </Button>
+            {canDelete && (
+              <Button variant="ghost" onClick={() => setConfirmDelete(true)}
+                className="ml-auto text-[var(--danger)]">
+                <Trash2 size={14} />
+                Supprimer
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -391,6 +420,15 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
           onClose={onClose}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Supprimer cette livraison ?"
+        message="Action irréversible."
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+        loading={deleting}
+      />
     </Drawer>
   )
 }

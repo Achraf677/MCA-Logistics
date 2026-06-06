@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react'
+import { Trash2 } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
-import { createClient, updateClient, deactivateClient, getClientDeliveries } from './clients.queries'
+import {
+  createClient, updateClient, deactivateClient, deleteClient,
+  countDeliveriesForClient, getClientDeliveries,
+} from './clients.queries'
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, validateSiret,
   TARIFF_MODE_LABELS, computeEncours, paymentStatusOf,
@@ -29,12 +34,16 @@ const EMPTY_FORM: Partial<ClientInsert> = {
 type Tab = 'detail' | 'historique' | 'encours'
 
 export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientProps) {
-  const { companyId } = useProfile()
+  const { companyId, profile } = useProfile()
   const { toast } = useToast()
   const [tab, setTab] = useState<Tab>('detail')
   const [form, setForm] = useState<Partial<ClientInsert>>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [siretError, setSiretError] = useState('')
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false)
+  const [deactivating, setDeactivating] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [deliveries, setDeliveries] = useState<(DeliveryForEncours & { date: string; description: string | null })[]>([])
   const [deliveriesLoading, setDeliveriesLoading] = useState(false)
 
@@ -101,15 +110,43 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
     }
   }
 
+  // Désactivation (archive : active=false) — distincte de la suppression.
   const handleDeactivate = async () => {
     if (!client) return
-    if (!confirm(`Désactiver ${client.name} ?`)) return
+    setDeactivating(true)
     const { error } = await deactivateClient(client.id)
+    setDeactivating(false)
     if (error) { toast(error.message, 'error'); return }
+    setConfirmDeactivate(false)
     toast(`${client.name} désactivé`)
     onSaved()
     onClose()
   }
+
+  // Suppression définitive — président uniquement, interdite si le client a des livraisons.
+  const handleDeleteClick = async () => {
+    if (!client) return
+    const n = await countDeliveriesForClient(client.id)
+    if (n > 0) {
+      toast(`Ce client a ${n} livraison(s) : suppression impossible`, 'error')
+      return
+    }
+    setConfirmDelete(true)
+  }
+
+  const handleDelete = async () => {
+    if (!client) return
+    setDeleting(true)
+    const { error } = await deleteClient(client.id)
+    setDeleting(false)
+    if (error) { toast(error.message, 'error'); return }
+    setConfirmDelete(false)
+    toast(`${client.name} supprimé`)
+    onSaved()
+    onClose()
+  }
+
+  const isPresident = profile?.role === 'president'
 
   const encours = computeEncours(deliveries)
 
@@ -258,8 +295,15 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
             </Button>
             <Button variant="secondary" onClick={onClose}>Annuler</Button>
             {isEdit && client!.active && (
-              <Button variant="ghost" onClick={handleDeactivate} className="ml-auto text-[var(--danger)]">
+              <Button variant="ghost" onClick={() => setConfirmDeactivate(true)} className="ml-auto text-[var(--danger)]">
                 Désactiver
+              </Button>
+            )}
+            {isEdit && isPresident && (
+              <Button variant="ghost" onClick={handleDeleteClick}
+                className={`${isEdit && client!.active ? '' : 'ml-auto'} text-[var(--danger)]`}>
+                <Trash2 size={14} />
+                Supprimer
               </Button>
             )}
           </div>
@@ -354,6 +398,25 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDeactivate}
+        title="Désactiver ce client ?"
+        message={`${client?.name ?? ''} sera archivé (masqué des listes actives). Réversible.`}
+        confirmLabel="Désactiver"
+        onConfirm={handleDeactivate}
+        onCancel={() => setConfirmDeactivate(false)}
+        loading={deactivating}
+      />
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Supprimer ce client ?"
+        message="Action irréversible."
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+        loading={deleting}
+      />
     </Drawer>
   )
 }

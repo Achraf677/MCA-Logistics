@@ -43,6 +43,7 @@ Génère les données qui nourrissent Encaissement, Encours client, Rentabilité
 | + Nouvelle | INSERT `deliveries` (statut `planifiee`) → montant pré-calculé si tarif client |
 | Faire avancer | transition gardée via `canTransition()` (ex. Démarrer, Marquer livrée, Facturer, Encaisser) |
 | Annuler | `status = annulee` si la transition est permise depuis l'état courant |
+| Supprimer | DELETE `deliveries` — **président uniquement** (RLS `deliveries_delete_president`), via `ConfirmDialog` (confirmation obligatoire). **Interdit** si statut `facturee`/`payee`. Bouton masqué sinon. |
 | Export | CSV livraisons filtrées |
 
 ## ⑦ Logique métier (`livraisons.logic.ts`)
@@ -65,6 +66,7 @@ Fonctions **pures** :
 - Pennylane KO à la facturation → statut passe quand même `facturee`, `pennylane_invoice_id` null, entrée `sync_queue` (retry).
 - Client/véhicule/chauffeur désactivé → non proposé dans les sélecteurs (livraisons existantes conservées).
 - Liste vide → CTA « + Nouvelle livraison ».
+- Suppression : réservée au président, jamais sur une livraison `facturee`/`payee` (lien Pennylane), toujours après confirmation `ConfirmDialog` (jamais de delete au premier clic).
 
 ## ⑨ Dépendances
 - **Nourrit** : Encaissement, Clients (encours), Rentabilité, Statistiques, Dashboard, Pennylane.
