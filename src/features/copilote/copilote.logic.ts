@@ -37,3 +37,34 @@ export function statutLabel(statut: 'planifiee' | 'livree'): string {
 export function eurosToCts(eur: number | null): number {
   return Math.round((eur ?? 0) * 100)
 }
+
+/** Matching chauffeur par nom normalisé. Renvoie l'id ou null (jamais de création). */
+export function matchDriver(
+  name: string | null,
+  drivers: Array<{ id: string; full_name: string }>,
+): string | null {
+  if (!name) return null
+  const n = normalizeName(name)
+  const found = drivers.find(d => normalizeName(d.full_name) === n)
+  return found ? found.id : null
+}
+
+/**
+ * Matching véhicule : par label normalisé OU par plaque (normalisée sans espaces ni tirets).
+ * Renvoie l'id ou null (jamais de création).
+ */
+export function matchVehicle(
+  v: string | null,
+  vehicles: Array<{ id: string; label: string; plate: string | null }>,
+): string | null {
+  if (!v) return null
+  const target = normalizeName(v)
+  const plateNorm = (s: string) => normalizeName(s).replace(/[\s-]/g, '')
+  const targetPlate = plateNorm(v)
+  const found = vehicles.find(
+    veh =>
+      normalizeName(veh.label) === target ||
+      (veh.plate != null && plateNorm(veh.plate) === targetPlate),
+  )
+  return found ? found.id : null
+}

@@ -26,6 +26,12 @@ les livraisons (client, adresses, date, montant…) et les affiche en tableau **
 - **Matching client** : `<select>` des clients actifs + option « ➕ Créer : {nom} ». Pré-sélection
   d'un client existant si son nom correspond (comparaison normalisée : minuscules, trim, sans
   accents). Sinon « Créer » → nom (éditable) + type du futur client.
+- **Chauffeur & véhicule par matching (sans création)** : `<select>` des chauffeurs actifs et des
+  véhicules + option « — Non assigné » (= null). Pré-remplis si le nom du chauffeur correspond
+  (`full_name` normalisé) ou si le véhicule correspond (`label` normalisé OU plaque normalisée sans
+  espaces/tirets). **Jamais bloquant**, **aucune création** : un libellé inconnu reste « Non assigné ».
+- **Heure persistée** : `deliveries` n'a pas de colonne heure → l'heure est conservée en préfixe des
+  notes (`Heure: {heure} — {notes}`) pour ne pas se perdre.
 - **Statut** calculé/affiché en lecture seule : date strictement future → `planifiee`, sinon `livree`.
 - **Création** (bouton « Créer les N cochées ») : pour chaque ligne cochée, (a) crée le client si
   « ➕ Créer », (b) crée la livraison. **Séquentiel** : en cas d'échec on s'arrête proprement
@@ -34,11 +40,13 @@ les livraisons (client, adresses, date, montant…) et les affiche en tableau **
 ## ③ Données
 - **B1** : aucune écriture (lecture seule stricte). Forme d'une livraison proposée :
   `{ client_name, type (medical|ecommerce|retail|particulier|null), date (YYYY-MM-DD|null),
-  pickup_address, delivery_address, km, weight_kg, montant_ht_eur, heure, notes, missing[] }`.
+  pickup_address, delivery_address, km, weight_kg, montant_ht_eur, heure, driver_name, vehicle,
+  notes, missing[] }`.
 - **B2** (écriture uniquement au clic) :
   - `clients` : `company_id, name, type` (tariff_mode prend son défaut `manuel`).
-  - `deliveries` : `company_id, client_id, date, type, pickup_address, delivery_address, km,
-    weight_kg, montant_ht_cts (= euros×100), tva_rate = 20, statut, notes`.
+  - `deliveries` : `company_id, client_id, driver_id (null si non assigné), vehicle_id (null si
+    non assigné), date, type, pickup_address, delivery_address, km, weight_kg,
+    montant_ht_cts (= euros×100), tva_rate = 20, statut, notes (avec l'heure en préfixe)`.
     **Dette des 2 colonnes de montant** : la création remplit AUSSI `amount_*` de façon cohérente
     (`amount_ht_cts = montant_ht_cts`, `tva_cts = round(montant_ht_cts × tva_rate / 100)`,
     `amount_ttc_cts = montant_ht_cts + tva_cts`) — pour que le montant s'affiche correctement

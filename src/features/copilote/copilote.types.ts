@@ -10,6 +10,8 @@ export interface ExtractedDelivery {
   weight_kg: number | null
   montant_ht_eur: number | null
   heure: string | null
+  driver_name: string | null
+  vehicle: string | null
   notes: string
   /** Champs que l'IA n'a pas trouvés dans la feuille de route → à compléter. */
   missing: string[]

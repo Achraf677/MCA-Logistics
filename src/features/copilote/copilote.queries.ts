@@ -22,6 +22,34 @@ export async function listClients() {
     .returns<ClientOption[]>()
 }
 
+export interface DriverOption {
+  id: string
+  full_name: string
+}
+
+export async function listDrivers() {
+  return supabase
+    .from('team_members')
+    .select('id, full_name')
+    .eq('active', true)
+    .order('full_name')
+    .returns<DriverOption[]>()
+}
+
+export interface VehicleOption {
+  id: string
+  label: string
+  plate: string | null
+}
+
+export async function listVehicles() {
+  return supabase
+    .from('vehicles')
+    .select('id, label, plate')
+    .order('label')
+    .returns<VehicleOption[]>()
+}
+
 // ── B2 : création réelle (sur clic explicite uniquement) ───────────────────────
 // Pas d'import cross-feature : queries minimales écrites ici, via le client
 // supabase partagé. La RLS s'applique (filtrage par company_id côté base).
@@ -40,6 +68,8 @@ export async function createClientRow(data: NewClient) {
 export interface NewDelivery {
   company_id: string
   client_id: string
+  driver_id: string | null
+  vehicle_id: string | null
   date: string
   type: DeliveryType | null
   pickup_address: string | null

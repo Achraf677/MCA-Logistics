@@ -6,22 +6,29 @@ import { EmptyState } from '../../shared/ui/EmptyState'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import {
-  extractDeliveries, listClients, createClientRow, createDeliveryRow,
+  extractDeliveries, listClients, listDrivers, listVehicles,
+  createClientRow, createDeliveryRow,
 } from './copilote.queries'
-import type { ClientOption } from './copilote.queries'
-import { normalizeName, isEmptyRow, computeStatut, statutLabel, eurosToCts } from './copilote.logic'
+import type { ClientOption, DriverOption, VehicleOption } from './copilote.queries'
+import {
+  normalizeName, isEmptyRow, computeStatut, statutLabel, eurosToCts,
+  matchDriver, matchVehicle,
+} from './copilote.logic'
 import type { ExtractedDelivery, ExtractInput, DeliveryType } from './copilote.types'
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024 // ~8 Mo
 const NEW_CLIENT = '__new__'
+const NONE = '' // option "— Non assigné" pour chauffeur/véhicule (= null)
 const TYPES: DeliveryType[] = ['medical', 'ecommerce', 'retail', 'particulier']
 
-// Ligne validable : copie éditable d'une proposition + état d'UI (création / matching client).
+// Ligne validable : copie éditable d'une proposition + état d'UI (création / matching).
 interface RowState {
   create: boolean
   clientId: string | null      // client existant sélectionné (null si "créer")
   createNewClient: boolean      // true → on créera un nouveau client
   newClientName: string
+  driverId: string | null       // chauffeur assigné (matching, jamais de création)
+  vehicleId: string | null      // véhicule assigné (matching, jamais de création)
   type: DeliveryType | null
   date: string | null
   pickup_address: string | null
@@ -34,7 +41,12 @@ interface RowState {
   missing: string[]
 }
 
-function buildRow(d: ExtractedDelivery, clients: ClientOption[]): RowState {
+function buildRow(
+  d: ExtractedDelivery,
+  clients: ClientOption[],
+  drivers: DriverOption[],
+  vehicles: VehicleOption[],
+): RowState {
   const match = d.client_name
     ? clients.find(c => normalizeName(c.name) === normalizeName(d.client_name!))
     : undefined
@@ -43,6 +55,8 @@ function buildRow(d: ExtractedDelivery, clients: ClientOption[]): RowState {
     clientId: match ? match.id : null,
     createNewClient: !match,
     newClientName: d.client_name ?? '',
+    driverId: matchDriver(d.driver_name, drivers),
+    vehicleId: matchVehicle(d.vehicle, vehicles),
     type: d.type,
     date: d.date,
     pickup_address: d.pickup_address,
@@ -82,7 +96,9 @@ export function CopiloteIA() {
   const [pending, setPending] = useState(false)
 
   // Validation (B2)
-  const [clients, setClients] = useState<ClientOption[]>([])
+  const [clients, setClients]   = useState<ClientOption[]>([])
+  const [drivers, setDrivers]   = useState<DriverOption[]>([])
+  const [vehicles, setVehicles] = useState<VehicleOption[]>([])
   const [rows, setRows] = useState<RowState[] | null>(null)
   const [creating, setCreating] = useState(false)
 
@@ -90,7 +106,13 @@ export function CopiloteIA() {
     const { data } = await listClients()
     setClients(data ?? [])
   }, [])
-  useEffect(() => { loadClients() }, [loadClients])
+  const loadRefs = useCallback(async () => {
+    const [c, d, v] = await Promise.all([listClients(), listDrivers(), listVehicles()])
+    setClients(c.data ?? [])
+    setDrivers(d.data ?? [])
+    setVehicles(v.data ?? [])
+  }, [])
+  useEffect(() => { loadRefs() }, [loadRefs])
 
   const hasSource = !!fileBase64 || pastedText.trim().length > 0
 
@@ -135,7 +157,7 @@ export function CopiloteIA() {
       return
     }
     const proposals: ExtractedDelivery[] = data?.data?.deliveries ?? []
-    setRows(proposals.map(d => buildRow(d, clients)))
+    setRows(proposals.map(d => buildRow(d, clients, drivers, vehicles)))
   }
 
   const update = (i: number, patch: Partial<RowState>) =>
@@ -166,11 +188,18 @@ export function CopiloteIA() {
           clientId = (cdata as { id: string }).id
         }
 
-        // b. Livraison (montant_ht_cts + tva_rate ; jamais montant_ttc_cts ni amount_*).
+        // b. Livraison. Chauffeur/véhicule par matching (null si non assignés, jamais bloquant).
+        //    L'heure est persistée en préfixe des notes pour ne pas se perdre.
         const statut = computeStatut(row.date)
+        const baseNotes = row.notes.trim()
+        const notes = row.heure
+          ? `Heure: ${row.heure}${baseNotes ? ` — ${baseNotes}` : ''}`
+          : (baseNotes || null)
         const { error: dErr } = await createDeliveryRow({
           company_id: companyId,
           client_id: clientId,
+          driver_id: row.driverId,
+          vehicle_id: row.vehicleId,
           date: row.date ?? new Date().toISOString().slice(0, 10),
           type: row.type,
           pickup_address: row.pickup_address,
@@ -180,7 +209,7 @@ export function CopiloteIA() {
           montant_ht_cts: eurosToCts(row.montant_ht_eur),
           tva_rate: 20,
           statut,
-          notes: row.notes || null,
+          notes,
         })
         if (dErr) throw new Error(dErr.message)
         created++
@@ -273,7 +302,7 @@ export function CopiloteIA() {
                 <table className="w-full text-[var(--fs-sm)]">
                   <thead>
                     <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                      {['Créer', 'Client', 'Date', 'Type', 'Enlèvement', 'Livraison', 'Km', 'Poids', 'Montant HT €', 'Heure', 'Statut'].map(h => (
+                      {['Créer', 'Client', 'Chauffeur', 'Véhicule', 'Date', 'Type', 'Enlèvement', 'Livraison', 'Km', 'Poids', 'Montant HT €', 'Heure', 'Statut'].map(h => (
                         <th key={h} className="px-2.5 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -310,6 +339,32 @@ export function CopiloteIA() {
                                 className={`${inputCls(!row.newClientName.trim())} mt-1`}
                               />
                             )}
+                          </td>
+                          {/* Chauffeur (matching, non bloquant) */}
+                          <td className="px-2.5 py-2 min-w-[150px]">
+                            <select
+                              value={row.driverId ?? NONE}
+                              onChange={e => update(i, { driverId: e.target.value || null })}
+                              className={inputCls(false)}
+                            >
+                              <option value={NONE}>— Non assigné</option>
+                              {drivers.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
+                            </select>
+                          </td>
+                          {/* Véhicule (matching, non bloquant) */}
+                          <td className="px-2.5 py-2 min-w-[150px]">
+                            <select
+                              value={row.vehicleId ?? NONE}
+                              onChange={e => update(i, { vehicleId: e.target.value || null })}
+                              className={inputCls(false)}
+                            >
+                              <option value={NONE}>— Non assigné</option>
+                              {vehicles.map(v => (
+                                <option key={v.id} value={v.id}>
+                                  {v.label}{v.plate ? ` (${v.plate})` : ''}
+                                </option>
+                              ))}
+                            </select>
                           </td>
                           {/* Date */}
                           <td className="px-2.5 py-2 min-w-[140px]">
