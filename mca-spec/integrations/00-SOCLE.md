@@ -1,6 +1,6 @@
 # INTÉGRATIONS — 00 · SOCLE
 
-_Fondation commune à toutes les intégrations externes (Pennylane, Qonto, Drive, Anthropic). À coder UNE fois avant la première intégration. Provider-agnostique._
+_Fondation commune à toutes les intégrations externes (Pennylane, Qonto, Drive, Mistral). À coder UNE fois avant la première intégration. Provider-agnostique._
 
 ## ① Rôle
 Poser le mécanisme par lequel le site parle aux API externes : Edge Functions Supabase, secrets serveur, gestion d'erreur/retry. Aucune clé d'API ne doit jamais atteindre le navigateur.
@@ -38,7 +38,7 @@ supabase/functions/
 |---|---|
 | `PENNYLANE_API_TOKEN` | Token entreprise Pennylane (Paramètres → Développeurs) |
 | `QONTO_API_KEY` / `QONTO_ORG_SLUG` | Auth Qonto (plus tard) |
-| `ANTHROPIC_API_KEY` | Brouillons IA (plus tard) |
+| `MISTRAL_API_KEY` | Brouillons IA (moteur Mistral, fournisseur UE) |
 | (auto) `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Injectées par Supabase dans les Edge Functions |
 
 ## ⑥ Actions / commandes
