@@ -35,3 +35,61 @@ export async function generateText(
   });
   return data.choices?.[0]?.message?.content ?? '';
 }
+
+interface OcrResponse {
+  pages?: Array<{ markdown?: string }>;
+}
+
+/**
+ * OCR d'un document via Mistral (`mistral-ocr-latest`). `dataUrl` est une data-URL
+ * complète (`data:<mime>;base64,…`). `isPdf` choisit le type de document attendu par l'API.
+ * Renvoie le markdown concaténé de toutes les pages (chaîne vide si aucune).
+ * Timeout long (60 s) : l'OCR d'un PDF multi-pages peut être lent.
+ */
+export async function ocrDocument(
+  apiKey: string,
+  dataUrl: string,
+  isPdf: boolean,
+): Promise<string> {
+  const data = await fetchJson<OcrResponse>(`${BASE}/ocr`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: {
+      model: 'mistral-ocr-latest',
+      document: isPdf
+        ? { type: 'document_url', document_url: dataUrl }
+        : { type: 'image_url', image_url: dataUrl },
+    },
+    timeoutMs: 60_000,
+  });
+  return (data.pages ?? []).map((p) => p.markdown ?? '').join('\n\n');
+}
+
+/**
+ * Comme generateText mais force une sortie JSON (`response_format: json_object`) et
+ * la parse en T. Budget tokens élevé (4096) et timeout long (60 s) pour les extractions
+ * structurées. Lance une erreur si le contenu n'est pas un JSON valide.
+ */
+export async function generateJson<T>(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<T> {
+  const data = await fetchJson<MistralResponse>(`${BASE}/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: {
+      model: MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.7,
+      max_tokens: 4096,
+    },
+    timeoutMs: 60_000,
+  });
+  const content = data.choices?.[0]?.message?.content ?? '';
+  return JSON.parse(content) as T;
+}
