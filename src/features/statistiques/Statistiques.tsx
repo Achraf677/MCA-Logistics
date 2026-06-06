@@ -3,6 +3,7 @@ import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { getStatistiquesData } from './statistiques.queries'
+import { caMensuel, annualTotals, topClients, chargesByCategory, type StatistiquesData } from './statistiques.logic'
 import { CATEGORY_LABELS } from '../charges/charges.logic'
 import type { ChargeCategory } from '../charges/charges.types'
 
@@ -12,13 +13,7 @@ function formatCents(cts: number): string {
 
 const FR_MONTHS_SHORT = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
 
-interface StatData {
-  deliveries: Record<string, unknown>[]
-  charges: Record<string, unknown>[]
-  fuel: Record<string, unknown>[]
-  maintenances: Record<string, unknown>[]
-  year: number
-}
+type StatData = StatistiquesData
 
 export function Statistiques() {
   const [data, setData] = useState<StatData | null>(null)
@@ -27,44 +22,29 @@ export function Statistiques() {
   const load = useCallback(async () => {
     setLoading(true)
     const d = await getStatistiquesData()
-    setData(d as StatData)
+    // Supabase infère `clients` comme un tableau (quirk du typage de jointure) ;
+    // au runtime c'est un objet to-one. Cast via unknown, comme l'ancien Record<string, unknown>.
+    setData(d as unknown as StatData)
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
 
-  // Agrégations
-  const caMensuel = Array.from({ length: 12 }, (_, month) => {
-    const cts = (data?.deliveries ?? [])
-      .filter(d => new Date(d.date as string).getMonth() === month)
-      .reduce((s, d) => s + (d.montant_ht_cts as number), 0)
-    return { month, cts }
+  // Agrégations (logique pure dans statistiques.logic.ts)
+  const monthlyCa = caMensuel(data?.deliveries ?? [])
+  const maxCa = Math.max(...monthlyCa.map(m => m.cts), 1)
+
+  const { caTotal, chargesTotal, fuelTotal, maintenanceTotal } = annualTotals({
+    deliveries: data?.deliveries ?? [],
+    charges: data?.charges ?? [],
+    fuel: data?.fuel ?? [],
+    maintenances: data?.maintenances ?? [],
   })
-  const maxCa = Math.max(...caMensuel.map(m => m.cts), 1)
 
-  const caTotal = (data?.deliveries ?? []).reduce((s, d) => s + (d.montant_ht_cts as number), 0)
-  const chargesTotal = (data?.charges ?? []).reduce((s, d) => s + (d.montant_ht_cts as number), 0)
-  const fuelTotal = (data?.fuel ?? []).reduce((s, d) => s + (d.total_cts as number), 0)
-  const maintenanceTotal = (data?.maintenances ?? []).reduce((s, d) => s + ((d.cost_cts as number) ?? 0), 0)
+  const clients = topClients(data?.deliveries ?? [], 5)
+  const maxClient = clients[0]?.cts ?? 1
 
-  // Top clients
-  const clientMap: Record<string, { name: string; cts: number }> = {}
-  for (const d of (data?.deliveries ?? [])) {
-    const cid = d.client_id as string
-    const cname = (d.clients as { name: string } | null)?.name ?? '—'
-    if (!clientMap[cid]) clientMap[cid] = { name: cname, cts: 0 }
-    clientMap[cid].cts += d.montant_ht_cts as number
-  }
-  const topClients = Object.values(clientMap).sort((a, b) => b.cts - a.cts).slice(0, 5)
-  const maxClient = topClients[0]?.cts ?? 1
-
-  // Charges par catégorie
-  const chargesByCategory: Record<string, number> = {}
-  for (const d of (data?.charges ?? [])) {
-    const cat = (d.category as string) ?? 'autre'
-    chargesByCategory[cat] = (chargesByCategory[cat] ?? 0) + (d.montant_ht_cts as number)
-  }
-  const sortedCategories = Object.entries(chargesByCategory).sort((a, b) => b[1] - a[1])
+  const sortedCategories = chargesByCategory(data?.charges ?? [])
   const maxCategory = sortedCategories[0]?.[1] ?? 1
 
   const currentMonth = new Date().getMonth()
@@ -96,7 +76,7 @@ export function Statistiques() {
           <div className="bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-5">
             {loading ? <Skeleton className="h-40" /> : (
               <div className="flex items-end gap-1.5 h-40">
-                {caMensuel.map(({ month, cts }) => {
+                {monthlyCa.map(({ month, cts }) => {
                   const height = maxCa > 0 ? Math.max((cts / maxCa) * 100, cts > 0 ? 4 : 0) : 0
                   const isCurrent = month === currentMonth
                   return (
@@ -135,11 +115,11 @@ export function Statistiques() {
             <div className="bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] divide-y divide-[var(--border)] overflow-hidden">
               {loading ? (
                 <div className="p-4"><Skeleton className="h-32" /></div>
-              ) : topClients.length === 0 ? (
+              ) : clients.length === 0 ? (
                 <p className="px-4 py-8 text-center text-[var(--text-muted)] text-[var(--fs-sm)]">
                   Aucune donnée
                 </p>
-              ) : topClients.map((c, i) => (
+              ) : clients.map((c, i) => (
                 <div key={i} className="px-4 py-3 flex items-center gap-3">
                   <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] w-4 shrink-0">{i + 1}</span>
                   <div className="flex-1 min-w-0">
