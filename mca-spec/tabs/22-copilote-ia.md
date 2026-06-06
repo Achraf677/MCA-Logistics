@@ -39,7 +39,11 @@ les livraisons (client, adresses, date, montant…) et les affiche en tableau **
   - `clients` : `company_id, name, type` (tariff_mode prend son défaut `manuel`).
   - `deliveries` : `company_id, client_id, date, type, pickup_address, delivery_address, km,
     weight_kg, montant_ht_cts (= euros×100), tva_rate = 20, statut, notes`.
-    **Jamais** `montant_ttc_cts` (colonne GÉNÉRÉE). Colonnes legacy `amount_*` laissées nulles.
+    **Dette des 2 colonnes de montant** : la création remplit AUSSI `amount_*` de façon cohérente
+    (`amount_ht_cts = montant_ht_cts`, `tva_cts = round(montant_ht_cts × tva_rate / 100)`,
+    `amount_ttc_cts = montant_ht_cts + tva_cts`) — pour que le montant s'affiche correctement
+    PARTOUT (Stats/Dashboard lisent `montant_ht_cts` ; drawer facturation + Pennylane lisent
+    `amount_*`). **Jamais** `montant_ttc_cts` (colonne GÉNÉRÉE).
   - Pas d'import cross-feature : queries minimales locales via le client supabase partagé (RLS).
 
 ## ④ RGPD / UE
