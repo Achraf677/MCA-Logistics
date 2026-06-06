@@ -12,7 +12,8 @@ const SYSTEM_PROMPT =
   'extrais les livraisons. Réponds STRICTEMENT en JSON valide, objet unique ' +
   '{ deliveries: [...] }. Chaque livraison : { client_name, type (un de: medical|ecommerce|retail|' +
   'particulier ou null), date (YYYY-MM-DD ou null), pickup_address, delivery_address, km (nombre|null), ' +
-  'weight_kg (nombre|null), montant_ht_eur (nombre|null), heure (string|null), notes (string), ' +
+  'weight_kg (nombre|null), montant_ht_eur (nombre|null), heure (string|null), ' +
+  'driver_name (string|null), vehicle (string|null = plaque OU nom du véhicule), notes (string), ' +
   'missing (array des champs absents) }. N\'INVENTE RIEN : si une info n\'est pas écrite, mets null et ' +
   'ajoute le champ dans \'missing\'. Applique la date/chauffeur/véhicule d\'en-tête à chaque ligne si ' +
   'présents. Le mot JSON doit guider ta sortie.';
