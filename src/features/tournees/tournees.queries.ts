@@ -1,6 +1,6 @@
 import { supabase } from '../../app/providers'
 import type { Tour, TourDelivery, TourStatus } from './tournees.types'
-import type { Assignment, DispatchData } from './tournees.logic'
+import type { Assignment, DispatchData } from './tournees.types'
 
 // ── Société / dépôt ───────────────────────────────────────────────────────────
 // (feature étanche : on ne ré-importe pas les queries d'autres features)
