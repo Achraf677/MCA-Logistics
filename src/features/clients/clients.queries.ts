@@ -45,7 +45,7 @@ export async function deleteClient(id: string) {
 export async function getFacturedDeliveries(): Promise<{ data: DeliveryForEncours[] | null; error: unknown }> {
   const { data, error } = await supabase
     .from('deliveries')
-    .select('id, client_id, statut, amount_ttc_cts, montant_ttc_cts, invoiced_at')
+    .select('id, client_id, statut, amount_ttc_cts, invoiced_at')
     .eq('statut', 'facturee')
 
   return { data: data as DeliveryForEncours[] | null, error }
@@ -55,7 +55,7 @@ export async function getFacturedDeliveries(): Promise<{ data: DeliveryForEncour
 export async function getClientDeliveries(clientId: string): Promise<{ data: (DeliveryForEncours & { date: string; description: string | null })[] | null; error: unknown }> {
   const { data, error } = await supabase
     .from('deliveries')
-    .select('id, statut, amount_ttc_cts, montant_ttc_cts, invoiced_at, date, description')
+    .select('id, statut, amount_ttc_cts, invoiced_at, date, description')
     .eq('client_id', clientId)
     .order('date', { ascending: false })
     .limit(50)

@@ -84,20 +84,20 @@ export interface NewDelivery {
 }
 
 /**
- * Crée une livraison en remplissant les DEUX jeux de colonnes de montant de façon cohérente
- * (dette connue : la table a montant_ht_cts ET amount_*). À partir de montant_ht_cts + tva_rate :
- *   tva_cts = round(montant_ht_cts × tva_rate / 100), amount_ht_cts = montant_ht_cts,
- *   amount_ttc_cts = montant_ht_cts + tva_cts.
- * Ainsi le montant s'affiche correctement partout (Stats/Dashboard lisent montant_ht_cts ; le
- * drawer de facturation et Pennylane lisent amount_*). N'écrit JAMAIS montant_ttc_cts (généré).
+ * Crée une livraison en écrivant UNIQUEMENT les colonnes amount_* (source de vérité).
+ * À partir du montant HT saisi + tva_rate :
+ *   tva_cts = round(montant_ht × tva_rate / 100), amount_ht_cts = montant_ht,
+ *   amount_ttc_cts = montant_ht + tva_cts.
+ * Les colonnes legacy montant_* (générées/legacy) ne sont JAMAIS écrites.
  */
 export async function createDeliveryRow(data: NewDelivery) {
-  const tva_cts = Math.round((data.montant_ht_cts * data.tva_rate) / 100)
+  const { montant_ht_cts, ...rest } = data
+  const tva_cts = Math.round((montant_ht_cts * data.tva_rate) / 100)
   const row = {
-    ...data,
-    amount_ht_cts: data.montant_ht_cts,
+    ...rest,
+    amount_ht_cts: montant_ht_cts,
     tva_cts,
-    amount_ttc_cts: data.montant_ht_cts + tva_cts,
+    amount_ttc_cts: montant_ht_cts + tva_cts,
   }
   return supabase.from('deliveries').insert(row).select('id').single()
 }

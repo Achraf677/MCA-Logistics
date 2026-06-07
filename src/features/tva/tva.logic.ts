@@ -15,8 +15,8 @@ import { effectiveHtCts, effectiveTtcCts } from '../../shared/lib/money'
 export interface TvaDelivery {
   amount_ht_cts?: number | null
   amount_ttc_cts?: number | null
-  montant_ht_cts: number | null
-  montant_ttc_cts: number | null
+  montant_ht_cts?: number | null
+  montant_ttc_cts?: number | null
 }
 export interface TvaCharge {
   tva_cts: number | null

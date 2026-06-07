@@ -20,7 +20,7 @@ export async function getDashboardKpis(): Promise<DashboardKpis> {
   const [deliveriesRes, vehiclesRes, teamRes, clientsRes] = await Promise.all([
     supabase
       .from('deliveries')
-      .select('amount_ht_cts, montant_ht_cts, statut')
+      .select('amount_ht_cts, statut')
       .gte('date', monthStart)
       .lte('date', monthEnd)
       .neq('statut', 'annulee'),
@@ -68,7 +68,7 @@ export async function getMonthlyTrend() {
 
     const { data } = await supabase
       .from('deliveries')
-      .select('amount_ht_cts, montant_ht_cts')
+      .select('amount_ht_cts')
       .gte('date', start)
       .lte('date', end)
       .neq('statut', 'annulee')
