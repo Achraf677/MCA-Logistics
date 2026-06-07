@@ -3,6 +3,7 @@ import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { getTvaData } from './tva.queries'
+import { computeTva, type TvaResult } from './tva.logic'
 
 function fmt(cts: number): string {
   return (cts / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
@@ -29,12 +30,7 @@ export function Tva() {
   const [mode, setMode]       = useState<'trimestre' | 'mois'>('trimestre')
   const [quarter, setQuarter] = useState(curQ)
   const [month, setMonth]     = useState(new Date().getMonth())
-  const [result, setResult]   = useState<{
-    tvaCollecteeCts: number
-    tvaDeductibleCharges: number
-    tvaDeductibleCarburant: number
-    soldeCts: number
-  } | null>(null)
+  const [result, setResult]   = useState<TvaResult | null>(null)
   const [loading, setLoading] = useState(true)
 
   const period = mode === 'trimestre' ? QUARTERS[quarter] : MONTH_RANGES[month]
@@ -44,21 +40,7 @@ export function Tva() {
   const load = useCallback(async () => {
     setLoading(true)
     const raw = await getTvaData(dateFrom, dateTo)
-
-    const tvaCollecteeCts = raw.deliveries.reduce(
-      (s: number, d: Record<string, unknown>) => s + ((d.montant_ttc_cts as number) - (d.montant_ht_cts as number)), 0
-    )
-    const tvaDeductibleCharges = raw.charges.reduce(
-      (s: number, c: Record<string, unknown>) => s + ((c.tva_cts as number) ?? 0), 0
-    )
-    const tvaDeductibleCarburant = raw.fuel.reduce((s: number, f: Record<string, unknown>) => {
-      const tvaCts = (f.tva_cts as number) ?? 0
-      const pct    = (f.tva_deductible_pct as number) ?? 100
-      return s + Math.round(tvaCts * pct / 100)
-    }, 0)
-    const soldeCts = tvaCollecteeCts - tvaDeductibleCharges - tvaDeductibleCarburant
-
-    setResult({ tvaCollecteeCts, tvaDeductibleCharges, tvaDeductibleCarburant, soldeCts })
+    setResult(computeTva(raw))
     setLoading(false)
   }, [dateFrom, dateTo])
 
