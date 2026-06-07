@@ -34,7 +34,7 @@ export async function getActiveDrivers() {
 // ── Livraisons d'une journée (statuts éligibles) ──────────────────────────────
 
 const DELIVERY_COLS =
-  'id, date, statut, description, delivery_address, delivery_lat, delivery_lng, tour_id, stop_order, arrival_time, clients!client_id(name)'
+  'id, date, statut, description, delivery_address, delivery_lat, delivery_lng, tour_id, stop_order, arrival_time, delivered_at, clients!client_id(name)'
 
 export async function getDeliveriesForDate(companyId: string, date: string) {
   return supabase
@@ -103,6 +103,23 @@ export async function unassignDeliveries(ids: string[]) {
     .from('deliveries')
     .update({ tour_id: null, stop_order: null, arrival_time: null })
     .in('id', ids)
+}
+
+// ── Suivi : marquer un arrêt livré ────────────────────────────────────────────
+// La garde de transition (canTransition) est vérifiée côté appelant via
+// livraisons.logic.ts (machine d'états unique, pas de duplication).
+
+export async function markDelivered(deliveryId: string, when: string) {
+  return supabase
+    .from('deliveries')
+    .update({ statut: 'livree', delivered_at: when })
+    .eq('id', deliveryId)
+}
+
+// ── Cycle de vie de la tournée ────────────────────────────────────────────────
+
+export async function setTourStatus(tourId: string, status: TourStatus) {
+  return supabase.from('tours').update({ status }).eq('id', tourId).select().single()
 }
 
 // ── Optimisation (Edge Function ORS) ──────────────────────────────────────────
