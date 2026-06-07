@@ -54,3 +54,27 @@ export interface Lookup {
   id: string
   label: string
 }
+
+// ── Multi-véhicule (dispatch) ─────────────────────────────────────────────────
+
+/** Affectation d'un véhicule (+ chauffeur optionnel) pour un dispatch multi-tournées. */
+export interface Assignment {
+  vehicle_id: string
+  driver_id: string | null
+}
+
+/** Une tournée renvoyée par l'Edge Function optimize-tours. */
+export interface DispatchedTour {
+  tour_id: string
+  vehicle_id: string
+  stops: unknown[]
+  total_km: number | null
+  total_duration_min: number | null
+}
+
+/** Charge utile `data` de la réponse optimize-tours. */
+export interface DispatchData {
+  date: string
+  tours: DispatchedTour[]
+  unassigned: unknown[]
+}

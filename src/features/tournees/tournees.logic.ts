@@ -1,7 +1,7 @@
 // Logique pure des Tournées : éligibilité, géocodage, carburant, navigation GPS,
 // suivi des arrêts et cycle de vie. Aucune dépendance DB ni DOM.
 
-import type { Tour, TourDelivery, TourStatus } from './tournees.types'
+import type { Tour, TourDelivery, TourStatus, Assignment } from './tournees.types'
 
 /** Statuts de livraison pouvant entrer dans une tournée. */
 export const ELIGIBLE_STATUSES = ['planifiee', 'en_cours', 'livree'] as const
@@ -109,28 +109,6 @@ export function canFinishTour(status: TourStatus): boolean {
 }
 
 // ── Multi-véhicule (dispatch) ─────────────────────────────────────────────────
-
-/** Affectation d'un véhicule (+ chauffeur optionnel) pour un dispatch multi-tournées. */
-export interface Assignment {
-  vehicle_id: string
-  driver_id: string | null
-}
-
-/** Une tournée renvoyée par l'Edge Function optimize-tours. */
-export interface DispatchedTour {
-  tour_id: string
-  vehicle_id: string
-  stops: unknown[]
-  total_km: number | null
-  total_duration_min: number | null
-}
-
-/** Charge utile `data` de la réponse optimize-tours. */
-export interface DispatchData {
-  date: string
-  tours: DispatchedTour[]
-  unassigned: unknown[]
-}
 
 /** Sous-ensemble géocodé d'un pool de livraisons (réutilise isGeocoded). */
 export function geocodedPool(deliveries: TourDelivery[]): TourDelivery[] {
