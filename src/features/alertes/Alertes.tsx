@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Bell, Search, X } from 'lucide-react'
+import { Bell, Search, X, Brain } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { EmptyState } from '../../shared/ui/EmptyState'
-import { getAlertesDetectionData } from './alertes.queries'
+import { toLocalISO } from '../../shared/lib/dates'
+import { getAlertesDetectionData, getAlertesBriefing } from './alertes.queries'
 import { detectAlerts, summarizeAlerts } from './alertes.logic'
 import type { Alert, AlertCategory, AlertSeverity } from './alertes.types'
 
@@ -139,6 +140,9 @@ export function Alertes() {
   const [severityFilter, setSeverityFilter] = useState<AlertSeverity | null>(null)
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [briefing, setBriefing] = useState<string | null>(null)
+  const [briefingLoading, setBriefingLoading] = useState(false)
+  const [briefingError, setBriefingError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -151,6 +155,19 @@ export function Alertes() {
 
   const all = alerts ?? []
   const summary = useMemo(() => summarizeAlerts(all), [all])
+
+  const runBriefing = useCallback(async () => {
+    setBriefingLoading(true)
+    setBriefingError(null)
+    try {
+      const text = await getAlertesBriefing(all, toLocalISO(new Date()))
+      setBriefing(text)
+    } catch (e) {
+      setBriefingError(e instanceof Error ? e.message : 'Échec de la génération du briefing.')
+    } finally {
+      setBriefingLoading(false)
+    }
+  }, [all])
 
   // Filtrage (l'ordre du moteur est conservé — aucun tri concurrent).
   const filtered = useMemo(() => {
@@ -201,6 +218,48 @@ export function Alertes() {
               : `${summary.total} alerte${summary.total > 1 ? 's' : ''} active${summary.total > 1 ? 's' : ''}`}
           </span>
           <Button variant="ghost" size="compact" onClick={load}>Actualiser</Button>
+        </div>
+
+        {/* Briefing IA du jour */}
+        <div>
+          <Button
+            variant="primary"
+            onClick={runBriefing}
+            disabled={summary.total === 0 || briefingLoading}
+            className="w-full sm:w-auto"
+          >
+            <Brain size={15} className="shrink-0" />
+            {summary.total === 0
+              ? 'Aucune alerte'
+              : briefingLoading
+                ? 'Génération…'
+                : '🧠 Briefing du jour'}
+          </Button>
+
+          {briefingError && (
+            <div className="mt-3 rounded-[var(--r-md)] border border-[var(--danger)]/30 bg-[var(--danger)]/10 px-4 py-3 text-[var(--fs-sm)] text-[var(--danger)]">
+              {briefingError}
+            </div>
+          )}
+
+          {briefing !== null && (
+            <div className="mt-3 rounded-[var(--r-lg)] border border-[var(--brand)]/30 bg-[var(--brand-soft)] overflow-hidden">
+              <div className="flex items-center justify-between gap-2 border-b border-[var(--brand)]/20 px-4 py-2">
+                <span className="flex items-center gap-2 text-[var(--fs-sm)] font-semibold text-[var(--brand)]">
+                  <Brain size={15} /> Briefing du jour
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="compact" onClick={runBriefing} disabled={briefingLoading}>
+                    {briefingLoading ? 'Génération…' : 'Régénérer'}
+                  </Button>
+                  <Button variant="ghost" size="compact" onClick={() => setBriefing(null)}>Fermer</Button>
+                </div>
+              </div>
+              <p className="whitespace-pre-wrap px-4 py-3 text-[var(--fs-sm)] text-[var(--text)]">
+                {briefing}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
