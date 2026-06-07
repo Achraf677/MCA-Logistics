@@ -7,6 +7,9 @@ export interface CompanyData {
   siret: string | null
   tva_intra: string | null
   address: string | null
+  /** Coordonnées géocodées du dépôt (Photon). */
+  depot_lat: number | null
+  depot_lng: number | null
   capital_cts: number | null
   iban: string | null
   bic: string | null
@@ -15,7 +18,7 @@ export interface CompanyData {
 export async function getCompany(companyId: string) {
   return supabase
     .from('companies')
-    .select('id, name, siren, siret, tva_intra, address, capital_cts, iban, bic')
+    .select('id, name, siren, siret, tva_intra, address, depot_lat, depot_lng, capital_cts, iban, bic')
     .eq('id', companyId)
     .single()
 }

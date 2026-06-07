@@ -21,6 +21,9 @@ export interface Delivery {
   description: string | null
   pickup_address: string | null
   delivery_address: string | null
+  /** Coordonnées géocodées de l'adresse de livraison (Photon). */
+  delivery_lat: number | null
+  delivery_lng: number | null
   /** DB column 'km' — distance en km (tarif km) */
   km: number | null
   /** DB column 'weight_kg' — utilisé comme nb palettes (tarif palette) */
