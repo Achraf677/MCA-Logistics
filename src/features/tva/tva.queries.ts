@@ -3,7 +3,7 @@ import { supabase } from '../../app/providers'
 export async function getTvaData(dateFrom: string, dateTo: string) {
   const [deliveries, charges, fuel] = await Promise.all([
     supabase.from('deliveries')
-      .select('montant_ht_cts, tva_rate, montant_ttc_cts')
+      .select('amount_ht_cts, amount_ttc_cts, montant_ht_cts, tva_rate, montant_ttc_cts')
       .gte('date', dateFrom).lte('date', dateTo)
       .in('statut', ['facturee', 'payee']),
     supabase.from('charges')

@@ -7,6 +7,8 @@ import {
 // Helpers : construisent les formes minimales lues par la logique.
 function deliv(p: Partial<TvaDelivery>): TvaDelivery {
   return {
+    amount_ht_cts:   p.amount_ht_cts,
+    amount_ttc_cts:  p.amount_ttc_cts,
     montant_ht_cts:  p.montant_ht_cts  ?? 0,
     montant_ttc_cts: p.montant_ttc_cts ?? 0,
   }
@@ -41,6 +43,13 @@ describe('computeTva — TVA collectée = Σ(ttc − ht)', () => {
 
   it('vaut 0 sans livraison', () => {
     expect(computeTva(raw({})).tvaCollecteeCts).toBe(0)
+  })
+
+  it('lit amount_* en priorité quand montant_* vaut 0 (fix CA faux)', () => {
+    const r = computeTva(raw({ deliveries: [
+      deliv({ montant_ht_cts: 0, montant_ttc_cts: 0, amount_ht_cts: 10000, amount_ttc_cts: 12000 }),
+    ]}))
+    expect(r.tvaCollecteeCts).toBe(2000) // 12000 − 10000
   })
 })
 

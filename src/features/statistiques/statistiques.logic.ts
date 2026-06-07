@@ -4,10 +4,13 @@
 // (hauteurs de barres) restent dans le composant.
 // ISO : un montant null compte comme 0 (mirroir de la coercion JS du calcul inline).
 
+import { effectiveHtCts } from '../../shared/lib/money'
+
 // ── Formes minimales des données brutes (seuls les champs lus comptent) ─────────
 
 export interface StatDelivery {
   date: string | null
+  amount_ht_cts?: number | null
   montant_ht_cts: number | null
   client_id: string | null
   clients: { name: string } | null
@@ -44,7 +47,7 @@ export function caMensuel(deliveries: StatDelivery[]): MonthCa[] {
   return Array.from({ length: 12 }, (_, month): MonthCa => {
     const cts = deliveries
       .filter(d => new Date(d.date as string).getMonth() === month)
-      .reduce((s, d) => s + (d.montant_ht_cts ?? 0), 0)
+      .reduce((s, d) => s + effectiveHtCts(d), 0)
     return { month, cts }
   })
 }
@@ -53,7 +56,7 @@ export function caMensuel(deliveries: StatDelivery[]): MonthCa[] {
 
 export function annualTotals(data: Pick<StatistiquesData, 'deliveries' | 'charges' | 'fuel' | 'maintenances'>): AnnualTotals {
   return {
-    caTotal:          data.deliveries.reduce((s, d) => s + (d.montant_ht_cts ?? 0), 0),
+    caTotal:          data.deliveries.reduce((s, d) => s + effectiveHtCts(d), 0),
     chargesTotal:     data.charges.reduce((s, d) => s + (d.montant_ht_cts ?? 0), 0),
     fuelTotal:        data.fuel.reduce((s, d) => s + (d.total_cts ?? 0), 0),
     maintenanceTotal: data.maintenances.reduce((s, d) => s + (d.cost_cts ?? 0), 0),
@@ -72,7 +75,7 @@ export function topClients(deliveries: StatDelivery[], n = 5): ClientCa[] {
     const cid = d.client_id as string
     const cname = d.clients?.name ?? '—'
     if (!clientMap[cid]) clientMap[cid] = { name: cname, cts: 0 }
-    clientMap[cid].cts += d.montant_ht_cts ?? 0
+    clientMap[cid].cts += effectiveHtCts(d)
   }
   return Object.values(clientMap).sort((a, b) => b.cts - a.cts).slice(0, n)
 }

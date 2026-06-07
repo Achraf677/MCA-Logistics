@@ -6,7 +6,7 @@ export async function getRentabiliteData(year: number) {
 
   const [deliveries, charges, fuel, maintenances] = await Promise.all([
     supabase.from('deliveries')
-      .select('date, montant_ht_cts, montant_ttc_cts, tva_rate, statut')
+      .select('date, amount_ht_cts, montant_ht_cts, montant_ttc_cts, tva_rate, statut')
       .gte('date', start).lte('date', end).neq('statut', 'annulee'),
     supabase.from('charges')
       .select('date, montant_ht_cts, tva_cts')

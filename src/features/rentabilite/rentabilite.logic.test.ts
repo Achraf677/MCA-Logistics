@@ -45,6 +45,13 @@ describe('monthlyRows — agrégation mensuelle', () => {
     expect(rows[5]).toMatchObject({ caHt: 0, charges: 0, carburant: 0, entretiens: 0, resultat: 0 })
   })
 
+  it('CA lit amount_ht_cts en priorité quand montant_ht_cts vaut 0 (fix CA faux)', () => {
+    const rows = monthlyRows(raw({
+      deliveries: [{ date: day(0), montant_ht_cts: 0, amount_ht_cts: 50_000 }],
+    }))
+    expect(rows[0].caHt).toBe(50_000)
+  })
+
   it('traite un montant null comme 0 (pas de NaN)', () => {
     const rows = monthlyRows(raw({
       deliveries:   [{ date: day(0), montant_ht_cts: null }],

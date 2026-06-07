@@ -10,6 +10,7 @@ const day = (m: number) => `2026-${String(m + 1).padStart(2, '0')}-15T12:00:00`
 function deliv(p: Partial<StatDelivery>): StatDelivery {
   return {
     date: p.date ?? day(0),
+    amount_ht_cts: p.amount_ht_cts,
     montant_ht_cts: p.montant_ht_cts ?? 0,
     client_id: p.client_id ?? 'c1',
     // 'clients' in p : respecte un null explicite (ne pas l'écraser via ??).
@@ -44,6 +45,11 @@ describe('caMensuel — CA HT par mois', () => {
   it('un montant null compte comme 0', () => {
     const rows = caMensuel([deliv({ date: day(0), montant_ht_cts: null })])
     expect(rows[0].cts).toBe(0)
+  })
+
+  it('lit amount_ht_cts en priorité quand montant_ht_cts vaut 0 (fix CA faux)', () => {
+    const rows = caMensuel([deliv({ date: day(0), montant_ht_cts: 0, amount_ht_cts: 50_000 })])
+    expect(rows[0].cts).toBe(50_000)
   })
 
   it('tableau vide → 12 mois à 0', () => {
