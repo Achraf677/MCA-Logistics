@@ -5,13 +5,15 @@ import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
+import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
 import { useProfile } from '../../app/providers'
 import { getCompany, updateCompany } from './parametres.queries'
 import type { CompanyData } from './parametres.queries'
 
 const EMPTY: Omit<CompanyData, 'id'> = {
   name: '', siren: '', siret: '', tva_intra: '',
-  address: '', capital_cts: null, iban: '', bic: '',
+  address: '', depot_lat: null, depot_lng: null,
+  capital_cts: null, iban: '', bic: '',
 }
 
 export function Parametres() {
@@ -36,6 +38,8 @@ export function Parametres() {
           siret:       data.siret ?? '',
           tva_intra:   data.tva_intra ?? '',
           address:     data.address ?? '',
+          depot_lat:   data.depot_lat,
+          depot_lng:   data.depot_lng,
           capital_cts: data.capital_cts,
           iban:        data.iban ?? '',
           bic:         data.bic ?? '',
@@ -59,6 +63,8 @@ export function Parametres() {
       siret:     form.siret || null,
       tva_intra: form.tva_intra || null,
       address:   form.address || null,
+      depot_lat: form.depot_lat,
+      depot_lng: form.depot_lng,
       capital_cts: form.capital_cts,
       iban:      form.iban || null,
       bic:       form.bic || null,
@@ -124,15 +130,24 @@ export function Parametres() {
 
         {/* Section Coordonnées */}
         <Section title="Coordonnées">
-          <Field label="Adresse">
-            <textarea
-              value={form.address ?? ''}
-              onChange={e => set('address', e.target.value)}
-              rows={2}
-              placeholder="17 rue de la Chapelle, 67540 Ostwald"
-              className={`${inputCls} resize-none`}
-            />
-          </Field>
+          <AddressAutocomplete
+            label="Adresse du dépôt"
+            value={form.address ?? ''}
+            placeholder="17 rue de la Chapelle, 67540 Ostwald"
+            onChange={v => {
+              setForm(p => ({ ...p, address: v, depot_lat: null, depot_lng: null }))
+              setDirty(true)
+            }}
+            onSelect={s => {
+              setForm(p => ({ ...p, address: s.address, depot_lat: s.lat, depot_lng: s.lng }))
+              setDirty(true)
+            }}
+          />
+          {form.depot_lat != null && form.depot_lng != null && (
+            <p className="text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
+              📍 {form.depot_lat.toFixed(5)}, {form.depot_lng.toFixed(5)}
+            </p>
+          )}
         </Section>
 
         {/* Section Bancaire */}

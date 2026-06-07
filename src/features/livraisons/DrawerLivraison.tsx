@@ -5,6 +5,7 @@ import { Drawer }      from '../../shared/ui/Drawer'
 import { Button }      from '../../shared/ui/Button'
 import { Badge }       from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
+import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
 import { useToast }    from '../../shared/ui/useToast'
 import { useProfile }  from '../../app/providers'
 import { formatMoney, addTva } from '../../shared/lib/money'
@@ -74,6 +75,9 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   const [transitioning, setTransitioning] = useState<DeliveryStatus | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  // Coordonnées géocodées de l'adresse de livraison (Photon). null = saisie libre.
+  const [deliveryCoords, setDeliveryCoords] =
+    useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
 
   const [clients,  setClients]  = useState<ClientLookup[]>([])
   const [vehicles, setVehicles] = useState<Lookup[]>([])
@@ -122,9 +126,11 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
                             ? (storedTvaCts / 100).toFixed(2) : '',
         notes:            delivery.notes ?? '',
       })
+      setDeliveryCoords({ lat: delivery.delivery_lat ?? null, lng: delivery.delivery_lng ?? null })
     } else {
       setTvaTouched(false)
       setForm({ ...EMPTY_FORM, date: TODAY })
+      setDeliveryCoords({ lat: null, lng: null })
     }
     setTab('detail')
   }, [delivery, open])
@@ -198,6 +204,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         description:      form.description || null,
         pickup_address:   form.pickup_address   || null,
         delivery_address: form.delivery_address || null,
+        delivery_lat:     deliveryCoords.lat,
+        delivery_lng:     deliveryCoords.lng,
         km:               form.km      ? parseFloat(form.km)      : null,
         weight_kg:        form.pallets ? parseFloat(form.pallets) : null,
         amount_ht_cts:    computed?.amount_ht_cts  ?? null,
@@ -363,10 +371,26 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
             <Input value={form.pickup_address} onChange={v => set('pickup_address', v)}
               placeholder="Rue, ville…" disabled={isDetailReadOnly} />
           </Field>
-          <Field label="Adresse de livraison">
-            <Input value={form.delivery_address} onChange={v => set('delivery_address', v)}
-              placeholder="Rue, ville…" disabled={isDetailReadOnly} />
-          </Field>
+          <AddressAutocomplete
+            label="Adresse de livraison"
+            value={form.delivery_address}
+            placeholder="Rue, ville…"
+            disabled={isDetailReadOnly}
+            onChange={v => {
+              set('delivery_address', v)
+              // Saisie libre : on invalide les coordonnées tant qu'aucune suggestion n'est choisie.
+              setDeliveryCoords({ lat: null, lng: null })
+            }}
+            onSelect={s => {
+              set('delivery_address', s.address)
+              setDeliveryCoords({ lat: s.lat, lng: s.lng })
+            }}
+          />
+          {deliveryCoords.lat != null && deliveryCoords.lng != null && (
+            <p className="-mt-2 text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
+              📍 {deliveryCoords.lat.toFixed(5)}, {deliveryCoords.lng.toFixed(5)}
+            </p>
+          )}
           <Field label="Notes">
             <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
               rows={3} disabled={isDetailReadOnly} placeholder="Notes internes…"
