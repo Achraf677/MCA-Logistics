@@ -9,6 +9,7 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { DrawerLivraison } from '../livraisons/DrawerLivraison'
 import { getDashboardKpis, getRecentDeliveries, getMonthlyTrend } from './dashboard.queries'
 import { formatCents, STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
+import { effectiveHtCts } from '../../shared/lib/money'
 import type { DashboardKpis } from './dashboard.queries'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
 
@@ -182,7 +183,7 @@ export function Dashboard() {
                           {row.team_members?.full_name ?? '—'}
                         </td>
                         <td className="px-4 py-3 font-mono text-[var(--text)]">
-                          {formatCents(row.montant_ht_cts)}
+                          {formatCents(effectiveHtCts(row))}
                         </td>
                         <td className="px-4 py-3">
                           <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>{STATUS_LABELS[row.statut]}</Badge>
@@ -211,7 +212,7 @@ export function Dashboard() {
                         {row.team_members?.full_name && ` · ${row.team_members.full_name}`}
                       </span>
                       <span className="font-mono font-semibold text-[var(--text)]">
-                        {formatCents(row.montant_ht_cts)}
+                        {formatCents(effectiveHtCts(row))}
                       </span>
                     </div>
                   </button>

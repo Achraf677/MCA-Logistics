@@ -2,9 +2,11 @@
 // Source des données brutes : getRentabiliteData (rentabilite.queries.ts).
 // Le formatage (€, %) reste dans le composant : ici, uniquement des NOMBRES (centimes).
 
+import { effectiveHtCts } from '../../shared/lib/money'
+
 // ── Formes minimales des données brutes (seuls les champs lus comptent) ─────────
 
-export interface RawDelivery { date: string | null; montant_ht_cts: number | null }
+export interface RawDelivery { date: string | null; amount_ht_cts?: number | null; montant_ht_cts: number | null }
 export interface RawCharge   { date: string | null; montant_ht_cts: number | null }
 export interface RawFuel     { date: string | null; total_cts: number | null }
 export interface RawMaintenance { date: string | null; cost_cts: number | null }
@@ -47,7 +49,7 @@ function monthOf(date: string | null): number {
  */
 export function monthlyRows(raw: RentabiliteRaw): MonthRow[] {
   return Array.from({ length: 12 }, (_, m): MonthRow => {
-    const caHt       = raw.deliveries.filter(d => monthOf(d.date) === m).reduce((s, d) => s + (d.montant_ht_cts ?? 0), 0)
+    const caHt       = raw.deliveries.filter(d => monthOf(d.date) === m).reduce((s, d) => s + effectiveHtCts(d), 0)
     const charges    = raw.charges.filter(d => monthOf(d.date) === m).reduce((s, d) => s + (d.montant_ht_cts ?? 0), 0)
     const carburant  = raw.fuel.filter(d => monthOf(d.date) === m).reduce((s, d) => s + (d.total_cts ?? 0), 0)
     const entretiens = raw.maintenances.filter(d => monthOf(d.date) === m).reduce((s, d) => s + (d.cost_cts ?? 0), 0)

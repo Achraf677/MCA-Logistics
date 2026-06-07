@@ -1,4 +1,5 @@
 import { supabase } from '../../app/providers'
+import { effectiveHtCts } from '../../shared/lib/money'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
 
 export interface DashboardKpis {
@@ -19,7 +20,7 @@ export async function getDashboardKpis(): Promise<DashboardKpis> {
   const [deliveriesRes, vehiclesRes, teamRes, clientsRes] = await Promise.all([
     supabase
       .from('deliveries')
-      .select('montant_ht_cts, statut')
+      .select('amount_ht_cts, montant_ht_cts, statut')
       .gte('date', monthStart)
       .lte('date', monthEnd)
       .neq('statut', 'annulee'),
@@ -30,7 +31,7 @@ export async function getDashboardKpis(): Promise<DashboardKpis> {
 
   const deliveries = deliveriesRes.data ?? []
   const nb = deliveries.length
-  const caHtCts = deliveries.reduce((s, d) => s + (d.montant_ht_cts ?? 0), 0)
+  const caHtCts = deliveries.reduce((s, d) => s + effectiveHtCts(d), 0)
   const nbFacturee = deliveries.filter(d => d.statut === 'facturee' || d.statut === 'payee').length
   const nbPayee = deliveries.filter(d => d.statut === 'payee').length
 
@@ -67,14 +68,14 @@ export async function getMonthlyTrend() {
 
     const { data } = await supabase
       .from('deliveries')
-      .select('montant_ht_cts')
+      .select('amount_ht_cts, montant_ht_cts')
       .gte('date', start)
       .lte('date', end)
       .neq('statut', 'annulee')
 
     results.push({
       month: label,
-      caHtCts: (data ?? []).reduce((s, d) => s + d.montant_ht_cts, 0),
+      caHtCts: (data ?? []).reduce((s, d) => s + effectiveHtCts(d), 0),
       nb: (data ?? []).length,
     })
   }

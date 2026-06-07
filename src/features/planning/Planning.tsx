@@ -8,6 +8,7 @@ import { EmptyState } from '../../shared/ui/EmptyState'
 import { DrawerLivraison } from '../livraisons/DrawerLivraison'
 import { getDeliveriesForWeek } from './planning.queries'
 import { STATUS_LABELS, STATUS_COLORS, formatCents } from '../livraisons/livraisons.logic'
+import { effectiveHtCts } from '../../shared/lib/money'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
@@ -154,7 +155,7 @@ export function Planning() {
                           </div>
                         )}
                         <div className="text-[10px] font-mono text-[var(--text-muted)] mt-0.5">
-                          {formatCents(d.montant_ht_cts)}
+                          {formatCents(effectiveHtCts(d))}
                         </div>
                       </button>
                     ))}
@@ -206,7 +207,7 @@ export function Planning() {
                             </span>
                             <div className="flex items-center gap-2">
                               <span className="font-mono text-[var(--fs-xs)] text-[var(--text)]">
-                                {formatCents(d.montant_ht_cts)}
+                                {formatCents(effectiveHtCts(d))}
                               </span>
                               <Badge color={STATUS_COLORS[d.statut] ?? 'muted'}>{STATUS_LABELS[d.statut]}</Badge>
                             </div>
