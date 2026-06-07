@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import { Route, MapPin, Navigation, Clock, Fuel, AlertTriangle } from 'lucide-react'
 import { Shell } from '../../app/Shell'
@@ -18,6 +18,10 @@ import {
   eligibleDeliveries, isGeocoded, canOptimize, estimateFuelCostCts,
 } from './tournees.logic'
 import type { Tour, TourDelivery, TourStatus, OptimizeResult, Lookup } from './tournees.types'
+import type { MapStop } from './TourMap'
+
+// Lazy-load : Leaflet n'alourdit pas le bundle initial.
+const TourMap = lazy(() => import('./TourMap'))
 
 const STATUS_LABELS: Record<TourStatus, string> = {
   brouillon: 'Brouillon', optimisee: 'Optimisée', en_cours: 'En cours', terminee: 'Terminée',
@@ -100,6 +104,16 @@ export function Tournees() {
   const assignedGeocoded = deliveries.filter(d => d.tour_id === tour?.id && isGeocoded(d))
   const optimizeEnabled = !!tour && canOptimize(assignedGeocoded.length, depotGeocoded)
   const fuelCts = estimateFuelCostCts(tour?.total_km ?? null)
+
+  // Arrêts géocodés pour la carte (ordonnés via stop_order côté requête).
+  const mapStops: MapStop[] = stops
+    .filter(s => s.delivery_lat != null && s.delivery_lng != null)
+    .map(s => ({
+      stop_order: s.stop_order,
+      lat: s.delivery_lat as number,
+      lng: s.delivery_lng as number,
+      label: s.clients?.name ?? '—',
+    }))
 
   const toggle = (id: string) => setSelectedIds(prev => {
     const next = new Set(prev)
@@ -316,8 +330,26 @@ export function Tournees() {
               ))}
             </ol>
             <p className="text-[var(--fs-xs)] text-[var(--text-disabled)] mt-3">
-              Estimation carburant indicative (0,15 €/km). La carte interactive arrive à l'étape suivante.
+              Estimation carburant indicative (0,15 €/km).
             </p>
+
+            {/* Carte */}
+            {tour.geometry && depotGeocoded && (
+              <div className="mt-4">
+                <Suspense fallback={
+                  <div className="h-[400px] w-full rounded-[var(--r-lg)] border border-[var(--border)]
+                    flex items-center justify-center text-[var(--fs-sm)] text-[var(--text-muted)]">
+                    Chargement de la carte…
+                  </div>
+                }>
+                  <TourMap
+                    geometry={tour.geometry}
+                    depot={{ lat: depot.lat!, lng: depot.lng! }}
+                    stops={mapStops}
+                  />
+                </Suspense>
+              </div>
+            )}
           </Section>
         )}
       </div>
