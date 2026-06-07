@@ -1,5 +1,5 @@
 import { supabase } from '../../app/providers'
-import type { AlertsInput } from './alertes.types'
+import type { Alert, AlertsInput } from './alertes.types'
 
 /** Charge les projections nécessaires au moteur de détection (alertes.logic.ts). */
 export async function getAlertesDetectionData(): Promise<AlertsInput> {
@@ -86,4 +86,27 @@ export async function getAlertesDetectionData(): Promise<AlertsInput> {
       vehicleLabel: join(i.vehicles as never),
     })),
   }
+}
+
+/**
+ * Génère le briefing du jour via l'Edge Function `alertes-briefing` (IA Mistral).
+ * Retourne le texte du briefing si ok, sinon lève une erreur.
+ */
+export async function getAlertesBriefing(alerts: Alert[], today: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('alertes-briefing', {
+    body: {
+      alerts: alerts.map(a => ({
+        severity: a.severity,
+        category: a.category,
+        title: a.title,
+        detail: a.detail,
+        daysLeft: a.daysLeft,
+      })),
+      today,
+    },
+  })
+
+  if (error) throw new Error(error.message)
+  if (!data?.ok) throw new Error(data?.error ?? 'Échec de la génération du briefing.')
+  return data.data.briefing as string
 }
