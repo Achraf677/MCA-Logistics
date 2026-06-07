@@ -7,6 +7,7 @@ import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { SkeletonTable, SkeletonKpis } from '../../shared/ui/Skeleton'
 import { Drawer } from '../../shared/ui/Drawer'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { getSuppliers, createSupplier, updateSupplier, deactivateSupplier } from './fournisseurs.queries'
@@ -38,6 +39,8 @@ export function Fournisseurs() {
   const [selected, setSelected] = useState<Supplier | null>(null)
   const [form, setForm] = useState<Partial<SupplierInsert>>({})
   const [saving, setSaving] = useState(false)
+  const [confirmDuplicate, setConfirmDuplicate] = useState(false)
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -68,14 +71,14 @@ export function Fournisseurs() {
 
   const set = (k: keyof SupplierInsert, v: unknown) => setForm(p => ({ ...p, [k]: v }))
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!form.name?.trim()) { toast('Le nom est requis', 'error'); return }
-    if (duplicate) {
-      const ok = window.confirm(
-        `Un fournisseur avec le même SIREN existe déjà : « ${duplicate.name} ».\n\nVoulez-vous quand même enregistrer ?`
-      )
-      if (!ok) return
-    }
+    if (duplicate) { setConfirmDuplicate(true); return }
+    void doSave()
+  }
+
+  const doSave = async () => {
+    setConfirmDuplicate(false)
     setSaving(true)
     try {
       if (selected) {
@@ -96,9 +99,14 @@ export function Fournisseurs() {
     }
   }
 
-  const handleDeactivate = async () => {
+  const handleDeactivate = () => {
     if (!selected) return
-    if (!confirm(`Désactiver ${selected.name} ?`)) return
+    setConfirmDeactivate(true)
+  }
+
+  const doDeactivate = async () => {
+    if (!selected) return
+    setConfirmDeactivate(false)
     const { error } = await deactivateSupplier(selected.id)
     if (error) { toast(error.message, 'error'); return }
     toast(`${selected.name} désactivé`)
@@ -293,6 +301,28 @@ export function Fournisseurs() {
           </div>
         </div>
       </Drawer>
+
+      <ConfirmDialog
+        open={confirmDuplicate}
+        title="Doublon SIREN détecté"
+        message={duplicate
+          ? `Un fournisseur avec le même SIREN existe déjà : « ${duplicate.name} ». Voulez-vous quand même enregistrer ?`
+          : ''}
+        confirmLabel="Enregistrer quand même"
+        onConfirm={doSave}
+        onCancel={() => setConfirmDuplicate(false)}
+        loading={saving}
+      />
+
+      <ConfirmDialog
+        open={confirmDeactivate}
+        title="Désactiver le fournisseur"
+        message={selected ? `Le fournisseur « ${selected.name} » sera désactivé et masqué des listes actives.` : ''}
+        confirmLabel="Désactiver"
+        onConfirm={doDeactivate}
+        onCancel={() => setConfirmDeactivate(false)}
+        loading={false}
+      />
     </Shell>
   )
 }
