@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from 'react'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Route, Navigation2, ExternalLink, Check, Clock, Fuel, Truck, User } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
@@ -14,10 +14,6 @@ import {
   isDelivered, deliveredProgress, hasUndeliveredStops, canStartTour, canFinishTour,
 } from './tournees.logic'
 import type { Tour, TourDelivery, TourStatus } from './tournees.types'
-import type { MapStop } from './TourMap'
-
-// Lazy-load : Leaflet hors bundle initial (chunk partagé).
-const TourMap = lazy(() => import('./TourMap'))
 
 const STATUS_LABELS: Record<TourStatus, string> = {
   brouillon: 'Brouillon', optimisee: 'Optimisée', en_cours: 'En cours', terminee: 'Terminée',
@@ -31,16 +27,19 @@ interface Props {
   stops: TourDelivery[]
   vehicleLabel?: string
   driverLabel?: string
+  /** Couleur de la tournée (cohérente avec la carte d'ensemble). */
+  color?: string
   /** Appelé après une modification (livré, démarrer, terminer) pour recharger. */
   onChanged: () => void | Promise<void>
 }
 
 /**
- * Rendu exploitable d'UNE tournée : en-tête véhicule/chauffeur, totaux, carte,
+ * Rendu exploitable d'UNE tournée : en-tête véhicule/chauffeur, totaux,
  * liste d'arrêts ordonnés (navigation GPS + suivi « Livré »), cycle de vie.
- * Comportement strictement identique au mono v2. Pensé mobile.
+ * La carte est désormais globale (ToursOverviewMap), plus de mini-carte ici.
+ * Comportement (hors carte) identique au mono v2. Pensé mobile.
  */
-export function TourCard({ tour, stops, vehicleLabel, driverLabel, onChanged }: Props) {
+export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChanged }: Props) {
   const { toast } = useToast()
   const [stopBusy, setStopBusy] = useState<string | null>(null)
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
@@ -51,18 +50,14 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, onChanged }: 
   const progress = deliveredProgress(stops)
   const undeliveredCount = stops.filter(s => !isDelivered(s)).length
 
-  const mapStops: MapStop[] = stops
+  // Arrêts géocodés, pour le lien « Itinéraire complet ».
+  const geoStops = stops
     .filter(s => s.delivery_lat != null && s.delivery_lng != null)
-    .map(s => ({
-      stop_order: s.stop_order,
-      lat: s.delivery_lat as number,
-      lng: s.delivery_lng as number,
-      label: s.clients?.name ?? '—',
-    }))
+    .map(s => ({ stop_order: s.stop_order, lat: s.delivery_lat as number, lng: s.delivery_lng as number }))
 
   const routeUrl = googleMapsRouteUrl(
     depotGeocoded ? { lat: tour.depot_lat as number, lng: tour.depot_lng as number } : null,
-    mapStops.map(s => ({ stop_order: s.stop_order, lat: s.lat, lng: s.lng })),
+    geoStops,
   )
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -107,7 +102,9 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, onChanged }: 
     <div className="rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden">
       {/* En-tête véhicule / chauffeur + statut */}
       <div className="px-4 py-3 bg-[var(--bg-elevated)] border-b border-[var(--border)] flex flex-wrap items-center gap-2">
-        <Truck size={16} className="text-[var(--brand)] shrink-0" />
+        {color
+          ? <span className="w-3 h-3 rounded-full shrink-0" style={{ background: color }} aria-hidden />
+          : <Truck size={16} className="text-[var(--brand)] shrink-0" />}
         <span className="font-display font-semibold text-[var(--text)]">{vehicleLabel ?? 'Véhicule'}</span>
         {driverLabel && (
           <span className="inline-flex items-center gap-1 text-[var(--fs-sm)] text-[var(--text-muted)]">
@@ -207,24 +204,6 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, onChanged }: 
         <p className="text-[var(--fs-xs)] text-[var(--text-disabled)] mt-3">
           Estimation carburant indicative (0,15 €/km).
         </p>
-
-        {/* Carte */}
-        {tour.geometry && depotGeocoded && (
-          <div className="mt-4">
-            <Suspense fallback={
-              <div className="h-[400px] w-full rounded-[var(--r-lg)] border border-[var(--border)]
-                flex items-center justify-center text-[var(--fs-sm)] text-[var(--text-muted)]">
-                Chargement de la carte…
-              </div>
-            }>
-              <TourMap
-                geometry={tour.geometry}
-                depot={{ lat: tour.depot_lat as number, lng: tour.depot_lng as number }}
-                stops={mapStops}
-              />
-            </Suspense>
-          </div>
-        )}
       </div>
 
       <ConfirmDialog
