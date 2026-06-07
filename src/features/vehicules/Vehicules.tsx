@@ -174,9 +174,6 @@ export function Vehicules() {
                     </span>
                   )}
                   <EcheancePastille status={worstStatus(vehicleEcheances(v, today))} />
-                  <span className="ml-auto text-[var(--fs-xs)] text-[var(--text-disabled)]">
-                    {v.fuel_type ? FUEL_LABELS[v.fuel_type] : '—'}
-                  </span>
                 </div>
               </button>
             ))}
