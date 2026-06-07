@@ -5,6 +5,7 @@ import { Dashboard }    from '../features/dashboard/Dashboard'
 import { Rentabilite }  from '../features/rentabilite/Rentabilite'
 import { Statistiques } from '../features/statistiques/Statistiques'
 import { Livraisons }   from '../features/livraisons/Livraisons'
+import { Tournees }     from '../features/tournees/Tournees'
 import { Planning }     from '../features/planning/Planning'
 import { Calendrier }   from '../features/calendrier/Calendrier'
 import { Incidents }    from '../features/incidents/Incidents'
@@ -36,6 +37,7 @@ export function AppRoutes() {
       <Route path="/rentabilite"   element={guard(features.rentabilite,  <Rentabilite />)} />
       <Route path="/statistiques"  element={guard(features.statistiques, <Statistiques />)} />
       <Route path="/livraisons"    element={guard(features.livraisons,   <Livraisons />)} />
+      <Route path="/tournees"      element={guard(features.tournees,     <Tournees />)} />
       <Route path="/planning"      element={guard(features.planning,     <Planning />)} />
       <Route path="/calendrier"    element={guard(features.calendrier,   <Calendrier />)} />
       <Route path="/incidents"     element={guard(features.incidents,    <Incidents />)} />

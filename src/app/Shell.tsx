@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, TrendingUp, BarChart2,
-  Truck, CalendarDays, Calendar, AlertTriangle, ClipboardCheck,
+  Truck, Route, CalendarDays, Calendar, AlertTriangle, ClipboardCheck,
   Car, Fuel, Wrench,
   Users, Building2,
   CreditCard, Banknote, Receipt, Wallet,
@@ -41,6 +41,7 @@ const NAV: NavSection[] = [
     title: 'Opérations',
     items: [
       { key: 'livraisons',  label: 'Livraisons',  icon: Truck,           path: '/livraisons',   featureKey: 'livraisons'  },
+      { key: 'tournees',    label: 'Tournées',    icon: Route,           path: '/tournees',     featureKey: 'tournees'    },
       { key: 'planning',    label: 'Planning',    icon: CalendarDays,    path: '/planning',     featureKey: 'planning'    },
       { key: 'calendrier',  label: 'Calendrier',  icon: Calendar,        path: '/calendrier',   featureKey: 'calendrier'  },
       { key: 'incidents',   label: 'Incidents',   icon: AlertTriangle,   path: '/incidents',    featureKey: 'incidents'   },
