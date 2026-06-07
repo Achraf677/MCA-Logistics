@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { Trash2 } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
-import { createIncident, updateIncident } from './incidents.queries'
+import { createIncident, updateIncident, deleteIncident } from './incidents.queries'
 import {
   TYPE_LABELS, TYPE_COLOR, STATUS_LABELS, STATUS_COLOR, formatCents,
 } from './incidents.logic'
@@ -39,12 +41,14 @@ const EMPTY_FORM = {
 }
 
 export function DrawerIncident({ open, onClose, incident, onSaved }: Props) {
-  const { companyId } = useProfile()
+  const { companyId, profile } = useProfile()
   const { toast } = useToast()
   const isEdit = !!incident
+  const isPresident = profile?.role === 'president'
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [vehicles, setVehicles] = useState<Lookup[]>([])
   const [drivers, setDrivers]   = useState<Lookup[]>([])
 
@@ -118,6 +122,16 @@ export function DrawerIncident({ open, onClose, incident, onSaved }: Props) {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleDelete = async () => {
+    if (!incident) return
+    const { error } = await deleteIncident(incident.id)
+    if (error) { toast(error.message, 'error'); return }
+    toast('Incident supprimé', 'success')
+    setConfirmDelete(false)
+    onSaved()
+    onClose()
   }
 
   return (
@@ -224,8 +238,24 @@ export function DrawerIncident({ open, onClose, incident, onSaved }: Props) {
             {saving ? 'Enregistrement…' : 'Enregistrer'}
           </Button>
           <Button variant="secondary" onClick={onClose}>Annuler</Button>
+          {isEdit && isPresident && (
+            <Button variant="ghost" onClick={() => setConfirmDelete(true)} className="ml-auto text-[var(--danger)]">
+              <Trash2 size={14} />
+              Supprimer
+            </Button>
+          )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Supprimer l'incident"
+        message="Cette action est irréversible. L'incident sera définitivement supprimé."
+        confirmLabel="Supprimer"
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+        loading={false}
+      />
     </Drawer>
   )
 }
