@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { createTeamMember, updateTeamMember, deactivateTeamMember, getMemberRecentDeliveries } from './equipe.queries'
@@ -79,6 +80,7 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
   const [saving, setSaving] = useState(false)
   const [deliveries, setDeliveries] = useState<Array<{ id: string; date: string | null; delivery_address: string | null; statut: string | null }>>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false)
   const isEdit = !!member
   const showValidites = isDriverRole(member?.role ?? null)
 
@@ -138,9 +140,14 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
     }
   }
 
-  const handleDeactivate = async () => {
+  const handleDeactivate = () => {
     if (!member) return
-    if (!confirm(`Désactiver ${member.full_name} ?`)) return
+    setConfirmDeactivate(true)
+  }
+
+  const doDeactivate = async () => {
+    if (!member) return
+    setConfirmDeactivate(false)
     const { error } = await deactivateTeamMember(member.id)
     if (error) { toast(error.message, 'error'); return }
     toast(`${member.full_name} désactivé`)
@@ -311,6 +318,16 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDeactivate}
+        title="Désactiver le membre"
+        message={member ? `Le membre « ${member.full_name} » sera désactivé et masqué de l'équipe active.` : ''}
+        confirmLabel="Désactiver"
+        onConfirm={doDeactivate}
+        onCancel={() => setConfirmDeactivate(false)}
+        loading={false}
+      />
     </Drawer>
   )
 }
