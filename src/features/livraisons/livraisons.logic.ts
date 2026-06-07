@@ -1,5 +1,8 @@
-import { addTva, formatMoney } from '../../shared/lib/money'
+import { addTva, effectiveHtCts, effectiveTtcCts, formatCents } from '../../shared/lib/money'
 import type { DeliveryRow, DeliveryStatus } from './livraisons.types'
+
+// Réexport pour conserver les imports existants (Livraisons.tsx, DrawerLivraison.tsx, tests).
+export { effectiveHtCts, effectiveTtcCts, formatCents }
 
 // ── Machine à états ──────────────────────────────────────────────────────────
 
@@ -137,22 +140,6 @@ export function computeAmount(
   const amount_ttc_cts = addTva(amount_ht_cts, tvaRate)
   const tva_cts = amount_ttc_cts - amount_ht_cts
   return { amount_ht_cts, tva_cts, amount_ttc_cts }
-}
-
-// ── Helpers d'affichage ──────────────────────────────────────────────────────
-
-/** Montant HT effectif — préfère la colonne v2, replie sur legacy */
-export function effectiveHtCts(row: Pick<DeliveryRow, 'amount_ht_cts' | 'montant_ht_cts'>): number {
-  return row.amount_ht_cts ?? row.montant_ht_cts ?? 0
-}
-
-/** Montant TTC effectif — préfère la colonne v2, replie sur legacy */
-export function effectiveTtcCts(row: Pick<DeliveryRow, 'amount_ttc_cts' | 'montant_ttc_cts'>): number {
-  return row.amount_ttc_cts ?? row.montant_ttc_cts ?? 0
-}
-
-export function formatCents(cts: number): string {
-  return formatMoney(cts)
 }
 
 // ── KPIs ─────────────────────────────────────────────────────────────────────
