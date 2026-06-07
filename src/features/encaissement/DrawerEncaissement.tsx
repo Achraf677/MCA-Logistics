@@ -7,6 +7,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import { createPayment, updatePayment } from './encaissement.queries'
 import { METHOD_LABELS, METHOD_COLOR, formatCents } from './encaissement.logic'
+import { effectiveTtcCts } from '../../shared/lib/money'
 import type { PaymentRow, PaymentInsert, PaymentMethod } from './encaissement.types'
 
 interface Props {
@@ -52,7 +53,7 @@ export function DrawerEncaissement({ open, onClose, payment, onSaved }: Props) {
     if (!form.client_id) { setDeliveries([]); return }
     supabase
       .from('deliveries')
-      .select('id, date, montant_ttc_cts')
+      .select('id, date, amount_ttc_cts, montant_ttc_cts')
       .eq('client_id', form.client_id)
       .in('statut', ['facturee'])
       .order('date', { ascending: false })
@@ -60,7 +61,7 @@ export function DrawerEncaissement({ open, onClose, payment, onSaved }: Props) {
         setDeliveries((data ?? []).map(d => ({
           id: d.id,
           label: new Date(d.date).toLocaleDateString('fr-FR'),
-          amount_cts: d.montant_ttc_cts,
+          amount_cts: effectiveTtcCts(d),
         })))
       )
   }, [form.client_id])
