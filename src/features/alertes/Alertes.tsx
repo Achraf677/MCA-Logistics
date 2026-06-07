@@ -1,201 +1,292 @@
-import { useState, useEffect, useCallback } from 'react'
-import { AlertTriangle, Clock, Car, UserCheck, CheckCircle } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Bell, Search, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
-import { getAlertesData } from './alertes.queries'
-import { effectiveTtcCts } from '../../shared/lib/money'
-import { MAINTENANCE_TYPE_LABELS } from '../entretiens/entretiens.logic'
-import type { MaintenanceType } from '../entretiens/entretiens.types'
+import { EmptyState } from '../../shared/ui/EmptyState'
+import { getAlertesDetectionData } from './alertes.queries'
+import { detectAlerts, summarizeAlerts } from './alertes.logic'
+import type { Alert, AlertCategory, AlertSeverity } from './alertes.types'
 
-function formatCents(cts: number): string {
-  return (cts / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'
+// ── Métadonnées d'affichage ──────────────────────────────────────────────────
+
+const SEVERITY_ORDER: AlertSeverity[] = ['critique', 'urgent', 'warning', 'info']
+
+const SEVERITY_META: Record<AlertSeverity, { label: string; pill: string; soft: string; dot: string }> = {
+  critique: { label: 'Critique', pill: 'bg-[var(--danger)] text-white',                 soft: 'bg-[var(--danger)]/12 text-[var(--danger)]',   dot: 'bg-[var(--danger)]' },
+  urgent:   { label: 'Urgent',   pill: 'bg-[var(--danger)]/15 text-[var(--danger)]',    soft: 'bg-[var(--danger)]/12 text-[var(--danger)]',   dot: 'bg-[var(--danger)]' },
+  warning:  { label: 'À surveiller', pill: 'bg-[var(--warning)]/15 text-[var(--warning)]', soft: 'bg-[var(--warning)]/12 text-[var(--warning)]', dot: 'bg-[var(--warning)]' },
+  info:     { label: 'Info',     pill: 'bg-[var(--info)]/15 text-[var(--info)]',        soft: 'bg-[var(--info)]/12 text-[var(--info)]',       dot: 'bg-[var(--info)]' },
 }
 
-function daysAgo(dateStr: string): number {
-  return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000)
+// Route par table source (les routes sont des pages liste — pas de deep-link /:id).
+const TABLE_ROUTE: Record<string, string> = {
+  vehicles: '/vehicules',
+  team_members: '/equipe',
+  vehicle_maintenances: '/entretiens',
+  deliveries: '/livraisons',
+  incidents: '/incidents',
+  inspections: '/inspections',
 }
 
-function daysUntil(dateStr: string): number {
-  return Math.floor((new Date(dateStr).getTime() - Date.now()) / 86400000)
+const CATEGORY_LABEL: Record<AlertCategory, string> = {
+  vehicule: 'Véhicule',
+  chauffeur: 'Chauffeur',
+  rh: 'RH',
+  entretien: 'Entretien',
+  livraison: 'Livraison',
+  facture: 'Facture',
+  incident: 'Incident',
+  inspection: 'Inspection',
 }
 
-type Level = 'danger' | 'warning' | 'info'
+// Filtres catégorie (chauffeur + rh regroupés en « Équipe »).
+const CATEGORY_FILTERS: Array<{ key: string; label: string; match: AlertCategory[] }> = [
+  { key: 'vehicule',   label: 'Véhicule',   match: ['vehicule'] },
+  { key: 'equipe',     label: 'Équipe',     match: ['chauffeur', 'rh'] },
+  { key: 'entretien',  label: 'Entretien',  match: ['entretien'] },
+  { key: 'livraison',  label: 'Livraison',  match: ['livraison'] },
+  { key: 'facture',    label: 'Facture',    match: ['facture'] },
+  { key: 'incident',   label: 'Incident',   match: ['incident'] },
+  { key: 'inspection', label: 'Inspection', match: ['inspection'] },
+]
 
-const LEVEL_STYLES: Record<Level, { border: string; header: string }> = {
-  danger:  { border: 'border-[var(--danger)]/30',  header: 'bg-[var(--danger)]/10 text-[var(--danger)]' },
-  warning: { border: 'border-[var(--warning)]/30', header: 'bg-[var(--warning)]/10 text-[var(--warning)]' },
-  info:    { border: 'border-[var(--info)]/30',    header: 'bg-[var(--info)]/10 text-[var(--info)]' },
+/** Échéance lisible à partir de daysLeft (déjà calculé par le moteur via les helpers de dates). */
+function dueText(a: Alert): string | null {
+  if (a.daysLeft == null) return null
+  if (a.daysLeft < 0) return `en retard de ${-a.daysLeft} j`
+  if (a.daysLeft === 0) return "aujourd'hui"
+  return `dans ${a.daysLeft} j`
 }
 
-interface AlertGroupProps {
-  level: Level
-  title: string
-  icon: React.ReactNode
-  count: number
-  link: string
-  children: React.ReactNode
-}
+// ── Composants ───────────────────────────────────────────────────────────────
 
-function AlertGroupCard({ level, title, icon, count, link, children }: AlertGroupProps) {
-  const navigate = useNavigate()
-  const style = LEVEL_STYLES[level]
+function SeverityPill({
+  severity, count, active, onClick,
+}: { severity: AlertSeverity; count: number; active: boolean; onClick: () => void }) {
+  const m = SEVERITY_META[severity]
   return (
-    <div className={`rounded-[var(--r-lg)] border overflow-hidden ${style.border}`}>
-      <div className={`flex items-center justify-between px-4 py-2.5 ${style.header}`}>
-        <div className="flex items-center gap-2">
-          {icon}
-          <span className="font-semibold text-[var(--fs-sm)]">{title}</span>
-          <span className="text-[var(--fs-xs)] opacity-70">({count})</span>
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex items-center gap-2 rounded-[var(--r-md)] border px-3 py-2 transition-colors
+        ${active ? 'border-current ' + m.soft : 'border-[var(--border)] bg-[var(--bg-card)] hover:bg-[var(--bg-card-hover)]'}`}
+    >
+      <span className={`h-2 w-2 rounded-full ${m.dot}`} />
+      <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">{m.label}</span>
+      <span className="text-[var(--fs-sm)] font-mono text-[var(--text-muted)]">{count}</span>
+    </button>
+  )
+}
+
+function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-full px-3 py-1 text-[var(--fs-xs)] font-medium transition-colors
+        ${active
+          ? 'bg-[var(--brand-soft)] text-[var(--brand)]'
+          : 'bg-[var(--bg-card)] text-[var(--text-muted)] border border-[var(--border)] hover:bg-[var(--bg-card-hover)]'}`}
+    >
+      {label}
+    </button>
+  )
+}
+
+function AlertRow({ alert }: { alert: Alert }) {
+  const navigate = useNavigate()
+  const m = SEVERITY_META[alert.severity]
+  const due = dueText(alert)
+  const route = TABLE_ROUTE[alert.ref.table]
+  return (
+    <div className="flex items-start gap-3 px-4 py-3">
+      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${m.dot}`} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">{alert.title}</span>
+          <span className={`inline-flex items-center rounded-[var(--r-sm)] px-1.5 py-0.5 text-[var(--fs-xs)] font-medium ${m.soft}`}>
+            {m.label}
+          </span>
+          <span className="inline-flex items-center rounded-[var(--r-sm)] bg-[var(--border)] px-1.5 py-0.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
+            {CATEGORY_LABEL[alert.category]}
+          </span>
         </div>
-        <Button variant="ghost" size="compact"
-          onClick={() => navigate(link)}
-          className="text-current opacity-70 hover:opacity-100">
-          Voir →
-        </Button>
+        <p className="mt-0.5 text-[var(--fs-xs)] text-[var(--text-muted)]">{alert.detail}</p>
       </div>
-      <div className="divide-y divide-[var(--border)] bg-[var(--bg-card)]">
-        {children}
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        {due && (
+          <span className={`font-mono text-[var(--fs-xs)] ${alert.daysLeft != null && alert.daysLeft < 0 ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}>
+            {due}
+          </span>
+        )}
+        {route ? (
+          <Button variant="ghost" size="compact" onClick={() => navigate(route)}>Voir →</Button>
+        ) : (
+          <span className="text-[var(--fs-xs)] text-[var(--text-disabled)]">{alert.ref.table}</span>
+        )}
       </div>
     </div>
   )
 }
 
+// ── Écran ────────────────────────────────────────────────────────────────────
+
 export function Alertes() {
-  const [data, setData] = useState<Awaited<ReturnType<typeof getAlertesData>> | null>(null)
+  const [alerts, setAlerts] = useState<Alert[] | null>(null)
   const [loading, setLoading] = useState(true)
+  const [severityFilter, setSeverityFilter] = useState<AlertSeverity | null>(null)
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
-    setData(await getAlertesData())
+    const data = await getAlertesDetectionData()
+    setAlerts(detectAlerts(data))
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
 
+  const all = alerts ?? []
+  const summary = useMemo(() => summarizeAlerts(all), [all])
+
+  // Filtrage (l'ordre du moteur est conservé — aucun tri concurrent).
+  const filtered = useMemo(() => {
+    const catMatch = categoryFilter
+      ? CATEGORY_FILTERS.find(c => c.key === categoryFilter)?.match ?? []
+      : null
+    const q = search.trim().toLowerCase()
+    return all.filter(a => {
+      if (severityFilter && a.severity !== severityFilter) return false
+      if (catMatch && !catMatch.includes(a.category)) return false
+      if (q && !(`${a.title} ${a.detail}`.toLowerCase().includes(q))) return false
+      return true
+    })
+  }, [all, severityFilter, categoryFilter, search])
+
+  // Regroupement par sévérité (ordre fixe critique→info), items déjà triés.
+  const groups = useMemo(
+    () => SEVERITY_ORDER
+      .map(sev => ({ sev, items: filtered.filter(a => a.severity === sev) }))
+      .filter(g => g.items.length > 0),
+    [filtered],
+  )
+
+  const hasFilter = severityFilter !== null || categoryFilter !== null || search.trim() !== ''
+
   if (loading) {
     return (
       <Shell pageTitle="Alertes">
-        <div className="space-y-4 max-w-2xl">
-          {[0, 1, 2].map(i => <Skeleton key={i} className="h-28" />)}
+        <div className="max-w-3xl space-y-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}
+          </div>
+          {[0, 1, 2].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
       </Shell>
     )
   }
 
-  const overdueMaintenances = data?.overdueMaintenances ?? []
-  const oldInvoiced         = data?.oldInvoiced ?? []
-  const maintenanceVehicles = data?.maintenanceVehicles ?? []
-  const expiringContracts   = data?.expiringContracts ?? []
-
-  const totalAlerts =
-    overdueMaintenances.length + oldInvoiced.length +
-    maintenanceVehicles.length + expiringContracts.length
-
   return (
     <Shell pageTitle="Alertes">
-      <div className="max-w-2xl space-y-4">
+      <div className="max-w-3xl space-y-4">
 
-        <div className="flex items-center justify-between mb-2">
+        {/* En-tête : résumé + pastilles cliquables */}
+        <div className="flex items-center justify-between">
           <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">
-            {totalAlerts === 0
+            {summary.total === 0
               ? 'Aucune alerte active'
-              : `${totalAlerts} alerte${totalAlerts > 1 ? 's' : ''} active${totalAlerts > 1 ? 's' : ''}`}
+              : `${summary.total} alerte${summary.total > 1 ? 's' : ''} active${summary.total > 1 ? 's' : ''}`}
           </span>
           <Button variant="ghost" size="compact" onClick={load}>Actualiser</Button>
         </div>
 
-        {totalAlerts === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 gap-4 text-[var(--text-muted)]">
-            <CheckCircle size={48} className="text-[var(--success)]" />
-            <div className="text-center">
-              <p className="font-semibold text-[var(--text)]">Tout est en ordre</p>
-              <p className="text-[var(--fs-sm)] mt-1">Aucune alerte à signaler pour le moment.</p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {SEVERITY_ORDER.map(sev => (
+            <SeverityPill
+              key={sev}
+              severity={sev}
+              count={summary.parSeverite[sev]}
+              active={severityFilter === sev}
+              onClick={() => setSeverityFilter(prev => (prev === sev ? null : sev))}
+            />
+          ))}
+        </div>
+
+        {summary.total > 0 && (
+          <>
+            {/* Filtres catégorie */}
+            <div className="flex flex-wrap gap-2">
+              {CATEGORY_FILTERS.map(c => (
+                <FilterChip
+                  key={c.key}
+                  label={c.label}
+                  active={categoryFilter === c.key}
+                  onClick={() => setCategoryFilter(prev => (prev === c.key ? null : c.key))}
+                />
+              ))}
             </div>
+
+            {/* Recherche */}
+            <div className="relative">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-disabled)]" />
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Rechercher une alerte…"
+                className="w-full rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] py-2 pl-9 pr-9 text-[var(--fs-sm)] text-[var(--text)] placeholder:text-[var(--text-disabled)] focus:border-[var(--brand)] focus:outline-none"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-muted)] hover:text-[var(--text)]"
+                  aria-label="Effacer la recherche"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Liste groupée par sévérité */}
+        {summary.total === 0 ? (
+          <EmptyState
+            icon={<Bell size={48} />}
+            title="Aucune alerte 🎉"
+            description="Tout est en ordre, rien à signaler pour le moment."
+          />
+        ) : groups.length === 0 ? (
+          <EmptyState
+            icon={<Search size={48} />}
+            title="Aucun résultat"
+            description="Aucune alerte ne correspond aux filtres."
+            action={{ label: 'Réinitialiser', onClick: () => { setSeverityFilter(null); setCategoryFilter(null); setSearch('') } }}
+          />
+        ) : (
+          <div className="space-y-4">
+            {hasFilter && (
+              <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                {filtered.length} résultat{filtered.length > 1 ? 's' : ''}
+              </p>
+            )}
+            {groups.map(({ sev, items }) => (
+              <div key={sev} className={`overflow-hidden rounded-[var(--r-lg)] border ${SEVERITY_META[sev].soft.includes('danger') ? 'border-[var(--danger)]/30' : SEVERITY_META[sev].soft.includes('warning') ? 'border-[var(--warning)]/30' : 'border-[var(--info)]/30'}`}>
+                <div className={`flex items-center gap-2 px-4 py-2 ${SEVERITY_META[sev].soft}`}>
+                  <span className={`h-2 w-2 rounded-full ${SEVERITY_META[sev].dot}`} />
+                  <span className="text-[var(--fs-sm)] font-semibold">{SEVERITY_META[sev].label}</span>
+                  <span className="text-[var(--fs-xs)] opacity-70">({items.length})</span>
+                </div>
+                <div className="divide-y divide-[var(--border)] bg-[var(--bg-card)]">
+                  {items.map(a => <AlertRow key={a.id} alert={a} />)}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
-        {overdueMaintenances.length > 0 && (
-          <AlertGroupCard level="danger" title="Entretiens en retard"
-            icon={<AlertTriangle size={16} />} count={overdueMaintenances.length} link="/entretiens">
-            {overdueMaintenances.map((m, i) => {
-              const veh = m.vehicles as unknown as { label: string; plate: string } | null
-              return (
-                <div key={i} className="flex items-center justify-between gap-3 px-4 py-3">
-                  <div>
-                    <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">{veh?.label ?? '—'}</span>
-                    <span className="ml-2 text-[var(--fs-xs)] text-[var(--text-muted)]">
-                      {m.type ? MAINTENANCE_TYPE_LABELS[m.type as MaintenanceType] : ''}
-                    </span>
-                    <p className="text-[var(--fs-xs)] text-[var(--danger)]">
-                      Échéance : {new Date(m.next_due_date as string).toLocaleDateString('fr-FR')}
-                    </p>
-                  </div>
-                  <span className="text-[var(--fs-xs)] text-[var(--danger)] font-mono shrink-0">
-                    +{daysAgo(m.next_due_date as string)} j
-                  </span>
-                </div>
-              )
-            })}
-          </AlertGroupCard>
-        )}
-
-        {oldInvoiced.length > 0 && (
-          <AlertGroupCard level="warning" title="Factures impayées (> 30 j)"
-            icon={<Clock size={16} />} count={oldInvoiced.length} link="/livraisons">
-            {oldInvoiced.map((d, i) => {
-              const client = d.clients as unknown as { name: string } | null
-              return (
-                <div key={i} className="flex items-center justify-between gap-3 px-4 py-3">
-                  <div>
-                    <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">{client?.name ?? '—'}</span>
-                    <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-                      Facturée le {new Date(d.date as string).toLocaleDateString('fr-FR')}
-                    </p>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className="font-mono text-[var(--fs-sm)] text-[var(--text)]">
-                      {formatCents(effectiveTtcCts(d))}
-                    </p>
-                    <p className="text-[var(--fs-xs)] text-[var(--warning)]">+{daysAgo(d.date as string)} j</p>
-                  </div>
-                </div>
-              )
-            })}
-          </AlertGroupCard>
-        )}
-
-        {maintenanceVehicles.length > 0 && (
-          <AlertGroupCard level="warning" title="Véhicules en maintenance"
-            icon={<Car size={16} />} count={maintenanceVehicles.length} link="/vehicules">
-            {maintenanceVehicles.map((v, i) => (
-              <div key={i} className="flex items-center gap-3 px-4 py-3">
-                <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">{v.label as string}</span>
-                <span className="font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">{v.plate as string}</span>
-              </div>
-            ))}
-          </AlertGroupCard>
-        )}
-
-        {expiringContracts.length > 0 && (
-          <AlertGroupCard level="info" title="CDD expirant dans 30 jours"
-            icon={<UserCheck size={16} />} count={expiringContracts.length} link="/equipe">
-            {expiringContracts.map((m, i) => (
-              <div key={i} className="flex items-center justify-between gap-3 px-4 py-3">
-                <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">{m.full_name as string}</span>
-                <div className="text-right shrink-0">
-                  <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-                    {new Date(m.end_date as string).toLocaleDateString('fr-FR')}
-                  </p>
-                  <p className="text-[var(--fs-xs)] text-[var(--info)]">
-                    Dans {daysUntil(m.end_date as string)} j
-                  </p>
-                </div>
-              </div>
-            ))}
-          </AlertGroupCard>
-        )}
       </div>
     </Shell>
   )
