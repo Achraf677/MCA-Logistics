@@ -24,9 +24,9 @@ export async function getDashboardKpis(): Promise<DashboardKpis> {
       .gte('date', monthStart)
       .lte('date', monthEnd)
       .neq('statut', 'annulee'),
-    supabase.from('vehicles').select('id', { count: 'exact', head: true }).eq('status', 'active'),
-    supabase.from('team_members').select('id', { count: 'exact', head: true }).eq('active', true),
-    supabase.from('clients').select('id', { count: 'exact', head: true }).eq('active', true),
+    supabase.from('vehicles').select('id', { count: 'exact' }).eq('status', 'active').limit(1),
+    supabase.from('team_members').select('id', { count: 'exact' }).eq('active', true).limit(1),
+    supabase.from('clients').select('id', { count: 'exact' }).eq('active', true).limit(1),
   ])
 
   const deliveries = deliveriesRes.data ?? []

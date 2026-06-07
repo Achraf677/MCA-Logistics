@@ -26,12 +26,19 @@ export async function deactivateClient(id: string) {
   return supabase.from('clients').update({ active: false }).eq('id', id)
 }
 
-/** Compte les livraisons rattachées à un client (garde-fou avant suppression). */
+/**
+ * Compte les livraisons rattachées à un client (garde-fou avant suppression).
+ * GET avec count (sans HEAD : la requête HEAD renvoie 503 sur l'environnement).
+ * En cas d'erreur, propage (throw) au lieu de renvoyer 0 silencieusement, pour que
+ * l'appelant puisse afficher un message plutôt que de bloquer sans retour.
+ */
 export async function countDeliveriesForClient(id: string): Promise<number> {
-  const { count } = await supabase
+  const { count, error } = await supabase
     .from('deliveries')
-    .select('id', { count: 'exact', head: true })
+    .select('id', { count: 'exact' })
     .eq('client_id', id)
+    .limit(1)
+  if (error) throw error
   return count ?? 0
 }
 
