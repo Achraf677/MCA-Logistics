@@ -7,7 +7,9 @@ export { effectiveHtCts, effectiveTtcCts, formatCents }
 // ── Machine à états ──────────────────────────────────────────────────────────
 
 export const TRANSITIONS: Record<DeliveryStatus, DeliveryStatus[]> = {
-  planifiee: ['en_cours', 'annulee'],
+  // 'livree' directe depuis 'planifiee' : un chauffeur peut livrer un arrêt
+  // sans passer explicitement par 'en_cours' (suivi de tournée mobile).
+  planifiee: ['en_cours', 'livree', 'annulee'],
   en_cours:  ['livree', 'annulee'],
   livree:    ['facturee'],
   facturee:  ['payee'],
@@ -50,7 +52,7 @@ export const STATUS_COLORS: Record<string, 'muted' | 'info' | 'warning' | 'succe
 }
 
 export const TRANSITION_ACTION_LABELS: Record<string, Record<string, string>> = {
-  planifiee: { en_cours: 'Démarrer', annulee: 'Annuler la livraison' },
+  planifiee: { en_cours: 'Démarrer', livree: 'Marquer livrée', annulee: 'Annuler la livraison' },
   en_cours:  { livree: 'Marquer livrée', annulee: 'Annuler la livraison' },
   livree:    { facturee: 'Facturer' },
   facturee:  { payee: 'Encaisser' },

@@ -32,6 +32,8 @@ export interface TourDelivery {
   tour_id: string | null
   stop_order: number | null
   arrival_time: string | null
+  /** Heure réelle de livraison (timestamptz). null = pas encore livré. */
+  delivered_at: string | null
   clients: { name: string } | null
 }
 

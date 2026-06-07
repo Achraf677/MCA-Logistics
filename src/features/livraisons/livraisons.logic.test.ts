@@ -43,7 +43,7 @@ describe('canTransition / allowedNextStatuses', () => {
   })
 
   it('allowedNextStatuses renvoie les cibles déclarées (états terminaux = [])', () => {
-    expect(allowedNextStatuses('planifiee')).toEqual(['en_cours', 'annulee'])
+    expect(allowedNextStatuses('planifiee')).toEqual(['en_cours', 'livree', 'annulee'])
     expect(allowedNextStatuses('en_cours')).toEqual(['livree', 'annulee'])
     expect(allowedNextStatuses('livree')).toEqual(['facturee'])
     expect(allowedNextStatuses('facturee')).toEqual(['payee'])
