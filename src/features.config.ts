@@ -3,6 +3,7 @@ export const features = {
   rentabilite:  true,
   statistiques: true,
   livraisons:   true,
+  tournees:     true,
   planning:     true,
   calendrier:   true,
   incidents:    true,
