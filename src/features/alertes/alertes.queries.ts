@@ -46,11 +46,11 @@ export async function getAlertesDetectionData(): Promise<AlertsInput> {
   const [vehicles, drivers, maintenances, deliveries, incidents, inspections] = await Promise.all([
     supabase
       .from('vehicles')
-      .select('id, label, plate, ct_expiry, insurance_expiry, next_revision_date')
+      .select('id, label, plate, status, ct_expiry, insurance_expiry, next_revision_date')
       .neq('status', 'inactive'),
     supabase
       .from('team_members')
-      .select('id, full_name, licence_b_expiry, medical_visit_expiry')
+      .select('id, full_name, licence_b_expiry, medical_visit_expiry, contract_type, end_date, active')
       .eq('active', true),
     supabase
       .from('vehicle_maintenances')
@@ -78,6 +78,7 @@ export async function getAlertesDetectionData(): Promise<AlertsInput> {
       id: v.id,
       label: v.label,
       plate: v.plate,
+      status: v.status,
       ct_expiry: v.ct_expiry,
       insurance_expiry: v.insurance_expiry,
       next_revision_date: v.next_revision_date,
@@ -87,6 +88,9 @@ export async function getAlertesDetectionData(): Promise<AlertsInput> {
       full_name: d.full_name,
       licence_b_expiry: d.licence_b_expiry,
       medical_visit_expiry: d.medical_visit_expiry,
+      contract_type: d.contract_type,
+      end_date: d.end_date,
+      active: d.active,
     })),
     maintenances: (maintenances.data ?? []).map(m => ({
       id: m.id,

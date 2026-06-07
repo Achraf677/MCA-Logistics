@@ -245,6 +245,83 @@ describe('détection inspection', () => {
   })
 })
 
+// ── Véhicule en maintenance ──────────────────────────────────────────────────
+describe('détection véhicule en maintenance', () => {
+  it('status maintenance → info, sans échéance', () => {
+    const a = detectAlerts(
+      input({ vehicles: [{ id: 'v1', label: 'Kangoo', status: 'maintenance', ct_expiry: null, insurance_expiry: null, next_revision_date: null }] }),
+      TODAY,
+    )
+    expect(a).toHaveLength(1)
+    expect(a[0].severity).toBe('info')
+    expect(a[0].category).toBe('vehicule')
+    expect(a[0].title).toBe('Véhicule en maintenance')
+    expect(a[0].dueDate).toBeNull()
+    expect(a[0].daysLeft).toBeNull()
+    expect(a[0].ref).toEqual({ table: 'vehicles', id: 'v1' })
+  })
+
+  it('status active → aucune alerte de maintenance', () => {
+    const a = detectAlerts(
+      input({ vehicles: [{ id: 'v1', label: 'Kangoo', status: 'active', ct_expiry: null, insurance_expiry: null, next_revision_date: null }] }),
+      TODAY,
+    )
+    expect(a).toHaveLength(0)
+  })
+
+  it('maintenance + échéance CT cumulées (deux alertes distinctes)', () => {
+    const a = detectAlerts(
+      input({ vehicles: [{ id: 'v1', label: 'Kangoo', status: 'maintenance', ct_expiry: rel(-1), insurance_expiry: null, next_revision_date: null }] }),
+      TODAY,
+    )
+    expect(a).toHaveLength(2)
+    expect(new Set(a.map(x => x.severity))).toEqual(new Set(['critique', 'info']))
+  })
+})
+
+// ── Fin de CDD ───────────────────────────────────────────────────────────────
+describe('détection fin de CDD', () => {
+  const cdd = (end_date: string | null, over: Partial<import('./alertes.types').DriverAlertRow> = {}) => ({
+    id: 'd1', full_name: 'Paul', licence_b_expiry: null, medical_visit_expiry: null,
+    contract_type: 'cdd', active: true, end_date, ...over,
+  })
+
+  it('fin dans ≤7j → urgent', () => {
+    const a = detectAlerts(input({ drivers: [cdd(rel(5))] }), TODAY)
+    expect(a).toHaveLength(1)
+    expect(a[0].category).toBe('rh')
+    expect(a[0].title).toBe('Fin de CDD')
+    expect(a[0].severity).toBe('urgent')
+    expect(a[0].dueDate).toBe(rel(5))
+    expect(a[0].daysLeft).toBe(5)
+  })
+
+  it('fin entre 8 et 30j → warning', () => {
+    const a = detectAlerts(input({ drivers: [cdd(rel(20))] }), TODAY)
+    expect(a[0].severity).toBe('warning')
+  })
+
+  it('fin > 30j → aucune alerte', () => {
+    const a = detectAlerts(input({ drivers: [cdd(rel(45))] }), TODAY)
+    expect(a).toHaveLength(0)
+  })
+
+  it('end_date déjà passée → aucune alerte (pas de spam)', () => {
+    const a = detectAlerts(input({ drivers: [cdd(rel(-1))] }), TODAY)
+    expect(a).toHaveLength(0)
+  })
+
+  it('inactif → aucune alerte', () => {
+    const a = detectAlerts(input({ drivers: [cdd(rel(5), { active: false })] }), TODAY)
+    expect(a).toHaveLength(0)
+  })
+
+  it('non-CDD → aucune alerte', () => {
+    const a = detectAlerts(input({ drivers: [cdd(rel(5), { contract_type: 'cdi' })] }), TODAY)
+    expect(a).toHaveLength(0)
+  })
+})
+
 // ── Déduplication ────────────────────────────────────────────────────────────
 describe('déduplication', () => {
   it('une seule alerte par (table, id, type)', () => {

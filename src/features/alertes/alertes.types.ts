@@ -11,6 +11,7 @@ export type AlertCategory =
   | 'facture'
   | 'incident'
   | 'inspection'
+  | 'rh'
 
 export interface Alert {
   /** Identité stable = clé de déduplication `${table}:${id}:${type}`. */
@@ -56,6 +57,7 @@ export interface VehicleAlertRow {
   id: string
   label: string
   plate?: string | null
+  status?: string | null
   ct_expiry: string | null
   insurance_expiry: string | null
   next_revision_date: string | null
@@ -66,6 +68,9 @@ export interface DriverAlertRow {
   full_name: string
   licence_b_expiry: string | null
   medical_visit_expiry: string | null
+  contract_type?: string | null
+  end_date?: string | null
+  active?: boolean | null
 }
 
 export interface MaintenanceAlertRow {

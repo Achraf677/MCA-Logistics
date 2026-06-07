@@ -69,6 +69,20 @@ function detectVehicles(rows: VehicleAlertRow[], today: Date, t: AlertThresholds
         ref: { table: 'vehicles', id: v.id },
       })
     }
+
+    // Véhicule immobilisé en maintenance (info, sans échéance).
+    if (v.status === 'maintenance') {
+      out.push({
+        id: `vehicles:${v.id}:maintenance`,
+        category: 'vehicule',
+        severity: 'info',
+        title: 'Véhicule en maintenance',
+        detail: `${v.label} actuellement en maintenance`,
+        dueDate: null,
+        daysLeft: null,
+        ref: { table: 'vehicles', id: v.id },
+      })
+    }
   }
   return out
 }
@@ -97,6 +111,25 @@ function detectDrivers(rows: DriverAlertRow[], today: Date, t: AlertThresholds):
         daysLeft,
         ref: { table: 'team_members', id: d.id },
       })
+    }
+
+    // Fin de CDD proche (actif, échéance dans [today, today+warningDays]).
+    // N'alerte pas si end_date déjà passée : contrat terminé → aucune action.
+    if (d.contract_type === 'cdd' && d.active && d.end_date) {
+      const daysLeft = daysLeftUntil(d.end_date, today)
+      if (daysLeft !== null && daysLeft >= 0 && daysLeft <= t.warningDays) {
+        const severity: AlertSeverity = daysLeft <= t.urgentDays ? 'urgent' : 'warning'
+        out.push({
+          id: `team_members:${d.id}:cdd`,
+          category: 'rh',
+          severity,
+          title: 'Fin de CDD',
+          detail: `${d.full_name} — fin de contrat le ${d.end_date} (dans ${daysLeft} j)`,
+          dueDate: d.end_date,
+          daysLeft,
+          ref: { table: 'team_members', id: d.id },
+        })
+      }
     }
   }
   return out
@@ -279,7 +312,7 @@ export function detectAlerts(
 
 const EMPTY_SEVERITE: Record<AlertSeverity, number> = { info: 0, warning: 0, urgent: 0, critique: 0 }
 const EMPTY_CATEGORIE: Record<AlertCategory, number> = {
-  vehicule: 0, chauffeur: 0, entretien: 0, livraison: 0, facture: 0, incident: 0, inspection: 0,
+  vehicule: 0, chauffeur: 0, entretien: 0, livraison: 0, facture: 0, incident: 0, inspection: 0, rh: 0,
 }
 
 /** Agrège les alertes par sévérité et par catégorie. */
