@@ -59,7 +59,7 @@ Deno.serve(async (req)=>{
   const lines = alerts.map((a)=>`[${a.severity.toUpperCase()}] (${a.category}) ${a.title}${a.detail ? ' — ' + a.detail : ''}${echeanceLabel(a.daysLeft)}`).join('\n');
   const userPrompt = `Date du jour : ${today}\nNombre d'alertes : ${alerts.length}\n\nAlertes (triées par priorité) :\n${lines}`;
   try {
-    const briefing = await generateText(apiKey, SYSTEM_PROMPT, userPrompt);
+    const briefing = await generateText(apiKey, SYSTEM_PROMPT, userPrompt, { temperature: 0.3, maxTokens: 900 });
     return jsonResponse({
       ok: true,
       data: {
