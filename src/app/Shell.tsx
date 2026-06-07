@@ -14,6 +14,7 @@ import {
 import { features } from '../features.config'
 import { ActionBar } from '../shared/actions/ActionBar'
 import type { ActionKey } from '../shared/actions/ActionBar'
+import { AssistantWidget } from '../features/assistant/AssistantWidget'
 
 interface NavItem {
   key: string
@@ -227,6 +228,9 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
           {children}
         </main>
       </div>
+
+      {/* Assistant global — présent sur toutes les pages, hors du <main> */}
+      <AssistantWidget />
     </div>
   )
 }
