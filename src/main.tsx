@@ -7,6 +7,7 @@ import { ToastProvider } from './shared/ui/useToast'
 import { AppRoutes } from './app/routes'
 import { LoginPage } from './app/LoginPage'
 import { Button } from './shared/ui/Button'
+import { AssistantProvider } from './features/assistant/AssistantContext'
 
 // ── Garde profil ─────────────────────────────────────────────────────────────
 // Bloque l'app si l'utilisateur authentifié n'a pas encore de ligne en profiles
@@ -69,7 +70,11 @@ function AppCore() {
   return (
     <ProfileProvider>
       <ProfileGate>
-        <AppRoutes />
+        {/* Conversation de l'assistant : état stable au-dessus du routeur,
+            pour survivre aux changements d'onglet. */}
+        <AssistantProvider>
+          <AppRoutes />
+        </AssistantProvider>
       </ProfileGate>
     </ProfileProvider>
   )
