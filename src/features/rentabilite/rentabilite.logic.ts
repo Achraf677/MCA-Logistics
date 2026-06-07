@@ -6,7 +6,7 @@ import { effectiveHtCts } from '../../shared/lib/money'
 
 // ── Formes minimales des données brutes (seuls les champs lus comptent) ─────────
 
-export interface RawDelivery { date: string | null; amount_ht_cts?: number | null; montant_ht_cts: number | null }
+export interface RawDelivery { date: string | null; amount_ht_cts?: number | null; montant_ht_cts?: number | null }
 export interface RawCharge   { date: string | null; montant_ht_cts: number | null }
 export interface RawFuel     { date: string | null; total_cts: number | null }
 export interface RawMaintenance { date: string | null; cost_cts: number | null }

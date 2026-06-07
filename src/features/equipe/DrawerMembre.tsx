@@ -77,7 +77,7 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
   const [tab, setTab] = useState<Tab>('detail')
   const [form, setForm] = useState<Partial<TeamMemberInsert>>({})
   const [saving, setSaving] = useState(false)
-  const [deliveries, setDeliveries] = useState<Array<{ id: string; date: string | null; delivery_address: string | null; statut: string | null; montant_ht_cts: number | null }>>([])
+  const [deliveries, setDeliveries] = useState<Array<{ id: string; date: string | null; delivery_address: string | null; statut: string | null }>>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
   const isEdit = !!member
   const showValidites = isDriverRole(member?.role ?? null)

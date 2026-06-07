@@ -53,7 +53,7 @@ export function DrawerEncaissement({ open, onClose, payment, onSaved }: Props) {
     if (!form.client_id) { setDeliveries([]); return }
     supabase
       .from('deliveries')
-      .select('id, date, amount_ttc_cts, montant_ttc_cts')
+      .select('id, date, amount_ttc_cts')
       .eq('client_id', form.client_id)
       .in('statut', ['facturee'])
       .order('date', { ascending: false })

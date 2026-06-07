@@ -8,7 +8,7 @@ export async function getStatistiquesData() {
   const [deliveries, charges, fuel, maintenances] = await Promise.all([
     supabase
       .from('deliveries')
-      .select('date, amount_ht_cts, montant_ht_cts, statut, client_id, clients!client_id(name)')
+      .select('date, amount_ht_cts, statut, client_id, clients!client_id(name)')
       .gte('date', yearStart)
       .lte('date', yearEnd)
       .neq('statut', 'annulee'),

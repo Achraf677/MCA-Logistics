@@ -11,7 +11,7 @@ import { effectiveHtCts } from '../../shared/lib/money'
 export interface StatDelivery {
   date: string | null
   amount_ht_cts?: number | null
-  montant_ht_cts: number | null
+  montant_ht_cts?: number | null
   client_id: string | null
   clients: { name: string } | null
 }

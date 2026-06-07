@@ -27,7 +27,7 @@ export async function deactivateTeamMember(id: string) {
 export async function getMemberRecentDeliveries(memberId: string) {
   return supabase
     .from('deliveries')
-    .select('id, date, delivery_address, statut, montant_ht_cts')
+    .select('id, date, delivery_address, statut')
     .eq('driver_id', memberId)
     .order('date', { ascending: false })
     .limit(10)
