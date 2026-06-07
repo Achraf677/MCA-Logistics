@@ -11,6 +11,7 @@ import { STATUS_LABELS, STATUS_COLORS, formatCents } from '../livraisons/livrais
 import { effectiveHtCts } from '../../shared/lib/money'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
+import { toLocalISO } from '../../shared/lib/dates'
 
 // ── Utilitaires semaine ──────────────────────────────────────────────────────
 
@@ -24,10 +25,6 @@ function getWeekDays(anchor: Date): Date[] {
     nd.setDate(d.getDate() + i)
     return nd
   })
-}
-
-function toISO(d: Date): string {
-  return d.toISOString().slice(0, 10)
 }
 
 const FR_DAYS_LONG  = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
@@ -52,8 +49,8 @@ export function Planning() {
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
 
   const weekDays = getWeekDays(anchor)
-  const dateFrom = toISO(weekDays[0])
-  const dateTo   = toISO(weekDays[6])
+  const dateFrom = toLocalISO(weekDays[0])
+  const dateTo   = toLocalISO(weekDays[6])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -72,10 +69,10 @@ export function Planning() {
     if (key === 'nouveau') { setSelected(null); setDrawerOpen(true) }
   }
 
-  const byDay = Object.fromEntries(weekDays.map(d => [toISO(d), [] as DeliveryRow[]]))
+  const byDay = Object.fromEntries(weekDays.map(d => [toLocalISO(d), [] as DeliveryRow[]]))
   rows.forEach(r => { if (byDay[r.date]) byDay[r.date].push(r) })
 
-  const today = toISO(new Date())
+  const today = toLocalISO(new Date())
   const total = rows.length
 
   return (
@@ -110,7 +107,7 @@ export function Planning() {
           {/* Desktop : grille 7 colonnes */}
           <div className="hidden sm:grid grid-cols-7 gap-2">
             {weekDays.map((day, i) => {
-              const key = toISO(day)
+              const key = toLocalISO(day)
               const deliveries = byDay[key] ?? []
               const isToday = key === today
               return (
@@ -168,7 +165,7 @@ export function Planning() {
           {/* Mobile : liste par jour */}
           <div className="sm:hidden flex flex-col gap-3">
             {weekDays.map((day, i) => {
-              const key = toISO(day)
+              const key = toLocalISO(day)
               const deliveries = byDay[key] ?? []
               const isToday = key === today
               return (
