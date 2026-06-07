@@ -16,6 +16,9 @@ dist-ssr
 .env*
 supabase/.env*
 
+# Supabase CLI link state (généré par `supabase link`) — ne jamais versionner
+supabase/.temp/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

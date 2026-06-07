@@ -6,44 +6,30 @@
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { ExternalApiError } from '../_shared/http.ts';
 import { generateJson, ocrDocument } from '../_shared/mistral.ts';
-
-const SYSTEM_PROMPT =
-  'Tu assistes une société de transport (MCA Logistics). À partir d\'une feuille de route, tu ' +
-  'extrais les livraisons. Réponds STRICTEMENT en JSON valide, objet unique ' +
-  '{ deliveries: [...] }. Chaque livraison : { client_name, type (un de: medical|ecommerce|retail|' +
-  'particulier ou null), date (YYYY-MM-DD ou null), pickup_address, delivery_address, km (nombre|null), ' +
-  'weight_kg (nombre|null), montant_ht_eur (nombre|null), heure (string|null), ' +
-  'driver_name (string|null), vehicle (string|null = plaque OU nom du véhicule), notes (string), ' +
-  'missing (array des champs absents) }. N\'INVENTE RIEN : si une info n\'est pas écrite, mets null et ' +
-  'ajoute le champ dans \'missing\'. Applique la date/chauffeur/véhicule d\'en-tête à chaque ligne si ' +
-  'présents. Le mot JSON doit guider ta sortie.';
-
-Deno.serve(async (req: Request) => {
+const SYSTEM_PROMPT = 'Tu assistes une société de transport (MCA Logistics). À partir d\'une feuille de route, tu ' + 'extrais les livraisons. Réponds STRICTEMENT en JSON valide, objet unique ' + '{ deliveries: [...] }. Chaque livraison : { client_name, type (un de: medical|ecommerce|retail|' + 'particulier ou null), date (YYYY-MM-DD ou null), pickup_address, delivery_address, km (nombre|null), ' + 'weight_kg (nombre|null), montant_ht_eur (nombre|null), heure (string|null), ' + 'driver_name (string|null), vehicle (string|null = plaque OU nom du véhicule), notes (string), ' + 'missing (array des champs absents) }. N\'INVENTE RIEN : si une info n\'est pas écrite, mets null et ' + 'ajoute le champ dans \'missing\'. Applique la date/chauffeur/véhicule d\'en-tête à chaque ligne si ' + 'présents. RÈGLE DATES : pour toute date écrite sans année (ex. "06/06", "6 juin"), utilise ' + 'IMPÉRATIVEMENT l\'année de la DATE DU JOUR fournie dans le message ; n\'utilise JAMAIS une année ' + 'passée par défaut. Les dates relatives ("aujourd\'hui", "demain", "ce lundi") se calculent par ' + 'rapport à la DATE DU JOUR. Sortie toujours au format YYYY-MM-DD. Le mot JSON doit guider ta sortie.';
+Deno.serve(async (req)=>{
   if (req.method === 'OPTIONS') return optionsResponse();
-
   const apiKey = Deno.env.get('MISTRAL_API_KEY');
-  if (!apiKey) return jsonResponse({ ok: false, error: 'missing MISTRAL_API_KEY' }, 500);
-
-  let body: {
-    text?: unknown;
-    fileBase64?: unknown;
-    mimeType?: unknown;
-    instructions?: unknown;
-  };
+  if (!apiKey) return jsonResponse({
+    ok: false,
+    error: 'missing MISTRAL_API_KEY'
+  }, 500);
+  let body;
   try {
     body = await req.json();
-  } catch {
-    return jsonResponse({ ok: false, error: 'invalid JSON body' }, 400);
+  } catch  {
+    return jsonResponse({
+      ok: false,
+      error: 'invalid JSON body'
+    }, 400);
   }
-
   const text = typeof body.text === 'string' ? body.text.trim() : '';
   const fileBase64 = typeof body.fileBase64 === 'string' ? body.fileBase64 : '';
   const mimeType = typeof body.mimeType === 'string' ? body.mimeType : '';
   const instructions = typeof body.instructions === 'string' ? body.instructions.trim() : '';
-
   try {
     // ── Détermine le texte source : OCR si fichier, sinon texte collé ──────────
-    let sourceText: string;
+    let sourceText;
     if (fileBase64 && mimeType) {
       const dataUrl = `data:${mimeType};base64,${fileBase64}`;
       const isPdf = mimeType === 'application/pdf';
@@ -51,29 +37,36 @@ Deno.serve(async (req: Request) => {
     } else if (text) {
       sourceText = text;
     } else {
-      return jsonResponse({ ok: false, error: 'text or file required' }, 400);
+      return jsonResponse({
+        ok: false,
+        error: 'text or file required'
+      }, 400);
     }
-
-    const userPrompt =
-      `FEUILLE DE ROUTE:\n${sourceText}\n\nPRÉCISIONS UTILISATEUR:\n${instructions || '—'}`;
-
-    const result = await generateJson<{ deliveries: unknown[] }>(
-      apiKey,
-      SYSTEM_PROMPT,
-      userPrompt,
-    );
-
+    // Date du jour (Europe/Paris) pour ancrer l'année des dates sans année explicite.
+    const today = new Intl.DateTimeFormat('fr-CA', {
+      timeZone: 'Europe/Paris'
+    }).format(new Date());
+    const userPrompt = `DATE DU JOUR (Europe/Paris): ${today}\n\nFEUILLE DE ROUTE:\n${sourceText}\n\nPRÉCISIONS UTILISATEUR:\n${instructions || '—'}`;
+    const result = await generateJson(apiKey, SYSTEM_PROMPT, userPrompt);
     return jsonResponse({
       ok: true,
-      data: { deliveries: result.deliveries ?? [], raw_text: sourceText },
+      data: {
+        deliveries: result.deliveries ?? [],
+        raw_text: sourceText
+      }
     });
   } catch (err) {
     if (err instanceof ExternalApiError) {
-      return jsonResponse(
-        { ok: false, error: err.message, status: err.status, body: err.responseBody },
-        502,
-      );
+      return jsonResponse({
+        ok: false,
+        error: err.message,
+        status: err.status,
+        body: err.responseBody
+      }, 502);
     }
-    return jsonResponse({ ok: false, error: (err as Error).message }, 500);
+    return jsonResponse({
+      ok: false,
+      error: err.message
+    }, 500);
   }
 });
