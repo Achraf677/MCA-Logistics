@@ -1,7 +1,7 @@
 // Logique pure des Tournées : éligibilité, géocodage, carburant, navigation GPS,
 // suivi des arrêts et cycle de vie. Aucune dépendance DB ni DOM.
 
-import type { TourDelivery, TourStatus } from './tournees.types'
+import type { Tour, TourDelivery, TourStatus } from './tournees.types'
 
 /** Statuts de livraison pouvant entrer dans une tournée. */
 export const ELIGIBLE_STATUSES = ['planifiee', 'en_cours', 'livree'] as const
@@ -106,4 +106,76 @@ export function canStartTour(status: TourStatus): boolean {
 /** « Terminer » : seulement depuis une tournée en cours. */
 export function canFinishTour(status: TourStatus): boolean {
   return status === 'en_cours'
+}
+
+// ── Multi-véhicule (dispatch) ─────────────────────────────────────────────────
+
+/** Affectation d'un véhicule (+ chauffeur optionnel) pour un dispatch multi-tournées. */
+export interface Assignment {
+  vehicle_id: string
+  driver_id: string | null
+}
+
+/** Une tournée renvoyée par l'Edge Function optimize-tours. */
+export interface DispatchedTour {
+  tour_id: string
+  vehicle_id: string
+  stops: unknown[]
+  total_km: number | null
+  total_duration_min: number | null
+}
+
+/** Charge utile `data` de la réponse optimize-tours. */
+export interface DispatchData {
+  date: string
+  tours: DispatchedTour[]
+  unassigned: unknown[]
+}
+
+/** Sous-ensemble géocodé d'un pool de livraisons (réutilise isGeocoded). */
+export function geocodedPool(deliveries: TourDelivery[]): TourDelivery[] {
+  return deliveries.filter(isGeocoded)
+}
+
+/**
+ * Le dispatch est possible s'il y a au moins une affectation véhicule
+ * ET au moins une livraison géocodée dans le pool.
+ */
+export function canDispatch(assignments: Assignment[], pool: TourDelivery[]): boolean {
+  return assignments.length >= 1 && geocodedPool(pool).length >= 1
+}
+
+/** Compare deux stop_order, null en dernier. */
+function byStopOrder(a: TourDelivery, b: TourDelivery): number {
+  if (a.stop_order == null && b.stop_order == null) return 0
+  if (a.stop_order == null) return 1
+  if (b.stop_order == null) return -1
+  return a.stop_order - b.stop_order
+}
+
+/**
+ * Regroupe chaque tournée avec ses livraisons (tour_id), triées par stop_order
+ * croissant (null en dernier). Les tournées conservent l'ordre du tableau reçu.
+ */
+export function groupToursWithStops(
+  tours: Tour[],
+  deliveries: TourDelivery[],
+): Array<{ tour: Tour; stops: TourDelivery[] }> {
+  return tours.map(tour => ({
+    tour,
+    stops: deliveries.filter(d => d.tour_id === tour.id).sort(byStopOrder),
+  }))
+}
+
+/** Somme des distances/durées sur plusieurs tournées (ignore les valeurs null). */
+export function totalsAcrossTours(
+  tours: Array<Pick<Tour, 'total_km' | 'total_duration_min'>>,
+): { totalKm: number; totalMin: number } {
+  return tours.reduce(
+    (acc, t) => ({
+      totalKm: acc.totalKm + (t.total_km ?? 0),
+      totalMin: acc.totalMin + (t.total_duration_min ?? 0),
+    }),
+    { totalKm: 0, totalMin: 0 },
+  )
 }

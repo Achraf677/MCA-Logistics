@@ -4,8 +4,9 @@ import {
   googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
   isDelivered, deliveredProgress, hasUndeliveredStops,
   canStartTour, canFinishTour,
+  geocodedPool, canDispatch, groupToursWithStops, totalsAcrossTours,
 } from './tournees.logic'
-import type { TourDelivery } from './tournees.types'
+import type { Tour, TourDelivery } from './tournees.types'
 
 function mk(partial: Partial<TourDelivery>): TourDelivery {
   return {
@@ -17,6 +18,18 @@ function mk(partial: Partial<TourDelivery>): TourDelivery {
     ...partial,
   }
 }
+
+function mkTour(partial: Partial<Tour>): Tour {
+  return {
+    id: 't', company_id: 'c', date: '2026-06-07', vehicle_id: null, driver_id: null,
+    status: 'optimisee', depot_lat: null, depot_lng: null,
+    total_km: null, total_duration_min: null, geometry: null,
+    optimized_at: null, notes: null, created_at: '', updated_at: '',
+    ...partial,
+  }
+}
+
+const geo = { delivery_lat: 48.5, delivery_lng: 7.7 }
 
 describe('isGeocoded', () => {
   it('vrai si lat ET lng présents', () => {
@@ -125,5 +138,69 @@ describe('cycle de vie tournée', () => {
     expect(canFinishTour('en_cours')).toBe(true)
     expect(canFinishTour('optimisee')).toBe(false)
     expect(canFinishTour('terminee')).toBe(false)
+  })
+})
+
+// ── Multi-véhicule ─────────────────────────────────────────────────────────────
+
+describe('geocodedPool', () => {
+  it('ne garde que les livraisons géocodées', () => {
+    const pool = [
+      mk({ id: 'a', ...geo }),
+      mk({ id: 'b' }),                                   // non géocodée
+      mk({ id: 'c', delivery_lat: 48.6, delivery_lng: null }), // partielle → exclue
+      mk({ id: 'd', delivery_lat: 48.7, delivery_lng: 7.8 }),
+    ]
+    expect(geocodedPool(pool).map(d => d.id)).toEqual(['a', 'd'])
+  })
+})
+
+describe('canDispatch', () => {
+  const assignment = { vehicle_id: 'v1', driver_id: null }
+  it('faux sans aucune affectation', () => {
+    expect(canDispatch([], [mk({ ...geo })])).toBe(false)
+  })
+  it('faux sans aucune livraison géocodée', () => {
+    expect(canDispatch([assignment], [mk({ id: 'a' })])).toBe(false)
+    expect(canDispatch([assignment], [])).toBe(false)
+  })
+  it('vrai avec ≥ 1 affectation ET ≥ 1 géocodée', () => {
+    expect(canDispatch([assignment], [mk({ ...geo }), mk({ id: 'z' })])).toBe(true)
+  })
+})
+
+describe('groupToursWithStops', () => {
+  it('regroupe par tour_id, trie par stop_order (null en dernier), tournées stables', () => {
+    const tours = [mkTour({ id: 't1' }), mkTour({ id: 't2' })]
+    const deliveries = [
+      mk({ id: 'd1', tour_id: 't1', stop_order: 2 }),
+      mk({ id: 'd2', tour_id: 't1', stop_order: null }),
+      mk({ id: 'd3', tour_id: 't1', stop_order: 1 }),
+      mk({ id: 'd4', tour_id: 't2', stop_order: 1 }),
+      mk({ id: 'd5', tour_id: null }),                 // non assignée → ignorée
+    ]
+    const grouped = groupToursWithStops(tours, deliveries)
+    expect(grouped.map(g => g.tour.id)).toEqual(['t1', 't2'])
+    expect(grouped[0].stops.map(s => s.id)).toEqual(['d3', 'd1', 'd2']) // 1, 2, null
+    expect(grouped[1].stops.map(s => s.id)).toEqual(['d4'])
+  })
+
+  it('tournée sans arrêt → liste vide', () => {
+    const grouped = groupToursWithStops([mkTour({ id: 't9' })], [])
+    expect(grouped[0].stops).toEqual([])
+  })
+})
+
+describe('totalsAcrossTours', () => {
+  it('somme km et minutes en ignorant les null', () => {
+    const tours = [
+      mkTour({ total_km: 12.5, total_duration_min: 30 }),
+      mkTour({ total_km: null, total_duration_min: 15 }),
+      mkTour({ total_km: 7.5,  total_duration_min: null }),
+    ]
+    expect(totalsAcrossTours(tours)).toEqual({ totalKm: 20, totalMin: 45 })
+  })
+  it('liste vide → zéros', () => {
+    expect(totalsAcrossTours([])).toEqual({ totalKm: 0, totalMin: 0 })
   })
 })
