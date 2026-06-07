@@ -1,7 +1,7 @@
 import { supabase } from '../../app/providers'
 import type { PaymentFilters, PaymentInsert, PaymentUpdate } from './encaissement.types'
 
-const WITH_JOINS = '*, clients!client_id(name), deliveries!delivery_id(date, montant_ttc_cts)'
+const WITH_JOINS = '*, clients!client_id(name), deliveries!delivery_id(date, amount_ttc_cts, montant_ttc_cts)'
 
 export async function getPayments(filters: PaymentFilters = {}) {
   let q = supabase

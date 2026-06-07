@@ -17,7 +17,7 @@ export interface Payment {
 
 export interface PaymentRow extends Payment {
   clients: { name: string } | null
-  deliveries: { date: string; montant_ttc_cts: number } | null
+  deliveries: { date: string; amount_ttc_cts: number | null; montant_ttc_cts: number } | null
 }
 
 export type PaymentInsert = Omit<Payment, 'id' | 'created_at' | 'updated_at'>

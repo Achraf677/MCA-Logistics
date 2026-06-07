@@ -5,6 +5,7 @@ import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { getAlertesData } from './alertes.queries'
+import { effectiveTtcCts } from '../../shared/lib/money'
 import { MAINTENANCE_TYPE_LABELS } from '../entretiens/entretiens.logic'
 import type { MaintenanceType } from '../entretiens/entretiens.types'
 
@@ -155,7 +156,7 @@ export function Alertes() {
                   </div>
                   <div className="text-right shrink-0">
                     <p className="font-mono text-[var(--fs-sm)] text-[var(--text)]">
-                      {formatCents(d.montant_ttc_cts as number)}
+                      {formatCents(effectiveTtcCts(d))}
                     </p>
                     <p className="text-[var(--fs-xs)] text-[var(--warning)]">+{daysAgo(d.date as string)} j</p>
                   </div>

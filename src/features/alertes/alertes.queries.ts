@@ -14,7 +14,7 @@ export async function getAlertesData() {
       .order('next_due_date'),
     supabase
       .from('deliveries')
-      .select('id, date, montant_ttc_cts, clients!client_id(name)')
+      .select('id, date, amount_ttc_cts, montant_ttc_cts, clients!client_id(name)')
       .eq('statut', 'facturee')
       .lt('date', thirtyDaysAgo)
       .order('date'),
