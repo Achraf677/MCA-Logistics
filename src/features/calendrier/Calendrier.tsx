@@ -8,11 +8,10 @@ import { DrawerLivraison } from '../livraisons/DrawerLivraison'
 import { getDeliveries } from '../livraisons/livraisons.queries'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
+import { toLocalISO } from '../../shared/lib/dates'
 
 const FR_MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 const FR_DAYS   = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
-
-function toISO(d: Date): string { return d.toISOString().slice(0, 10) }
 
 function getMonthGrid(year: number, month: number): (Date | null)[][] {
   const first = new Date(year, month, 1)
@@ -42,8 +41,8 @@ export function Calendrier() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
 
-  const monthStart = toISO(new Date(year, month, 1))
-  const monthEnd   = toISO(new Date(year, month + 1, 0))
+  const monthStart = toLocalISO(new Date(year, month, 1))
+  const monthEnd   = toLocalISO(new Date(year, month + 1, 0))
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -66,7 +65,7 @@ export function Calendrier() {
   rows.forEach(r => { if (!byDay[r.date]) byDay[r.date] = []; byDay[r.date].push(r) })
 
   const grid = getMonthGrid(year, month)
-  const today = toISO(new Date())
+  const today = toLocalISO(new Date())
 
   return (
     <Shell pageTitle="Calendrier" actions={['nouveau']} onAction={handleAction}>
@@ -105,7 +104,7 @@ export function Calendrier() {
                 if (!day) return (
                   <div key={di} className="min-h-[90px] bg-[var(--bg-elevated)]/50 border-r border-[var(--border)] last:border-r-0" />
                 )
-                const key = toISO(day)
+                const key = toLocalISO(day)
                 const deliveries = byDay[key] ?? []
                 const isToday = key === today
                 const isWeekend = di >= 5
