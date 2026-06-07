@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import { Route, Clock, MapPin, AlertTriangle } from 'lucide-react'
 import { Shell } from '../../app/Shell'
@@ -16,7 +16,12 @@ import {
   isGeocoded, canDispatch, groupToursWithStops, totalsAcrossTours,
 } from './tournees.logic'
 import { TourCard, formatDuration } from './TourCard'
+import { colorForIndex } from './tours.palette'
+import type { OverviewTour } from './ToursOverviewMap'
 import type { Tour, TourDelivery, Assignment, Lookup } from './tournees.types'
+
+// Lazy-load : Leaflet hors bundle initial (chunk séparé).
+const ToursOverviewMap = lazy(() => import('./ToursOverviewMap'))
 
 export function Tournees() {
   const { companyId } = useProfile()
@@ -101,6 +106,26 @@ export function Tournees() {
 
   const vehicleLabel = (id: string | null) => vehicles.find(v => v.id === id)?.label
   const driverLabel  = (id: string | null) => drivers.find(d => d.id === id)?.label
+
+  // Tournées préparées pour la carte d'ensemble (une couleur par tournée, par ordre).
+  const overviewTours: OverviewTour[] = useMemo(
+    () => grouped.map((g, i) => ({
+      id: g.tour.id,
+      geometry: g.tour.geometry,
+      color: colorForIndex(i),
+      vehicleLabel: vehicleLabel(g.tour.vehicle_id) ?? 'Véhicule',
+      totalKm: g.tour.total_km,
+      totalMin: g.tour.total_duration_min,
+      stops: g.stops
+        .filter(s => s.delivery_lat != null && s.delivery_lng != null)
+        .map(s => ({ stop_order: s.stop_order, lat: s.delivery_lat as number, lng: s.delivery_lng as number })),
+    })),
+    // vehicleLabel dépend de `vehicles` ; on recalcule quand l'un des deux change.
+    [grouped, vehicles], // eslint-disable-line react-hooks/exhaustive-deps
+  )
+
+  const hasMapData = depotGeocoded ||
+    overviewTours.some(t => (t.geometry && t.geometry.length > 0) || t.stops.length > 0)
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const toggleVehicle = (vid: string) => setSelectedVehicles(prev => {
@@ -247,7 +272,7 @@ export function Tournees() {
           </div>
         )}
 
-        {/* Récap + tournées */}
+        {/* Récap + carte d'ensemble + tournées */}
         {tours.length > 0 && (
           <>
             <div className="grid grid-cols-2 gap-3">
@@ -257,14 +282,30 @@ export function Tournees() {
                 value={formatDuration(totals.totalMin)} />
             </div>
 
+            {/* Carte d'ensemble — toutes les tournées, une couleur par véhicule */}
+            {hasMapData && (
+              <Suspense fallback={
+                <div className="h-[420px] w-full rounded-[var(--r-lg)] border border-[var(--border)]
+                  flex items-center justify-center text-[var(--fs-sm)] text-[var(--text-muted)]">
+                  Chargement de la carte…
+                </div>
+              }>
+                <ToursOverviewMap
+                  tours={overviewTours}
+                  depot={depotGeocoded ? { lat: depot.lat as number, lng: depot.lng as number } : null}
+                />
+              </Suspense>
+            )}
+
             <div className="flex flex-col gap-4">
-              {grouped.map(g => (
+              {grouped.map((g, i) => (
                 <TourCard
                   key={g.tour.id}
                   tour={g.tour}
                   stops={g.stops}
                   vehicleLabel={vehicleLabel(g.tour.vehicle_id)}
                   driverLabel={driverLabel(g.tour.driver_id)}
+                  color={colorForIndex(i)}
                   onChanged={loadBoard}
                 />
               ))}
