@@ -126,12 +126,16 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
   // Suppression définitive — président uniquement, interdite si le client a des livraisons.
   const handleDeleteClick = async () => {
     if (!client) return
-    const n = await countDeliveriesForClient(client.id)
-    if (n > 0) {
-      toast(`Ce client a ${n} livraison(s) : suppression impossible`, 'error')
-      return
+    try {
+      const n = await countDeliveriesForClient(client.id)
+      if (n > 0) {
+        toast(`Ce client a ${n} livraison(s) liée(s), suppression impossible`, 'error')
+        return
+      }
+      setConfirmDelete(true)
+    } catch (e) {
+      toast(`Vérification des livraisons liées impossible : ${(e as Error).message}`, 'error')
     }
-    setConfirmDelete(true)
   }
 
   const handleDelete = async () => {
