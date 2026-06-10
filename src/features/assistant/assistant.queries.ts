@@ -1,71 +1,26 @@
 import { supabase } from '../../app/providers'
-import { effectiveHtCts, centimesToEuros } from '../../shared/lib/money'
 import { SITE_KNOWLEDGE } from './assistant.knowledge'
 import type { AssistantMessage } from './AssistantContext'
-
-// ── Outil de lecture : KPIs du mois ───────────────────────────────────────────
-// Réutilise la MÊME définition du CA HT que les onglets Statistiques et Rentabilité :
-//   deliveries.amount_ht_cts (via effectiveHtCts), statut != 'annulee', filtre sur `date`.
-// Voir statistiques.logic.ts (caMensuel/annualTotals) et rentabilite.logic.ts (monthlyRows).
-// RLS appliquée par le client authentifié — aucun company_id en dur.
-
-export interface KpisMois {
-  mois: string          // 'YYYY-MM'
-  ca_ht_eur: number     // euros (nombre)
-  nb_livraisons: number // hors annulées
-  nb_facturees: number
-  nb_payees: number
-}
-
-function monthBounds(mois?: string): { label: string; start: string; end: string } {
-  let y: number, m: number
-  if (mois && /^\d{4}-\d{2}$/.test(mois)) {
-    y = Number(mois.slice(0, 4))
-    m = Number(mois.slice(5, 7)) - 1
-  } else {
-    const now = new Date()
-    y = now.getFullYear()
-    m = now.getMonth()
-  }
-  const iso = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  return {
-    label: `${y}-${String(m + 1).padStart(2, '0')}`,
-    start: iso(new Date(y, m, 1)),
-    end: iso(new Date(y, m + 1, 0)), // dernier jour du mois
-  }
-}
-
-export async function getKpisMois(mois?: string): Promise<KpisMois> {
-  const { label, start, end } = monthBounds(mois)
-
-  // Même projection que les onglets : seule `amount_ht_cts` est lue (pas montant_ht_cts),
-  // pour un CA strictement identique à l'affichage de Statistiques/Rentabilité.
-  const { data, error } = await supabase
-    .from('deliveries')
-    .select('amount_ht_cts, statut')
-    .gte('date', start)
-    .lte('date', end)
-    .neq('statut', 'annulee')
-
-  if (error) throw new Error(error.message)
-  const rows = data ?? []
-
-  const caCts = rows.reduce((s, d) => s + effectiveHtCts(d), 0)
-
-  return {
-    mois: label,
-    ca_ht_eur: centimesToEuros(caCts),
-    nb_livraisons: rows.length,
-    nb_facturees: rows.filter(d => d.statut === 'facturee').length,
-    nb_payees: rows.filter(d => d.statut === 'payee').length,
-  }
-}
+import {
+  getKpisMois, getAlertes, getImpayes, getTresorerie, getChargesMois,
+  getTva, getClient, getClientsList, getFournisseursList,
+} from './assistant.tools'
 
 // ── Registre d'outils front (exécutés localement, résultat renvoyé à l'IA) ─────
+// Chaque outil réutilise la query/logique de l'onglet correspondant (cf. assistant.tools.ts).
+
+const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
 const ASSISTANT_TOOLS: Record<string, (args: any) => Promise<unknown>> = {
-  get_kpis_mois: (args) => getKpisMois(typeof args?.mois === 'string' ? args.mois : undefined),
+  get_kpis_mois:    (args) => getKpisMois(str(args?.mois)),
+  get_alertes:      () => getAlertes(),
+  get_impayes:      () => getImpayes(),
+  get_tresorerie:   () => getTresorerie(),
+  get_charges_mois: (args) => getChargesMois(str(args?.mois)),
+  get_tva:          (args) => getTva(str(args?.mois)),
+  get_client:       (args) => getClient(str(args?.nom) ?? ''),
+  get_clients:      () => getClientsList(),
+  get_fournisseurs: () => getFournisseursList(),
 }
 
 // ── Boucle de tour (function calling) ─────────────────────────────────────────
