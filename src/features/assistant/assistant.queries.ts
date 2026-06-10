@@ -36,6 +36,10 @@ const ASSISTANT_TOOLS: Record<string, (args: any) => Promise<unknown>> = {
   get_heures:        (args) => getHeures(str(args?.membre), str(args?.mois)),
 }
 
+// Outils d'ÉCRITURE : jamais exécutés automatiquement. Quand l'IA en demande un,
+// la boucle s'arrête et renvoie une proposition d'action (carte de confirmation UI).
+const WRITE_TOOLS = new Set<string>(['create_livraison'])
+
 // ── Boucle de tour (function calling) ─────────────────────────────────────────
 
 interface ToolCall { id: string; name: string; arguments: unknown }
@@ -73,15 +77,22 @@ async function readFunctionErrorMessage(error: unknown): Promise<string | null> 
 
 const MAX_ITERATIONS = 5
 
+/** Résultat d'un tour : soit du texte, soit une proposition d'action d'écriture. */
+export type AssistantTurnResult =
+  | { kind: 'text'; text: string }
+  | { kind: 'action'; tool: string; args: unknown }
+
 /**
  * Joue un tour d'assistant avec function calling.
  * `displayHistory` = messages d'AFFICHAGE (user/assistant texte) uniquement ;
  * les messages tool_calls/tool vivent dans la boucle d'un tour et ne sont pas persistés.
+ * Un outil d'ÉCRITURE n'est jamais exécuté ici : la boucle s'arrête et renvoie
+ * { kind:'action', … } (le tool_call d'écriture n'est PAS poussé dans l'historique).
  */
 export async function runAssistantTurn(
   displayHistory: AssistantMessage[],
   currentTab?: string,
-): Promise<string> {
+): Promise<AssistantTurnResult> {
   const mistralMessages: unknown[] = displayHistory.map(m => ({ role: m.role, content: m.text }))
 
   for (let i = 0; i < MAX_ITERATIONS; i++) {
@@ -97,18 +108,27 @@ export async function runAssistantTurn(
     const res = data as AssistantResponse
     if (!res?.ok) {
       // L'Edge renvoie les erreurs en HTTP 200 ; le rate-limit n'est pas une vraie erreur.
-      if (res?.rate_limited) return RATE_LIMIT_MESSAGE
+      if (res?.rate_limited) return { kind: 'text', text: RATE_LIMIT_MESSAGE }
       throw new Error(res?.error ?? 'Assistant indisponible')
     }
 
     if (res.data?.type === 'message') {
-      return res.data.content ?? ''
+      return { kind: 'text', text: res.data.content ?? '' }
     }
 
     if (res.data?.type === 'tool_calls') {
-      // Repush le message brut de l'IA TEL QUEL, puis le résultat de chaque outil.
+      const calls = res.data.tool_calls ?? []
+
+      // Outil d'écriture : on n'exécute rien, on ne persiste pas le tool_call,
+      // on renvoie une proposition d'action à confirmer côté UI.
+      const writeCall = calls.find(tc => WRITE_TOOLS.has(tc.name))
+      if (writeCall) {
+        return { kind: 'action', tool: writeCall.name, args: writeCall.arguments }
+      }
+
+      // Outils de lecture : repush le message brut de l'IA TEL QUEL, puis les résultats.
       mistralMessages.push(res.data.assistant_message)
-      for (const tc of res.data.tool_calls ?? []) {
+      for (const tc of calls) {
         let result: unknown
         try {
           const tool = ASSISTANT_TOOLS[tc.name]
@@ -131,5 +151,5 @@ export async function runAssistantTurn(
     throw new Error('Réponse assistant inattendue')
   }
 
-  return "Je n'ai pas réussi à aboutir, reformule ta question."
+  return { kind: 'text', text: "Je n'ai pas réussi à aboutir, reformule ta question." }
 }
