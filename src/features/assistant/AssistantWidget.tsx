@@ -1,28 +1,29 @@
 import { useState, useRef, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Sparkles, X, Send } from 'lucide-react'
-import { routeHelp, GREETING } from './assistant.logic'
-
-interface Message {
-  role: 'user' | 'assistant'
-  text: string
-}
+import { useAssistant } from './AssistantContext'
+import { askAssistant } from './assistant.queries'
+import { tabLabelForPath } from './assistant.knowledge'
 
 /**
  * Assistant flottant global (monté dans le Shell, présent sur toutes les pages).
- * ÉTAPE 2 : UI + chat d'aide à l'usage. Le « cerveau » est un stub local
- * (routeHelp, mots-clés issus de docs/site-map.md) — AUCUN appel réseau/IA.
+ * ÉTAPE 3a : chat d'aide à l'usage connecté à l'IA (Edge Function `assistant-chat`,
+ * Mistral). L'état de conversation vit dans <AssistantProvider> (au-dessus du
+ * routeur) et SURVIT aux changements d'onglet.
  */
 export function AssistantWidget() {
-  const [open, setOpen] = useState(false)
+  const { open, setOpen, messages, setMessages, sending, setSending } = useAssistant()
   const [input, setInput] = useState('')
-  const [messages, setMessages] = useState<Message[]>([{ role: 'assistant', text: GREETING }])
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Auto-scroll vers le dernier message.
+  const location = useLocation()
+  const currentTab = tabLabelForPath(location.pathname)
+
+  // Auto-scroll vers le dernier message (et pendant l'indicateur de saisie).
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, open])
+  }, [messages, open, sending])
 
   // Focus du champ à l'ouverture.
   useEffect(() => {
@@ -35,14 +36,27 @@ export function AssistantWidget() {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
     document.addEventListener('keydown', h)
     return () => document.removeEventListener('keydown', h)
-  }, [open])
+  }, [open, setOpen])
 
-  const send = () => {
+  const send = async () => {
     const text = input.trim()
-    if (!text) return
-    const reply = routeHelp(text) // stub provisoire (pas d'IA)
-    setMessages(prev => [...prev, { role: 'user', text }, { role: 'assistant', text: reply }])
+    if (!text || sending) return
+
+    const history = [...messages, { role: 'user' as const, text }]
+    setMessages(history)
     setInput('')
+    setSending(true)
+    try {
+      const reply = await askAssistant(
+        history.map(m => ({ role: m.role, content: m.text })),
+        currentTab,
+      )
+      setMessages(prev => [...prev, { role: 'assistant', text: reply || '(réponse vide)' }])
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'assistant', text: `⚠️ ${(e as Error).message}` }])
+    } finally {
+      setSending(false)
+    }
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -82,7 +96,9 @@ export function AssistantWidget() {
             border-b border-[var(--border)] bg-[var(--bg-elevated)]">
             <Sparkles size={16} className="text-[var(--brand)]" />
             <span className="font-display font-semibold text-[var(--text)]">Assistant MCA</span>
-            <span className="text-[var(--fs-xs)] text-[var(--text-disabled)]">provisoire</span>
+            {currentTab && (
+              <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] truncate">· {currentTab}</span>
+            )}
             <button
               onClick={() => setOpen(false)}
               aria-label="Fermer l'assistant"
@@ -98,6 +114,7 @@ export function AssistantWidget() {
             {messages.map((m, i) => (
               <Bubble key={i} role={m.role} text={m.text} />
             ))}
+            {sending && <TypingBubble />}
           </div>
 
           {/* Saisie */}
@@ -107,14 +124,16 @@ export function AssistantWidget() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder="Pose une question d'usage…"
+              disabled={sending}
+              placeholder={sending ? 'Réponse en cours…' : "Pose une question d'usage…"}
               className="flex-1 min-h-[44px] px-3 rounded-[var(--r-md)] bg-[var(--bg)]
                 border border-[var(--border)] text-[var(--text)] text-[var(--fs-body)]
-                focus:outline-none focus:border-[var(--brand)] transition-colors"
+                focus:outline-none focus:border-[var(--brand)] transition-colors
+                disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <button
               onClick={send}
-              disabled={!input.trim()}
+              disabled={!input.trim() || sending}
               aria-label="Envoyer"
               className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-[var(--r-md)]
                 bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)]
@@ -140,6 +159,25 @@ function Bubble({ role, text }: { role: 'user' | 'assistant'; text: string }) {
             : 'bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)] rounded-bl-sm'}`}
       >
         {renderMarkdownBold(text)}
+      </div>
+    </div>
+  )
+}
+
+/** Indicateur « l'assistant rédige » pendant l'appel IA. */
+function TypingBubble() {
+  return (
+    <div className="flex justify-start">
+      <div className="px-3.5 py-2.5 rounded-[var(--r-lg)] rounded-bl-sm bg-[var(--bg-card)] border border-[var(--border)]">
+        <span className="flex items-center gap-1">
+          {[0, 150, 300].map(d => (
+            <span
+              key={d}
+              className="w-1.5 h-1.5 rounded-full bg-[var(--text-muted)] animate-bounce"
+              style={{ animationDelay: `${d}ms` }}
+            />
+          ))}
+        </span>
       </div>
     </div>
   )
