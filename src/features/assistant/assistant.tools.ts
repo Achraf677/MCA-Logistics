@@ -25,8 +25,61 @@ import { kpiSummary as chargesKpiSummary, CATEGORY_LABELS as CHARGE_CATEGORY_LAB
 import { getTvaData } from '../tva/tva.queries'
 import { computeTva } from '../tva/tva.logic'
 
+// Vague B — opérations / flotte / équipe
+import { getDeliveries } from '../livraisons/livraisons.queries'
+import { STATUS_LABELS as DELIVERY_STATUS_LABELS } from '../livraisons/livraisons.logic'
+import type { DeliveryRow, DeliveryFilters } from '../livraisons/livraisons.types'
+
+import { fetchToursByDate, getActiveVehicles, getActiveDrivers, getDeliveriesForDate } from '../tournees/tournees.queries'
+import type { Tour, TourDelivery } from '../tournees/tournees.types'
+
+import { getIncidents } from '../incidents/incidents.queries'
+import { TYPE_LABELS as INCIDENT_TYPE_LABELS, STATUS_LABELS as INCIDENT_STATUS_LABELS } from '../incidents/incidents.logic'
+import type { IncidentRow, IncidentFilters } from '../incidents/incidents.types'
+
+import { getInspections } from '../inspections/inspections.queries'
+import { TYPE_LABELS as INSPECTION_TYPE_LABELS, STATUS_LABELS as INSPECTION_STATUS_LABELS } from '../inspections/inspections.logic'
+import type { InspectionRow, InspectionFilters } from '../inspections/inspections.types'
+
+import { getVehicles } from '../vehicules/vehicules.queries'
+import { STATUS_LABELS as VEHICLE_STATUS_LABELS } from '../vehicules/vehicules.logic'
+import type { Vehicle } from '../vehicules/vehicules.types'
+
+import { getFuelLogs } from '../carburant/carburant.queries'
+import { kpiSummary as fuelKpiSummary } from '../carburant/carburant.logic'
+import type { FuelLogRow } from '../carburant/carburant.types'
+
+import { getMaintenances } from '../entretiens/entretiens.queries'
+import { MAINTENANCE_TYPE_LABELS } from '../entretiens/entretiens.logic'
+import type { MaintenanceRow } from '../entretiens/entretiens.types'
+
+import { getTeamMembers } from '../equipe/equipe.queries'
+import { getRoleLabel, getContractLabel } from '../equipe/equipe.logic'
+import type { TeamMember } from '../equipe/equipe.types'
+
+import { getWorkHours } from '../heures/heures.queries'
+import type { WorkHourRow } from '../heures/heures.types'
+
 const MAX_LIST = 30
 const DAY_MS = 86_400_000
+
+function todayISO(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** companyId du profil authentifié (jamais codé en dur). null si indisponible. */
+async function getCompanyId(): Promise<string | null> {
+  const { data: auth } = await supabase.auth.getUser()
+  const uid = auth.user?.id
+  if (!uid) return null
+  const { data } = await supabase.from('profiles').select('company_id').eq('id', uid).single()
+  return (data as { company_id?: string } | null)?.company_id ?? null
+}
+
+function hoursOf(minutes: number): number {
+  return Math.round((minutes / 60) * 10) / 10
+}
 
 // ── Bornes d'un mois 'YYYY-MM' (défaut : mois courant) ────────────────────────
 
@@ -308,5 +361,209 @@ export async function getFournisseursList() {
       nom: s.name,
       categorie: getCategoryLabel(s.category),
     })),
+  }
+}
+
+// ═══════════════════════ VAGUE B — OPÉRATIONS / FLOTTE / ÉQUIPE ═══════════════
+
+// ── 1) Livraisons ──────────────────────────────────────────────────────────────
+// Réutilise getDeliveries() (onglet Livraisons). Montant HT via effectiveHtCts.
+// Pas de champ « ville » structuré → on remonte delivery_address.
+
+export async function getLivraisons(date?: string, statut?: string) {
+  const filters: DeliveryFilters = {}
+  if (date) { filters.date_from = date; filters.date_to = date }
+  if (statut) filters.status = statut as DeliveryFilters['status']
+  const { data } = await getDeliveries(filters)
+  const rows = (data ?? []) as unknown as DeliveryRow[]
+  return {
+    total: rows.length,
+    livraisons: rows.slice(0, MAX_LIST).map(d => ({
+      client: d.clients?.name ?? '—',
+      date: d.date,
+      statut: DELIVERY_STATUS_LABELS[d.statut] ?? d.statut,
+      montant_ht_eur: centimesToEuros(effectiveHtCts(d)),
+      ville: d.delivery_address ?? null,
+    })),
+  }
+}
+
+// ── 2) Tournées du jour ────────────────────────────────────────────────────────
+// Réutilise fetchToursByDate() + getActiveVehicles/Drivers + getDeliveriesForDate (onglet Tournées).
+
+const TOUR_STATUS_LABELS: Record<string, string> = {
+  brouillon: 'Brouillon', optimisee: 'Optimisée', en_cours: 'En cours', terminee: 'Terminée',
+}
+
+export async function getTournees(date?: string) {
+  const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayISO()
+  const companyId = await getCompanyId()
+  if (!companyId) return { date: day, total: 0, tournees: [] }
+
+  const [toursRes, vehRes, drvRes, delRes] = await Promise.all([
+    fetchToursByDate(companyId, day),
+    getActiveVehicles(),
+    getActiveDrivers(),
+    getDeliveriesForDate(companyId, day),
+  ])
+  const vMap = new Map((vehRes.data ?? []).map(v => [v.id, v.label]))
+  const dMap = new Map((drvRes.data ?? []).map(d => [d.id, d.full_name]))
+
+  const stopCount = new Map<string, number>()
+  for (const d of (delRes.data ?? []) as unknown as TourDelivery[]) {
+    if (d.tour_id) stopCount.set(d.tour_id, (stopCount.get(d.tour_id) ?? 0) + 1)
+  }
+
+  const tours = (toursRes.data ?? []) as Tour[]
+  return {
+    date: day,
+    total: tours.length,
+    tournees: tours.slice(0, MAX_LIST).map(t => ({
+      vehicule: t.vehicle_id ? (vMap.get(t.vehicle_id) ?? '—') : '—',
+      chauffeur: t.driver_id ? (dMap.get(t.driver_id) ?? '—') : '—',
+      nb_arrets: stopCount.get(t.id) ?? 0,
+      km: t.total_km != null ? Number(t.total_km) : null,
+      statut: TOUR_STATUS_LABELS[t.status] ?? t.status,
+    })),
+  }
+}
+
+// ── 3) Incidents ───────────────────────────────────────────────────────────────
+// Réutilise getIncidents() (onglet Incidents). Défaut : non clos (ouvert + en_cours).
+
+export async function getIncidentsList(statut?: string) {
+  const filters: IncidentFilters = {}
+  if (statut) filters.status = statut as IncidentFilters['status']
+  const { data } = await getIncidents(filters)
+  let rows = (data ?? []) as unknown as IncidentRow[]
+  if (!statut) rows = rows.filter(r => r.status !== 'clos')
+  return {
+    total: rows.length,
+    incidents: rows.slice(0, MAX_LIST).map(r => ({
+      date: r.date,
+      type: r.type ? (INCIDENT_TYPE_LABELS[r.type] ?? r.type) : null,
+      vehicule: r.vehicles?.label ?? '—',
+      statut: INCIDENT_STATUS_LABELS[r.status] ?? r.status,
+      description: r.description ?? null,
+    })),
+  }
+}
+
+// ── 4) Inspections ─────────────────────────────────────────────────────────────
+// Réutilise getInspections() (onglet Inspections). Champ défauts = `defects`.
+
+export async function getInspectionsList(statut?: string) {
+  const filters: InspectionFilters = {}
+  if (statut) filters.status = statut as InspectionFilters['status']
+  const { data } = await getInspections(filters)
+  const rows = (data ?? []) as unknown as InspectionRow[]
+  return {
+    total: rows.length,
+    inspections: rows.slice(0, MAX_LIST).map(r => ({
+      date: r.date,
+      vehicule: r.vehicles?.label ?? '—',
+      type: r.type ? (INSPECTION_TYPE_LABELS[r.type] ?? r.type) : null,
+      statut: INSPECTION_STATUS_LABELS[r.status] ?? r.status,
+      defauts: r.defects ?? null,
+    })),
+  }
+}
+
+// ── 5) Véhicules ───────────────────────────────────────────────────────────────
+// Réutilise getVehicles() (onglet Véhicules).
+
+export async function getVehicules() {
+  const { data } = await getVehicles()
+  const rows = (data ?? []) as unknown as Vehicle[]
+  return {
+    total: rows.length,
+    vehicules: rows.slice(0, MAX_LIST).map(v => ({
+      label: v.label,
+      plaque: v.plate,
+      statut: VEHICLE_STATUS_LABELS[v.status] ?? v.status,
+      ct_expiry: v.ct_expiry ?? null,
+      insurance_expiry: v.insurance_expiry ?? null,
+      next_revision_date: v.next_revision_date ?? null,
+    })),
+  }
+}
+
+// ── 6) Carburant du mois ───────────────────────────────────────────────────────
+// Réutilise getFuelLogs() + kpiSummary() (onglet Carburant).
+
+export async function getCarburantMois(mois?: string) {
+  const { label, start, end } = monthBounds(mois)
+  const { data } = await getFuelLogs({ date_from: start, date_to: end })
+  const rows = (data ?? []) as unknown as FuelLogRow[]
+  const k = fuelKpiSummary(rows)
+  return {
+    mois: label,
+    total_eur: centimesToEuros(k.totalCts),
+    nb_pleins: k.nb,
+    total_litres: k.totalLiters,
+  }
+}
+
+// ── 7) Entretiens à venir ──────────────────────────────────────────────────────
+// Réutilise getMaintenances() (onglet Entretiens) ; filtre next_due_date >= aujourd'hui, tri asc.
+
+export async function getEntretiens() {
+  const { data } = await getMaintenances()
+  const rows = (data ?? []) as unknown as MaintenanceRow[]
+  const today = todayISO()
+  const upcoming = rows
+    .filter(r => r.next_due_date != null && r.next_due_date >= today)
+    .sort((a, b) => (a.next_due_date! < b.next_due_date! ? -1 : a.next_due_date! > b.next_due_date! ? 1 : 0))
+  return {
+    total: upcoming.length,
+    prochains: upcoming.slice(0, MAX_LIST).map(r => ({
+      vehicule: r.vehicles?.label ?? '—',
+      type: r.type ? (MAINTENANCE_TYPE_LABELS[r.type] ?? r.type) : null,
+      next_due_date: r.next_due_date,
+      next_due_km: r.next_due_km ?? null,
+    })),
+  }
+}
+
+// ── 8) Équipe ──────────────────────────────────────────────────────────────────
+// Réutilise getTeamMembers() + getRoleLabel/getContractLabel (onglet Équipe).
+
+export async function getEquipe() {
+  const { data } = await getTeamMembers({ active: true })
+  const rows = (data ?? []) as TeamMember[]
+  return {
+    total: rows.length,
+    membres: rows.slice(0, MAX_LIST).map(m => ({
+      nom: m.full_name,
+      role: m.role ? getRoleLabel(m.role) : (m.role_label ?? '—'),
+      contrat: getContractLabel(m.contract_type),
+      licence_b_expiry: m.licence_b_expiry ?? null,
+      medical_visit_expiry: m.medical_visit_expiry ?? null,
+      fin_contrat: m.end_date ?? null,
+    })),
+  }
+}
+
+// ── 9) Heures du mois ──────────────────────────────────────────────────────────
+// Réutilise getWorkHours() (onglet Heures) ; total_minutes calculé en base.
+
+export async function getHeures(membre?: string, mois?: string) {
+  const { label, start, end } = monthBounds(mois)
+  const { data } = await getWorkHours({ date_from: start, date_to: end })
+  let rows = (data ?? []) as unknown as WorkHourRow[]
+  if (membre && membre.trim()) {
+    const q = membre.trim().toLowerCase()
+    rows = rows.filter(r => (r.team_members?.full_name ?? '').toLowerCase().includes(q))
+  }
+  const totalMin = rows.reduce((s, r) => s + (r.total_minutes ?? 0), 0)
+  const byMember = new Map<string, number>()
+  for (const r of rows) {
+    const name = r.team_members?.full_name ?? '—'
+    byMember.set(name, (byMember.get(name) ?? 0) + (r.total_minutes ?? 0))
+  }
+  return {
+    mois: label,
+    total_heures: hoursOf(totalMin),
+    par_membre: [...byMember.entries()].slice(0, MAX_LIST).map(([m, min]) => ({ membre: m, heures: hoursOf(min) })),
   }
 }

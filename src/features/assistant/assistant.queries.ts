@@ -4,6 +4,8 @@ import type { AssistantMessage } from './AssistantContext'
 import {
   getKpisMois, getAlertes, getImpayes, getTresorerie, getChargesMois,
   getTva, getClient, getClientsList, getFournisseursList,
+  getLivraisons, getTournees, getIncidentsList, getInspectionsList,
+  getVehicules, getCarburantMois, getEntretiens, getEquipe, getHeures,
 } from './assistant.tools'
 
 // ── Registre d'outils front (exécutés localement, résultat renvoyé à l'IA) ─────
@@ -12,6 +14,7 @@ import {
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
 const ASSISTANT_TOOLS: Record<string, (args: any) => Promise<unknown>> = {
+  // Vague A — finance / tiers / alertes
   get_kpis_mois:    (args) => getKpisMois(str(args?.mois)),
   get_alertes:      () => getAlertes(),
   get_impayes:      () => getImpayes(),
@@ -21,6 +24,16 @@ const ASSISTANT_TOOLS: Record<string, (args: any) => Promise<unknown>> = {
   get_client:       (args) => getClient(str(args?.nom) ?? ''),
   get_clients:      () => getClientsList(),
   get_fournisseurs: () => getFournisseursList(),
+  // Vague B — opérations / flotte / équipe
+  get_livraisons:    (args) => getLivraisons(str(args?.date), str(args?.statut)),
+  get_tournees:      (args) => getTournees(str(args?.date)),
+  get_incidents:     (args) => getIncidentsList(str(args?.statut)),
+  get_inspections:   (args) => getInspectionsList(str(args?.statut)),
+  get_vehicules:     () => getVehicules(),
+  get_carburant_mois:(args) => getCarburantMois(str(args?.mois)),
+  get_entretiens:    () => getEntretiens(),
+  get_equipe:        () => getEquipe(),
+  get_heures:        (args) => getHeures(str(args?.membre), str(args?.mois)),
 }
 
 // ── Boucle de tour (function calling) ─────────────────────────────────────────
@@ -34,8 +47,15 @@ type AssistantData =
 interface AssistantResponse {
   ok?: boolean
   error?: string
+  rate_limited?: boolean
   data?: AssistantData
 }
+
+const RATE_LIMIT_MESSAGE =
+  "⏳ L'assistant reçoit trop de demandes à la fois. Patiente quelques secondes et réessaie."
+
+const SMOOTHING_MS = 350
+const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 
 /** Tente de lire le corps JSON d'une erreur HTTP de Function. */
 async function readFunctionErrorMessage(error: unknown): Promise<string | null> {
@@ -75,7 +95,11 @@ export async function runAssistantTurn(
     }
 
     const res = data as AssistantResponse
-    if (!res?.ok) throw new Error(res?.error ?? 'Assistant indisponible')
+    if (!res?.ok) {
+      // L'Edge renvoie les erreurs en HTTP 200 ; le rate-limit n'est pas une vraie erreur.
+      if (res?.rate_limited) return RATE_LIMIT_MESSAGE
+      throw new Error(res?.error ?? 'Assistant indisponible')
+    }
 
     if (res.data?.type === 'message') {
       return res.data.content ?? ''
@@ -99,6 +123,8 @@ export async function runAssistantTurn(
           content: JSON.stringify(result),
         })
       }
+      // Lissage entre deux itérations pour ménager le rate-limit de l'Edge.
+      await sleep(SMOOTHING_MS)
       continue
     }
 
