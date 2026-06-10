@@ -11,6 +11,19 @@ export interface AssistantMessage {
   text: string
 }
 
+/** Action d'écriture en attente de confirmation (carte UI éphémère). */
+export interface PendingAction {
+  recap: {
+    client: string
+    date: string
+    montant_ht_eur: number | null
+    type: string | null
+    adresse: string | null
+    ville: string | null
+  }
+  payload: unknown
+}
+
 interface AssistantCtx {
   open: boolean
   setOpen: (v: boolean) => void
@@ -18,6 +31,8 @@ interface AssistantCtx {
   setMessages: Dispatch<SetStateAction<AssistantMessage[]>>
   sending: boolean
   setSending: (v: boolean) => void
+  pendingAction: PendingAction | null
+  setPendingAction: (a: PendingAction | null) => void
 }
 
 const Ctx = createContext<AssistantCtx | null>(null)
@@ -31,9 +46,10 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<AssistantMessage[]>([{ role: 'assistant', text: GREETING }])
   const [sending, setSending] = useState(false)
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
 
   return (
-    <Ctx.Provider value={{ open, setOpen, messages, setMessages, sending, setSending }}>
+    <Ctx.Provider value={{ open, setOpen, messages, setMessages, sending, setSending, pendingAction, setPendingAction }}>
       {children}
     </Ctx.Provider>
   )

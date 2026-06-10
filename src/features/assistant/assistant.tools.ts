@@ -26,9 +26,9 @@ import { getTvaData } from '../tva/tva.queries'
 import { computeTva } from '../tva/tva.logic'
 
 // Vague B — opérations / flotte / équipe
-import { getDeliveries } from '../livraisons/livraisons.queries'
+import { getDeliveries, createDelivery } from '../livraisons/livraisons.queries'
 import { STATUS_LABELS as DELIVERY_STATUS_LABELS } from '../livraisons/livraisons.logic'
-import type { DeliveryRow, DeliveryFilters } from '../livraisons/livraisons.types'
+import type { DeliveryRow, DeliveryFilters, DeliveryInsert, DeliveryType } from '../livraisons/livraisons.types'
 
 import { fetchToursByDate, getActiveVehicles, getActiveDrivers, getDeliveriesForDate } from '../tournees/tournees.queries'
 import type { Tour, TourDelivery } from '../tournees/tournees.types'
@@ -566,4 +566,114 @@ export async function getHeures(membre?: string, mois?: string) {
     total_heures: hoursOf(totalMin),
     par_membre: [...byMember.entries()].slice(0, MAX_LIST).map(([m, min]) => ({ membre: m, heures: hoursOf(min) })),
   }
+}
+
+// ═══════════════════════ ÉCRITURE — create_livraison (avec confirmation) ══════
+// Préparation (résolution client + validation + payload) ; l'EXÉCUTION n'a lieu
+// qu'après confirmation explicite côté UI. Réutilise createDelivery() et la même
+// forme de payload que le drawer « Nouvelle livraison » (DrawerLivraison.handleSave).
+
+export interface CreateLivraisonArgs {
+  client?: string
+  date?: string
+  montant_ht_eur?: number
+  type?: string
+  adresse?: string
+  ville?: string
+}
+
+export interface CreateLivraisonRecap {
+  client: string
+  date: string
+  montant_ht_eur: number | null
+  type: string | null
+  adresse: string | null
+  ville: string | null
+}
+
+export type PrepareCreateLivraison =
+  | { ok: false; message: string }
+  | { ok: true; recap: CreateLivraisonRecap; payload: DeliveryInsert }
+
+const DELIVERY_TYPES = ['medical', 'ecommerce', 'retail', 'particulier']
+
+export async function prepareCreateLivraison(args: CreateLivraisonArgs): Promise<PrepareCreateLivraison> {
+  const nom = (args.client ?? '').trim().replace(/[(),]/g, '')
+  if (!nom) return { ok: false, message: 'Client introuvable : précise le nom.' }
+
+  // Résolution du client par nom (ilike), parmi les actifs.
+  const { data, error } = await supabase
+    .from('clients')
+    .select('id, name')
+    .ilike('name', `%${nom}%`)
+    .eq('active', true)
+    .order('name')
+  if (error) return { ok: false, message: error.message }
+  const matches = (data ?? []) as { id: string; name: string }[]
+  if (matches.length === 0) return { ok: false, message: 'Client introuvable : précise le nom.' }
+  if (matches.length > 1) {
+    return { ok: false, message: `Plusieurs clients correspondent : ${matches.map(m => m.name).join(', ')}. Lequel ?` }
+  }
+  const client = matches[0]
+
+  // Validation de la date.
+  const date = (args.date ?? '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(new Date(date).getTime())) {
+    return { ok: false, message: 'Date invalide : indique une date au format AAAA-MM-JJ.' }
+  }
+
+  const companyId = await getCompanyId()
+  if (!companyId) return { ok: false, message: 'Profil non chargé : impossible de créer la livraison.' }
+
+  const type = args.type && DELIVERY_TYPES.includes(args.type) ? (args.type as DeliveryType) : null
+  const amount_ht_cts =
+    typeof args.montant_ht_eur === 'number' && args.montant_ht_eur > 0
+      ? Math.round(args.montant_ht_eur * 100)
+      : null
+  const adresse = args.adresse?.trim() || null
+  const ville = args.ville?.trim() || null
+  const delivery_address = [adresse, ville].filter(Boolean).join(', ') || null
+
+  // Même forme que DrawerLivraison.handleSave (création) — seules les colonnes v2 sont écrites.
+  const payload: DeliveryInsert = {
+    company_id: companyId,
+    client_id: client.id,
+    date,
+    statut: 'planifiee',
+    vehicle_id: null,
+    driver_id: null,
+    type,
+    description: null,
+    pickup_address: null,
+    delivery_address,
+    delivery_lat: null,
+    delivery_lng: null,
+    km: null,
+    weight_kg: null,
+    amount_ht_cts,
+    tva_cts: null,
+    amount_ttc_cts: null,
+    invoiced_at: null,
+    paid_at: null,
+    notes: null,
+  }
+
+  return {
+    ok: true,
+    recap: {
+      client: client.name,
+      date,
+      montant_ht_eur: amount_ht_cts != null ? amount_ht_cts / 100 : null,
+      type,
+      adresse,
+      ville,
+    },
+    payload,
+  }
+}
+
+/** Exécution réelle (après confirmation). Le payload provient de prepareCreateLivraison. */
+export async function executeCreateLivraison(payload: unknown): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await createDelivery(payload as DeliveryInsert)
+  return error ? { ok: false, error: error.message } : { ok: true }
 }

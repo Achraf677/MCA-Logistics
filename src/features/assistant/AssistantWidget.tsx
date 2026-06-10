@@ -1,24 +1,33 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Sparkles, X, Send } from 'lucide-react'
+import { Sparkles, X, Send, Check } from 'lucide-react'
 import { useAssistant } from './AssistantContext'
+import type { PendingAction } from './AssistantContext'
 import { runAssistantTurn } from './assistant.queries'
+import { prepareCreateLivraison, executeCreateLivraison } from './assistant.tools'
+import type { CreateLivraisonArgs } from './assistant.tools'
 import { tabLabelForPath } from './assistant.knowledge'
 
 /**
  * Assistant flottant global (monté dans le Shell, présent sur toutes les pages).
- * ÉTAPE 3a : chat d'aide à l'usage connecté à l'IA (Edge Function `assistant-chat`,
- * Mistral). L'état de conversation vit dans <AssistantProvider> (au-dessus du
- * routeur) et SURVIT aux changements d'onglet.
+ * Chat d'aide à l'usage + outils de lecture connectés à l'IA (assistant-chat,
+ * Mistral) + actions d'écriture avec confirmation (étape 5-1). L'état de
+ * conversation vit dans <AssistantProvider> (au-dessus du routeur) et survit à la navigation.
  */
 export function AssistantWidget() {
-  const { open, setOpen, messages, setMessages, sending, setSending } = useAssistant()
+  const {
+    open, setOpen, messages, setMessages, sending, setSending,
+    pendingAction, setPendingAction,
+  } = useAssistant()
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const location = useLocation()
   const currentTab = tabLabelForPath(location.pathname)
+
+  const pushAssistant = (text: string) => setMessages(prev => [...prev, { role: 'assistant', text }])
+  const blocked = sending || pendingAction !== null
 
   // Auto-scroll vers le dernier message (et pendant l'indicateur de saisie).
   useEffect(() => {
@@ -40,7 +49,7 @@ export function AssistantWidget() {
 
   const send = async () => {
     const text = input.trim()
-    if (!text || sending) return
+    if (!text || blocked) return
 
     const history = [...messages, { role: 'user' as const, text }]
     setMessages(history)
@@ -48,11 +57,19 @@ export function AssistantWidget() {
     setSending(true)
     try {
       // L'historique persistant reste en messages d'AFFICHAGE (user/assistant texte).
-      // La boucle function-calling gère elle-même les messages tool_calls/tool du tour.
-      const reply = await runAssistantTurn(history, currentTab)
-      setMessages(prev => [...prev, { role: 'assistant', text: reply || '(réponse vide)' }])
+      const result = await runAssistantTurn(history, currentTab)
+      if (result.kind === 'text') {
+        pushAssistant(result.text || '(réponse vide)')
+      } else if (result.tool === 'create_livraison') {
+        // Action d'écriture : on prépare et on demande confirmation (jamais exécutée auto).
+        const prep = await prepareCreateLivraison(result.args as CreateLivraisonArgs)
+        if (!prep.ok) pushAssistant(prep.message)
+        else setPendingAction({ recap: prep.recap, payload: prep.payload })
+      } else {
+        pushAssistant(`Action non prise en charge : ${result.tool}.`)
+      }
     } catch (e) {
-      setMessages(prev => [...prev, { role: 'assistant', text: `⚠️ ${(e as Error).message}` }])
+      pushAssistant(`⚠️ ${(e as Error).message}`)
     } finally {
       setSending(false)
     }
@@ -60,6 +77,32 @@ export function AssistantWidget() {
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
+  }
+
+  // ── Confirmation / annulation d'une action d'écriture ────────────────────────
+  const confirmAction = async () => {
+    if (!pendingAction) return
+    const { recap, payload } = pendingAction
+    setSending(true)
+    try {
+      const res = await executeCreateLivraison(payload)
+      if (res.ok) {
+        const montant = recap.montant_ht_eur != null ? `${recap.montant_ht_eur} € HT` : 'montant non précisé'
+        pushAssistant(`✅ Livraison créée : ${recap.client}, ${recap.date}, ${montant}.`)
+      } else {
+        pushAssistant(`❌ La création a échoué : ${res.error}.`)
+      }
+    } catch (e) {
+      pushAssistant(`❌ La création a échoué : ${(e as Error).message}.`)
+    } finally {
+      setPendingAction(null)
+      setSending(false)
+    }
+  }
+
+  const cancelAction = () => {
+    pushAssistant('Action annulée.')
+    setPendingAction(null)
   }
 
   return (
@@ -114,6 +157,14 @@ export function AssistantWidget() {
               <Bubble key={i} role={m.role} text={m.text} />
             ))}
             {sending && <TypingBubble />}
+            {pendingAction && (
+              <ActionCard
+                recap={pendingAction.recap}
+                busy={sending}
+                onConfirm={confirmAction}
+                onCancel={cancelAction}
+              />
+            )}
           </div>
 
           {/* Saisie */}
@@ -123,8 +174,12 @@ export function AssistantWidget() {
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={onKeyDown}
-              disabled={sending}
-              placeholder={sending ? 'Réponse en cours…' : "Pose une question d'usage…"}
+              disabled={blocked}
+              placeholder={
+                pendingAction ? 'Confirme ou annule l’action ci-dessus…'
+                : sending ? 'Réponse en cours…'
+                : "Pose une question d'usage…"
+              }
               className="flex-1 min-h-[44px] px-3 rounded-[var(--r-md)] bg-[var(--bg)]
                 border border-[var(--border)] text-[var(--text)] text-[var(--fs-body)]
                 focus:outline-none focus:border-[var(--brand)] transition-colors
@@ -132,7 +187,7 @@ export function AssistantWidget() {
             />
             <button
               onClick={send}
-              disabled={!input.trim() || sending}
+              disabled={!input.trim() || blocked}
               aria-label="Envoyer"
               className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-[var(--r-md)]
                 bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)]
@@ -158,6 +213,59 @@ function Bubble({ role, text }: { role: 'user' | 'assistant'; text: string }) {
             : 'bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)] rounded-bl-sm'}`}
       >
         {renderMarkdownBold(text)}
+      </div>
+    </div>
+  )
+}
+
+/** Carte de confirmation d'une action d'écriture (exécution UNIQUEMENT au clic Confirmer). */
+function ActionCard({
+  recap, busy, onConfirm, onCancel,
+}: {
+  recap: PendingAction['recap']
+  busy: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  const rows: [string, string][] = [
+    ['Client', recap.client],
+    ['Date', recap.date],
+    ['Montant HT', recap.montant_ht_eur != null ? `${recap.montant_ht_eur} €` : '—'],
+    ['Type', recap.type ?? '—'],
+    ['Adresse', [recap.adresse, recap.ville].filter(Boolean).join(', ') || '—'],
+  ]
+  return (
+    <div className="rounded-[var(--r-lg)] border border-[var(--brand)]/40 bg-[var(--bg-card)] overflow-hidden">
+      <div className="px-3.5 py-2 border-b border-[var(--border)] bg-[var(--brand-soft)]">
+        <span className="font-display font-semibold text-[var(--text)] text-[var(--fs-sm)]">Créer une livraison</span>
+      </div>
+      <dl className="px-3.5 py-2.5 flex flex-col gap-1">
+        {rows.map(([k, v]) => (
+          <div key={k} className="flex justify-between gap-3 text-[var(--fs-sm)]">
+            <dt className="text-[var(--text-muted)] shrink-0">{k}</dt>
+            <dd className="text-[var(--text)] text-right truncate">{v}</dd>
+          </div>
+        ))}
+      </dl>
+      <div className="flex items-center gap-2 px-3.5 pb-3 pt-1">
+        <button
+          onClick={onConfirm}
+          disabled={busy}
+          className="inline-flex items-center justify-center gap-1.5 min-h-[40px] flex-1 rounded-[var(--r-md)]
+            bg-[var(--success)] text-white font-medium hover:opacity-90 transition-opacity
+            disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Check size={15} /> {busy ? 'Création…' : 'Confirmer'}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          className="min-h-[40px] px-4 rounded-[var(--r-md)] border border-[var(--border-soft)]
+            text-[var(--text)] hover:bg-[var(--bg-card-hover)] transition-colors
+            disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Annuler
+        </button>
       </div>
     </div>
   )
