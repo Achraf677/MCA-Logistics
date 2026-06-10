@@ -1,6 +1,10 @@
 import { createContext, useContext, useState } from 'react'
 import type { ReactNode, Dispatch, SetStateAction } from 'react'
-import { GREETING } from './assistant.logic'
+
+/** Message d'accueil affiché à l'ouverture du panneau. */
+export const GREETING =
+  'Bonjour 👋 Je suis l’assistant MCA. Pose-moi une question d’usage '
+  + '(ex. « comment optimiser une tournée ») ou sur ton activité (ex. « quel est le CA du mois ? »).'
 
 export interface AssistantMessage {
   role: 'user' | 'assistant'
