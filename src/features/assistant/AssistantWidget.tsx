@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Sparkles, X, Send } from 'lucide-react'
 import { useAssistant } from './AssistantContext'
-import { askAssistant } from './assistant.queries'
+import { runAssistantTurn } from './assistant.queries'
 import { tabLabelForPath } from './assistant.knowledge'
 
 /**
@@ -47,10 +47,9 @@ export function AssistantWidget() {
     setInput('')
     setSending(true)
     try {
-      const reply = await askAssistant(
-        history.map(m => ({ role: m.role, content: m.text })),
-        currentTab,
-      )
+      // L'historique persistant reste en messages d'AFFICHAGE (user/assistant texte).
+      // La boucle function-calling gère elle-même les messages tool_calls/tool du tour.
+      const reply = await runAssistantTurn(history, currentTab)
       setMessages(prev => [...prev, { role: 'assistant', text: reply || '(réponse vide)' }])
     } catch (e) {
       setMessages(prev => [...prev, { role: 'assistant', text: `⚠️ ${(e as Error).message}` }])
