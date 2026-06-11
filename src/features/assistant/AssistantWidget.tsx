@@ -4,8 +4,14 @@ import { Sparkles, X, Send, Check } from 'lucide-react'
 import { useAssistant } from './AssistantContext'
 import type { PendingAction } from './AssistantContext'
 import { runAssistantTurn } from './assistant.queries'
-import { prepareCreateLivraison, prepareChangerStatutLivraison } from './assistant.tools'
-import type { CreateLivraisonArgs, ChangerStatutArgs } from './assistant.tools'
+import {
+  prepareCreateLivraison, prepareChangerStatutLivraison,
+  prepareCreateCharge, prepareCreateClient, prepareCreatePlein, prepareCreateIncident,
+} from './assistant.tools'
+import type {
+  CreateLivraisonArgs, ChangerStatutArgs,
+  CreateChargeArgs, CreateClientArgs, CreatePleinArgs, CreateIncidentArgs,
+} from './assistant.tools'
 import { tabLabelForPath } from './assistant.knowledge'
 
 /**
@@ -62,12 +68,15 @@ export function AssistantWidget() {
         pushAssistant(result.text || '(réponse vide)')
       } else {
         // Action d'écriture : on prépare et on demande confirmation (jamais exécutée auto).
+        const a = result.args
         const prep =
-          result.tool === 'create_livraison'
-            ? await prepareCreateLivraison(result.args as CreateLivraisonArgs)
-            : result.tool === 'changer_statut_livraison'
-              ? await prepareChangerStatutLivraison(result.args as ChangerStatutArgs)
-              : null
+          result.tool === 'create_livraison'        ? await prepareCreateLivraison(a as CreateLivraisonArgs)
+          : result.tool === 'changer_statut_livraison' ? await prepareChangerStatutLivraison(a as ChangerStatutArgs)
+          : result.tool === 'create_charge'          ? await prepareCreateCharge(a as CreateChargeArgs)
+          : result.tool === 'create_client'          ? await prepareCreateClient(a as CreateClientArgs)
+          : result.tool === 'create_plein'           ? await prepareCreatePlein(a as CreatePleinArgs)
+          : result.tool === 'create_incident'        ? await prepareCreateIncident(a as CreateIncidentArgs)
+          : null
         if (!prep) pushAssistant(`Action non prise en charge : ${result.tool}.`)
         else if (!prep.ok) pushAssistant(prep.message)
         else setPendingAction(prep.action)

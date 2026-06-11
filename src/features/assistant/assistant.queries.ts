@@ -38,7 +38,10 @@ const ASSISTANT_TOOLS: Record<string, (args: any) => Promise<unknown>> = {
 
 // Outils d'ÉCRITURE : jamais exécutés automatiquement. Quand l'IA en demande un,
 // la boucle s'arrête et renvoie une proposition d'action (carte de confirmation UI).
-const WRITE_TOOLS = new Set<string>(['create_livraison', 'changer_statut_livraison'])
+const WRITE_TOOLS = new Set<string>([
+  'create_livraison', 'changer_statut_livraison',
+  'create_charge', 'create_client', 'create_plein', 'create_incident',
+])
 
 // ── Boucle de tour (function calling) ─────────────────────────────────────────
 
