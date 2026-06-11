@@ -5,7 +5,8 @@
 // d'autres features (consigne d'étape : réutiliser l'existant, ne pas dupliquer).
 
 import { supabase } from '../../app/providers'
-import { effectiveHtCts, centimesToEuros } from '../../shared/lib/money'
+import { effectiveHtCts, effectiveTtcCts, centimesToEuros } from '../../shared/lib/money'
+import type { PendingAction } from './AssistantContext'
 
 import { getAlertesDetectionData } from '../alertes/alertes.queries'
 import { detectAlerts, summarizeAlerts } from '../alertes/alertes.logic'
@@ -26,9 +27,9 @@ import { getTvaData } from '../tva/tva.queries'
 import { computeTva } from '../tva/tva.logic'
 
 // Vague B — opérations / flotte / équipe
-import { getDeliveries, createDelivery } from '../livraisons/livraisons.queries'
-import { STATUS_LABELS as DELIVERY_STATUS_LABELS, computeAmount } from '../livraisons/livraisons.logic'
-import type { DeliveryRow, DeliveryFilters, DeliveryInsert, DeliveryType } from '../livraisons/livraisons.types'
+import { getDeliveries, createDelivery, transitionDelivery } from '../livraisons/livraisons.queries'
+import { STATUS_LABELS as DELIVERY_STATUS_LABELS, computeAmount, canTransition } from '../livraisons/livraisons.logic'
+import type { DeliveryRow, DeliveryFilters, DeliveryInsert, DeliveryType, DeliveryStatus } from '../livraisons/livraisons.types'
 
 import { fetchToursByDate, getActiveVehicles, getActiveDrivers, getDeliveriesForDate } from '../tournees/tournees.queries'
 import type { Tour, TourDelivery } from '../tournees/tournees.types'
@@ -582,39 +583,34 @@ export interface CreateLivraisonArgs {
   ville?: string
 }
 
-export interface CreateLivraisonRecap {
-  client: string
-  date: string
-  montant_ht_eur: number | null
-  type: string | null
-  adresse: string | null
-  ville: string | null
-}
-
-export type PrepareCreateLivraison =
+export type PrepareResult =
   | { ok: false; message: string }
-  | { ok: true; recap: CreateLivraisonRecap; payload: DeliveryInsert }
+  | { ok: true; action: PendingAction }
 
 const DELIVERY_TYPES = ['medical', 'ecommerce', 'retail', 'particulier']
 
-export async function prepareCreateLivraison(args: CreateLivraisonArgs): Promise<PrepareCreateLivraison> {
-  const nom = (args.client ?? '').trim().replace(/[(),]/g, '')
-  if (!nom) return { ok: false, message: 'Client introuvable : précise le nom.' }
-
-  // Résolution du client par nom (ilike), parmi les actifs.
+/** Résout un client unique par nom (ilike, actifs). */
+async function resolveClient(rawName: string): Promise<
+  | { ok: false; message: string }
+  | { ok: true; client: { id: string; name: string } }
+> {
+  const nom = rawName.trim().replace(/[(),]/g, '')
+  if (!nom) return { ok: false, message: 'Précise le nom du client.' }
   const { data, error } = await supabase
-    .from('clients')
-    .select('id, name')
-    .ilike('name', `%${nom}%`)
-    .eq('active', true)
-    .order('name')
+    .from('clients').select('id, name').ilike('name', `%${nom}%`).eq('active', true).order('name')
   if (error) return { ok: false, message: error.message }
   const matches = (data ?? []) as { id: string; name: string }[]
-  if (matches.length === 0) return { ok: false, message: 'Client introuvable : précise le nom.' }
+  if (matches.length === 0) return { ok: false, message: `Client introuvable : ${nom}.` }
   if (matches.length > 1) {
     return { ok: false, message: `Plusieurs clients correspondent : ${matches.map(m => m.name).join(', ')}. Lequel ?` }
   }
-  const client = matches[0]
+  return { ok: true, client: matches[0] }
+}
+
+export async function prepareCreateLivraison(args: CreateLivraisonArgs): Promise<PrepareResult> {
+  const r = await resolveClient(args.client ?? '')
+  if (!r.ok) return r
+  const client = r.client
 
   // Validation de la date.
   const date = (args.date ?? '').trim()
@@ -633,7 +629,6 @@ export async function prepareCreateLivraison(args: CreateLivraisonArgs): Promise
 
   // Montants v2 calculés EXACTEMENT comme DrawerLivraison.handleSave : via computeAmount
   // en mode manuel (TVA auto 20 % par différence — ttc = round(ht×1,2), tva = ttc − ht).
-  // Quand le HT est absent, le drawer écrit les trois colonnes à null (computed = null).
   const computed = amount_ht_cts != null
     ? computeAmount({ tariff_mode: 'manuel', tariff_rate_cts: null }, { manual_ht_cts: amount_ht_cts })
     : null
@@ -641,6 +636,7 @@ export async function prepareCreateLivraison(args: CreateLivraisonArgs): Promise
   const adresse = args.adresse?.trim() || null
   const ville = args.ville?.trim() || null
   const delivery_address = [adresse, ville].filter(Boolean).join(', ') || null
+  const montantHt = amount_ht_cts != null ? amount_ht_cts / 100 : null
 
   // Même forme que DrawerLivraison.handleSave (création) — seules les colonnes v2 sont écrites.
   const payload: DeliveryInsert = {
@@ -668,20 +664,109 @@ export async function prepareCreateLivraison(args: CreateLivraisonArgs): Promise
 
   return {
     ok: true,
-    recap: {
-      client: client.name,
-      date,
-      montant_ht_eur: amount_ht_cts != null ? amount_ht_cts / 100 : null,
-      type,
-      adresse,
-      ville,
+    action: {
+      title: 'Créer une livraison',
+      lines: [
+        { label: 'Client', value: client.name },
+        { label: 'Date', value: date },
+        { label: 'Montant HT', value: montantHt != null ? `${montantHt} €` : '—' },
+        { label: 'Type', value: type ?? '—' },
+        { label: 'Adresse', value: delivery_address ?? '—' },
+      ],
+      confirmLabel: 'Confirmer',
+      run: async () => {
+        const { error } = await createDelivery(payload)
+        if (error) return `❌ La création a échoué : ${error.message}.`
+        const m = montantHt != null ? `${montantHt} € HT` : 'montant non précisé'
+        return `✅ Livraison créée : ${client.name}, ${date}, ${m}.`
+      },
     },
-    payload,
   }
 }
 
-/** Exécution réelle (après confirmation). Le payload provient de prepareCreateLivraison. */
-export async function executeCreateLivraison(payload: unknown): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await createDelivery(payload as DeliveryInsert)
-  return error ? { ok: false, error: error.message } : { ok: true }
+// ── Action : changer le statut d'une livraison (cycle de vie) ─────────────────
+// Réutilise la machine d'états (canTransition) et transitionDelivery() de l'onglet
+// Livraisons — mêmes effets de bord (invoiced_at à la facturation, paid_at à
+// l'encaissement, push Pennylane à →facturee). Aucune logique réimplémentée.
+
+export interface ChangerStatutArgs {
+  client?: string
+  date?: string
+  action?: string
+}
+
+const ACTION_TO_STATUS: Record<string, DeliveryStatus> = {
+  demarrer: 'en_cours',
+  livrer: 'livree',
+  facturer: 'facturee',
+  encaisser: 'payee',
+  annuler: 'annulee',
+}
+const ACTION_VERB: Record<string, string> = {
+  demarrer: 'démarrer', livrer: 'livrer', facturer: 'facturer', encaisser: 'encaisser', annuler: 'annuler',
+}
+
+const statutLabel = (s: string) => DELIVERY_STATUS_LABELS[s] ?? s
+
+export async function prepareChangerStatutLivraison(args: ChangerStatutArgs): Promise<PrepareResult> {
+  const action = (args.action ?? '').trim()
+  const to = ACTION_TO_STATUS[action]
+  if (!to) return { ok: false, message: `Action inconnue : « ${action} ».` }
+
+  const r = await resolveClient(args.client ?? '')
+  if (!r.ok) return r
+  const client = r.client
+
+  const date = (args.date ?? '').trim()
+  const hasDate = /^\d{4}-\d{2}-\d{2}$/.test(date)
+  const suffixe = hasDate ? ` le ${date}` : ''
+
+  const filters: DeliveryFilters = { client_id: client.id }
+  if (hasDate) { filters.date_from = date; filters.date_to = date }
+  const { data } = await getDeliveries(filters)
+  const dels = (data ?? []) as unknown as DeliveryRow[]
+
+  if (dels.length === 0) return { ok: false, message: `Aucune livraison trouvée pour ${client.name}${suffixe}.` }
+  if (dels.length > 1) {
+    const liste = dels.slice(0, 5).map(d => {
+      const ttc = centimesToEuros(effectiveTtcCts(d))
+      return `${d.date} · ${ttc} € · ${statutLabel(d.statut)}`
+    }).join(' ; ')
+    return { ok: false, message: `Plusieurs livraisons correspondent : ${liste}. Précise la date.` }
+  }
+
+  const d = dels[0]
+
+  // Légalité de la transition (même règle que l'onglet Suivi).
+  if (!canTransition(d.statut, to)) {
+    return { ok: false, message: `La livraison est ${statutLabel(d.statut)} : impossible de ${ACTION_VERB[action]}.` }
+  }
+  if (to === 'facturee' && (d.amount_ht_cts ?? 0) <= 0) {
+    return { ok: false, message: 'Montant requis avant de facturer : renseigne d’abord le montant de la livraison.' }
+  }
+
+  // Mêmes effets de bord que handleTransition : à →facturee on passe le montant.
+  const amountForTransition = to === 'facturee'
+    ? { amount_ht_cts: d.amount_ht_cts ?? 0, tva_cts: d.tva_cts ?? 0, amount_ttc_cts: d.amount_ttc_cts ?? 0 }
+    : undefined
+  const ttc = centimesToEuros(effectiveTtcCts(d))
+
+  return {
+    ok: true,
+    action: {
+      title: 'Changer le statut',
+      lines: [
+        { label: 'Client', value: client.name },
+        { label: 'Date', value: d.date },
+        { label: 'Montant', value: ttc > 0 ? `${ttc} € TTC` : '—' },
+        { label: 'Statut', value: `${statutLabel(d.statut)} → ${statutLabel(to)}` },
+      ],
+      confirmLabel: 'Confirmer',
+      run: async () => {
+        const { error } = await transitionDelivery(d.id, d.statut, to, amountForTransition)
+        if (error) return `❌ ${client.name} ${d.date} : ${error.message}.`
+        return `✅ ${client.name} ${d.date} : ${statutLabel(d.statut)} → ${statutLabel(to)}.`
+      },
+    },
+  }
 }
