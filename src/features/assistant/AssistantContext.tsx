@@ -11,17 +11,15 @@ export interface AssistantMessage {
   text: string
 }
 
-/** Action d'écriture en attente de confirmation (carte UI éphémère). */
+/**
+ * Action d'écriture en attente de confirmation (carte UI éphémère, générique).
+ * `run()` exécute la vraie query d'écriture et renvoie le message à afficher.
+ */
 export interface PendingAction {
-  recap: {
-    client: string
-    date: string
-    montant_ht_eur: number | null
-    type: string | null
-    adresse: string | null
-    ville: string | null
-  }
-  payload: unknown
+  title: string
+  lines: { label: string; value: string }[]
+  confirmLabel: string
+  run: () => Promise<string>
 }
 
 interface AssistantCtx {

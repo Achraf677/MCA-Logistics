@@ -4,8 +4,8 @@ import { Sparkles, X, Send, Check } from 'lucide-react'
 import { useAssistant } from './AssistantContext'
 import type { PendingAction } from './AssistantContext'
 import { runAssistantTurn } from './assistant.queries'
-import { prepareCreateLivraison, executeCreateLivraison } from './assistant.tools'
-import type { CreateLivraisonArgs } from './assistant.tools'
+import { prepareCreateLivraison, prepareChangerStatutLivraison } from './assistant.tools'
+import type { CreateLivraisonArgs, ChangerStatutArgs } from './assistant.tools'
 import { tabLabelForPath } from './assistant.knowledge'
 
 /**
@@ -60,13 +60,17 @@ export function AssistantWidget() {
       const result = await runAssistantTurn(history, currentTab)
       if (result.kind === 'text') {
         pushAssistant(result.text || '(réponse vide)')
-      } else if (result.tool === 'create_livraison') {
-        // Action d'écriture : on prépare et on demande confirmation (jamais exécutée auto).
-        const prep = await prepareCreateLivraison(result.args as CreateLivraisonArgs)
-        if (!prep.ok) pushAssistant(prep.message)
-        else setPendingAction({ recap: prep.recap, payload: prep.payload })
       } else {
-        pushAssistant(`Action non prise en charge : ${result.tool}.`)
+        // Action d'écriture : on prépare et on demande confirmation (jamais exécutée auto).
+        const prep =
+          result.tool === 'create_livraison'
+            ? await prepareCreateLivraison(result.args as CreateLivraisonArgs)
+            : result.tool === 'changer_statut_livraison'
+              ? await prepareChangerStatutLivraison(result.args as ChangerStatutArgs)
+              : null
+        if (!prep) pushAssistant(`Action non prise en charge : ${result.tool}.`)
+        else if (!prep.ok) pushAssistant(prep.message)
+        else setPendingAction(prep.action)
       }
     } catch (e) {
       pushAssistant(`⚠️ ${(e as Error).message}`)
@@ -82,18 +86,12 @@ export function AssistantWidget() {
   // ── Confirmation / annulation d'une action d'écriture ────────────────────────
   const confirmAction = async () => {
     if (!pendingAction) return
-    const { recap, payload } = pendingAction
     setSending(true)
     try {
-      const res = await executeCreateLivraison(payload)
-      if (res.ok) {
-        const montant = recap.montant_ht_eur != null ? `${recap.montant_ht_eur} € HT` : 'montant non précisé'
-        pushAssistant(`✅ Livraison créée : ${recap.client}, ${recap.date}, ${montant}.`)
-      } else {
-        pushAssistant(`❌ La création a échoué : ${res.error}.`)
-      }
+      const msg = await pendingAction.run() // exécute la vraie query (création / transition)
+      pushAssistant(msg)
     } catch (e) {
-      pushAssistant(`❌ La création a échoué : ${(e as Error).message}.`)
+      pushAssistant(`❌ ${(e as Error).message}`)
     } finally {
       setPendingAction(null)
       setSending(false)
@@ -159,7 +157,7 @@ export function AssistantWidget() {
             {sending && <TypingBubble />}
             {pendingAction && (
               <ActionCard
-                recap={pendingAction.recap}
+                action={pendingAction}
                 busy={sending}
                 onConfirm={confirmAction}
                 onCancel={cancelAction}
@@ -218,32 +216,25 @@ function Bubble({ role, text }: { role: 'user' | 'assistant'; text: string }) {
   )
 }
 
-/** Carte de confirmation d'une action d'écriture (exécution UNIQUEMENT au clic Confirmer). */
+/** Carte de confirmation générique (exécution UNIQUEMENT au clic Confirmer). */
 function ActionCard({
-  recap, busy, onConfirm, onCancel,
+  action, busy, onConfirm, onCancel,
 }: {
-  recap: PendingAction['recap']
+  action: PendingAction
   busy: boolean
   onConfirm: () => void
   onCancel: () => void
 }) {
-  const rows: [string, string][] = [
-    ['Client', recap.client],
-    ['Date', recap.date],
-    ['Montant HT', recap.montant_ht_eur != null ? `${recap.montant_ht_eur} €` : '—'],
-    ['Type', recap.type ?? '—'],
-    ['Adresse', [recap.adresse, recap.ville].filter(Boolean).join(', ') || '—'],
-  ]
   return (
     <div className="rounded-[var(--r-lg)] border border-[var(--brand)]/40 bg-[var(--bg-card)] overflow-hidden">
       <div className="px-3.5 py-2 border-b border-[var(--border)] bg-[var(--brand-soft)]">
-        <span className="font-display font-semibold text-[var(--text)] text-[var(--fs-sm)]">Créer une livraison</span>
+        <span className="font-display font-semibold text-[var(--text)] text-[var(--fs-sm)]">{action.title}</span>
       </div>
       <dl className="px-3.5 py-2.5 flex flex-col gap-1">
-        {rows.map(([k, v]) => (
-          <div key={k} className="flex justify-between gap-3 text-[var(--fs-sm)]">
-            <dt className="text-[var(--text-muted)] shrink-0">{k}</dt>
-            <dd className="text-[var(--text)] text-right truncate">{v}</dd>
+        {action.lines.map(({ label, value }) => (
+          <div key={label} className="flex justify-between gap-3 text-[var(--fs-sm)]">
+            <dt className="text-[var(--text-muted)] shrink-0">{label}</dt>
+            <dd className="text-[var(--text)] text-right truncate">{value}</dd>
           </div>
         ))}
       </dl>
@@ -255,7 +246,7 @@ function ActionCard({
             bg-[var(--success)] text-white font-medium hover:opacity-90 transition-opacity
             disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Check size={15} /> {busy ? 'Création…' : 'Confirmer'}
+          <Check size={15} /> {busy ? 'En cours…' : action.confirmLabel}
         </button>
         <button
           onClick={onCancel}
