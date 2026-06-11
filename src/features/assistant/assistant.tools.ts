@@ -27,7 +27,7 @@ import { computeTva } from '../tva/tva.logic'
 
 // Vague B — opérations / flotte / équipe
 import { getDeliveries, createDelivery } from '../livraisons/livraisons.queries'
-import { STATUS_LABELS as DELIVERY_STATUS_LABELS } from '../livraisons/livraisons.logic'
+import { STATUS_LABELS as DELIVERY_STATUS_LABELS, computeAmount } from '../livraisons/livraisons.logic'
 import type { DeliveryRow, DeliveryFilters, DeliveryInsert, DeliveryType } from '../livraisons/livraisons.types'
 
 import { fetchToursByDate, getActiveVehicles, getActiveDrivers, getDeliveriesForDate } from '../tournees/tournees.queries'
@@ -630,6 +630,14 @@ export async function prepareCreateLivraison(args: CreateLivraisonArgs): Promise
     typeof args.montant_ht_eur === 'number' && args.montant_ht_eur > 0
       ? Math.round(args.montant_ht_eur * 100)
       : null
+
+  // Montants v2 calculés EXACTEMENT comme DrawerLivraison.handleSave : via computeAmount
+  // en mode manuel (TVA auto 20 % par différence — ttc = round(ht×1,2), tva = ttc − ht).
+  // Quand le HT est absent, le drawer écrit les trois colonnes à null (computed = null).
+  const computed = amount_ht_cts != null
+    ? computeAmount({ tariff_mode: 'manuel', tariff_rate_cts: null }, { manual_ht_cts: amount_ht_cts })
+    : null
+
   const adresse = args.adresse?.trim() || null
   const ville = args.ville?.trim() || null
   const delivery_address = [adresse, ville].filter(Boolean).join(', ') || null
@@ -650,9 +658,9 @@ export async function prepareCreateLivraison(args: CreateLivraisonArgs): Promise
     delivery_lng: null,
     km: null,
     weight_kg: null,
-    amount_ht_cts,
-    tva_cts: null,
-    amount_ttc_cts: null,
+    amount_ht_cts:  computed?.amount_ht_cts  ?? null,
+    tva_cts:        computed?.tva_cts         ?? null,
+    amount_ttc_cts: computed?.amount_ttc_cts ?? null,
     invoiced_at: null,
     paid_at: null,
     notes: null,
