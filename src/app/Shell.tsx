@@ -8,7 +8,7 @@ import {
   Users, Building2,
   CreditCard, Banknote, Receipt, Wallet,
   UserCheck, Clock,
-  Bell, Bot, ScanText, Settings,
+  Bell, Settings,
   Menu, X, ChevronDown, ChevronRight,
 } from 'lucide-react'
 import { features } from '../features.config'
@@ -84,9 +84,8 @@ const NAV: NavSection[] = [
     title: 'Système',
     items: [
       { key: 'alertes',    label: 'Alertes',      icon: Bell,     path: '/alertes',    featureKey: 'alertes'    },
-      { key: 'brouillons', label: 'Brouillons IA',icon: Bot,      path: '/brouillons', featureKey: 'brouillons' },
-      { key: 'copilote',   label: 'Copilote IA',  icon: ScanText, path: '/copilote',   featureKey: 'copilote'   },
       { key: 'parametres', label: 'Paramètres',   icon: Settings, path: '/parametres', featureKey: 'parametres' },
+      // Brouillons IA & Copilote IA retirés du menu : leurs capacités sont dans l'assistant.
     ],
   },
 ]

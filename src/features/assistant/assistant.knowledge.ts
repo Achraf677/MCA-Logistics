@@ -39,9 +39,11 @@ FINANCE
 
 SYSTÈME
 - Alertes (/alertes) — Centre d'alertes en direct (échéances véhicules/chauffeurs, entretiens, retards/impayés, incidents, inspections), filtrables par sévérité/catégorie/recherche. « Briefing du jour » = synthèse IA priorisée (Mistral). Lecture seule. Tous.
-- Brouillons IA (/brouillons) — Génère un brouillon de texte (relance impayé, email, annonce de recrutement, libre) à partir d'une demande. Choisir le type, décrire, « Générer », « Copier ». Rien n'est enregistré ; ne pas saisir de données sensibles. Tous.
-- Copilote IA (/copilote) — Extraction de feuilles de route (image/PDF/texte) par OCR/IA : importer ou coller, « Analyser », l'IA propose des livraisons en tableau éditable ; vérifier, cocher, « Créer les livraisons cochées » (crée aussi les clients manquants). Tous (création exige un profil société).
-- Paramètres (/parametres) — Fiche société (identité légale, IBAN, adresse/dépôt géocodé via autocomplétion). Modifier puis « Enregistrer ». Le dépôt géocodé sert aux tournées. Tous.`
+- Paramètres (/parametres) — Fiche société (identité légale, IBAN, adresse/dépôt géocodé via autocomplétion). Modifier puis « Enregistrer ». Le dépôt géocodé sert aux tournées. Tous.
+
+Capacités intégrées À L'ASSISTANT (plus d'onglet dédié — tout se fait dans ce chat) :
+- Rédaction de mails/brouillons (relance de paiement, email client, annonce de recrutement, texte libre) : demande simplement « écris une relance pour … » → un brouillon copiable s'affiche.
+- Import de feuilles de route : joins une photo ou un PDF (bouton trombone) → extraction automatique des livraisons → bouton « Créer ces N livraisons » (avec choix du statut et création des clients manquants, après confirmation).`
 
 // ── Mapping route → libellé d'onglet (pour informer l'assistant du contexte) ───
 
@@ -67,8 +69,6 @@ export const ROUTE_LABELS: Record<string, string> = {
   '/equipe': 'Équipe',
   '/heures': 'Heures',
   '/alertes': 'Alertes',
-  '/brouillons': 'Brouillons IA',
-  '/copilote': 'Copilote IA',
   '/parametres': 'Paramètres',
 }
 
