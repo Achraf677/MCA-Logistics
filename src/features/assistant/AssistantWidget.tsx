@@ -22,6 +22,8 @@ export function AssistantWidget() {
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  // L'utilisateur est-il « collé » au bas du fil ? (sinon on ne force pas le scroll)
+  const pinned = useRef(true)
 
   const location = useLocation()
   const currentTab = tabLabelForPath(location.pathname)
@@ -29,10 +31,19 @@ export function AssistantWidget() {
   const pushAssistant = (text: string) => setMessages(prev => [...prev, { role: 'assistant', text }])
   const blocked = sending || pendingAction !== null
 
-  // Auto-scroll vers le dernier message (et pendant l'indicateur de saisie).
+  const onMessagesScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
+
+  // Auto-scroll vers le bas à l'arrivée d'un message/carte, MAIS seulement si
+  // l'utilisateur n'a pas remonté volontairement (pinned). Remontée libre conservée.
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, open, sending])
+    if (open && pinned.current) {
+      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+    }
+  }, [messages, sending, pendingAction, open])
 
   // Focus du champ à l'ouverture.
   useEffect(() => {
@@ -149,8 +160,13 @@ export function AssistantWidget() {
             </button>
           </header>
 
-          {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+          {/* Messages — flex-1 + min-h-0 INDISPENSABLE pour que l'enfant se compresse et défile.
+              Sans min-h-0 dans un parent flex-col, le contenu déborde au lieu de scroller. */}
+          <div
+            ref={scrollRef}
+            onScroll={onMessagesScroll}
+            className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 flex flex-col gap-3"
+          >
             {messages.map((m, i) => (
               <Bubble key={i} role={m.role} text={m.text} />
             ))}
@@ -205,7 +221,7 @@ function Bubble({ role, text }: { role: 'user' | 'assistant'; text: string }) {
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] px-3.5 py-2 rounded-[var(--r-lg)] text-[var(--fs-sm)] whitespace-pre-wrap leading-relaxed
+        className={`max-w-[85%] px-3.5 py-2 rounded-[var(--r-lg)] text-[var(--fs-sm)] whitespace-pre-wrap break-words leading-relaxed
           ${isUser
             ? 'bg-[var(--brand)] text-white rounded-br-sm'
             : 'bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)] rounded-bl-sm'}`}
