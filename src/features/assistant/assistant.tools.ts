@@ -15,8 +15,9 @@ import { getFacturedDeliveries, getClients, createClient } from '../clients/clie
 import { computeEncours, CLIENT_TYPE_LABELS } from '../clients/clients.logic'
 import type { DeliveryForEncours, ClientInsert } from '../clients/clients.types'
 
-import { getSuppliers } from '../fournisseurs/fournisseurs.queries'
+import { getSuppliers, createSupplier } from '../fournisseurs/fournisseurs.queries'
 import { getCategoryLabel } from '../fournisseurs/fournisseurs.logic'
+import type { SupplierInsert } from '../fournisseurs/fournisseurs.types'
 
 import { getLatestSnapshot, getTransactions } from '../tresorerie/tresorerie.queries'
 
@@ -43,9 +44,9 @@ import { getInspections } from '../inspections/inspections.queries'
 import { TYPE_LABELS as INSPECTION_TYPE_LABELS, STATUS_LABELS as INSPECTION_STATUS_LABELS } from '../inspections/inspections.logic'
 import type { InspectionRow, InspectionFilters } from '../inspections/inspections.types'
 
-import { getVehicles } from '../vehicules/vehicules.queries'
-import { STATUS_LABELS as VEHICLE_STATUS_LABELS } from '../vehicules/vehicules.logic'
-import type { Vehicle } from '../vehicules/vehicules.types'
+import { getVehicles, createVehicle } from '../vehicules/vehicules.queries'
+import { STATUS_LABELS as VEHICLE_STATUS_LABELS, FUEL_LABELS } from '../vehicules/vehicules.logic'
+import type { Vehicle, VehicleInsert } from '../vehicules/vehicules.types'
 
 import { getFuelLogs, createFuelLog } from '../carburant/carburant.queries'
 import { kpiSummary as fuelKpiSummary } from '../carburant/carburant.logic'
@@ -790,9 +791,13 @@ async function resolveVehicule(raw: string, activeOnly: boolean): Promise<
   const { data, error } = await req
   if (error) return { ok: false, message: error.message }
   const matches = (data ?? []) as { id: string; label: string; plate: string }[]
-  if (matches.length === 0) return { ok: false, message: `Véhicule introuvable : ${q}.` }
+  if (matches.length === 0) {
+    // Dépendance manquante : on PROPOSE de créer le véhicule (message normal,
+    // gardé dans l'historique → l'assistant pourra enchaîner sur create_vehicule).
+    return { ok: false, message: `Le véhicule « ${q} » n'existe pas encore. Veux-tu que je l'ajoute à la flotte ? Donne-moi la plaque (et éventuellement marque/modèle).` }
+  }
   if (matches.length > 1) {
-    return { ok: false, message: `Plusieurs véhicules correspondent : ${matches.map(v => `${v.label} (${v.plate})`).join(', ')}. Précise.` }
+    return { ok: false, message: `Plusieurs véhicules correspondent : ${matches.map(v => `${v.label} (${v.plate})`).join(', ')}. Précise la plaque.` }
   }
   return { ok: true, vehicle: matches[0] }
 }
@@ -828,13 +833,17 @@ export async function prepareCreateCharge(args: CreateChargeArgs): Promise<Prepa
   const category = (args.categorie && CHARGE_CATEGORIES.includes(args.categorie)
     ? args.categorie : 'autre') as ChargeCategory
 
-  // Fournisseur optionnel : résolu par nom (1 seul match actif), sinon ignoré.
+  // Fournisseur optionnel : résolu par nom (1 seul match actif). Introuvable →
+  // on crée QUAND MÊME la charge (supplier_id null) et on le signale.
   let supplier_id: string | null = null
+  let fournisseurNote = ''
   const fourn = (args.fournisseur ?? '').trim().replace(/[(),]/g, '')
   if (fourn) {
     const { data } = await supabase.from('suppliers').select('id, name').ilike('name', `%${fourn}%`).eq('active', true)
     const sup = (data ?? []) as { id: string; name: string }[]
     if (sup.length === 1) supplier_id = sup[0].id
+    else if (sup.length === 0) fournisseurNote = ` Fournisseur « ${fourn} » non trouvé : veux-tu que je le crée et le lie ?`
+    else fournisseurNote = ` Plusieurs fournisseurs « ${fourn} » : non lié, précise.`
   }
 
   const tvaRate = 20
@@ -842,7 +851,8 @@ export async function prepareCreateCharge(args: CreateChargeArgs): Promise<Prepa
   const htCts = Math.round(ttcCts / (1 + tvaRate / 100))
   const tvaCts = ttcCts - htCts
 
-  const payload: ChargeInsert = {
+  // Objet construit avec UNIQUEMENT des colonnes réelles de `charges`.
+  const payload = {
     company_id: companyId,
     date,
     label: libelle,
@@ -854,7 +864,7 @@ export async function prepareCreateCharge(args: CreateChargeArgs): Promise<Prepa
     montant_ttc_cts: ttcCts,
     receipt_url: null,
     notes: null,
-  }
+  } as ChargeInsert
 
   return {
     ok: true,
@@ -865,12 +875,13 @@ export async function prepareCreateCharge(args: CreateChargeArgs): Promise<Prepa
         { label: 'Catégorie', value: CHARGE_CATEGORY_LABELS[category] ?? category },
         { label: 'Montant TTC', value: `${centimesToEuros(ttcCts)} €` },
         { label: 'Date', value: date },
+        ...(fourn ? [{ label: 'Fournisseur', value: supplier_id ? fourn : `${fourn} (non lié)` }] : []),
       ],
       confirmLabel: 'Confirmer',
       run: async () => {
         const { error } = await createCharge(payload)
         if (error) return `❌ La création a échoué : ${(error as Error).message}.`
-        return `✅ Charge créée : ${libelle}, ${centimesToEuros(ttcCts)} € TTC, ${date}.`
+        return `✅ Charge créée : ${libelle}, ${centimesToEuros(ttcCts)} € TTC, ${date}.${fournisseurNote}`
       },
     },
   }
@@ -900,20 +911,21 @@ export async function prepareCreateClient(args: CreateClientArgs): Promise<Prepa
   const payment_terms = typeof args.delai_paiement_jours === 'number' && args.delai_paiement_jours > 0
     ? Math.round(args.delai_paiement_jours) : 30
 
-  // Mêmes défauts que EMPTY_FORM du DrawerClient (chaînes vides pour les champs non fournis).
+  // Colonnes réelles uniquement (vérité terrain). Champs optionnels non fournis = null
+  // (et non ''), pour un insert propre. Mapping confirmé : ville→city, telephone→phone.
   const payload: ClientInsert = {
     company_id: companyId,
     name: nom,
-    siret: '',
-    tva_intra: '',
-    address: '',
-    city: args.ville?.trim() || '',
-    postal_code: '',
-    email: args.email?.trim() || '',
-    phone: args.telephone?.trim() || '',
+    siret: null,
+    tva_intra: null,
+    address: null,
+    city: args.ville?.trim() || null,
+    postal_code: null,
+    email: args.email?.trim() || null,
+    phone: args.telephone?.trim() || null,
     type,
     payment_terms,
-    notes: '',
+    notes: null,
     active: true,
     tariff_mode: 'manuel',
     tariff_rate_cts: null,
@@ -1071,6 +1083,121 @@ export async function prepareCreateIncident(args: CreateIncidentArgs): Promise<P
         const { error } = await createIncident(payload)
         if (error) return `❌ La création a échoué : ${(error as Error).message}.`
         return `✅ Incident enregistré : ${description.slice(0, 60)}, ${date}.`
+      },
+    },
+  }
+}
+
+// ── e) create_fournisseur ─────────────────────────────────────────────────────
+// Réutilise createSupplier() (onglet Fournisseurs). On n'envoie QUE des colonnes
+// réelles de `suppliers` (pas de `siren` : présent dans le type TS, absent de la table).
+
+export interface CreateFournisseurArgs {
+  nom?: string
+  categorie?: string
+  email?: string
+  telephone?: string
+  adresse?: string
+}
+
+const SUPPLIER_CATEGORIES = ['carburant', 'assurance', 'entretien', 'soustraitance', 'logiciel', 'telecom', 'autre']
+
+export async function prepareCreateFournisseur(args: CreateFournisseurArgs): Promise<PrepareResult> {
+  const nom = (args.nom ?? '').trim()
+  if (!nom) return { ok: false, message: 'Précise le nom du fournisseur.' }
+  const companyId = await getCompanyId()
+  if (!companyId) return { ok: false, message: 'Profil non chargé : impossible de créer le fournisseur.' }
+
+  const category = (args.categorie && SUPPLIER_CATEGORIES.includes(args.categorie)
+    ? args.categorie : null) as SupplierInsert['category']
+
+  // Uniquement des colonnes réelles → cast via unknown (le type SupplierInsert
+  // déclare `siren`, qui n'existe pas en base).
+  const payload = {
+    company_id: companyId,
+    name: nom,
+    category,
+    address: args.adresse?.trim() || null,
+    email: args.email?.trim() || null,
+    phone: args.telephone?.trim() || null,
+    active: true,
+  } as unknown as SupplierInsert
+
+  return {
+    ok: true,
+    action: {
+      title: 'Créer un fournisseur',
+      lines: [
+        { label: 'Nom', value: nom },
+        { label: 'Catégorie', value: getCategoryLabel(category) },
+        { label: 'Email', value: (args.email?.trim() || '') || '—' },
+        { label: 'Téléphone', value: (args.telephone?.trim() || '') || '—' },
+      ],
+      confirmLabel: 'Confirmer',
+      run: async () => {
+        const { error } = await createSupplier(payload)
+        if (error) return `❌ La création a échoué : ${(error as Error).message}.`
+        return `✅ Fournisseur créé : ${nom}.`
+      },
+    },
+  }
+}
+
+// ── f) create_vehicule ────────────────────────────────────────────────────────
+// Réutilise createVehicle() (onglet Véhicules). status 'active', mileage_km 0.
+// label = nom, sinon "marque modèle", sinon la plaque.
+
+export interface CreateVehiculeArgs {
+  plaque?: string
+  nom?: string
+  marque?: string
+  modele?: string
+  carburant?: string
+}
+
+const VEHICLE_FUEL_TYPES = ['diesel', 'essence', 'electric', 'hybrid', 'lpg']
+
+export async function prepareCreateVehicule(args: CreateVehiculeArgs): Promise<PrepareResult> {
+  const plate = (args.plaque ?? '').trim()
+  if (!plate) return { ok: false, message: 'Précise la plaque du véhicule.' }
+  const companyId = await getCompanyId()
+  if (!companyId) return { ok: false, message: 'Profil non chargé : impossible de créer le véhicule.' }
+
+  const brand = args.marque?.trim() || null
+  const model = args.modele?.trim() || null
+  const nom = args.nom?.trim()
+  const label = nom || [brand, model].filter(Boolean).join(' ').trim() || plate
+  const fuel_type = (args.carburant && VEHICLE_FUEL_TYPES.includes(args.carburant)
+    ? args.carburant : null) as VehicleInsert['fuel_type']
+
+  // Colonnes réelles uniquement ; les autres prennent les défauts en base.
+  const payload = {
+    company_id: companyId,
+    label,
+    plate,
+    brand,
+    model,
+    fuel_type,
+    status: 'active',
+    mileage_km: 0,
+  } as unknown as VehicleInsert
+
+  return {
+    ok: true,
+    action: {
+      title: 'Ajouter un véhicule',
+      lines: [
+        { label: 'Plaque', value: plate },
+        { label: 'Nom', value: label },
+        { label: 'Marque', value: brand || '—' },
+        { label: 'Modèle', value: model || '—' },
+        { label: 'Carburant', value: fuel_type ? (FUEL_LABELS[fuel_type] ?? fuel_type) : '—' },
+      ],
+      confirmLabel: 'Confirmer',
+      run: async () => {
+        const { error } = await createVehicle(payload)
+        if (error) return `❌ La création a échoué : ${(error as Error).message}.`
+        return `✅ Véhicule ajouté : ${label} (${plate}).`
       },
     },
   }

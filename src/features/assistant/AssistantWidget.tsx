@@ -7,10 +7,12 @@ import { runAssistantTurn } from './assistant.queries'
 import {
   prepareCreateLivraison, prepareChangerStatutLivraison,
   prepareCreateCharge, prepareCreateClient, prepareCreatePlein, prepareCreateIncident,
+  prepareCreateFournisseur, prepareCreateVehicule,
 } from './assistant.tools'
 import type {
   CreateLivraisonArgs, ChangerStatutArgs,
   CreateChargeArgs, CreateClientArgs, CreatePleinArgs, CreateIncidentArgs,
+  CreateFournisseurArgs, CreateVehiculeArgs,
 } from './assistant.tools'
 import { tabLabelForPath } from './assistant.knowledge'
 
@@ -87,6 +89,8 @@ export function AssistantWidget() {
           : result.tool === 'create_client'          ? await prepareCreateClient(a as CreateClientArgs)
           : result.tool === 'create_plein'           ? await prepareCreatePlein(a as CreatePleinArgs)
           : result.tool === 'create_incident'        ? await prepareCreateIncident(a as CreateIncidentArgs)
+          : result.tool === 'create_fournisseur'     ? await prepareCreateFournisseur(a as CreateFournisseurArgs)
+          : result.tool === 'create_vehicule'        ? await prepareCreateVehicule(a as CreateVehiculeArgs)
           : null
         if (!prep) pushAssistant(`Action non prise en charge : ${result.tool}.`)
         else if (!prep.ok) pushAssistant(prep.message)

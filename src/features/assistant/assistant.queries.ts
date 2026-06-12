@@ -41,6 +41,7 @@ const ASSISTANT_TOOLS: Record<string, (args: any) => Promise<unknown>> = {
 const WRITE_TOOLS = new Set<string>([
   'create_livraison', 'changer_statut_livraison',
   'create_charge', 'create_client', 'create_plein', 'create_incident',
+  'create_fournisseur', 'create_vehicule',
 ])
 
 // ── Boucle de tour (function calling) ─────────────────────────────────────────
