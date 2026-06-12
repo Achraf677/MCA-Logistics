@@ -11,17 +11,18 @@ import type { PendingAction } from './AssistantContext'
 import { getAlertesDetectionData } from '../alertes/alertes.queries'
 import { detectAlerts, summarizeAlerts } from '../alertes/alertes.logic'
 
-import { getFacturedDeliveries, getClients } from '../clients/clients.queries'
+import { getFacturedDeliveries, getClients, createClient } from '../clients/clients.queries'
 import { computeEncours, CLIENT_TYPE_LABELS } from '../clients/clients.logic'
-import type { DeliveryForEncours } from '../clients/clients.types'
+import type { DeliveryForEncours, ClientInsert } from '../clients/clients.types'
 
 import { getSuppliers } from '../fournisseurs/fournisseurs.queries'
 import { getCategoryLabel } from '../fournisseurs/fournisseurs.logic'
 
 import { getLatestSnapshot, getTransactions } from '../tresorerie/tresorerie.queries'
 
-import { getCharges } from '../charges/charges.queries'
+import { getCharges, createCharge } from '../charges/charges.queries'
 import { kpiSummary as chargesKpiSummary, CATEGORY_LABELS as CHARGE_CATEGORY_LABELS } from '../charges/charges.logic'
+import type { ChargeInsert, ChargeCategory } from '../charges/charges.types'
 
 import { getTvaData } from '../tva/tva.queries'
 import { computeTva } from '../tva/tva.logic'
@@ -34,9 +35,9 @@ import type { DeliveryRow, DeliveryFilters, DeliveryInsert, DeliveryType, Delive
 import { fetchToursByDate, getActiveVehicles, getActiveDrivers, getDeliveriesForDate } from '../tournees/tournees.queries'
 import type { Tour, TourDelivery } from '../tournees/tournees.types'
 
-import { getIncidents } from '../incidents/incidents.queries'
+import { getIncidents, createIncident } from '../incidents/incidents.queries'
 import { TYPE_LABELS as INCIDENT_TYPE_LABELS, STATUS_LABELS as INCIDENT_STATUS_LABELS } from '../incidents/incidents.logic'
-import type { IncidentRow, IncidentFilters } from '../incidents/incidents.types'
+import type { IncidentRow, IncidentFilters, IncidentInsert, IncidentType } from '../incidents/incidents.types'
 
 import { getInspections } from '../inspections/inspections.queries'
 import { TYPE_LABELS as INSPECTION_TYPE_LABELS, STATUS_LABELS as INSPECTION_STATUS_LABELS } from '../inspections/inspections.logic'
@@ -46,9 +47,9 @@ import { getVehicles } from '../vehicules/vehicules.queries'
 import { STATUS_LABELS as VEHICLE_STATUS_LABELS } from '../vehicules/vehicules.logic'
 import type { Vehicle } from '../vehicules/vehicules.types'
 
-import { getFuelLogs } from '../carburant/carburant.queries'
+import { getFuelLogs, createFuelLog } from '../carburant/carburant.queries'
 import { kpiSummary as fuelKpiSummary } from '../carburant/carburant.logic'
-import type { FuelLogRow } from '../carburant/carburant.types'
+import type { FuelLogRow, FuelLogInsert } from '../carburant/carburant.types'
 
 import { getMaintenances } from '../entretiens/entretiens.queries'
 import { MAINTENANCE_TYPE_LABELS } from '../entretiens/entretiens.logic'
@@ -766,6 +767,310 @@ export async function prepareChangerStatutLivraison(args: ChangerStatutArgs): Pr
         const { error } = await transitionDelivery(d.id, d.statut, to, amountForTransition)
         if (error) return `❌ ${client.name} ${d.date} : ${error.message}.`
         return `✅ ${client.name} ${d.date} : ${statutLabel(d.statut)} → ${statutLabel(to)}.`
+      },
+    },
+  }
+}
+
+// ═══════════════════════ ÉCRITURE — créations (avec confirmation) ═════════════
+// Chaque prepareXxx reproduit le payload du drawer de l'onglet correspondant
+// (mêmes champs obligatoires, défauts et calculs ; colonnes générées non écrites).
+
+const isoDateValid = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(new Date(d).getTime())
+
+/** Résout un véhicule unique par plaque OU label (ilike). activeOnly comme le drawer Carburant. */
+async function resolveVehicule(raw: string, activeOnly: boolean): Promise<
+  | { ok: false; message: string }
+  | { ok: true; vehicle: { id: string; label: string; plate: string } }
+> {
+  const q = (raw ?? '').trim().replace(/[(),]/g, '')
+  if (!q) return { ok: false, message: 'Précise le véhicule (plaque ou nom).' }
+  let req = supabase.from('vehicles').select('id, label, plate').or(`label.ilike.%${q}%,plate.ilike.%${q}%`).order('label')
+  if (activeOnly) req = req.eq('status', 'active')
+  const { data, error } = await req
+  if (error) return { ok: false, message: error.message }
+  const matches = (data ?? []) as { id: string; label: string; plate: string }[]
+  if (matches.length === 0) return { ok: false, message: `Véhicule introuvable : ${q}.` }
+  if (matches.length > 1) {
+    return { ok: false, message: `Plusieurs véhicules correspondent : ${matches.map(v => `${v.label} (${v.plate})`).join(', ')}. Précise.` }
+  }
+  return { ok: true, vehicle: matches[0] }
+}
+
+// ── a) create_charge ──────────────────────────────────────────────────────────
+// Réutilise createCharge() + computeTtcCts (onglet Charges). Le drawer part du HT ;
+// ici on part du TTC → HT = round(ttc/(1+taux/100)), tva = ttc − ht (taux défaut 20).
+
+export interface CreateChargeArgs {
+  libelle?: string
+  montant_ttc_eur?: number
+  categorie?: string
+  date?: string
+  fournisseur?: string
+}
+
+const CHARGE_CATEGORIES = [
+  'carburant', 'assurance', 'entretien', 'salaire', 'logiciel', 'telecom',
+  'loyer', 'frais_bancaires', 'comptabilite', 'publicite', 'autre',
+]
+
+export async function prepareCreateCharge(args: CreateChargeArgs): Promise<PrepareResult> {
+  const libelle = (args.libelle ?? '').trim()
+  if (!libelle) return { ok: false, message: 'Précise le libellé de la charge.' }
+  const date = (args.date ?? '').trim()
+  if (!isoDateValid(date)) return { ok: false, message: 'Date invalide : indique une date au format AAAA-MM-JJ.' }
+  if (typeof args.montant_ttc_eur !== 'number' || args.montant_ttc_eur <= 0) {
+    return { ok: false, message: 'Montant TTC invalide : indique un montant en euros (> 0).' }
+  }
+  const companyId = await getCompanyId()
+  if (!companyId) return { ok: false, message: 'Profil non chargé : impossible de créer la charge.' }
+
+  const category = (args.categorie && CHARGE_CATEGORIES.includes(args.categorie)
+    ? args.categorie : 'autre') as ChargeCategory
+
+  // Fournisseur optionnel : résolu par nom (1 seul match actif), sinon ignoré.
+  let supplier_id: string | null = null
+  const fourn = (args.fournisseur ?? '').trim().replace(/[(),]/g, '')
+  if (fourn) {
+    const { data } = await supabase.from('suppliers').select('id, name').ilike('name', `%${fourn}%`).eq('active', true)
+    const sup = (data ?? []) as { id: string; name: string }[]
+    if (sup.length === 1) supplier_id = sup[0].id
+  }
+
+  const tvaRate = 20
+  const ttcCts = Math.round(args.montant_ttc_eur * 100)
+  const htCts = Math.round(ttcCts / (1 + tvaRate / 100))
+  const tvaCts = ttcCts - htCts
+
+  const payload: ChargeInsert = {
+    company_id: companyId,
+    date,
+    label: libelle,
+    category,
+    supplier_id,
+    montant_ht_cts: htCts,
+    tva_rate: tvaRate,
+    tva_cts: tvaCts,
+    montant_ttc_cts: ttcCts,
+    receipt_url: null,
+    notes: null,
+  }
+
+  return {
+    ok: true,
+    action: {
+      title: 'Créer une charge',
+      lines: [
+        { label: 'Libellé', value: libelle },
+        { label: 'Catégorie', value: CHARGE_CATEGORY_LABELS[category] ?? category },
+        { label: 'Montant TTC', value: `${centimesToEuros(ttcCts)} €` },
+        { label: 'Date', value: date },
+      ],
+      confirmLabel: 'Confirmer',
+      run: async () => {
+        const { error } = await createCharge(payload)
+        if (error) return `❌ La création a échoué : ${(error as Error).message}.`
+        return `✅ Charge créée : ${libelle}, ${centimesToEuros(ttcCts)} € TTC, ${date}.`
+      },
+    },
+  }
+}
+
+// ── b) create_client ──────────────────────────────────────────────────────────
+// Réutilise createClient() + défauts d'EMPTY_FORM (onglet Clients).
+
+export interface CreateClientArgs {
+  nom?: string
+  type?: string
+  ville?: string
+  email?: string
+  telephone?: string
+  delai_paiement_jours?: number
+}
+
+const CLIENT_TYPES = ['medical', 'ecommerce', 'retail', 'particulier']
+
+export async function prepareCreateClient(args: CreateClientArgs): Promise<PrepareResult> {
+  const nom = (args.nom ?? '').trim()
+  if (!nom) return { ok: false, message: 'Précise le nom du client.' }
+  const companyId = await getCompanyId()
+  if (!companyId) return { ok: false, message: 'Profil non chargé : impossible de créer le client.' }
+
+  const type = (args.type && CLIENT_TYPES.includes(args.type) ? args.type : null) as ClientInsert['type']
+  const payment_terms = typeof args.delai_paiement_jours === 'number' && args.delai_paiement_jours > 0
+    ? Math.round(args.delai_paiement_jours) : 30
+
+  // Mêmes défauts que EMPTY_FORM du DrawerClient (chaînes vides pour les champs non fournis).
+  const payload: ClientInsert = {
+    company_id: companyId,
+    name: nom,
+    siret: '',
+    tva_intra: '',
+    address: '',
+    city: args.ville?.trim() || '',
+    postal_code: '',
+    email: args.email?.trim() || '',
+    phone: args.telephone?.trim() || '',
+    type,
+    payment_terms,
+    notes: '',
+    active: true,
+    tariff_mode: 'manuel',
+    tariff_rate_cts: null,
+  }
+
+  return {
+    ok: true,
+    action: {
+      title: 'Créer un client',
+      lines: [
+        { label: 'Nom', value: nom },
+        { label: 'Type', value: type ? (CLIENT_TYPE_LABELS[type] ?? type) : '—' },
+        { label: 'Ville', value: payload.city || '—' },
+        { label: 'Email', value: payload.email || '—' },
+        { label: 'Téléphone', value: payload.phone || '—' },
+        { label: 'Délai paiement', value: `${payment_terms} j` },
+      ],
+      confirmLabel: 'Confirmer',
+      run: async () => {
+        const { error } = await createClient(payload)
+        if (error) return `❌ La création a échoué : ${(error as Error).message}.`
+        return `✅ Client créé : ${nom}.`
+      },
+    },
+  }
+}
+
+// ── c) create_plein ───────────────────────────────────────────────────────────
+// Réutilise createFuelLog() (onglet Carburant). tva_cts NON écrit (généré en base).
+// price_per_liter_cts dérivé = round(total_cts / litres), comme le drawer.
+
+export interface CreatePleinArgs {
+  vehicule?: string
+  montant_ttc_eur?: number
+  litres?: number
+  date?: string
+}
+
+export async function prepareCreatePlein(args: CreatePleinArgs): Promise<PrepareResult> {
+  const date = (args.date ?? '').trim()
+  if (!isoDateValid(date)) return { ok: false, message: 'Date invalide : indique une date au format AAAA-MM-JJ.' }
+  if (typeof args.litres !== 'number' || args.litres <= 0) {
+    return { ok: false, message: 'Litres invalides : indique un nombre de litres (> 0).' }
+  }
+  if (typeof args.montant_ttc_eur !== 'number' || args.montant_ttc_eur <= 0) {
+    return { ok: false, message: 'Montant TTC invalide : indique un montant en euros (> 0).' }
+  }
+  const v = await resolveVehicule(args.vehicule ?? '', true)
+  if (!v.ok) return v
+  const companyId = await getCompanyId()
+  if (!companyId) return { ok: false, message: 'Profil non chargé : impossible de créer le plein.' }
+
+  const totalCts = Math.round(args.montant_ttc_eur * 100)
+  const pricePerLiterCts = Math.round(totalCts / args.litres)
+
+  const payload: FuelLogInsert = {
+    company_id: companyId,
+    vehicle_id: v.vehicle.id,
+    driver_id: null,
+    date,
+    liters: args.litres,
+    price_per_liter_cts: pricePerLiterCts,
+    total_cts: totalCts,
+    fuel_type: null,
+    mileage_km: null,
+    station: null,
+    tva_rate: 20,
+    tva_deductible_pct: 100,
+    receipt_url: null,
+    supplier_id: null,
+  }
+
+  return {
+    ok: true,
+    action: {
+      title: 'Enregistrer un plein',
+      lines: [
+        { label: 'Véhicule', value: `${v.vehicle.label} (${v.vehicle.plate})` },
+        { label: 'Montant TTC', value: `${centimesToEuros(totalCts)} €` },
+        { label: 'Litres', value: `${args.litres} L` },
+        { label: 'Date', value: date },
+      ],
+      confirmLabel: 'Confirmer',
+      run: async () => {
+        const { error } = await createFuelLog(payload)
+        if (error) return `❌ La création a échoué : ${(error as Error).message}.`
+        return `✅ Plein enregistré : ${v.vehicle.label}, ${centimesToEuros(totalCts)} € TTC, ${args.litres} L, ${date}.`
+      },
+    },
+  }
+}
+
+// ── d) create_incident ────────────────────────────────────────────────────────
+// Réutilise createIncident() (onglet Incidents). status défaut 'ouvert',
+// police_report défaut false ; véhicule optionnel (tous statuts comme le drawer).
+
+export interface CreateIncidentArgs {
+  description?: string
+  date?: string
+  vehicule?: string
+  type?: string
+}
+
+const INCIDENT_TYPES = ['accident', 'panne', 'vol', 'vandalisme', 'infraction', 'autre']
+
+export async function prepareCreateIncident(args: CreateIncidentArgs): Promise<PrepareResult> {
+  const description = (args.description ?? '').trim()
+  if (!description) return { ok: false, message: 'Précise la description de l’incident.' }
+  const date = (args.date ?? '').trim()
+  if (!isoDateValid(date)) return { ok: false, message: 'Date invalide : indique une date au format AAAA-MM-JJ.' }
+  const companyId = await getCompanyId()
+  if (!companyId) return { ok: false, message: 'Profil non chargé : impossible de créer l’incident.' }
+
+  // Véhicule optionnel : résolu si fourni (tous statuts, comme le drawer Incidents).
+  let vehicleId: string | null = null
+  let vehiculeLabel = '—'
+  const rawV = (args.vehicule ?? '').trim()
+  if (rawV) {
+    const v = await resolveVehicule(rawV, false)
+    if (!v.ok) return v
+    vehicleId = v.vehicle.id
+    vehiculeLabel = `${v.vehicle.label} (${v.vehicle.plate})`
+  }
+
+  const type = (args.type && INCIDENT_TYPES.includes(args.type) ? args.type : null) as IncidentType | null
+
+  const payload: IncidentInsert = {
+    company_id: companyId,
+    vehicle_id: vehicleId,
+    driver_id: null,
+    date,
+    type,
+    description,
+    location: null,
+    damage_cts: null,
+    at_fault: null,
+    status: 'ouvert',
+    police_report: false,
+    insurance_ref: null,
+    notes: null,
+  }
+
+  return {
+    ok: true,
+    action: {
+      title: 'Signaler un incident',
+      lines: [
+        { label: 'Description', value: description },
+        { label: 'Type', value: type ? (INCIDENT_TYPE_LABELS[type] ?? type) : '—' },
+        { label: 'Véhicule', value: vehiculeLabel },
+        { label: 'Date', value: date },
+      ],
+      confirmLabel: 'Confirmer',
+      run: async () => {
+        const { error } = await createIncident(payload)
+        if (error) return `❌ La création a échoué : ${(error as Error).message}.`
+        return `✅ Incident enregistré : ${description.slice(0, 60)}, ${date}.`
       },
     },
   }
