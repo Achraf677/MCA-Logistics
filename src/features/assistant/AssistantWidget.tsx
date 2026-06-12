@@ -188,15 +188,20 @@ export function AssistantWidget() {
               <Bubble key={i} role={m.role} text={m.text} />
             ))}
             {sending && <TypingBubble />}
-            {pendingAction && (
+          </div>
+
+          {/* Carte de confirmation — HORS du flux scrollable (shrink-0) pour ne JAMAIS
+              bloquer le scroll des messages au-dessus. Hauteur bornée + scroll interne. */}
+          {pendingAction && (
+            <div className="shrink-0 max-h-[40%] overflow-y-auto border-t border-[var(--border)] p-3">
               <ActionCard
                 action={pendingAction}
                 busy={sending}
                 onConfirm={confirmAction}
                 onCancel={cancelAction}
               />
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Saisie */}
           <div className="shrink-0 border-t border-[var(--border)] p-3 flex items-end gap-2">
