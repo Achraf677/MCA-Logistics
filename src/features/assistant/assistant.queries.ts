@@ -44,6 +44,10 @@ const WRITE_TOOLS = new Set<string>([
   'create_fournisseur', 'create_vehicule',
 ])
 
+// Outils de RÉDACTION : produisent un brouillon de texte (aucune écriture base,
+// pas de carte de confirmation). La boucle s'arrête et délègue au front.
+const GENERATION_TOOLS = new Set<string>(['generer_mail'])
+
 // ── Boucle de tour (function calling) ─────────────────────────────────────────
 
 interface ToolCall { id: string; name: string; arguments: unknown }
@@ -81,10 +85,11 @@ async function readFunctionErrorMessage(error: unknown): Promise<string | null> 
 
 const MAX_ITERATIONS = 5
 
-/** Résultat d'un tour : soit du texte, soit une proposition d'action d'écriture. */
+/** Résultat d'un tour : texte, proposition d'action d'écriture, ou brouillon à générer. */
 export type AssistantTurnResult =
   | { kind: 'text'; text: string }
   | { kind: 'action'; tool: string; args: unknown }
+  | { kind: 'draft'; tool: string; args: unknown }
 
 /**
  * Joue un tour d'assistant avec function calling.
@@ -128,6 +133,13 @@ export async function runAssistantTurn(
       const writeCall = calls.find(tc => WRITE_TOOLS.has(tc.name))
       if (writeCall) {
         return { kind: 'action', tool: writeCall.name, args: writeCall.arguments }
+      }
+
+      // Outil de rédaction : on arrête la boucle, on ne persiste pas le tool_call,
+      // et on délègue la génération du brouillon au front.
+      const genCall = calls.find(tc => GENERATION_TOOLS.has(tc.name))
+      if (genCall) {
+        return { kind: 'draft', tool: genCall.name, args: genCall.arguments }
       }
 
       // Outils de lecture : repush le message brut de l'IA TEL QUEL, puis les résultats.

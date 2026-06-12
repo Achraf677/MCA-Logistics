@@ -63,6 +63,10 @@ import type { TeamMember } from '../equipe/equipe.types'
 import { getWorkHours } from '../heures/heures.queries'
 import type { WorkHourRow } from '../heures/heures.types'
 
+// Rédaction (brouillons) — réutilise la query de l'onglet Brouillons IA
+import { generateDraft } from '../brouillons/brouillons.queries'
+import type { DraftType } from '../brouillons/brouillons.types'
+
 const MAX_LIST = 30
 const DAY_MS = 86_400_000
 
@@ -1207,4 +1211,40 @@ export async function prepareCreateVehicule(args: CreateVehiculeArgs): Promise<P
       },
     },
   }
+}
+
+// ═══════════════════════ RÉDACTION — generer_mail (brouillon, pas d'écriture) ══
+// Réutilise la query de l'onglet Brouillons IA (generateDraft → Edge brouillons-generate,
+// Mistral large). Aucune écriture base, aucune carte de confirmation.
+
+export interface GenererMailArgs {
+  type?: string
+  instructions?: string
+}
+
+const DRAFT_TYPES = ['relance', 'email', 'annonce', 'libre']
+
+export async function runGenererMail(
+  args: GenererMailArgs,
+): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+  const instructions = (args.instructions ?? '').trim()
+  if (!instructions) {
+    return { ok: false, message: 'Précise ce que je dois rédiger (destinataire, objet, ton, montants, dates…).' }
+  }
+  const type = (args.type && DRAFT_TYPES.includes(args.type) ? args.type : 'libre') as DraftType
+
+  const { data, error } = await generateDraft(instructions, type)
+  const res = data as { ok?: boolean; data?: { text?: string }; error?: string } | null
+
+  if (error || res?.ok === false) {
+    const raw = error?.message ?? res?.error ?? 'Échec de la génération.'
+    const msg = /rate|429|trop de demandes/i.test(String(raw))
+      ? '⏳ L’assistant reçoit trop de demandes à la fois — patiente quelques secondes et réessaie.'
+      : `❌ Génération impossible : ${raw}.`
+    return { ok: false, message: msg }
+  }
+
+  const text = res?.data?.text ?? ''
+  if (!text.trim()) return { ok: false, message: 'Le brouillon est revenu vide — reformule ta demande.' }
+  return { ok: true, text }
 }
