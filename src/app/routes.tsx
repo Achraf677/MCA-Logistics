@@ -22,8 +22,6 @@ import { Equipe }       from '../features/equipe/Equipe'
 import { Heures }       from '../features/heures/Heures'
 import { Inspections }  from '../features/inspections/Inspections'
 import { Alertes }      from '../features/alertes/Alertes'
-import { BrouillonsIA } from '../features/brouillons/BrouillonsIA'
-import { CopiloteIA }   from '../features/copilote/CopiloteIA'
 import { Parametres }   from '../features/parametres/Parametres'
 
 function guard(enabled: boolean, element: React.ReactElement) {
@@ -54,8 +52,6 @@ export function AppRoutes() {
       <Route path="/equipe"        element={guard(features.equipe,       <Equipe />)} />
       <Route path="/heures"        element={guard(features.heures,       <Heures />)} />
       <Route path="/alertes"       element={guard(features.alertes,      <Alertes />)} />
-      <Route path="/brouillons"    element={guard(features.brouillons,   <BrouillonsIA />)} />
-      <Route path="/copilote"      element={guard(features.copilote,     <CopiloteIA />)} />
       <Route path="/parametres"    element={guard(features.parametres,   <Parametres />)} />
       <Route path="*"              element={<Navigate to="/" replace />} />
     </Routes>

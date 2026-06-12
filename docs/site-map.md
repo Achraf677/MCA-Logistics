@@ -21,7 +21,9 @@ role: 'president' | 'dg' | 'chauffeur' | 'comptable'
 - Le rôle `chauffeur` sert surtout au filtrage métier (ex. `team_members` filtrés `role='chauffeur'`
   pour les sélecteurs de chauffeur, validités de conduite dans Équipe).
 
-## Les 24 onglets (par section de menu)
+## Les onglets visibles — 22 (par section de menu)
+<!-- 24 à l'origine ; Brouillons IA et Copilote IA retirés en 6B-3 (capacités migrées dans l'assistant). -->
+
 
 | # | Onglet | Route | Section |
 |---|--------|-------|---------|
@@ -46,9 +48,13 @@ role: 'president' | 'dg' | 'chauffeur' | 'comptable'
 | 19 | Équipe | `/equipe` | Équipe |
 | 20 | Heures | `/heures` | Équipe |
 | 21 | Alertes | `/alertes` | Système |
-| 22 | Brouillons IA | `/brouillons` | Système |
-| 23 | Copilote IA | `/copilote` | Système |
-| 24 | Paramètres | `/parametres` | Système |
+| 22 | Paramètres | `/parametres` | Système |
+
+> **Note (étape 6B-3)** : les onglets **Brouillons IA** (`/brouillons`) et **Copilote IA** (`/copilote`)
+> ont été **retirés de la navigation** — leurs capacités (rédaction de mails, import de feuilles de route
+> par OCR) sont désormais assurées par **l'assistant conversationnel**. Les features `brouillons/`,
+> `copilote/` et leurs Edge Functions (`brouillons-generate`, `ai-extract-deliveries`) restent en place
+> car l'assistant réutilise leurs queries. On passe de 24 à **22 onglets visibles**.
 
 ---
 
@@ -268,7 +274,7 @@ role: 'president' | 'dg' | 'chauffeur' | 'comptable'
 - **Mode d'emploi** : la page liste automatiquement toutes les alertes actives ; filtrer par pastille de sévérité, chip de catégorie ou recherche, puis « Voir → » pour ouvrir l'onglet concerné. Cliquer « Briefing du jour » pour une synthèse IA priorisée.
 - **Permissions** : aucun gate front ; lecture pour tous, données encadrées par RLS. Pas de mutation (lecture seule + appel Edge Function).
 
-### Brouillons IA
+### Brouillons IA — _retiré du menu (6B-3) ; capacité dans l'assistant, query/Edge conservées_
 - **Route** : `/brouillons` · **Menu** : Système › Brouillons IA (icône `Bot`)
 - **Rôle** : Générer un brouillon de texte rédactionnel (relance impayé, email client, annonce de recrutement ou texte libre) à partir d'une demande en langage naturel, sans accès à la base.
 - **Données affichées** : encart RGPD (« N'écris pas de données client sensibles ici (IA gratuite) ») ; sélecteur de type (Relance impayé / Email client / Annonce recrutement / Libre) ; textarea « Ta demande » ; bouton « Générer ». Après génération : le brouillon en `whitespace-pre-wrap` + bouton « Copier ».
@@ -281,7 +287,7 @@ role: 'president' | 'dg' | 'chauffeur' | 'comptable'
 - **Permissions** : onglet routé/affiché seulement si `features.brouillons` est activé (guard `routes.tsx` + filtrage menu `Shell.tsx`). Aucune écriture base donc pas de RLS impliquée ; seul garde-fou = la note RGPD (IA gratuite).
 - **⭐ Note migration assistant** : capacité destinée à être déplacée dans l'assistant conversationnel. Contrat homogène `{ ok, data?, error? }`, fonction réutilisable `generateDraft(prompt, type)`.
 
-### Copilote IA
+### Copilote IA — _retiré du menu (6B-3) ; capacité dans l'assistant, query/Edge conservées_
 - **Route** : `/copilote` · **Menu** : Système › Copilote IA (icône `ScanText`)
 - **Rôle** : Extraire automatiquement les livraisons d'une feuille de route (texte collé, image ou PDF) via OCR/IA, les présenter en tableau éditable, puis créer les livraisons (et clients manquants) en base après validation manuelle.
 - **Données affichées** : encart RGPD (« Le document est envoyé à Mistral (UE)… ») ; zone d'import de fichier (image/PDF, max ~8 Mo) OU textarea pour coller le texte ; textarea « Précisions pour l'IA » ; bouton « Analyser ». Après analyse : tableau de lignes proposées (Créer/Client/Chauffeur/Véhicule/Date/Type/Enlèvement/Livraison/Km/Poids/Montant HT €/Heure/Statut), champs manquants surlignés en orange, case « Créer » par ligne, bouton « Créer les N livraison(s) cochée(s) ».
