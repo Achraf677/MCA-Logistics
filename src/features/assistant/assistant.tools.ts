@@ -1301,3 +1301,153 @@ export async function runExtractDeliveries(fileBase64: string, mimeType: string)
   }
   return { ok: true, deliveries, text: formatExtracted(deliveries) }
 }
+
+// ═══════════════════════ OCR 6B-2 — création EN LOT des livraisons extraites ═══
+// Réutilise getClients (résolution), createClient (nouveaux clients), createDelivery
+// + computeAmount (montants, comme create_livraison). client_id NOT NULL ; montant
+// nullable (jamais 0 €) ; colonnes générées jamais écrites. Confirmation obligatoire.
+
+const normName = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim()
+
+function clientPayloadFromName(companyId: string, name: string): ClientInsert {
+  return {
+    company_id: companyId, name,
+    siret: null, tva_intra: null, address: null, city: null, postal_code: null,
+    email: null, phone: null, type: null, payment_terms: 30, notes: null,
+    active: true, tariff_mode: 'manuel', tariff_rate_cts: null,
+  }
+}
+
+export async function prepareImportLivraisons(
+  deliveries: ExtractedDelivery[],
+  statut: 'planifiee' | 'livree',
+): Promise<PrepareResult> {
+  const companyId = await getCompanyId()
+  if (!companyId) return { ok: false, message: 'Profil non chargé : impossible de créer les livraisons.' }
+
+  const { data: clientsData } = await getClients({ active: true })
+  const clients = (clientsData ?? []) as { id: string; name: string }[]
+  const matchClient = (name: string): string | null => {
+    const q = normName(name)
+    const exact = clients.find(c => normName(c.name) === q)
+    if (exact) return exact.id
+    const partial = clients.find(c => normName(c.name).includes(q) || q.includes(normName(c.name)))
+    return partial?.id ?? null
+  }
+
+  interface Planned {
+    clientName: string
+    existingClientId: string | null  // null → nouveau client à créer
+    date: string
+    amount_ht_cts: number | null
+    tva_cts: number | null
+    amount_ttc_cts: number | null
+    d: ExtractedDelivery
+  }
+  const planned: Planned[] = []
+  const newClientNames = new Set<string>()  // clés normalisées
+  const newClientLabels = new Map<string, string>()
+  let excluded = 0
+
+  for (const d of deliveries) {
+    const name = (d.client_name ?? '').trim()
+    if (!name) { excluded++; continue }
+    const existingClientId = matchClient(name)
+    if (!existingClientId) {
+      const key = normName(name)
+      newClientNames.add(key)
+      if (!newClientLabels.has(key)) newClientLabels.set(key, name)
+    }
+    // Montant : present → computeAmount (TVA auto 20 %, comme create_livraison) ; absent → null.
+    let amount_ht_cts: number | null = null, tva_cts: number | null = null, amount_ttc_cts: number | null = null
+    if (typeof d.montant_ht_eur === 'number' && d.montant_ht_eur > 0) {
+      const c = computeAmount({ tariff_mode: 'manuel', tariff_rate_cts: null }, { manual_ht_cts: Math.round(d.montant_ht_eur * 100) })
+      amount_ht_cts = c?.amount_ht_cts ?? null
+      tva_cts = c?.tva_cts ?? null
+      amount_ttc_cts = c?.amount_ttc_cts ?? null
+    }
+    const date = d.date && /^\d{4}-\d{2}-\d{2}$/.test(d.date) ? d.date : todayISO()
+    planned.push({ clientName: name, existingClientId, date, amount_ht_cts, tva_cts, amount_ttc_cts, d })
+  }
+
+  if (planned.length === 0) {
+    return { ok: false, message: `Aucune livraison créable : ${deliveries.length} ligne(s), toutes sans nom de client. Complète les clients puis réessaie.` }
+  }
+
+  const statutLabel = statut === 'planifiee' ? 'Planifiée' : 'Livrée'
+  const nbNew = newClientNames.size
+  const nbNoAmount = planned.filter(p => p.amount_ht_cts == null).length
+
+  const lines: { label: string; value: string }[] = planned.slice(0, 20).map((p, i) => {
+    const tag = p.existingClientId ? '' : ' (nouveau)'
+    const montant = p.amount_ht_cts != null ? `${p.amount_ht_cts / 100} € HT` : 'sans montant'
+    return { label: `${i + 1}.`, value: `${p.clientName}${tag} · ${p.date} · ${montant}` }
+  })
+  if (planned.length > 20) lines.push({ label: '…', value: `+ ${planned.length - 20} autre(s)` })
+  if (nbNew > 0) {
+    const names = [...newClientLabels.values()]
+    lines.push({ label: 'Nouveaux clients', value: names.slice(0, 8).join(', ') + (names.length > 8 ? '…' : '') })
+  }
+  if (nbNoAmount > 0) lines.push({ label: 'Sans montant', value: `${nbNoAmount} (à compléter)` })
+  if (excluded > 0) lines.push({ label: 'Ignorées', value: `${excluded} (client manquant)` })
+
+  return {
+    ok: true,
+    action: {
+      title: `${planned.length} livraison${planned.length > 1 ? 's' : ''} · statut : ${statutLabel}`,
+      lines,
+      confirmLabel: `Créer ${planned.length} livraison${planned.length > 1 ? 's' : ''}`,
+      run: async () => {
+        // 1) Nouveaux clients (nom normalisé → id).
+        const newIdByKey = new Map<string, string>()
+        let errors = 0
+        for (const key of newClientNames) {
+          const label = newClientLabels.get(key) ?? key
+          const { data, error } = await createClient(clientPayloadFromName(companyId, label))
+          if (error || !data) { errors++; continue }
+          newIdByKey.set(key, (data as { id: string }).id)
+        }
+
+        // 2) Livraisons (tolère les échecs par ligne).
+        let created = 0
+        for (const p of planned) {
+          const clientId = p.existingClientId ?? newIdByKey.get(normName(p.clientName)) ?? null
+          if (!clientId) { errors++; continue }  // nouveau client non créé → on saute
+          const type = (p.d.type ?? null) as DeliveryType | null
+          const payload: DeliveryInsert = {
+            company_id: companyId,
+            client_id: clientId,
+            date: p.date,
+            statut,
+            vehicle_id: null,
+            driver_id: null,
+            type,
+            description: p.d.notes?.trim() || null,
+            pickup_address: p.d.pickup_address?.trim() || null,
+            delivery_address: p.d.delivery_address?.trim() || null,
+            delivery_lat: null,
+            delivery_lng: null,
+            km: typeof p.d.km === 'number' ? p.d.km : null,
+            weight_kg: typeof p.d.weight_kg === 'number' ? p.d.weight_kg : null,
+            amount_ht_cts: p.amount_ht_cts,
+            tva_cts: p.tva_cts,
+            amount_ttc_cts: p.amount_ttc_cts,
+            invoiced_at: null,
+            paid_at: null,
+            notes: null,
+          }
+          const { error } = await createDelivery(payload)
+          if (error) errors++; else created++
+        }
+
+        const nbCreatedClients = newIdByKey.size
+        let msg = `✅ ${created} livraison${created > 1 ? 's' : ''} créée${created > 1 ? 's' : ''}`
+        if (nbCreatedClients > 0) msg += ` (dont ${nbCreatedClients} nouveau${nbCreatedClients > 1 ? 'x' : ''} client${nbCreatedClients > 1 ? 's' : ''})`
+        msg += '.'
+        if (nbNoAmount > 0) msg += ` ${nbNoAmount} sans montant à compléter.`
+        if (errors > 0) msg += ` ⚠️ ${errors} en échec.`
+        return msg
+      },
+    },
+  }
+}
