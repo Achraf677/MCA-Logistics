@@ -1,15 +1,26 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Sparkles, X, Send, Check } from 'lucide-react'
+import { Sparkles, X, Send, Check, Paperclip } from 'lucide-react'
 import { useAssistant } from './AssistantContext'
 import type { PendingAction } from './AssistantContext'
 import { runAssistantTurn } from './assistant.queries'
 import {
   prepareCreateLivraison, prepareChangerStatutLivraison,
   prepareCreateCharge, prepareCreateClient, prepareCreatePlein, prepareCreateIncident,
-  prepareCreateFournisseur, prepareCreateVehicule, runGenererMail,
+  prepareCreateFournisseur, prepareCreateVehicule, runGenererMail, runExtractDeliveries,
 } from './assistant.tools'
 import type { PrepareResult, GenererMailArgs } from './assistant.tools'
+
+const MAX_FILE_BYTES = 10 * 1024 * 1024 // ~10 Mo
+
+function readDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('Lecture du fichier impossible'))
+    reader.readAsDataURL(file)
+  })
+}
 
 // Routage des 8 outils d'ÉCRITURE → leur préparateur. Doit couvrir TOUTES les
 // actions de WRITE_TOOLS (assistant.queries.ts). Une action absente d'ici =
@@ -38,8 +49,10 @@ export function AssistantWidget() {
     pendingAction, setPendingAction,
   } = useAssistant()
   const [input, setInput] = useState('')
+  const [statusLabel, setStatusLabel] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   // L'utilisateur est-il « collé » au bas du fil ? (sinon on ne force pas le scroll)
   const pinned = useRef(true)
 
@@ -136,6 +149,43 @@ export function AssistantWidget() {
     setPendingAction(null)
   }
 
+  // ── Joindre une feuille de route → OCR/extraction → affichage ────────────────
+  const onPickFile = () => fileInputRef.current?.click()
+
+  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // permet de re-sélectionner le même fichier
+    if (!file || blocked) return
+    if (file.size > MAX_FILE_BYTES) {
+      pushAssistant('❌ Fichier trop volumineux (max ~10 Mo). Réessaie avec une version plus légère.')
+      return
+    }
+
+    let base64: string
+    try {
+      const dataUrl = await readDataUrl(file)
+      const comma = dataUrl.indexOf(',')
+      base64 = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl
+    } catch {
+      pushAssistant('❌ Lecture du fichier impossible.')
+      return
+    }
+    const mimeType = file.type || 'application/octet-stream'
+
+    setMessages(prev => [...prev, { role: 'user', text: `📎 Feuille de route : ${file.name}` }])
+    setSending(true)
+    setStatusLabel('Lecture de la feuille de route…')
+    try {
+      const r = await runExtractDeliveries(base64, mimeType)
+      pushAssistant(r.ok ? r.text : r.message)
+    } catch (err) {
+      pushAssistant(`⚠️ ${(err as Error).message}`)
+    } finally {
+      setSending(false)
+      setStatusLabel(null)
+    }
+  }
+
   return (
     <>
       {/* Bulle flottante — discrète au repos, nette au survol/focus */}
@@ -192,7 +242,7 @@ export function AssistantWidget() {
             {messages.map((m, i) => (
               <Bubble key={i} role={m.role} text={m.text} draft={m.draft} />
             ))}
-            {sending && <TypingBubble />}
+            {sending && <TypingBubble label={statusLabel ?? undefined} />}
           </div>
 
           {/* Carte de confirmation — HORS du flux scrollable (shrink-0) pour ne JAMAIS
@@ -210,6 +260,24 @@ export function AssistantWidget() {
 
           {/* Saisie */}
           <div className="shrink-0 border-t border-[var(--border)] p-3 flex items-end gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              onChange={handleFile}
+            />
+            <button
+              onClick={onPickFile}
+              disabled={blocked}
+              aria-label="Joindre une feuille de route"
+              title="Joindre une feuille de route (image ou PDF)"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-[var(--r-md)]
+                text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
+                disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Paperclip size={18} />
+            </button>
             <input
               ref={inputRef}
               value={input}
@@ -329,11 +397,11 @@ function ActionCard({
   )
 }
 
-/** Indicateur « l'assistant rédige » pendant l'appel IA. */
-function TypingBubble() {
+/** Indicateur d'attente (IA qui rédige / OCR en cours), avec libellé optionnel. */
+function TypingBubble({ label }: { label?: string }) {
   return (
     <div className="flex justify-start">
-      <div className="px-3.5 py-2.5 rounded-[var(--r-lg)] rounded-bl-sm bg-[var(--bg-card)] border border-[var(--border)]">
+      <div className="px-3.5 py-2.5 rounded-[var(--r-lg)] rounded-bl-sm bg-[var(--bg-card)] border border-[var(--border)] flex items-center gap-2">
         <span className="flex items-center gap-1">
           {[0, 150, 300].map(d => (
             <span
@@ -343,6 +411,7 @@ function TypingBubble() {
             />
           ))}
         </span>
+        {label && <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">{label}</span>}
       </div>
     </div>
   )

@@ -67,6 +67,10 @@ import type { WorkHourRow } from '../heures/heures.types'
 import { generateDraft } from '../brouillons/brouillons.queries'
 import type { DraftType } from '../brouillons/brouillons.types'
 
+// OCR / extraction feuille de route — réutilise la query de l'onglet Copilote IA
+import { extractDeliveries } from '../copilote/copilote.queries'
+import type { ExtractedDelivery, ExtractResponse } from '../copilote/copilote.types'
+
 const MAX_LIST = 30
 const DAY_MS = 86_400_000
 
@@ -1247,4 +1251,53 @@ export async function runGenererMail(
   const text = res?.data?.text ?? ''
   if (!text.trim()) return { ok: false, message: 'Le brouillon est revenu vide — reformule ta demande.' }
   return { ok: true, text }
+}
+
+// ═══════════════════════ OCR — extraction d'une feuille de route (affichage) ═══
+// Réutilise extractDeliveries() de l'onglet Copilote IA (Edge ai-extract-deliveries,
+// OCR + extraction). LECTURE SEULE : aucune création ici (volet 6B-2). On affiche.
+
+export type ExtractResult =
+  | { ok: true; deliveries: ExtractedDelivery[]; text: string }
+  | { ok: false; message: string }
+
+function formatExtracted(deliveries: ExtractedDelivery[]): string {
+  const n = deliveries.length
+  const lines = deliveries.map((d, i) => {
+    const parts = [
+      d.client_name ?? 'client ?',
+      d.date ?? 'date ?',
+      d.delivery_address ?? null,
+      d.montant_ht_eur != null ? `${d.montant_ht_eur} € HT` : null,
+    ].filter(Boolean)
+    let line = `**${i + 1}.** ${parts.join(' · ')}`
+    if (Array.isArray(d.missing) && d.missing.length) {
+      line += `\n   ⚠️ à compléter : ${d.missing.join(', ')}`
+    }
+    return line
+  })
+  return (
+    `📋 J'ai lu ${n} livraison${n > 1 ? 's' : ''} dans la feuille de route :\n\n`
+    + lines.join('\n')
+    + `\n\n(Vérifie le contenu — la création en lot arrive bientôt.)`
+  )
+}
+
+export async function runExtractDeliveries(fileBase64: string, mimeType: string): Promise<ExtractResult> {
+  const { data, error } = await extractDeliveries({ fileBase64, mimeType })
+  const res = data as ExtractResponse | null
+
+  if (error || res?.ok === false) {
+    const raw = error?.message ?? res?.error ?? "Échec de l'analyse."
+    const msg = /timeout|abort|temps|504|deadline/i.test(String(raw))
+      ? '⏳ La lecture a pris trop de temps — réessaie avec une image plus nette ou plus légère.'
+      : `❌ Lecture impossible : ${raw}.`
+    return { ok: false, message: msg }
+  }
+
+  const deliveries = res?.data?.deliveries ?? []
+  if (deliveries.length === 0) {
+    return { ok: false, message: "Je n'ai trouvé aucune livraison dans ce document. Vérifie la photo / le PDF, ou colle le texte directement." }
+  }
+  return { ok: true, deliveries, text: formatExtracted(deliveries) }
 }
