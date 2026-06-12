@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
@@ -6,7 +6,7 @@ import {
   Truck, Route, CalendarDays, Calendar, AlertTriangle, ClipboardCheck,
   Car, Fuel, Wrench,
   Users, Building2,
-  CreditCard, Banknote, Receipt, Wallet,
+  Wallet,
   UserCheck, Clock,
   Bell, Settings,
   Menu, X, ChevronDown, ChevronRight,
@@ -67,10 +67,8 @@ const NAV: NavSection[] = [
   {
     title: 'Finance',
     items: [
-      { key: 'charges',     label: 'Charges',     icon: CreditCard, path: '/charges',     featureKey: 'charges'     },
-      { key: 'encaissement',label: 'Encaissement',icon: Banknote,   path: '/encaissement',featureKey: 'encaissement'},
-      { key: 'tresorerie',  label: 'Trésorerie',  icon: Wallet,     path: '/tresorerie',  featureKey: 'tresorerie'  },
-      { key: 'tva',         label: 'TVA',         icon: Receipt,    path: '/tva',         featureKey: 'tva'         },
+      // Page à sous-onglets : Trésorerie · Charges · Encaissement · TVA.
+      { key: 'finance', label: 'Finance', icon: Wallet, path: '/finance', featureKey: 'finance' },
     ],
   },
   {
@@ -153,9 +151,29 @@ interface ShellProps {
   onAction?: (key: ActionKey) => void
 }
 
+// Permet d'IMBRIQUER un Shell dans un autre (pages à sous-onglets) : un Shell
+// rendu à l'intérieur d'un Shell parent n'affiche QUE son contenu (+ ses actions),
+// pas une 2e sidebar/topbar. Les pages métier restent inchangées.
+const ShellNestContext = createContext(false)
+
 export function Shell({ children, pageTitle, actions = [], onAction }: ShellProps) {
+  const nested = useContext(ShellNestContext)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+
+  // Sous-vue d'une page à sous-onglets : pas de chrome, on garde juste les actions.
+  if (nested) {
+    return (
+      <div className="flex flex-col gap-4">
+        {actions.length > 0 && (
+          <div className="flex justify-end">
+            <ActionBar actions={actions} onAction={onAction} />
+          </div>
+        )}
+        {children}
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-full">
@@ -222,9 +240,11 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
           <ActionBar actions={actions} onAction={onAction} />
         </header>
 
-        {/* Contenu de l'onglet */}
+        {/* Contenu de l'onglet — tout Shell rendu ici devient « imbriqué » (sous-onglet). */}
         <main className="flex-1 overflow-auto p-4 md:p-6">
-          {children}
+          <ShellNestContext.Provider value={true}>
+            {children}
+          </ShellNestContext.Provider>
         </main>
       </div>
 

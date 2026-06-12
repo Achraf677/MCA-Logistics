@@ -14,10 +14,7 @@ import { Carburant }    from '../features/carburant/Carburant'
 import { Entretiens }   from '../features/entretiens/Entretiens'
 import { Clients }      from '../features/clients/Clients'
 import { Fournisseurs } from '../features/fournisseurs/Fournisseurs'
-import { Charges }      from '../features/charges/Charges'
-import { Encaissement } from '../features/encaissement/Encaissement'
-import { Tresorerie }   from '../features/tresorerie/Tresorerie'
-import { Tva }          from '../features/tva/Tva'
+import { FinanceSection } from './sections/FinanceSection'
 import { Equipe }       from '../features/equipe/Equipe'
 import { Heures }       from '../features/heures/Heures'
 import { Inspections }  from '../features/inspections/Inspections'
@@ -45,10 +42,12 @@ export function AppRoutes() {
       <Route path="/entretiens"    element={guard(features.entretiens,   <Entretiens />)} />
       <Route path="/clients"       element={guard(features.clients,      <Clients />)} />
       <Route path="/fournisseurs"  element={guard(features.fournisseurs, <Fournisseurs />)} />
-      <Route path="/charges"       element={guard(features.charges,      <Charges />)} />
-      <Route path="/encaissement"  element={guard(features.encaissement, <Encaissement />)} />
-      <Route path="/tresorerie"    element={guard(features.tresorerie,   <Tresorerie />)} />
-      <Route path="/tva"           element={guard(features.tva,          <Tva />)} />
+      {/* Domaine Finance à sous-onglets ; anciennes routes → redirection (liens préservés) */}
+      <Route path="/finance"       element={guard(features.finance,      <FinanceSection />)} />
+      <Route path="/charges"       element={<Navigate to="/finance?tab=charges"     replace />} />
+      <Route path="/encaissement"  element={<Navigate to="/finance?tab=encaissement" replace />} />
+      <Route path="/tresorerie"    element={<Navigate to="/finance?tab=tresorerie"  replace />} />
+      <Route path="/tva"           element={<Navigate to="/finance?tab=tva"         replace />} />
       <Route path="/equipe"        element={guard(features.equipe,       <Equipe />)} />
       <Route path="/heures"        element={guard(features.heures,       <Heures />)} />
       <Route path="/alertes"       element={guard(features.alertes,      <Alertes />)} />
