@@ -29,7 +29,7 @@ Deno.serve(async (req)=>{
     error: 'missing PENNYLANE_API_TOKEN'
   }, 500);
   const supabase = getServiceClient();
-  const { data: delivery, error: dErr } = await supabase.from('deliveries').select('id, client_id, date, description, type, invoiced_at, ' + 'amount_ht_cts, tva_cts, montant_ht_cts, tva_rate, pennylane_invoice_id').eq('id', deliveryId).single();
+  const { data: delivery, error: dErr } = await supabase.from('deliveries').select('id, client_id, date, description, type, invoiced_at, ' + 'amount_ht_cts, tva_cts, tva_rate, pennylane_invoice_id').eq('id', deliveryId).single();
   if (dErr || !delivery) {
     return jsonResponse({
       ok: false,
@@ -42,7 +42,7 @@ Deno.serve(async (req)=>{
       alreadySynced: true
     });
   }
-  const amountHtCts = delivery.amount_ht_cts ?? delivery.montant_ht_cts;
+  const amountHtCts = delivery.amount_ht_cts;
   if (amountHtCts == null || amountHtCts <= 0) {
     return jsonResponse({
       ok: false,
