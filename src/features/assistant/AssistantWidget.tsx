@@ -7,9 +7,9 @@ import { runAssistantTurn } from './assistant.queries'
 import {
   prepareCreateLivraison, prepareChangerStatutLivraison,
   prepareCreateCharge, prepareCreateClient, prepareCreatePlein, prepareCreateIncident,
-  prepareCreateFournisseur, prepareCreateVehicule,
+  prepareCreateFournisseur, prepareCreateVehicule, runGenererMail,
 } from './assistant.tools'
-import type { PrepareResult } from './assistant.tools'
+import type { PrepareResult, GenererMailArgs } from './assistant.tools'
 
 // Routage des 8 outils d'ÉCRITURE → leur préparateur. Doit couvrir TOUTES les
 // actions de WRITE_TOOLS (assistant.queries.ts). Une action absente d'ici =
@@ -89,6 +89,11 @@ export function AssistantWidget() {
       const result = await runAssistantTurn(history, currentTab)
       if (result.kind === 'text') {
         pushAssistant(result.text || '(réponse vide)')
+      } else if (result.kind === 'draft') {
+        // Rédaction : aucune écriture, pas de carte — on affiche le brouillon (avec « Copier »).
+        const r = await runGenererMail(result.args as GenererMailArgs)
+        if (r.ok) setMessages(prev => [...prev, { role: 'assistant', text: r.text, draft: true }])
+        else pushAssistant(r.message)
       } else {
         // Action d'écriture : on prépare et on demande confirmation (jamais exécutée auto).
         const preparer = ACTION_PREPARERS[result.tool]
@@ -185,7 +190,7 @@ export function AssistantWidget() {
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 flex flex-col gap-3"
           >
             {messages.map((m, i) => (
-              <Bubble key={i} role={m.role} text={m.text} />
+              <Bubble key={i} role={m.role} text={m.text} draft={m.draft} />
             ))}
             {sending && <TypingBubble />}
           </div>
@@ -238,8 +243,20 @@ export function AssistantWidget() {
   )
 }
 
-function Bubble({ role, text }: { role: 'user' | 'assistant'; text: string }) {
+function Bubble({ role, text, draft }: { role: 'user' | 'assistant'; text: string; draft?: boolean }) {
   const isUser = role === 'user'
+  const [copied, setCopied] = useState(false)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard indisponible : on ignore silencieusement */
+    }
+  }
+
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
@@ -249,6 +266,18 @@ function Bubble({ role, text }: { role: 'user' | 'assistant'; text: string }) {
             : 'bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)] rounded-bl-sm'}`}
       >
         {renderMarkdownBold(text)}
+        {draft && (
+          <div className="mt-2 pt-2 border-t border-[var(--border)]">
+            <button
+              onClick={copy}
+              className="inline-flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--text-muted)]
+                hover:text-[var(--text)] transition-colors"
+            >
+              <Check size={13} className={copied ? 'opacity-100' : 'opacity-0 -mr-4'} />
+              {copied ? 'Copié' : 'Copier'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -9,6 +9,8 @@ export const GREETING =
 export interface AssistantMessage {
   role: 'user' | 'assistant'
   text: string
+  /** Brouillon généré (mail/relance…) → affiche un bouton « Copier ». */
+  draft?: boolean
 }
 
 /**
