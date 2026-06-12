@@ -9,11 +9,21 @@ import {
   prepareCreateCharge, prepareCreateClient, prepareCreatePlein, prepareCreateIncident,
   prepareCreateFournisseur, prepareCreateVehicule,
 } from './assistant.tools'
-import type {
-  CreateLivraisonArgs, ChangerStatutArgs,
-  CreateChargeArgs, CreateClientArgs, CreatePleinArgs, CreateIncidentArgs,
-  CreateFournisseurArgs, CreateVehiculeArgs,
-} from './assistant.tools'
+import type { PrepareResult } from './assistant.tools'
+
+// Routage des 8 outils d'ÉCRITURE → leur préparateur. Doit couvrir TOUTES les
+// actions de WRITE_TOOLS (assistant.queries.ts). Une action absente d'ici =
+// « Action non prise en charge » côté UI.
+const ACTION_PREPARERS: Record<string, (args: unknown) => Promise<PrepareResult>> = {
+  create_livraison:         (a) => prepareCreateLivraison(a as never),
+  changer_statut_livraison: (a) => prepareChangerStatutLivraison(a as never),
+  create_charge:            (a) => prepareCreateCharge(a as never),
+  create_client:            (a) => prepareCreateClient(a as never),
+  create_plein:             (a) => prepareCreatePlein(a as never),
+  create_incident:          (a) => prepareCreateIncident(a as never),
+  create_fournisseur:       (a) => prepareCreateFournisseur(a as never),
+  create_vehicule:          (a) => prepareCreateVehicule(a as never),
+}
 import { tabLabelForPath } from './assistant.knowledge'
 
 /**
@@ -81,20 +91,14 @@ export function AssistantWidget() {
         pushAssistant(result.text || '(réponse vide)')
       } else {
         // Action d'écriture : on prépare et on demande confirmation (jamais exécutée auto).
-        const a = result.args
-        const prep =
-          result.tool === 'create_livraison'        ? await prepareCreateLivraison(a as CreateLivraisonArgs)
-          : result.tool === 'changer_statut_livraison' ? await prepareChangerStatutLivraison(a as ChangerStatutArgs)
-          : result.tool === 'create_charge'          ? await prepareCreateCharge(a as CreateChargeArgs)
-          : result.tool === 'create_client'          ? await prepareCreateClient(a as CreateClientArgs)
-          : result.tool === 'create_plein'           ? await prepareCreatePlein(a as CreatePleinArgs)
-          : result.tool === 'create_incident'        ? await prepareCreateIncident(a as CreateIncidentArgs)
-          : result.tool === 'create_fournisseur'     ? await prepareCreateFournisseur(a as CreateFournisseurArgs)
-          : result.tool === 'create_vehicule'        ? await prepareCreateVehicule(a as CreateVehiculeArgs)
-          : null
-        if (!prep) pushAssistant(`Action non prise en charge : ${result.tool}.`)
-        else if (!prep.ok) pushAssistant(prep.message)
-        else setPendingAction(prep.action)
+        const preparer = ACTION_PREPARERS[result.tool]
+        if (!preparer) {
+          pushAssistant(`Action non prise en charge : ${result.tool}.`)
+        } else {
+          const prep = await preparer(result.args)
+          if (!prep.ok) pushAssistant(prep.message)
+          else setPendingAction(prep.action)
+        }
       }
     } catch (e) {
       pushAssistant(`⚠️ ${(e as Error).message}`)

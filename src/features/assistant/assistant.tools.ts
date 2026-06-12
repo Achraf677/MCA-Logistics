@@ -1155,7 +1155,14 @@ export interface CreateVehiculeArgs {
   carburant?: string
 }
 
-const VEHICLE_FUEL_TYPES = ['diesel', 'essence', 'electric', 'hybrid', 'lpg']
+// L'Edge déclare le carburant en FRANÇAIS (electrique/hybride/gpl) ; la base
+// attend les valeurs DB (electric/hybrid/lpg). On normalise dans les deux sens.
+const FUEL_NORMALIZE: Record<string, VehicleInsert['fuel_type']> = {
+  diesel: 'diesel', essence: 'essence',
+  electrique: 'electric', electric: 'electric',
+  hybride: 'hybrid', hybrid: 'hybrid',
+  gpl: 'lpg', lpg: 'lpg',
+}
 
 export async function prepareCreateVehicule(args: CreateVehiculeArgs): Promise<PrepareResult> {
   const plate = (args.plaque ?? '').trim()
@@ -1167,8 +1174,7 @@ export async function prepareCreateVehicule(args: CreateVehiculeArgs): Promise<P
   const model = args.modele?.trim() || null
   const nom = args.nom?.trim()
   const label = nom || [brand, model].filter(Boolean).join(' ').trim() || plate
-  const fuel_type = (args.carburant && VEHICLE_FUEL_TYPES.includes(args.carburant)
-    ? args.carburant : null) as VehicleInsert['fuel_type']
+  const fuel_type = (args.carburant ? FUEL_NORMALIZE[args.carburant.trim().toLowerCase()] ?? null : null)
 
   // Colonnes réelles uniquement ; les autres prennent les défauts en base.
   const payload = {
