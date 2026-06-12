@@ -8,6 +8,7 @@ import {
   prepareCreateLivraison, prepareChangerStatutLivraison,
   prepareCreateCharge, prepareCreateClient, prepareCreatePlein, prepareCreateIncident,
   prepareCreateFournisseur, prepareCreateVehicule, runGenererMail, runExtractDeliveries,
+  prepareImportLivraisons,
 } from './assistant.tools'
 import type { PrepareResult, GenererMailArgs } from './assistant.tools'
 
@@ -46,10 +47,11 @@ import { tabLabelForPath } from './assistant.knowledge'
 export function AssistantWidget() {
   const {
     open, setOpen, messages, setMessages, sending, setSending,
-    pendingAction, setPendingAction,
+    pendingAction, setPendingAction, extracted, setExtracted,
   } = useAssistant()
   const [input, setInput] = useState('')
   const [statusLabel, setStatusLabel] = useState<string | null>(null)
+  const [chooseStatut, setChooseStatut] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -177,7 +179,8 @@ export function AssistantWidget() {
     setStatusLabel('Lecture de la feuille de route…')
     try {
       const r = await runExtractDeliveries(base64, mimeType)
-      pushAssistant(r.ok ? r.text : r.message)
+      if (r.ok) { pushAssistant(r.text); setExtracted(r.deliveries) } // stockées pour l'import (6B-2)
+      else pushAssistant(r.message)
     } catch (err) {
       pushAssistant(`⚠️ ${(err as Error).message}`)
     } finally {
@@ -185,6 +188,27 @@ export function AssistantWidget() {
       setStatusLabel(null)
     }
   }
+
+  // ── Import en lot des livraisons extraites : choix du statut → carte ─────────
+  const pickStatut = async (statut: 'planifiee' | 'livree') => {
+    if (!extracted) return
+    setChooseStatut(false)
+    setSending(true)
+    setStatusLabel('Préparation de l’import…')
+    try {
+      const prep = await prepareImportLivraisons(extracted, statut)
+      if (!prep.ok) pushAssistant(prep.message)
+      else setPendingAction(prep.action)
+    } catch (e) {
+      pushAssistant(`⚠️ ${(e as Error).message}`)
+    } finally {
+      setExtracted(null)
+      setSending(false)
+      setStatusLabel(null)
+    }
+  }
+
+  const cancelImport = () => { setChooseStatut(false); setExtracted(null) }
 
   return (
     <>
@@ -255,6 +279,43 @@ export function AssistantWidget() {
                 onConfirm={confirmAction}
                 onCancel={cancelAction}
               />
+            </div>
+          )}
+
+          {/* Import OCR : bouton « Créer ces N livraisons » puis choix du statut (hors scroll) */}
+          {!pendingAction && extracted && extracted.length > 0 && (
+            <div className="shrink-0 border-t border-[var(--border)] p-3">
+              {!chooseStatut ? (
+                <button
+                  onClick={() => setChooseStatut(true)}
+                  disabled={sending}
+                  className="w-full min-h-[44px] rounded-[var(--r-md)] bg-[var(--brand)] text-white font-medium
+                    hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Créer ces {extracted.length} livraison{extracted.length > 1 ? 's' : ''}
+                </button>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">Statut des livraisons à créer ?</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => pickStatut('planifiee')} disabled={sending}
+                      className="flex-1 min-h-[44px] rounded-[var(--r-md)] bg-[var(--brand)] text-white font-medium
+                        hover:bg-[var(--brand-hover)] disabled:opacity-50 transition-colors">
+                      Planifiée
+                    </button>
+                    <button onClick={() => pickStatut('livree')} disabled={sending}
+                      className="flex-1 min-h-[44px] rounded-[var(--r-md)] bg-[var(--brand)] text-white font-medium
+                        hover:bg-[var(--brand-hover)] disabled:opacity-50 transition-colors">
+                      Livrée
+                    </button>
+                    <button onClick={cancelImport} disabled={sending}
+                      className="min-h-[44px] px-4 rounded-[var(--r-md)] border border-[var(--border-soft)]
+                        text-[var(--text)] hover:bg-[var(--bg-card-hover)] disabled:opacity-50 transition-colors">
+                      Annuler
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

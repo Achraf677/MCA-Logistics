@@ -1,5 +1,6 @@
 import { createContext, useContext, useState } from 'react'
 import type { ReactNode, Dispatch, SetStateAction } from 'react'
+import type { ExtractedDelivery } from '../copilote/copilote.types'
 
 /** Message d'accueil affiché à l'ouverture du panneau. */
 export const GREETING =
@@ -33,6 +34,9 @@ interface AssistantCtx {
   setSending: (v: boolean) => void
   pendingAction: PendingAction | null
   setPendingAction: (a: PendingAction | null) => void
+  /** Livraisons extraites d'une feuille de route, en attente d'import (6B-2). */
+  extracted: ExtractedDelivery[] | null
+  setExtracted: (d: ExtractedDelivery[] | null) => void
 }
 
 const Ctx = createContext<AssistantCtx | null>(null)
@@ -47,9 +51,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<AssistantMessage[]>([{ role: 'assistant', text: GREETING }])
   const [sending, setSending] = useState(false)
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null)
+  const [extracted, setExtracted] = useState<ExtractedDelivery[] | null>(null)
 
   return (
-    <Ctx.Provider value={{ open, setOpen, messages, setMessages, sending, setSending, pendingAction, setPendingAction }}>
+    <Ctx.Provider value={{
+      open, setOpen, messages, setMessages, sending, setSending,
+      pendingAction, setPendingAction, extracted, setExtracted,
+    }}>
       {children}
     </Ctx.Provider>
   )
