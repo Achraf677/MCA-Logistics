@@ -3,6 +3,7 @@ import { TabbedSection } from '../../shared/ui/TabbedSection'
 // Sous-vues : pages métier EXISTANTES, réutilisées telles quelles (non modifiées).
 import { Dashboard } from '../../features/dashboard/Dashboard'
 import { CalculateurRentabilite } from '../../features/rentabilite/CalculateurRentabilite'
+import { SimulateurCourse } from '../../features/rentabilite/SimulateurCourse'
 import { Statistiques } from '../../features/statistiques/Statistiques'
 
 /**
@@ -16,7 +17,8 @@ export function PilotageSection() {
         tabs={[
           { key: 'dashboard', label: 'Dashboard', element: <Dashboard /> },
           { key: 'rentabilite', label: 'Rentabilité', element: <CalculateurRentabilite /> },
-          { key: 'statistiques', label: 'Statistiques', element: <Statistiques /> },
+          { key: 'statistiques',  label: 'Statistiques',      element: <Statistiques /> },
+          { key: 'simulateur',   label: 'Simulateur course', element: <SimulateurCourse /> },
         ]}
       />
     </Shell>
