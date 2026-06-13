@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, TrendingUp, BarChart2,
-  Truck, Route, CalendarDays, Calendar,
+  Truck, CalendarDays,
   Users, Building2,
   Wallet,
   UserCheck, Clock,
@@ -41,10 +41,9 @@ const NAV: NavSection[] = [
     title: 'Opérations',
     items: [
       { key: 'livraisons',  label: 'Livraisons',  icon: Truck,           path: '/livraisons',   featureKey: 'livraisons'  },
-      { key: 'tournees',    label: 'Tournées',    icon: Route,           path: '/tournees',     featureKey: 'tournees'    },
-      { key: 'planning',    label: 'Planning',    icon: CalendarDays,    path: '/planning',     featureKey: 'planning'    },
-      { key: 'calendrier',  label: 'Calendrier',  icon: Calendar,        path: '/calendrier',   featureKey: 'calendrier'  },
-      // Incidents + Inspections déplacés dans le domaine Flotte.
+      // Page à sous-onglets : Tournées · Planning · Calendrier.
+      { key: 'planning',    label: 'Planning',    icon: CalendarDays,    path: '/planning-hub', featureKey: 'planningHub' },
+      // Incidents + Inspections déplacés dans Flotte ; Tournées + Calendrier regroupés ici.
     ],
   },
   {

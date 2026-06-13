@@ -24,6 +24,7 @@ export const features = {
   // Domaines à sous-onglets (réorganisation navigation)
   finance:      true,
   flotte:       true,
+  planningHub:  true,
 } as const
 
 export type FeatureKey = keyof typeof features
