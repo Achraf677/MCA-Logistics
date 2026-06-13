@@ -2,7 +2,7 @@ import { Shell } from '../Shell'
 import { TabbedSection } from '../../shared/ui/TabbedSection'
 // Sous-vues : pages métier EXISTANTES, réutilisées telles quelles (non modifiées).
 import { Dashboard } from '../../features/dashboard/Dashboard'
-import { Rentabilite } from '../../features/rentabilite/Rentabilite'
+import { CalculateurRentabilite } from '../../features/rentabilite/CalculateurRentabilite'
 import { Statistiques } from '../../features/statistiques/Statistiques'
 
 /**
@@ -15,7 +15,7 @@ export function PilotageSection() {
       <TabbedSection
         tabs={[
           { key: 'dashboard', label: 'Dashboard', element: <Dashboard /> },
-          { key: 'rentabilite', label: 'Rentabilité', element: <Rentabilite /> },
+          { key: 'rentabilite', label: 'Rentabilité', element: <CalculateurRentabilite /> },
           { key: 'statistiques', label: 'Statistiques', element: <Statistiques /> },
         ]}
       />
