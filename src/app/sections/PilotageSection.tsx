@@ -1,9 +1,9 @@
+import { useEffect } from 'react'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Shell } from '../Shell'
 import { TabbedSection } from '../../shared/ui/TabbedSection'
-// Sous-vues : pages métier EXISTANTES, réutilisées telles quelles (non modifiées).
 import { Dashboard } from '../../features/dashboard/Dashboard'
 import { CalculateurRentabilite } from '../../features/rentabilite/CalculateurRentabilite'
-import { SimulateurCourse } from '../../features/rentabilite/SimulateurCourse'
 import { Statistiques } from '../../features/statistiques/Statistiques'
 
 /**
@@ -11,14 +11,22 @@ import { Statistiques } from '../../features/statistiques/Statistiques'
  * donc l'app s'ouvre toujours sur le Dashboard (route "/" rend cette section).
  */
 export function PilotageSection() {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'simulateur') {
+      navigate('/pilotage?tab=rentabilite', { replace: true })
+    }
+  }, [searchParams, navigate])
+
   return (
     <Shell pageTitle="Pilotage">
       <TabbedSection
         tabs={[
-          { key: 'dashboard', label: 'Dashboard', element: <Dashboard /> },
-          { key: 'rentabilite', label: 'Rentabilité', element: <CalculateurRentabilite /> },
-          { key: 'statistiques',  label: 'Statistiques',      element: <Statistiques /> },
-          { key: 'simulateur',   label: 'Simulateur course', element: <SimulateurCourse /> },
+          { key: 'dashboard',    label: 'Dashboard',    element: <Dashboard /> },
+          { key: 'rentabilite',  label: 'Rentabilité',  element: <CalculateurRentabilite /> },
+          { key: 'statistiques', label: 'Statistiques', element: <Statistiques /> },
         ]}
       />
     </Shell>

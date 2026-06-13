@@ -3,8 +3,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, ReferenceDot, BarChart, Bar, Cell,
 } from 'recharts'
-import { Plus, Trash2, RotateCcw, Fuel, ArrowDownRight, ArrowUpRight } from 'lucide-react'
-import { deriveCoutsUnitaires } from './rentabilite.logic'
+import { Plus, Trash2, RotateCcw, Fuel, ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, Clock, Wrench, CircleDollarSign } from 'lucide-react'
+import { deriveCoutsUnitaires, simulateCourse } from './rentabilite.logic'
 
 /* Tokens couleur propres au calculateur */
 const C = {
@@ -14,6 +14,8 @@ const C = {
   amber:     '#F59E0B',
   profit:    '#15803D',
   profitBg:  '#DCFCE7',
+  warn:      '#B45309',
+  warnBg:    '#FEF3C7',
   loss:      '#DC2626',
   lossBg:    '#FEE2E2',
   bg:        '#EEF2F7',
@@ -30,6 +32,8 @@ const eur2 = (n: number) =>
 const num = (n: number, d = 0) =>
   new Intl.NumberFormat('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d }).format(isFinite(n) ? n : 0)
 const uid = () => Math.random().toString(36).slice(2, 9)
+const pct1 = (r: number) =>
+  new Intl.NumberFormat('fr-FR', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(isFinite(r) ? r : 0)
 
 type Freq = 'mensuel' | 'parJour' | 'auKm'
 
@@ -49,6 +53,21 @@ interface Params {
 }
 
 const DEF_PARAMS: Params = { jours: 21, gazoleTTC: 2.05, tvaRecup: 100, conso: 10, kmJour: 450 }
+
+interface CourseForm {
+  prixPropose:    number | ''
+  distanceCharge: number | ''
+  dureeH:         number | ''
+  kilometresVide: number | ''
+  peages:         number | ''
+  attenteH:       number | ''
+  nbPoints:       number | ''
+  margeCible:     number | ''
+}
+const DEF_COURSE: CourseForm = {
+  prixPropose: '', distanceCharge: '', dureeH: '',
+  kilometresVide: 0, peages: 0, attenteH: 0, nbPoints: 1, margeCible: 20,
+}
 
 const mkRecettes = (): LineItem[] => [
   { id: uid(), label: 'Forfait journalier', freq: 'parJour', montant: 200 },
@@ -134,6 +153,16 @@ function Kpi({ label, value, sub, accent }: { label: string; value: string; sub?
   )
 }
 
+function RateChip({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ background: C.bg, color: C.muted }}>
+      <Icon size={13} style={{ color: C.amber }} />
+      <span>{label}</span>
+      <span className="font-mono font-semibold ml-auto" style={{ color: C.ink }}>{value}</span>
+    </div>
+  )
+}
+
 /* --- Main component --- */
 
 export function CalculateurRentabilite() {
@@ -141,6 +170,8 @@ export function CalculateurRentabilite() {
   const [recettes, setRecettes] = useState<LineItem[]>(() => mkRecettes())
   const [depenses, setDepenses] = useState<LineItem[]>(() => mkDepenses())
   const [loaded, setLoaded]   = useState(false)
+  const [courseForm, setCourseForm] = useState<CourseForm>(DEF_COURSE)
+  const [detailOpen, setDetailOpen] = useState(false)
 
   useEffect(() => {
     try {
@@ -228,8 +259,38 @@ export function CalculateurRentabilite() {
       resultat, margeJour, tauxMCV, seuilJours, recJourNec, prixForfaitMin, rJour, Rfix,
       coutKm, recKm, margeKm, resAnnuel, is, netAnnuel, cvp, breakdown, maxJours,
       partCarb: CA > 0 ? carbMois / CA : 0,
+      couts,
     }
   }, [params, recettes, depenses])
+
+  const nv = (v: number | string): number => (v === '' || v == null ? 0 : Number(v))
+  const courseReady =
+    nv(courseForm.prixPropose) > 0 &&
+    nv(courseForm.distanceCharge) > 0 &&
+    nv(courseForm.dureeH) > 0
+
+  const courseResult = useMemo(() => {
+    if (!courseReady) return null
+    return simulateCourse({
+      prixPropose:    nv(courseForm.prixPropose),
+      distanceCharge: nv(courseForm.distanceCharge),
+      dureeH:         nv(courseForm.dureeH),
+      kilometresVide: nv(courseForm.kilometresVide),
+      peages:         nv(courseForm.peages),
+      attenteH:       nv(courseForm.attenteH),
+      nbPoints:       nv(courseForm.nbPoints),
+      margeCible:     nv(courseForm.margeCible) / 100,
+    }, r.couts)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courseForm, r.couts])
+
+  const courseVerdictStyle = courseResult
+    ? courseResult.verdict === 'rentable'
+      ? { bg: C.profitBg, color: C.profit, emoji: '✅', label: 'RENTABLE' }
+      : courseResult.verdict === 'limite'
+      ? { bg: C.warnBg,   color: C.warn,   emoji: '⚠️', label: 'LIMITE' }
+      : { bg: C.lossBg,   color: C.loss,   emoji: '❌', label: 'À REFUSER' }
+    : null
 
   const positive    = r.resultat >= 0
   const verdictColor = positive ? C.profit : C.loss
@@ -238,7 +299,13 @@ export function CalculateurRentabilite() {
   const seuilPct    = isFinite(r.seuilJours) && r.seuilJours > 0
     ? Math.min(100, (r.jours / r.seuilJours) * 100) : 0
 
-  const reset = () => { setParams(DEF_PARAMS); setRecettes(mkRecettes()); setDepenses(mkDepenses()) }
+  const reset = () => {
+    setParams({ jours: 0, gazoleTTC: 0, tvaRecup: 0, conso: 0, kmJour: 0 })
+    setRecettes([])
+    setDepenses([])
+    setCourseForm(DEF_COURSE)
+    setDetailOpen(false)
+  }
 
   return (
     <div className="space-y-4">
@@ -518,6 +585,136 @@ export function CalculateurRentabilite() {
             Montants en HT (la TVA est récupérable sur la majorité des postes). TVA gazole récupérable à 100 % pour un VUL.
             Estimation indicative — ne remplace pas ta compta Pennylane. Tes scénarios sont sauvegardés automatiquement.
           </p>
+        </div>
+      </div>
+
+      {/* ── Simulateur de course ───────────────────────────────────────────────── */}
+      <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
+        <div className="px-5 py-4" style={{ background: C.navy }}>
+          <h2 className="font-semibold text-white">Simulateur de course (go / no-go)</h2>
+          <p className="text-xs mt-0.5" style={{ color: '#9DB2CE' }}>
+            Calcule si une course est rentable · coûts issus des hypothèses ci-dessus, mis à jour en direct
+          </p>
+        </div>
+
+        <div className="p-5 space-y-4" style={{ background: C.card }}>
+
+          {/* Coûts unitaires courants */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <RateChip icon={Fuel}             label="Carburant" value={`${eur2(r.couts.coutCarburantKm)}/km`} />
+            <RateChip icon={Wrench}           label="Usure km"  value={`${eur2(r.couts.coutUsureKm)}/km`} />
+            <RateChip icon={Clock}            label="Temps"     value={`${eur0(r.couts.coutTempsHeure)}/h`} />
+            <RateChip icon={CircleDollarSign} label="Gazole HT" value={`${eur2(r.couts.coutLitreHT)}/L`} />
+          </div>
+
+          {/* Champs obligatoires */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="Prix proposé HT *" suffix="€" value={courseForm.prixPropose}
+              onChange={(v) => setCourseForm((f) => ({ ...f, prixPropose: v as number | '' }))} step={5} />
+            <Field label="Distance en charge *" suffix="km" value={courseForm.distanceCharge}
+              onChange={(v) => setCourseForm((f) => ({ ...f, distanceCharge: v as number | '' }))} step={10} />
+            <Field label="Durée estimée *" suffix="h" value={courseForm.dureeH}
+              onChange={(v) => setCourseForm((f) => ({ ...f, dureeH: v as number | '' }))} step={0.5} />
+          </div>
+
+          {/* Champs optionnels */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Field label="Trajet à vide" suffix="km" value={courseForm.kilometresVide}
+              onChange={(v) => setCourseForm((f) => ({ ...f, kilometresVide: v as number | '' }))} step={5} />
+            <Field label="Péages" suffix="€" value={courseForm.peages}
+              onChange={(v) => setCourseForm((f) => ({ ...f, peages: v as number | '' }))} step={1} />
+            <Field label="Attente" suffix="h" value={courseForm.attenteH}
+              onChange={(v) => setCourseForm((f) => ({ ...f, attenteH: v as number | '' }))} step={0.25} />
+            <Field label="Marge cible" suffix="%" value={courseForm.margeCible}
+              onChange={(v) => setCourseForm((f) => ({ ...f, margeCible: v as number | '' }))} step={5} min={0} />
+          </div>
+
+          {/* Verdict */}
+          {!courseReady ? (
+            <div className="rounded-xl p-4 text-center" style={{ background: C.bg }}>
+              <p className="text-sm" style={{ color: C.muted }}>
+                Remplissez le prix proposé, la distance et la durée <span style={{ color: C.loss }}>*</span> pour obtenir le verdict.
+              </p>
+            </div>
+          ) : courseResult && courseVerdictStyle && (
+            <div className="flex flex-col gap-3">
+
+              {/* Verdict principal */}
+              <div className="rounded-xl p-4" style={{ background: courseVerdictStyle.bg, border: `1px solid ${C.border}` }}>
+                <div className="flex items-center gap-3 mb-2">
+                  <span className="text-xl">{courseVerdictStyle.emoji}</span>
+                  <span className="font-bold text-lg" style={{ color: courseVerdictStyle.color }}>{courseVerdictStyle.label}</span>
+                  <span className="ml-auto font-mono font-semibold text-lg" style={{ color: courseVerdictStyle.color }}>
+                    {eur0(courseResult.margeNette)}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+                  <span style={{ color: C.muted }}>
+                    Marge : <b className="font-mono" style={{ color: courseVerdictStyle.color }}>{pct1(courseResult.margePct)}</b>
+                  </span>
+                  <span style={{ color: C.muted }}>
+                    Prix plancher : <b className="font-mono" style={{ color: C.ink }}>{eur0(courseResult.prixPlancher)}</b>
+                  </span>
+                  <span style={{ color: C.muted }}>
+                    Prix cible ({nv(courseForm.margeCible)} %) : <b className="font-mono" style={{ color: C.profit }}>{eur0(courseResult.prixCible)}</b>
+                  </span>
+                </div>
+              </div>
+
+              {/* KPIs secondaires */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: 'Prix / h',   value: eur0(courseResult.prixH) },
+                  { label: 'Marge / h',  value: eur0(courseResult.margeH),  accent: courseResult.margeH  >= 0 ? C.profit : C.loss },
+                  { label: 'Prix / km',  value: eur2(courseResult.prixKm) },
+                  { label: 'Marge / km', value: eur2(courseResult.margeKm), accent: courseResult.margeKm >= 0 ? C.profit : C.loss },
+                ].map((k) => (
+                  <div key={k.label} className="rounded-xl p-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
+                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: C.muted }}>{k.label}</div>
+                    <div className="font-mono font-semibold text-base leading-tight" style={{ color: k.accent ?? C.ink }}>{k.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Détail des coûts — repliable */}
+              <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
+                <button
+                  onClick={() => setDetailOpen((o) => !o)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors"
+                  style={{ background: C.bg, color: C.muted }}
+                >
+                  <span>Détail des coûts</span>
+                  {detailOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                </button>
+                {detailOpen && (
+                  <div className="px-4 py-3 flex flex-col gap-2 text-sm" style={{ background: C.card }}>
+                    {[
+                      { label: 'Carburant',  v: courseResult.coutCarburant, note: `${courseResult.kmTotal} km × ${eur2(r.couts.coutCarburantKm)}/km` },
+                      { label: 'Usure / km', v: courseResult.coutUsure,     note: `${courseResult.kmTotal} km × ${eur2(r.couts.coutUsureKm)}/km` },
+                      { label: 'Temps',      v: courseResult.coutTemps,     note: `${courseResult.heuresTotales.toFixed(1)} h × ${eur0(r.couts.coutTempsHeure)}/h` },
+                      { label: 'Péages',     v: courseResult.coutPeages,    note: undefined },
+                    ].map((row) => (
+                      <div key={row.label} className="flex items-center justify-between gap-4">
+                        <div>
+                          <span style={{ color: C.ink }}>{row.label}</span>
+                          {row.note && <span className="ml-2 text-[11px]" style={{ color: C.faint }}>{row.note}</span>}
+                        </div>
+                        <span className="font-mono" style={{ color: C.muted }}>{eur0(row.v)}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between pt-2 font-semibold" style={{ borderTop: `1px solid ${C.border}` }}>
+                      <span style={{ color: C.ink }}>Coût total</span>
+                      <span className="font-mono" style={{ color: C.ink }}>{eur0(courseResult.coutTotal)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-[10px]" style={{ color: C.faint }}>
+                km total : {courseResult.kmTotal} · durée totale : {courseResult.heuresTotales.toFixed(1)} h · {nv(courseForm.nbPoints)} point(s)
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
