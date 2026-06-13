@@ -3,8 +3,11 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, ReferenceDot, BarChart, Bar, Cell,
 } from 'recharts'
-import { Plus, Trash2, RotateCcw, Fuel, ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, Clock, Wrench, CircleDollarSign } from 'lucide-react'
+import { Plus, Trash2, RotateCcw, Fuel, ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, Clock, Wrench, CircleDollarSign, Save, FolderOpen, RefreshCw, X } from 'lucide-react'
 import { deriveCoutsUnitaires, simulateCourse } from './rentabilite.logic'
+import { useProfile } from '../../app/providers'
+import type { CostProfil, ProfilData } from './rentabilite.profils.queries'
+import { listProfils, createProfil, updateProfil, deleteProfil } from './rentabilite.profils.queries'
 
 /* Tokens couleur propres au calculateur */
 const C = {
@@ -173,6 +176,16 @@ export function CalculateurRentabilite() {
   const [courseForm, setCourseForm] = useState<CourseForm>(DEF_COURSE)
   const [detailOpen, setDetailOpen] = useState(false)
 
+  // Profils Supabase
+  const { companyId } = useProfile()
+  const [profils, setProfils]               = useState<CostProfil[]>([])
+  const [profilsLoading, setProfilsLoading] = useState(true)
+  const [selectedId, setSelectedId]         = useState('')
+  const [loadedId, setLoadedId]             = useState<string | null>(null)
+  const [opBusy, setOpBusy]                 = useState(false)
+  const [opMsg, setOpMsg]                   = useState<{ ok: boolean; text: string } | null>(null)
+  const [newName, setNewName]               = useState<string | null>(null)
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem('mca-renta')
@@ -193,6 +206,91 @@ export function CalculateurRentabilite() {
     }, 400)
     return () => clearTimeout(t)
   }, [params, recettes, depenses, loaded])
+
+  useEffect(() => {
+    setProfilsLoading(true)
+    listProfils().then(({ data, error }) => {
+      setProfilsLoading(false)
+      if (error) {
+        setOpMsg({ ok: false, text: `Chargement des profils : ${(error as { message: string }).message}` })
+        return
+      }
+      setProfils((data ?? []) as CostProfil[])
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!opMsg) return
+    const t = setTimeout(() => setOpMsg(null), 5000)
+    return () => clearTimeout(t)
+  }, [opMsg])
+
+  // ── Gestion des profils ────────────────────────────────────────────────
+  const hasData = recettes.length > 0 || depenses.length > 0 ||
+    Object.values(params).some((v) => Number(v) !== 0)
+
+  const refreshProfils = () =>
+    listProfils().then(({ data }) => setProfils((data ?? []) as CostProfil[]))
+
+  function doLoadProfil(p: CostProfil) {
+    if (hasData && !window.confirm(`Charger "${p.name}" remplacera votre saisie en cours. Continuer ?`)) return
+    setParams(p.data.params as unknown as Params)
+    setRecettes(p.data.recettes as unknown as LineItem[])
+    setDepenses(p.data.depenses as unknown as LineItem[])
+    setLoadedId(p.id)
+    setSelectedId(p.id)
+    setCourseForm(DEF_COURSE)
+    setOpMsg({ ok: true, text: `Profil "${p.name}" chargé.` })
+  }
+
+  async function doSaveProfil() {
+    if (!newName?.trim()) return
+    if (!companyId) { setOpMsg({ ok: false, text: 'Session non initialisée — réessayez dans un instant.' }); return }
+    setOpBusy(true)
+    const data: ProfilData = { version: 1, params: params as unknown as Record<string, number | string>, recettes, depenses }
+    const { data: created, error } = await createProfil(newName.trim(), data, companyId)
+    setOpBusy(false)
+    if (error || !created) {
+      setOpMsg({ ok: false, text: `Erreur création : ${(error as { message: string })?.message ?? 'inconnue'}` })
+      return
+    }
+    const c = created as unknown as CostProfil
+    setNewName(null)
+    await refreshProfils()
+    setLoadedId(c.id)
+    setSelectedId(c.id)
+    setOpMsg({ ok: true, text: `Profil "${c.name}" enregistré.` })
+  }
+
+  async function doUpdateProfil() {
+    if (!loadedId) return
+    setOpBusy(true)
+    const data: ProfilData = { version: 1, params: params as unknown as Record<string, number | string>, recettes, depenses }
+    const { error } = await updateProfil(loadedId, data)
+    setOpBusy(false)
+    if (error) {
+      setOpMsg({ ok: false, text: `Erreur mise à jour : ${(error as { message: string }).message}` })
+      return
+    }
+    setOpMsg({ ok: true, text: 'Profil mis à jour.' })
+  }
+
+  async function doDeleteProfil() {
+    const p = profils.find((x) => x.id === loadedId)
+    if (!p || !window.confirm(`Supprimer le profil "${p.name}" ? Cette action est irréversible.`)) return
+    setOpBusy(true)
+    const { error } = await deleteProfil(loadedId!)
+    setOpBusy(false)
+    if (error) {
+      setOpMsg({ ok: false, text: `Erreur suppression : ${(error as { message: string }).message}` })
+      return
+    }
+    const nom = p.name
+    setLoadedId(null)
+    setSelectedId('')
+    await refreshProfils()
+    setOpMsg({ ok: true, text: `Profil "${nom}" supprimé.` })
+  }
 
   const r = useMemo(() => {
     const p  = (k: keyof Params): number => { const v = params[k]; return v === '' || v == null ? 0 : Number(v) }
@@ -305,10 +403,119 @@ export function CalculateurRentabilite() {
     setDepenses([])
     setCourseForm(DEF_COURSE)
     setDetailOpen(false)
+    setLoadedId(null)
+    setSelectedId('')
+    setNewName(null)
   }
 
   return (
     <div className="space-y-4">
+
+      {/* ── Barre Profils ─────────────────────────────────────────────────────── */}
+      <div className="rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap"
+        style={{ background: C.card, border: `1px solid ${C.border}` }}>
+
+        <span className="text-xs font-semibold uppercase tracking-wide shrink-0" style={{ color: C.muted }}>Profil</span>
+
+        {profilsLoading ? (
+          <span className="text-xs" style={{ color: C.faint }}>Chargement…</span>
+        ) : (
+          <>
+            <select
+              value={selectedId}
+              onChange={(e) => setSelectedId(e.target.value)}
+              disabled={opBusy}
+              className="text-sm rounded-lg px-2 py-1.5 outline-none"
+              style={{ border: `1px solid ${C.border}`, color: C.ink, background: '#fff', minWidth: 120, maxWidth: 220 }}
+            >
+              <option value="">— aucun —</option>
+              {profils.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}{p.id === loadedId ? ' ✓' : ''}
+                </option>
+              ))}
+            </select>
+
+            {selectedId && selectedId !== loadedId && (
+              <button
+                onClick={() => { const p = profils.find((x) => x.id === selectedId); if (p) doLoadProfil(p) }}
+                disabled={opBusy}
+                className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+                style={{ color: C.profit, background: C.profitBg, border: `1px solid ${C.border}` }}
+              >
+                <FolderOpen size={13} /> Charger
+              </button>
+            )}
+
+            {loadedId && (
+              <button
+                onClick={doUpdateProfil}
+                disabled={opBusy}
+                className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+                style={{ color: C.navy, background: C.bg, border: `1px solid ${C.border}` }}
+              >
+                <RefreshCw size={13} /> Mettre à jour
+              </button>
+            )}
+
+            {loadedId && (
+              <button
+                onClick={doDeleteProfil}
+                disabled={opBusy}
+                className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+                style={{ color: C.loss, background: C.lossBg, border: `1px solid ${C.border}` }}
+              >
+                <Trash2 size={13} /> Supprimer
+              </button>
+            )}
+          </>
+        )}
+
+        {/* Enregistrer comme nouveau profil */}
+        {newName === null ? (
+          <button
+            onClick={() => setNewName('')}
+            disabled={opBusy}
+            className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg ml-auto transition-colors"
+            style={{ color: C.ink, background: C.bg, border: `1px solid ${C.border}` }}
+          >
+            <Save size={13} /> Enregistrer…
+          </button>
+        ) : (
+          <div className="flex items-center gap-2 ml-auto flex-wrap">
+            <input
+              autoFocus
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') doSaveProfil(); if (e.key === 'Escape') setNewName(null) }}
+              placeholder="Nom du profil"
+              className="text-sm px-2 py-1.5 rounded-lg outline-none"
+              style={{ border: `1px solid ${C.border}`, color: C.ink, minWidth: 160 }}
+            />
+            <button
+              onClick={doSaveProfil}
+              disabled={opBusy || !newName.trim()}
+              className="text-xs px-2.5 py-1.5 rounded-lg"
+              style={{ color: C.profit, background: C.profitBg, border: `1px solid ${C.border}` }}
+            >
+              Créer
+            </button>
+            <button
+              onClick={() => setNewName(null)}
+              className="p-1.5 rounded-lg"
+              style={{ color: C.muted, background: C.bg, border: `1px solid ${C.border}` }}
+            >
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
+        {opMsg && (
+          <p className="w-full text-xs mt-1" style={{ color: opMsg.ok ? C.profit : C.loss }}>
+            {opMsg.text}
+          </p>
+        )}
+      </div>
 
       {/* Verdict bar */}
       <div className="rounded-xl px-4 py-3" style={{ background: verdictBg, border: `1px solid ${C.border}` }}>
