@@ -2,11 +2,11 @@ import { useState, createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
-  LayoutDashboard, TrendingUp, BarChart2,
+  LayoutDashboard, BarChart2,
   Truck, CalendarDays,
-  Users, Building2,
+  Users,
   Wallet,
-  UserCheck, Clock,
+  UserCheck,
   Bell, Settings,
   Menu, X, ChevronDown, ChevronRight,
 } from 'lucide-react'
@@ -32,9 +32,9 @@ const NAV: NavSection[] = [
   {
     title: 'Pilotage',
     items: [
-      { key: 'dashboard',   label: 'Dashboard',    icon: LayoutDashboard, path: '/',              featureKey: 'dashboard'   },
-      { key: 'rentabilite', label: 'Rentabilité',  icon: TrendingUp,      path: '/rentabilite',   featureKey: 'rentabilite' },
-      { key: 'statistiques',label: 'Statistiques', icon: BarChart2,       path: '/statistiques',  featureKey: 'statistiques'},
+      { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/',         featureKey: 'dashboard' },
+      // Page à sous-onglets : Rentabilité · Statistiques.
+      { key: 'analyses',  label: 'Analyses',  icon: BarChart2,       path: '/analyses', featureKey: 'analyses'  },
     ],
   },
   {
@@ -56,8 +56,8 @@ const NAV: NavSection[] = [
   {
     title: 'Tiers',
     items: [
-      { key: 'clients',     label: 'Clients',     icon: Users,    path: '/clients',     featureKey: 'clients'     },
-      { key: 'fournisseurs',label: 'Fournisseurs',icon: Building2,path: '/fournisseurs',featureKey: 'fournisseurs'},
+      // Page à sous-onglets : Clients · Fournisseurs.
+      { key: 'tiers', label: 'Tiers', icon: Users, path: '/tiers', featureKey: 'tiers' },
     ],
   },
   {
@@ -70,8 +70,8 @@ const NAV: NavSection[] = [
   {
     title: 'Équipe',
     items: [
-      { key: 'equipe', label: 'Équipe', icon: UserCheck, path: '/equipe', featureKey: 'equipe' },
-      { key: 'heures', label: 'Heures', icon: Clock,     path: '/heures', featureKey: 'heures' },
+      // Page à sous-onglets : Membres · Heures.
+      { key: 'equipe', label: 'Équipe', icon: UserCheck, path: '/equipe-hub', featureKey: 'equipeHub' },
     ],
   },
   {
