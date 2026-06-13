@@ -21,6 +21,8 @@ export const features = {
   heures:       true,
   alertes:      true,
   parametres:   true,
+  // Domaines à sous-onglets (réorganisation navigation)
+  finance:      true,
 } as const
 
 export type FeatureKey = keyof typeof features
