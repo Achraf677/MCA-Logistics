@@ -25,6 +25,9 @@ export const features = {
   finance:      true,
   flotte:       true,
   planningHub:  true,
+  analyses:     true,
+  tiers:        true,
+  equipeHub:    true,
 } as const
 
 export type FeatureKey = keyof typeof features
