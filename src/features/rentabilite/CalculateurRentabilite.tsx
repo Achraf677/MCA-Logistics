@@ -1,13 +1,16 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   ReferenceLine, ReferenceDot, BarChart, Bar, Cell,
 } from 'recharts'
-import { Plus, Trash2, RotateCcw, Fuel, ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, Clock, Wrench, CircleDollarSign, Save, FolderOpen, RefreshCw, X } from 'lucide-react'
+import { Plus, Trash2, RotateCcw, Fuel, ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, Clock, Wrench, CircleDollarSign, Save, FolderOpen, RefreshCw, X, MapPin, Navigation } from 'lucide-react'
 import { deriveCoutsUnitaires, simulateCourse } from './rentabilite.logic'
-import { useProfile } from '../../app/providers'
+import { useProfile, supabase } from '../../app/providers'
 import type { CostProfil, ProfilData } from './rentabilite.profils.queries'
 import { listProfils, createProfil, updateProfil, deleteProfil } from './rentabilite.profils.queries'
+import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-leaflet'
+import 'leaflet/dist/leaflet.css'
+import L from 'leaflet'
 
 /* Tokens couleur propres au calculateur */
 const C = {
@@ -166,6 +169,72 @@ function RateChip({ icon: Icon, label, value }: { icon: React.ElementType; label
   )
 }
 
+/* --- Trajet types & map --- */
+
+interface TrajetResult {
+  distance_km:      number
+  duree_min:        number
+  peage_estime_eur: number
+  geometry:         { type: string; coordinates: [number, number][] }
+  depart_coords:    [number, number]   // [lat, lon] pour Leaflet
+  arrivee_coords:   [number, number]
+  depart_label:     string
+  arrivee_label:    string
+}
+
+const mkDotIcon = (color: string) =>
+  L.divIcon({
+    html: `<div style="width:12px;height:12px;background:${color};border:2px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>`,
+    className: '',
+    iconSize:   [12, 12] as unknown as L.PointExpression,
+    iconAnchor: [6, 6]  as unknown as L.PointExpression,
+  })
+
+function FitBounds({ positions }: { positions: [number, number][] }) {
+  const map    = useMap()
+  const posRef = useRef(positions)
+  useEffect(() => {
+    if (posRef.current.length > 1) map.fitBounds(L.latLngBounds(posRef.current), { padding: [24, 24] })
+  }, [map])
+  return null
+}
+
+function TrajetMap({ geometry, departCoords, arriveeCoords }: {
+  geometry:      TrajetResult['geometry']
+  departCoords:  [number, number]
+  arriveeCoords: [number, number]
+}) {
+  const latlngs = useMemo(
+    () => geometry.coordinates.map(([lon, lat]) => [lat, lon] as [number, number]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [geometry.coordinates],
+  )
+  return (
+    <div style={{ height: 280, borderRadius: 12, overflow: 'hidden', position: 'relative', zIndex: 0 }}>
+      <MapContainer
+        center={departCoords}
+        zoom={10}
+        style={{ height: '100%', width: '100%' }}
+        attributionControl
+      >
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='© <a href="https://openstreetmap.org">OSM</a>'
+          maxZoom={18}
+        />
+        <Polyline positions={latlngs} pathOptions={{ color: '#13294B', weight: 4, opacity: 0.85 }} />
+        <Marker position={departCoords} icon={mkDotIcon('#15803D')}>
+          <Popup>Départ</Popup>
+        </Marker>
+        <Marker position={arriveeCoords} icon={mkDotIcon('#DC2626')}>
+          <Popup>Arrivée</Popup>
+        </Marker>
+        <FitBounds positions={latlngs} />
+      </MapContainer>
+    </div>
+  )
+}
+
 /* --- Main component --- */
 
 export function CalculateurRentabilite() {
@@ -175,6 +244,13 @@ export function CalculateurRentabilite() {
   const [loaded, setLoaded]   = useState(false)
   const [courseForm, setCourseForm] = useState<CourseForm>(DEF_COURSE)
   const [detailOpen, setDetailOpen] = useState(false)
+
+  // Trajet A→B
+  const [trajetDepart,  setTrajetDepart]  = useState('')
+  const [trajetArrivee, setTrajetArrivee] = useState('')
+  const [trajetLoading, setTrajetLoading] = useState(false)
+  const [trajetError,   setTrajetError]   = useState<string | null>(null)
+  const [trajetResult,  setTrajetResult]  = useState<TrajetResult | null>(null)
 
   // Profils Supabase
   const { companyId } = useProfile()
@@ -406,6 +482,37 @@ export function CalculateurRentabilite() {
     setLoadedId(null)
     setSelectedId('')
     setNewName(null)
+    setTrajetDepart('')
+    setTrajetArrivee('')
+    setTrajetError(null)
+    setTrajetResult(null)
+  }
+
+  async function calculerTrajet() {
+    if (!trajetDepart.trim() || !trajetArrivee.trim()) return
+    setTrajetLoading(true)
+    setTrajetError(null)
+    setTrajetResult(null)
+
+    const { data, error } = await supabase.functions.invoke('route-calc', {
+      body: { depart: trajetDepart.trim(), arrivee: trajetArrivee.trim() },
+    })
+
+    setTrajetLoading(false)
+
+    if (error || !data?.ok) {
+      setTrajetError(data?.error ?? error?.message ?? 'Erreur de calcul.')
+      return
+    }
+
+    const d = data.data as TrajetResult
+    setTrajetResult(d)
+    setCourseForm((f) => ({
+      ...f,
+      distanceCharge: Math.round(d.distance_km),
+      dureeH:         Math.round((d.duree_min / 60) * 10) / 10,
+      peages:         d.peage_estime_eur,
+    }))
   }
 
   return (
@@ -805,6 +912,89 @@ export function CalculateurRentabilite() {
         </div>
 
         <div className="p-5 space-y-4" style={{ background: C.card }}>
+
+          {/* ── Trajet A→B ───────────────────────────────────────── */}
+          <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
+            <div className="px-4 py-3 flex items-center gap-2" style={{ background: C.bg }}>
+              <MapPin size={13} style={{ color: C.navy }} />
+              <span className="text-sm font-medium" style={{ color: C.ink }}>Calcul de trajet A → B</span>
+              <span className="text-[10px] ml-auto" style={{ color: C.faint }}>IGN Géoplateforme · auto-injecté</span>
+            </div>
+            <div className="px-4 py-3 space-y-3" style={{ background: C.card }}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] uppercase tracking-wide" style={{ color: C.muted }}>Départ</span>
+                  <input
+                    type="text"
+                    value={trajetDepart}
+                    onChange={(e) => setTrajetDepart(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && calculerTrajet()}
+                    placeholder="Ex. Strasbourg"
+                    className="px-3 py-2 text-sm rounded-lg outline-none"
+                    style={{ border: `1px solid ${C.border}`, color: C.ink, background: '#fff' }}
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-[11px] uppercase tracking-wide" style={{ color: C.muted }}>Arrivée</span>
+                  <input
+                    type="text"
+                    value={trajetArrivee}
+                    onChange={(e) => setTrajetArrivee(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && calculerTrajet()}
+                    placeholder="Ex. Colmar"
+                    className="px-3 py-2 text-sm rounded-lg outline-none"
+                    style={{ border: `1px solid ${C.border}`, color: C.ink, background: '#fff' }}
+                  />
+                </label>
+              </div>
+
+              <button
+                onClick={calculerTrajet}
+                disabled={trajetLoading || !trajetDepart.trim() || !trajetArrivee.trim()}
+                className="flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium"
+                style={{
+                  background: trajetLoading || !trajetDepart.trim() || !trajetArrivee.trim() ? C.bg : C.navy,
+                  color:      trajetLoading || !trajetDepart.trim() || !trajetArrivee.trim() ? C.muted : '#fff',
+                  border:     `1px solid ${C.border}`,
+                  cursor:     trajetLoading || !trajetDepart.trim() || !trajetArrivee.trim() ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {trajetLoading ? <RefreshCw size={14} /> : <Navigation size={14} />}
+                {trajetLoading ? 'Calcul en cours…' : 'Calculer le trajet'}
+              </button>
+
+              {trajetError && (
+                <p className="text-xs px-3 py-2 rounded-lg" style={{ color: C.loss, background: C.lossBg }}>
+                  {trajetError}
+                </p>
+              )}
+
+              {trajetResult && (
+                <>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm py-1">
+                    <span style={{ color: C.muted }}>
+                      Distance : <b className="font-mono" style={{ color: C.ink }}>{trajetResult.distance_km} km</b>
+                    </span>
+                    <span style={{ color: C.muted }}>
+                      Durée : <b className="font-mono" style={{ color: C.ink }}>{trajetResult.duree_min} min</b>
+                    </span>
+                    <span style={{ color: C.muted }}>
+                      Péage ~ : <b className="font-mono" style={{ color: C.ink }}>{eur2(trajetResult.peage_estime_eur)}</b>
+                      <span className="ml-1 text-[10px]" style={{ color: C.faint }}>(0,14 €/km est.)</span>
+                    </span>
+                  </div>
+                  <p className="text-[10px]" style={{ color: C.faint }}>
+                    Résultats injectés dans le simulateur — modifiables manuellement
+                  </p>
+                  <TrajetMap
+                    geometry={trajetResult.geometry}
+                    departCoords={trajetResult.depart_coords}
+                    arriveeCoords={trajetResult.arrivee_coords}
+                  />
+                </>
+              )}
+            </div>
+          </div>
 
           {/* Coûts unitaires courants */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
