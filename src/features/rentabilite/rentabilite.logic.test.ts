@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { monthlyRows, annualTotals, margeRatio, type RentabiliteRaw } from './rentabilite.logic'
+import {
+  monthlyRows, annualTotals, margeRatio, type RentabiliteRaw,
+  deriveCoutsUnitaires, simulateCourse,
+  DEFAULT_CALC_PARAMS, DEFAULT_CALC_DEPENSES,
+} from './rentabilite.logic'
 
 // Helper : construit un RentabiliteRaw minimal. Les listes omises valent [].
 function raw(p: Partial<RentabiliteRaw>): RentabiliteRaw {
@@ -134,5 +138,55 @@ describe('margeRatio', () => {
 
   it('CAS LIMITE caHt = 0 avec resultat ≠ 0 → null (pas d\'Infinity)', () => {
     expect(margeRatio({ caHt: 0, resultat: 12_345 })).toBeNull()
+  })
+})
+
+// ── e. simulateCourse — coûts & verdicts ─────────────────────────────────────────
+
+// Coûts unitaires dérivés des hypothèses MCA par défaut pour les tests.
+const couts = deriveCoutsUnitaires(DEFAULT_CALC_PARAMS, DEFAULT_CALC_DEPENSES)
+
+describe('simulateCourse — verdict rentable', () => {
+  it('marge% ≥ marge cible → verdict rentable, marge nette positive', () => {
+    // Course 200 km en charge, 3 h, 0 vide, 0 péages — prix largement au-dessus du coût
+    const res = simulateCourse(
+      { prixPropose: 500, distanceCharge: 200, dureeH: 3, kilometresVide: 0, peages: 0, attenteH: 0, nbPoints: 1, margeCible: 0.20 },
+      couts,
+    )
+    expect(res.verdict).toBe('rentable')
+    expect(res.margeNette).toBeGreaterThan(0)
+    expect(res.margePct).toBeGreaterThanOrEqual(0.20)
+    expect(res.prixPlancher).toBeCloseTo(res.coutTotal, 5)
+  })
+})
+
+describe('simulateCourse — verdict à refuser', () => {
+  it('prix < coût total → verdict refuser, marge nette négative', () => {
+    // Prix symbolique 10 € pour 300 km + 5 h → clairement déficitaire
+    const res = simulateCourse(
+      { prixPropose: 10, distanceCharge: 300, dureeH: 5, kilometresVide: 50, peages: 15, attenteH: 1, nbPoints: 3, margeCible: 0.20 },
+      couts,
+    )
+    expect(res.verdict).toBe('refuser')
+    expect(res.margeNette).toBeLessThan(0)
+    expect(res.margePct).toBeLessThan(0)
+  })
+})
+
+describe('simulateCourse — verdict limite', () => {
+  it('0 ≤ marge% < marge cible → verdict limite', () => {
+    // Prix = coût total × 1.05 → marge 4.76 % < cible 20 %
+    const base = simulateCourse(
+      { prixPropose: 1, distanceCharge: 100, dureeH: 2, kilometresVide: 0, peages: 0, attenteH: 0, nbPoints: 1, margeCible: 0.20 },
+      couts,
+    )
+    const prixLimite = base.coutTotal * 1.05  // 5 % de marge sur coût → < 20 % cible
+    const res = simulateCourse(
+      { prixPropose: prixLimite, distanceCharge: 100, dureeH: 2, kilometresVide: 0, peages: 0, attenteH: 0, nbPoints: 1, margeCible: 0.20 },
+      couts,
+    )
+    expect(res.verdict).toBe('limite')
+    expect(res.margeNette).toBeGreaterThanOrEqual(0)
+    expect(res.margePct).toBeLessThan(0.20)
   })
 })

@@ -4,6 +4,7 @@ import {
   ReferenceLine, ReferenceDot, BarChart, Bar, Cell,
 } from 'recharts'
 import { Plus, Trash2, RotateCcw, Fuel, ArrowDownRight, ArrowUpRight } from 'lucide-react'
+import { deriveCoutsUnitaires } from './rentabilite.logic'
 
 /* Tokens couleur propres au calculateur */
 const C = {
@@ -171,10 +172,8 @@ export function CalculateurRentabilite() {
     const kmTotal = kmJour * jours
     const litresJour = (kmJour * p('conso')) / 100
     const litresMois = litresJour * jours
-    const ttc      = p('gazoleTTC')
-    const htBase   = ttc / 1.2
-    const tva      = ttc - htBase
-    const coutLitre = htBase + tva * (1 - p('tvaRecup') / 100)
+    const couts     = deriveCoutsUnitaires(params, depenses)
+    const coutLitre = couts.coutLitreHT
     const carbJour  = litresJour * coutLitre
     const carbMois  = carbJour * jours
 
