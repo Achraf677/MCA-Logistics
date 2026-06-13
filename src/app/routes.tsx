@@ -5,13 +5,11 @@ import { Dashboard }    from '../features/dashboard/Dashboard'
 import { Rentabilite }  from '../features/rentabilite/Rentabilite'
 import { Statistiques } from '../features/statistiques/Statistiques'
 import { Livraisons }   from '../features/livraisons/Livraisons'
-import { Tournees }     from '../features/tournees/Tournees'
-import { Planning }     from '../features/planning/Planning'
-import { Calendrier }   from '../features/calendrier/Calendrier'
 import { Clients }      from '../features/clients/Clients'
 import { Fournisseurs } from '../features/fournisseurs/Fournisseurs'
 import { FinanceSection } from './sections/FinanceSection'
 import { FlotteSection }  from './sections/FlotteSection'
+import { PlanningSection } from './sections/PlanningSection'
 import { Equipe }       from '../features/equipe/Equipe'
 import { Heures }       from '../features/heures/Heures'
 import { Alertes }      from '../features/alertes/Alertes'
@@ -28,9 +26,12 @@ export function AppRoutes() {
       <Route path="/rentabilite"   element={guard(features.rentabilite,  <Rentabilite />)} />
       <Route path="/statistiques"  element={guard(features.statistiques, <Statistiques />)} />
       <Route path="/livraisons"    element={guard(features.livraisons,   <Livraisons />)} />
-      <Route path="/tournees"      element={guard(features.tournees,     <Tournees />)} />
-      <Route path="/planning"      element={guard(features.planning,     <Planning />)} />
-      <Route path="/calendrier"    element={guard(features.calendrier,   <Calendrier />)} />
+      {/* Domaine Planning à sous-onglets (path /planning-hub) ; anciennes routes → redirection.
+          /planning redirige vers /planning-hub?tab=planning : pas de boucle (section ≠ path redirigé). */}
+      <Route path="/planning-hub"  element={guard(features.planningHub,  <PlanningSection />)} />
+      <Route path="/tournees"      element={<Navigate to="/planning-hub?tab=tournees"   replace />} />
+      <Route path="/planning"      element={<Navigate to="/planning-hub?tab=planning"   replace />} />
+      <Route path="/calendrier"    element={<Navigate to="/planning-hub?tab=calendrier" replace />} />
       {/* Domaine Flotte à sous-onglets ; anciennes routes → redirection (liens préservés) */}
       <Route path="/flotte"        element={guard(features.flotte,       <FlotteSection />)} />
       <Route path="/vehicules"     element={<Navigate to="/flotte?tab=vehicules"   replace />} />
