@@ -1,16 +1,14 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { features } from '../features.config'
-import { Dashboard }    from '../features/dashboard/Dashboard'
 import { Livraisons }   from '../features/livraisons/Livraisons'
+import { PilotageSection } from './sections/PilotageSection'
 import { FinanceSection }  from './sections/FinanceSection'
 import { FlotteSection }   from './sections/FlotteSection'
 import { PlanningSection } from './sections/PlanningSection'
-import { AnalysesSection } from './sections/AnalysesSection'
 import { TiersSection }    from './sections/TiersSection'
 import { EquipeSection }   from './sections/EquipeSection'
-import { Alertes }      from '../features/alertes/Alertes'
-import { Parametres }   from '../features/parametres/Parametres'
+import { SystemeSection }  from './sections/SystemeSection'
 
 function guard(enabled: boolean, element: React.ReactElement) {
   return enabled ? element : <Navigate to="/" replace />
@@ -19,11 +17,14 @@ function guard(enabled: boolean, element: React.ReactElement) {
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/"              element={<Dashboard />} />
-      {/* Pilotage : Dashboard reste séparé ; Rentabilité + Statistiques → /analyses */}
-      <Route path="/analyses"      element={guard(features.analyses,     <AnalysesSection />)} />
-      <Route path="/rentabilite"   element={<Navigate to="/analyses?tab=rentabilite"  replace />} />
-      <Route path="/statistiques"  element={<Navigate to="/analyses?tab=statistiques" replace />} />
+      {/* Pilotage à sous-onglets ; "/" rend la section (1er onglet = Dashboard) → l'app ouvre sur le Dashboard.
+          /pilotage ≠ paths redirigés → aucune boucle. */}
+      <Route path="/"              element={<PilotageSection />} />
+      <Route path="/pilotage"      element={guard(features.pilotage,     <PilotageSection />)} />
+      <Route path="/dashboard"     element={<Navigate to="/pilotage?tab=dashboard"    replace />} />
+      <Route path="/analyses"      element={<Navigate to="/pilotage"                  replace />} />
+      <Route path="/rentabilite"   element={<Navigate to="/pilotage?tab=rentabilite"  replace />} />
+      <Route path="/statistiques"  element={<Navigate to="/pilotage?tab=statistiques" replace />} />
       <Route path="/livraisons"    element={guard(features.livraisons,   <Livraisons />)} />
       {/* Domaine Planning à sous-onglets (path /planning-hub) ; anciennes routes → redirection.
           /planning redirige vers /planning-hub?tab=planning : pas de boucle (section ≠ path redirigé). */}
@@ -53,8 +54,10 @@ export function AppRoutes() {
       <Route path="/equipe-hub"    element={guard(features.equipeHub,    <EquipeSection />)} />
       <Route path="/equipe"        element={<Navigate to="/equipe-hub?tab=membres" replace />} />
       <Route path="/heures"        element={<Navigate to="/equipe-hub?tab=heures"  replace />} />
-      <Route path="/alertes"       element={guard(features.alertes,      <Alertes />)} />
-      <Route path="/parametres"    element={guard(features.parametres,   <Parametres />)} />
+      {/* Domaine Système à sous-onglets ; anciennes routes → redirection */}
+      <Route path="/systeme"       element={guard(features.systeme,      <SystemeSection />)} />
+      <Route path="/alertes"       element={<Navigate to="/systeme?tab=alertes"    replace />} />
+      <Route path="/parametres"    element={<Navigate to="/systeme?tab=parametres" replace />} />
       <Route path="*"              element={<Navigate to="/" replace />} />
     </Routes>
   )
