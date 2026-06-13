@@ -23,6 +23,7 @@ export const features = {
   parametres:   true,
   // Domaines à sous-onglets (réorganisation navigation)
   finance:      true,
+  flotte:       true,
 } as const
 
 export type FeatureKey = keyof typeof features
