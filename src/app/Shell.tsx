@@ -1,14 +1,10 @@
 import { useState, createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import {
-  LayoutDashboard, BarChart2,
-  Truck, CalendarDays,
-  Users,
-  Wallet,
-  UserCheck,
-  Bell, Settings,
-  Menu, X, ChevronDown, ChevronRight,
+  LayoutDashboard, Package, CalendarDays, Truck,
+  Users, Wallet, UserCheck, Settings,
+  Menu, X,
 } from 'lucide-react'
 import { features } from '../features.config'
 import { ActionBar } from '../shared/actions/ActionBar'
@@ -23,119 +19,46 @@ interface NavItem {
   featureKey: keyof typeof features
 }
 
-interface NavSection {
-  title: string
-  items: NavItem[]
-}
-
-const NAV: NavSection[] = [
-  {
-    title: 'Pilotage',
-    items: [
-      { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/',         featureKey: 'dashboard' },
-      // Page à sous-onglets : Rentabilité · Statistiques.
-      { key: 'analyses',  label: 'Analyses',  icon: BarChart2,       path: '/analyses', featureKey: 'analyses'  },
-    ],
-  },
-  {
-    title: 'Opérations',
-    items: [
-      { key: 'livraisons',  label: 'Livraisons',  icon: Truck,           path: '/livraisons',   featureKey: 'livraisons'  },
-      // Page à sous-onglets : Tournées · Planning · Calendrier.
-      { key: 'planning',    label: 'Planning',    icon: CalendarDays,    path: '/planning-hub', featureKey: 'planningHub' },
-      // Incidents + Inspections déplacés dans Flotte ; Tournées + Calendrier regroupés ici.
-    ],
-  },
-  {
-    title: 'Flotte',
-    items: [
-      // Page à sous-onglets : Véhicules · Carburant · Entretiens · Inspections · Incidents.
-      { key: 'flotte', label: 'Flotte', icon: Truck, path: '/flotte', featureKey: 'flotte' },
-    ],
-  },
-  {
-    title: 'Tiers',
-    items: [
-      // Page à sous-onglets : Clients · Fournisseurs.
-      { key: 'tiers', label: 'Tiers', icon: Users, path: '/tiers', featureKey: 'tiers' },
-    ],
-  },
-  {
-    title: 'Finance',
-    items: [
-      // Page à sous-onglets : Trésorerie · Charges · Encaissement · TVA.
-      { key: 'finance', label: 'Finance', icon: Wallet, path: '/finance', featureKey: 'finance' },
-    ],
-  },
-  {
-    title: 'Équipe',
-    items: [
-      // Page à sous-onglets : Membres · Heures.
-      { key: 'equipe', label: 'Équipe', icon: UserCheck, path: '/equipe-hub', featureKey: 'equipeHub' },
-    ],
-  },
-  {
-    title: 'Système',
-    items: [
-      { key: 'alertes',    label: 'Alertes',      icon: Bell,     path: '/alertes',    featureKey: 'alertes'    },
-      { key: 'parametres', label: 'Paramètres',   icon: Settings, path: '/parametres', featureKey: 'parametres' },
-      // Brouillons IA & Copilote IA retirés du menu : leurs capacités sont dans l'assistant.
-    ],
-  },
+// Sidebar plate, ultra-épurée : 8 entrées, chacune = une page à sous-onglets.
+const NAV: NavItem[] = [
+  { key: 'pilotage',   label: 'Pilotage',   icon: LayoutDashboard, path: '/pilotage',     featureKey: 'pilotage'    },
+  { key: 'livraisons', label: 'Livraisons', icon: Package,         path: '/livraisons',   featureKey: 'livraisons'  },
+  { key: 'planning',   label: 'Planning',   icon: CalendarDays,    path: '/planning-hub', featureKey: 'planningHub' },
+  { key: 'flotte',     label: 'Flotte',     icon: Truck,           path: '/flotte',       featureKey: 'flotte'      },
+  { key: 'tiers',      label: 'Tiers',      icon: Users,           path: '/tiers',        featureKey: 'tiers'       },
+  { key: 'finance',    label: 'Finance',    icon: Wallet,          path: '/finance',      featureKey: 'finance'     },
+  { key: 'equipe',     label: 'Équipe',     icon: UserCheck,       path: '/equipe-hub',   featureKey: 'equipeHub'   },
+  { key: 'systeme',    label: 'Système',    icon: Settings,        path: '/systeme',      featureKey: 'systeme'     },
 ]
 
 function SidebarNav({ collapsed }: { collapsed: boolean }) {
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(NAV.map((s) => [s.title, true]))
-  )
-
-  const toggle = (title: string) =>
-    setOpenSections((prev) => ({ ...prev, [title]: !prev[title] }))
+  const { pathname } = useLocation()
+  // Pilotage est aussi actif sur la racine "/" (l'app s'ouvre sur le Dashboard).
+  const isItemActive = (item: NavItem) =>
+    pathname === item.path || (item.path === '/pilotage' && pathname === '/')
 
   return (
     <nav className="flex-1 overflow-y-auto py-2">
-      {NAV.map((section) => {
-        const visibleItems = section.items.filter((item) => features[item.featureKey])
-        if (visibleItems.length === 0) return null
-        const isOpen = openSections[section.title]
-
-        return (
-          <div key={section.title} className="mb-1">
-            {!collapsed && (
-              <button
-                onClick={() => toggle(section.title)}
-                className="w-full flex items-center justify-between px-3 py-1.5 text-[var(--fs-xs)] font-semibold uppercase tracking-wider text-[var(--text-disabled)] hover:text-[var(--text-muted)] transition-colors"
-              >
-                {section.title}
-                {isOpen ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
-              </button>
-            )}
-            {(!collapsed || true) && isOpen && (
-              <ul>
-                {visibleItems.map((item) => (
-                  <li key={item.key}>
-                    <NavLink
-                      to={item.path}
-                      end={item.path === '/'}
-                      className={({ isActive }) =>
-                        `flex items-center gap-2.5 px-3 py-2 mx-1 rounded-[var(--r-md)] text-[var(--fs-sm)] transition-colors ${
-                          isActive
-                            ? 'bg-[var(--brand-soft)] text-[var(--brand)] font-medium'
-                            : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]'
-                        }`
-                      }
-                      title={collapsed ? item.label : undefined}
-                    >
-                      <item.icon size={15} className="shrink-0" />
-                      {!collapsed && <span>{item.label}</span>}
-                    </NavLink>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )
-      })}
+      <ul>
+        {NAV.filter((item) => features[item.featureKey]).map((item) => (
+          <li key={item.key}>
+            <NavLink
+              to={item.path}
+              className={() =>
+                `flex items-center gap-2.5 px-3 py-2 mx-1 rounded-[var(--r-md)] text-[var(--fs-sm)] transition-colors ${
+                  isItemActive(item)
+                    ? 'bg-[var(--brand-soft)] text-[var(--brand)] font-medium'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]'
+                }`
+              }
+              title={collapsed ? item.label : undefined}
+            >
+              <item.icon size={15} className="shrink-0" />
+              {!collapsed && <span>{item.label}</span>}
+            </NavLink>
+          </li>
+        ))}
+      </ul>
     </nav>
   )
 }

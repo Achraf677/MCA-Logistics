@@ -21,40 +21,32 @@ role: 'president' | 'dg' | 'chauffeur' | 'comptable'
 - Le rôle `chauffeur` sert surtout au filtrage métier (ex. `team_members` filtrés `role='chauffeur'`
   pour les sélecteurs de chauffeur, validités de conduite dans Équipe).
 
-## Les onglets visibles — 22 (par section de menu)
-<!-- 24 à l'origine ; Brouillons IA et Copilote IA retirés en 6B-3 (capacités migrées dans l'assistant). -->
+## Navigation — 8 entrées, chacune une page à sous-onglets
 
+> Réorganisation (étapes 1→5) : la sidebar passe de 22 à **8 entrées plates**. Chaque domaine est une
+> **page à sous-onglets** (`TabbedSection` + `Shell` imbriquable) qui réutilise les pages métier existantes
+> **sans modification**. L'onglet actif est piloté par `?tab=<key>` (liens profonds + retour navigateur).
+> Les anciennes routes (`/charges`, `/vehicules`, `/equipe`…) **redirigent** vers `<section>?tab=<key>`.
 
-| # | Onglet | Route | Section |
-|---|--------|-------|---------|
-| 1 | Dashboard | `/` | Pilotage |
-| 2 | Rentabilité | `/rentabilite` | Pilotage |
-| 3 | Statistiques | `/statistiques` | Pilotage |
-| 4 | Livraisons | `/livraisons` | Opérations |
-| 5 | Tournées | `/tournees` | Opérations |
-| 6 | Planning | `/planning` | Opérations |
-| 7 | Calendrier | `/calendrier` | Opérations |
-| 8 | Incidents | `/incidents` | Opérations |
-| 9 | Inspections | `/inspections` | Opérations |
-| 10 | Véhicules | `/vehicules` | Flotte |
-| 11 | Carburant | `/carburant` | Flotte |
-| 12 | Entretiens | `/entretiens` | Flotte |
-| 13 | Clients | `/clients` | Tiers |
-| 14 | Fournisseurs | `/fournisseurs` | Tiers |
-| 15 | Charges | `/charges` | Finance |
-| 16 | Encaissement | `/encaissement` | Finance |
-| 17 | Trésorerie | `/tresorerie` | Finance |
-| 18 | TVA | `/tva` | Finance |
-| 19 | Équipe | `/equipe` | Équipe |
-| 20 | Heures | `/heures` | Équipe |
-| 21 | Alertes | `/alertes` | Système |
-| 22 | Paramètres | `/parametres` | Système |
+| # | Entrée | Route section | Sous-onglets (`?tab=`) |
+|---|--------|---------------|------------------------|
+| 1 | **Pilotage** | `/pilotage` (et `/`) | Dashboard `dashboard` (défaut) · Rentabilité `rentabilite` · Statistiques `statistiques` |
+| 2 | **Livraisons** | `/livraisons` | — (page seule) |
+| 3 | **Planning** | `/planning-hub` | Tournées `tournees` · Planning `planning` · Calendrier `calendrier` |
+| 4 | **Flotte** | `/flotte` | Véhicules `vehicules` · Carburant `carburant` · Entretiens `entretiens` · Inspections `inspections` · Incidents `incidents` |
+| 5 | **Tiers** | `/tiers` | Clients `clients` · Fournisseurs `fournisseurs` |
+| 6 | **Finance** | `/finance` | Trésorerie `tresorerie` · Charges `charges` · Encaissement `encaissement` · TVA `tva` |
+| 7 | **Équipe** | `/equipe-hub` | Membres `membres` · Heures `heures` |
+| 8 | **Système** | `/systeme` | Alertes `alertes` · Paramètres `parametres` |
 
-> **Note (étape 6B-3)** : les onglets **Brouillons IA** (`/brouillons`) et **Copilote IA** (`/copilote`)
-> ont été **retirés de la navigation** — leurs capacités (rédaction de mails, import de feuilles de route
-> par OCR) sont désormais assurées par **l'assistant conversationnel**. Les features `brouillons/`,
-> `copilote/` et leurs Edge Functions (`brouillons-generate`, `ai-extract-deliveries`) restent en place
-> car l'assistant réutilise leurs queries. On passe de 24 à **22 onglets visibles**.
+- **L'app s'ouvre sur le Dashboard** : la route `/` rend Pilotage (1er onglet = Dashboard).
+- Paths de section distincts des anciens onglets (`/planning-hub`, `/equipe-hub`) → **aucune boucle de redirection**.
+- **Capacités migrées dans l'assistant** (plus d'onglet) : **Brouillons IA** (rédaction de mails) et **Copilote IA**
+  (import OCR de feuilles de route). Features `brouillons/`, `copilote/` et Edge `brouillons-generate`,
+  `ai-extract-deliveries` conservées (l'assistant réutilise leurs queries).
+
+> Les fiches détaillées ci-dessous décrivent chaque page (désormais sous-vue d'une section). Pour s'y rendre :
+> Section + onglet, ex. « Finance › TVA » = `/finance?tab=tva`.
 
 ---
 
