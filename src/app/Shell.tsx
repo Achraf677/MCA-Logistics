@@ -3,8 +3,7 @@ import type { ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, TrendingUp, BarChart2,
-  Truck, Route, CalendarDays, Calendar, AlertTriangle, ClipboardCheck,
-  Car, Fuel, Wrench,
+  Truck, Route, CalendarDays, Calendar,
   Users, Building2,
   Wallet,
   UserCheck, Clock,
@@ -45,16 +44,14 @@ const NAV: NavSection[] = [
       { key: 'tournees',    label: 'Tournées',    icon: Route,           path: '/tournees',     featureKey: 'tournees'    },
       { key: 'planning',    label: 'Planning',    icon: CalendarDays,    path: '/planning',     featureKey: 'planning'    },
       { key: 'calendrier',  label: 'Calendrier',  icon: Calendar,        path: '/calendrier',   featureKey: 'calendrier'  },
-      { key: 'incidents',   label: 'Incidents',   icon: AlertTriangle,   path: '/incidents',    featureKey: 'incidents'   },
-      { key: 'inspections', label: 'Inspections', icon: ClipboardCheck,  path: '/inspections',  featureKey: 'inspections' },
+      // Incidents + Inspections déplacés dans le domaine Flotte.
     ],
   },
   {
     title: 'Flotte',
     items: [
-      { key: 'vehicules',   label: 'Véhicules',   icon: Car,    path: '/vehicules',   featureKey: 'vehicules'   },
-      { key: 'carburant',   label: 'Carburant',   icon: Fuel,   path: '/carburant',   featureKey: 'carburant'   },
-      { key: 'entretiens',  label: 'Entretiens',  icon: Wrench, path: '/entretiens',  featureKey: 'entretiens'  },
+      // Page à sous-onglets : Véhicules · Carburant · Entretiens · Inspections · Incidents.
+      { key: 'flotte', label: 'Flotte', icon: Truck, path: '/flotte', featureKey: 'flotte' },
     ],
   },
   {

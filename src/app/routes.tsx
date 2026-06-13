@@ -8,16 +8,12 @@ import { Livraisons }   from '../features/livraisons/Livraisons'
 import { Tournees }     from '../features/tournees/Tournees'
 import { Planning }     from '../features/planning/Planning'
 import { Calendrier }   from '../features/calendrier/Calendrier'
-import { Incidents }    from '../features/incidents/Incidents'
-import { Vehicules }    from '../features/vehicules/Vehicules'
-import { Carburant }    from '../features/carburant/Carburant'
-import { Entretiens }   from '../features/entretiens/Entretiens'
 import { Clients }      from '../features/clients/Clients'
 import { Fournisseurs } from '../features/fournisseurs/Fournisseurs'
 import { FinanceSection } from './sections/FinanceSection'
+import { FlotteSection }  from './sections/FlotteSection'
 import { Equipe }       from '../features/equipe/Equipe'
 import { Heures }       from '../features/heures/Heures'
-import { Inspections }  from '../features/inspections/Inspections'
 import { Alertes }      from '../features/alertes/Alertes'
 import { Parametres }   from '../features/parametres/Parametres'
 
@@ -35,11 +31,13 @@ export function AppRoutes() {
       <Route path="/tournees"      element={guard(features.tournees,     <Tournees />)} />
       <Route path="/planning"      element={guard(features.planning,     <Planning />)} />
       <Route path="/calendrier"    element={guard(features.calendrier,   <Calendrier />)} />
-      <Route path="/incidents"     element={guard(features.incidents,    <Incidents />)} />
-      <Route path="/inspections"   element={guard(features.inspections,  <Inspections />)} />
-      <Route path="/vehicules"     element={guard(features.vehicules,    <Vehicules />)} />
-      <Route path="/carburant"     element={guard(features.carburant,    <Carburant />)} />
-      <Route path="/entretiens"    element={guard(features.entretiens,   <Entretiens />)} />
+      {/* Domaine Flotte à sous-onglets ; anciennes routes → redirection (liens préservés) */}
+      <Route path="/flotte"        element={guard(features.flotte,       <FlotteSection />)} />
+      <Route path="/vehicules"     element={<Navigate to="/flotte?tab=vehicules"   replace />} />
+      <Route path="/carburant"     element={<Navigate to="/flotte?tab=carburant"   replace />} />
+      <Route path="/entretiens"    element={<Navigate to="/flotte?tab=entretiens"  replace />} />
+      <Route path="/inspections"   element={<Navigate to="/flotte?tab=inspections" replace />} />
+      <Route path="/incidents"     element={<Navigate to="/flotte?tab=incidents"   replace />} />
       <Route path="/clients"       element={guard(features.clients,      <Clients />)} />
       <Route path="/fournisseurs"  element={guard(features.fournisseurs, <Fournisseurs />)} />
       {/* Domaine Finance à sous-onglets ; anciennes routes → redirection (liens préservés) */}
