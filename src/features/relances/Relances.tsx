@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Copy, Loader2, Mail, CheckCircle } from 'lucide-react'
+import { Copy, Loader2, CheckCircle } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
 import { KpiCard }     from '../../shared/ui/KpiCard'
 import { Badge }       from '../../shared/ui/Badge'
@@ -111,19 +111,6 @@ export function Relances() {
     }
   }
 
-  // ── Ouvrir Gmail compose ─────────────────────────────────────────────────────
-
-  function openGmail(row: RelanceRow, draftText: string) {
-    const subject = row.pennylane_invoice_id
-      ? `Relance facture ${row.pennylane_invoice_id}`
-      : 'Relance règlement en attente'
-    const url = 'https://mail.google.com/mail/?view=cm&fs=1'
-      + `&to=${encodeURIComponent(row.client_email ?? '')}`
-      + `&su=${encodeURIComponent(subject)}`
-      + `&body=${encodeURIComponent(draftText)}`
-    window.open(url, '_blank', 'noopener')
-  }
-
   // ── Marquer comme relancée ────────────────────────────────────────────────────
 
   const handleMarkSent = async () => {
@@ -184,9 +171,6 @@ export function Relances() {
                       className={`transition-colors ${activeId === row.id ? 'bg-[var(--brand-soft)]' : 'hover:bg-[var(--bg-card-hover)]'}`}>
                       <td className="px-4 py-3 font-medium text-[var(--text)] whitespace-nowrap">
                         {row.client_name}
-                        {!row.client_email && (
-                          <span className="ml-1.5 text-[var(--warning)] text-[var(--fs-xs)]" title="Pas d'email">⚠</span>
-                        )}
                       </td>
                       <td className="px-4 py-3 font-mono text-[var(--text-muted)] text-[var(--fs-xs)]">
                         {row.pennylane_invoice_id ?? '—'}
@@ -228,16 +212,9 @@ export function Relances() {
             {/* Panneau brouillon */}
             {activeRow && (
               <div className="rounded-[var(--r-lg)] border border-[var(--brand)]/30 bg-[var(--bg-card)] p-5 flex flex-col gap-4">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium text-[var(--text)]">
-                    Relance — <span className="text-[var(--brand)]">{activeRow.client_name}</span>
-                  </p>
-                  {!activeRow.client_email && (
-                    <span className="text-[var(--fs-xs)] text-[var(--warning)]">
-                      ⚠ Aucun email renseigné pour ce client
-                    </span>
-                  )}
-                </div>
+                <p className="font-medium text-[var(--text)]">
+                  Relance — <span className="text-[var(--brand)]">{activeRow.client_name}</span>
+                </p>
 
                 {drafting ? (
                   <div className="flex items-center gap-2 text-[var(--text-muted)] text-[var(--fs-sm)]">
@@ -256,19 +233,6 @@ export function Relances() {
                         <Copy size={13} />
                         Copier
                       </Button>
-
-                      <button
-                        type="button"
-                        onClick={() => activeRow.client_email && openGmail(activeRow, draft)}
-                        disabled={!activeRow.client_email}
-                        title={!activeRow.client_email ? 'Pas d\'email pour ce client' : undefined}
-                        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[var(--r-md)]
-                          border border-[var(--border)] bg-[var(--bg)] text-[var(--fs-sm)] text-[var(--text)]
-                          hover:enabled:border-[var(--brand)] hover:enabled:text-[var(--brand)] transition-colors
-                          disabled:opacity-40 disabled:cursor-not-allowed">
-                        <Mail size={13} />
-                        Ouvrir dans Gmail
-                      </button>
 
                       <Button
                         variant="primary"
