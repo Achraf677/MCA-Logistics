@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { Trash2 }      from 'lucide-react'
+import { Trash2, Loader2 } from 'lucide-react'
 import { Drawer }      from '../../shared/ui/Drawer'
 import { Button }      from '../../shared/ui/Button'
 import { Badge }       from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
 import { useToast }    from '../../shared/ui/useToast'
-import { useProfile }  from '../../app/providers'
+import { useProfile, supabase } from '../../app/providers'
 import { formatMoney, addTva } from '../../shared/lib/money'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
@@ -55,6 +55,7 @@ const EMPTY_FORM = {
   pickup_address:   '',
   delivery_address: '',
   km:               '',
+  empty_km:         '',
   pallets:          '',
   manual_ht:        '',   // HT en euros (mode manuel)
   tva_override:     '',   // TVA en euros, éditable dans tous les modes
@@ -79,6 +80,9 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   // Coordonnées géocodées de l'adresse de livraison (Photon). null = saisie libre.
   const [deliveryCoords, setDeliveryCoords] =
     useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
+
+  const [calcLoading, setCalcLoading] = useState(false)
+  const [calcError, setCalcError]     = useState<string | null>(null)
 
   const [clients,  setClients]  = useState<ClientLookup[]>([])
   const [vehicles, setVehicles] = useState<Lookup[]>([])
@@ -120,6 +124,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         pickup_address:   delivery.pickup_address ?? '',
         delivery_address: delivery.delivery_address ?? '',
         km:               delivery.km != null ? String(delivery.km) : '',
+        empty_km:         delivery.empty_km != null ? String(delivery.empty_km) : '',
         pallets:          delivery.weight_kg != null ? String(delivery.weight_kg) : '',
         manual_ht:        effectiveHtCts(delivery) > 0
                             ? (effectiveHtCts(delivery) / 100).toFixed(2) : '',
@@ -137,6 +142,28 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   }, [delivery, open])
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  // ── Calcul trajet IGN ─────────────────────────────────────────────────────────
+
+  const handleCalcTrajet = async () => {
+    const depart  = form.pickup_address.trim()
+    const arrivee = form.delivery_address.trim()
+    if (!depart || !arrivee) {
+      setCalcError("Renseignez l'adresse d'enlèvement et l'adresse de livraison avant de calculer.")
+      return
+    }
+    setCalcLoading(true)
+    setCalcError(null)
+    const { data, error } = await supabase.functions.invoke('route-calc', {
+      body: { depart, arrivee },
+    })
+    setCalcLoading(false)
+    if (error || !data?.ok) {
+      setCalcError(data?.error ?? error?.message ?? 'Erreur lors du calcul du trajet.')
+      return
+    }
+    set('km', String(Math.round(data.data.distance_km as number)))
+  }
 
   // ── Client sélectionné ────────────────────────────────────────────────────────
 
@@ -212,8 +239,9 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         delivery_address: form.delivery_address || null,
         delivery_lat:     deliveryCoords.lat,
         delivery_lng:     deliveryCoords.lng,
-        km:               form.km      ? parseFloat(form.km)      : null,
-        weight_kg:        form.pallets ? parseFloat(form.pallets) : null,
+        km:               form.km       ? parseFloat(form.km)       : null,
+        empty_km:         form.empty_km ? parseFloat(form.empty_km) : null,
+        weight_kg:        form.pallets  ? parseFloat(form.pallets)  : null,
         amount_ht_cts:    computed?.amount_ht_cts  ?? null,
         tva_cts:          computed?.tva_cts         ?? null,
         amount_ttc_cts:   computed?.amount_ttc_cts ?? null,
@@ -398,6 +426,43 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
               📍 {deliveryCoords.lat.toFixed(5)}, {deliveryCoords.lng.toFixed(5)}
             </p>
           )}
+          {/* ── Section Distance ─────────────────────────────────────────────── */}
+          <div className="flex flex-col gap-3 pt-3 border-t border-[var(--border-soft)]">
+            <p className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+              Distance
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="KM en charge">
+                <div className="flex gap-2">
+                  <Input type="number" value={form.km} onChange={v => { set('km', v); setCalcError(null) }}
+                    placeholder="0" disabled={isDetailReadOnly} />
+                  {!isDetailReadOnly && (
+                    <button
+                      type="button"
+                      onClick={handleCalcTrajet}
+                      disabled={calcLoading}
+                      title="Calculer le trajet via IGN"
+                      className="flex-shrink-0 h-9 px-3 rounded-[var(--r-md)] border border-[var(--border)]
+                        bg-[var(--bg-elevated)] text-[var(--fs-xs)] text-[var(--text-muted)]
+                        hover:border-[var(--brand)] hover:text-[var(--brand)] transition-colors
+                        disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">
+                      {calcLoading
+                        ? <Loader2 size={13} className="animate-spin" />
+                        : <span>Calculer le trajet</span>}
+                    </button>
+                  )}
+                </div>
+              </Field>
+              <Field label="KM à vide">
+                <Input type="number" value={form.empty_km} onChange={v => set('empty_km', v)}
+                  placeholder="0" disabled={isDetailReadOnly} />
+              </Field>
+            </div>
+            {calcError && (
+              <p className="text-[var(--danger)] text-[var(--fs-xs)]">{calcError}</p>
+            )}
+          </div>
+
           <Field label="Notes">
             <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
               rows={3} disabled={isDetailReadOnly} placeholder="Notes internes…"

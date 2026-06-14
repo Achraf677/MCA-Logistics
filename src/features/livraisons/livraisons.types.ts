@@ -26,6 +26,8 @@ export interface Delivery {
   delivery_lng: number | null
   /** DB column 'km' — distance en km (tarif km) */
   km: number | null
+  /** DB column 'empty_km' — km parcourus à vide (optionnel) */
+  empty_km: number | null
   /** DB column 'weight_kg' — utilisé comme nb palettes (tarif palette) */
   weight_kg: number | null
   // Colonnes legacy (rétro-compat)
