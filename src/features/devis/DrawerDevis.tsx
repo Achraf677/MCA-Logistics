@@ -26,10 +26,10 @@ interface Props {
 }
 
 const TVA_RATES = [
-  { label: '20 %', value: 0.20 },
-  { label: '10 %', value: 0.10 },
-  { label: '5,5 %', value: 0.055 },
-  { label: '2,1 %', value: 0.021 },
+  { label: '20 %', value: 20 },
+  { label: '10 %', value: 10 },
+  { label: '5,5 %', value: 5.5 },
+  { label: '2,1 %', value: 2.1 },
   { label: '0 %', value: 0 },
 ]
 
@@ -47,7 +47,7 @@ const EMPTY_FORM = {
   valid_until: todayPlus30(),
   description: '',
   amount_ht:   '',
-  tva_rate:    0.20,
+  tva_rate:    20,
   notes:       '',
 }
 
@@ -83,7 +83,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
         description: quote.description ?? '',
         amount_ht:   quote.amount_ht_cts != null
           ? centimesToEuros(quote.amount_ht_cts).toFixed(2) : '',
-        tva_rate:    quote.tva_rate ?? 0.20,
+        tva_rate:    quote.tva_rate ?? 20,
         notes:       quote.notes ?? '',
       })
     } else {
@@ -101,7 +101,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
     return isNaN(v) ? 0 : eurosToCentimes(v)
   }, [form.amount_ht])
 
-  const tvaCts = useMemo(() => Math.round(htCts * form.tva_rate), [htCts, form.tva_rate])
+  const tvaCts = useMemo(() => Math.round(htCts * form.tva_rate / 100), [htCts, form.tva_rate])
   const ttcCts = useMemo(() => htCts + tvaCts, [htCts, tvaCts])
 
   // ── Statut courant ─────────────────────────────────────────────────────────
