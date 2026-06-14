@@ -1,10 +1,10 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { features } from '../features.config'
-import { Livraisons }   from '../features/livraisons/Livraisons'
 import { AuthCallback } from './AuthCallback'
-import { PilotageSection } from './sections/PilotageSection'
-import { FinanceSection }  from './sections/FinanceSection'
+import { PilotageSection }    from './sections/PilotageSection'
+import { LivraisonsSection }  from './sections/LivraisonsSection'
+import { FinanceSection }     from './sections/FinanceSection'
 import { FlotteSection }   from './sections/FlotteSection'
 import { PlanningSection } from './sections/PlanningSection'
 import { TiersSection }    from './sections/TiersSection'
@@ -26,7 +26,7 @@ export function AppRoutes() {
       <Route path="/analyses"      element={<Navigate to="/pilotage"                  replace />} />
       <Route path="/rentabilite"   element={<Navigate to="/pilotage?tab=rentabilite"  replace />} />
       <Route path="/statistiques"  element={<Navigate to="/pilotage?tab=statistiques" replace />} />
-      <Route path="/livraisons"    element={guard(features.livraisons,   <Livraisons />)} />
+      <Route path="/livraisons"    element={guard(features.livraisons,   <LivraisonsSection />)} />
       {/* Domaine Planning à sous-onglets (path /planning-hub) ; anciennes routes → redirection.
           /planning redirige vers /planning-hub?tab=planning : pas de boucle (section ≠ path redirigé). */}
       <Route path="/planning-hub"  element={guard(features.planningHub,  <PlanningSection />)} />
@@ -51,7 +51,7 @@ export function AppRoutes() {
       <Route path="/tresorerie"    element={<Navigate to="/finance?tab=tresorerie"  replace />} />
       <Route path="/tva"           element={<Navigate to="/finance?tab=tva"         replace />} />
       <Route path="/relances"      element={<Navigate to="/finance?tab=relances"    replace />} />
-      <Route path="/devis"         element={<Navigate to="/finance?tab=devis"       replace />} />
+      <Route path="/devis"         element={<Navigate to="/livraisons?tab=devis"    replace />} />
       <Route path="/documents"     element={<Navigate to="/systeme?tab=documents"   replace />} />
       {/* Domaine Équipe à sous-onglets (path /equipe-hub) ; anciennes routes → redirection.
           /equipe redirige vers /equipe-hub?tab=membres : pas de boucle (section ≠ path redirigé). */}
