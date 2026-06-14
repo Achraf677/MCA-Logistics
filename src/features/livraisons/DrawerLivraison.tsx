@@ -1,7 +1,9 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { Trash2, Loader2 } from 'lucide-react'
+import { Trash2, Loader2, Camera } from 'lucide-react'
 import { DocumentsPanel } from '../documents/DocumentsPanel'
+import { uploadDocument, listDocuments, getDownloadUrl } from '../../shared/lib/documents.queries'
+import type { DocumentRow } from '../../shared/lib/documents.types'
 import { Drawer }      from '../../shared/ui/Drawer'
 import { Button }      from '../../shared/ui/Button'
 import { Badge }       from '../../shared/ui/Badge'
@@ -20,7 +22,7 @@ import {
 import type { ClientTariff } from './livraisons.logic'
 import {
   createDelivery, updateDelivery, transitionDelivery, deleteDelivery,
-  getActiveClients, getActiveVehicles, getActiveDrivers,
+  getActiveClients, getActiveVehicles, getActiveDrivers, savePod,
 } from './livraisons.queries'
 import type { DeliveryRow, DeliveryStatus } from './livraisons.types'
 
@@ -33,7 +35,7 @@ interface Props {
   onSaved: () => void
 }
 
-type Tab = 'detail' | 'montant' | 'suivi' | 'documents'
+type Tab = 'detail' | 'montant' | 'suivi' | 'documents' | 'pod'
 
 interface ClientLookup extends ClientTariff {
   id: string
@@ -211,7 +213,13 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   const isMontantReadOnly = isEdit && lockedStatuses.includes(delivery?.statut ?? '')
 
   const tabs: { key: Tab; label: string }[] = isEdit
-    ? [{ key: 'detail', label: 'Détail' }, { key: 'montant', label: 'Montant' }, { key: 'suivi', label: 'Suivi' }, { key: 'documents', label: 'Documents' }]
+    ? [
+        { key: 'detail',    label: 'Détail' },
+        { key: 'montant',   label: 'Montant' },
+        { key: 'suivi',     label: 'Suivi' },
+        { key: 'documents', label: 'Documents' },
+        { key: 'pod',       label: 'POD' },
+      ]
     : [{ key: 'detail', label: 'Détail' }, { key: 'montant', label: 'Montant' }]
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -522,6 +530,11 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         <DocumentsPanel entityType="delivery" entityId={delivery?.id ?? null} />
       )}
 
+      {/* ── Onglet POD ───────────────────────────────────────────────────────── */}
+      {tab === 'pod' && (
+        <PodTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
+      )}
+
       <ConfirmDialog
         open={confirmDelete}
         title="Supprimer cette livraison ?"
@@ -757,6 +770,248 @@ function SuiviTab({
       <div className={`pt-3 ${nextStatuses.length === 0 ? 'border-t border-[var(--border)]' : ''}`}>
         <Button variant="secondary" onClick={onClose}>Fermer</Button>
       </div>
+    </div>
+  )
+}
+
+// ── Onglet POD ────────────────────────────────────────────────────────────────
+
+function PodTab({
+  delivery,
+  companyId,
+  onSaved,
+}: {
+  delivery: DeliveryRow | null
+  companyId: string | null
+  onSaved: () => void
+}) {
+  const { toast } = useToast()
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const isReadOnly = delivery?.statut === 'annulee'
+
+  // Valeurs POD — tracking local pour refléter l'enregistrement sans attendre un rechargement complet
+  const [capturedAt, setCapturedAt]         = useState(delivery?.pod_captured_at ?? null)
+  const [recipientSaved, setRecipientSaved] = useState(delivery?.pod_recipient_name ?? '')
+
+  // Formulaire
+  const [recipient, setRecipient] = useState(delivery?.pod_recipient_name ?? '')
+
+  // Photo courante (depuis DB ou juste uploadée)
+  const [photoDoc, setPhotoDoc]   = useState<DocumentRow | null>(null)
+  const [photoUrl, setPhotoUrl]   = useState<string | null>(null)
+  const [loadingPhoto, setLoadingPhoto] = useState(false)
+
+  // Opérations async
+  const [uploading, setUploading] = useState(false)
+  const [saving, setSaving]       = useState(false)
+
+  // Charge la photo POD la plus récente pour cette livraison
+  useEffect(() => {
+    if (!delivery) return
+    setLoadingPhoto(true)
+    listDocuments({ entity_type: 'delivery', entity_id: delivery.id, category: 'POD' })
+      .then(async ({ data }) => {
+        const latest = (data as DocumentRow[])?.[0] ?? null
+        setPhotoDoc(latest)
+        if (latest) {
+          const url = await getDownloadUrl(latest)
+          setPhotoUrl(url)
+        } else {
+          setPhotoUrl(null)
+        }
+      })
+      .finally(() => setLoadingPhoto(false))
+  }, [delivery?.id])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (fileRef.current) fileRef.current.value = ''
+    if (!file || !companyId || !delivery) return
+    if (!file.type.startsWith('image/')) {
+      toast('Seules les images sont acceptées pour la photo POD', 'error')
+      return
+    }
+    setUploading(true)
+    const { data, error } = await uploadDocument(file, companyId, {
+      entity_type: 'delivery',
+      entity_id:   delivery.id,
+      category:    'POD',
+    })
+    setUploading(false)
+    if (error) { toast(error.message, 'error'); return }
+    if (data) {
+      setPhotoDoc(data)
+      const url = await getDownloadUrl(data)
+      setPhotoUrl(url)
+      toast('Photo ajoutée')
+    }
+  }
+
+  const handleSave = async () => {
+    if (!delivery) return
+    if (!photoDoc)           { toast('Ajoutez d\'abord une photo de preuve', 'error'); return }
+    if (!recipient.trim())   { toast('Le nom du réceptionnaire est requis', 'error'); return }
+    setSaving(true)
+    const { error } = await savePod(delivery.id, recipient.trim())
+    setSaving(false)
+    if (error) { toast((error as Error).message, 'error'); return }
+    const now = new Date().toISOString()
+    setCapturedAt(now)
+    setRecipientSaved(recipient.trim())
+    toast('Preuve de livraison enregistrée')
+    onSaved()
+  }
+
+  if (!delivery) {
+    return (
+      <p className="text-[var(--fs-sm)] text-[var(--text-muted)] italic py-4 text-center">
+        Enregistre d'abord la livraison pour y rattacher une preuve.
+      </p>
+    )
+  }
+
+  const isCaptured = !!capturedAt
+
+  const photoBlock = loadingPhoto ? (
+    <div className="flex items-center justify-center py-6">
+      <Loader2 size={20} className="animate-spin text-[var(--text-disabled)]" />
+    </div>
+  ) : photoUrl ? (
+    <a href={photoUrl} target="_blank" rel="noopener noreferrer"
+      className="block rounded-[var(--r-md)] overflow-hidden border border-[var(--border)]
+        hover:border-[var(--brand)] transition-colors">
+      <img src={photoUrl} alt="Photo POD"
+        className="w-full max-h-64 object-contain bg-[var(--bg-elevated)]" />
+      <p className="px-3 py-1.5 text-[var(--fs-xs)] text-[var(--text-muted)] text-center">
+        Cliquer pour ouvrir en grand
+      </p>
+    </a>
+  ) : (
+    <p className="text-[var(--fs-sm)] text-[var(--text-muted)] italic">Aucune photo trouvée</p>
+  )
+
+  if (isCaptured) {
+    return (
+      <div className="flex flex-col gap-4">
+        {/* Bandeau succès */}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-[var(--r-md)]
+          bg-[var(--success)]/10 border border-[var(--success)]/30 text-[var(--fs-sm)]">
+          <span className="text-[var(--success)] font-semibold">✓</span>
+          <span className="text-[var(--text)]">Preuve de livraison enregistrée</span>
+        </div>
+
+        {/* Méta */}
+        <div className="flex flex-col gap-2 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] p-3">
+          <div className="flex items-center justify-between text-[var(--fs-sm)]">
+            <span className="text-[var(--text-muted)]">Réceptionnaire</span>
+            <span className="font-medium text-[var(--text)]">{recipientSaved}</span>
+          </div>
+          <div className="flex items-center justify-between text-[var(--fs-sm)]">
+            <span className="text-[var(--text-muted)]">Horodatage</span>
+            <span className="font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
+              {new Date(capturedAt!).toLocaleString('fr-FR')}
+            </span>
+          </div>
+        </div>
+
+        {/* Photo */}
+        {photoBlock}
+
+        {/* Remplacement de la photo */}
+        {!isReadOnly && (
+          <div className="pt-2 border-t border-[var(--border)]">
+            <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mb-2">
+              Remplacer la photo (l'ancienne reste dans Documents) :
+            </p>
+            <input
+              ref={fileRef}
+              id="pod-file-replace"
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              disabled={uploading}
+              className="hidden"
+            />
+            <label htmlFor="pod-file-replace"
+              className={`inline-flex items-center gap-2 h-8 px-3 rounded-[var(--r-md)]
+                border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--fs-xs)]
+                text-[var(--text-muted)] cursor-pointer
+                hover:border-[var(--brand)] hover:text-[var(--brand)] transition-colors
+                ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+              {uploading
+                ? <Loader2 size={12} className="animate-spin" />
+                : <Camera size={12} />}
+              {uploading ? 'Upload…' : 'Nouvelle photo'}
+            </label>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  // ── Formulaire de capture ────────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col gap-4">
+      <Field label="Nom du réceptionnaire">
+        <input
+          type="text"
+          value={recipient}
+          onChange={e => setRecipient(e.target.value)}
+          placeholder="Prénom Nom du signataire"
+          disabled={isReadOnly}
+          className={inputCls}
+        />
+      </Field>
+
+      <div className="flex flex-col gap-1">
+        <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+          Photo de preuve
+        </label>
+        <input
+          ref={fileRef}
+          id="pod-file-add"
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          disabled={uploading || isReadOnly}
+          className="hidden"
+        />
+        <label htmlFor="pod-file-add"
+          className={`flex items-center gap-2 h-9 px-3 rounded-[var(--r-md)]
+            border border-[var(--border)] bg-[var(--bg)] text-[var(--fs-sm)]
+            text-[var(--text-muted)] cursor-pointer hover:border-[var(--brand)] transition-colors
+            ${(uploading || isReadOnly) ? 'opacity-50 pointer-events-none' : ''}`}>
+          {uploading
+            ? <Loader2 size={14} className="animate-spin" />
+            : <Camera size={14} />}
+          {uploading
+            ? 'Upload en cours…'
+            : photoDoc ? 'Remplacer la photo' : 'Ajouter la photo de preuve'}
+        </label>
+
+        {/* Aperçu après upload */}
+        {photoUrl && !loadingPhoto && (
+          <div className="mt-2 rounded-[var(--r-md)] overflow-hidden border border-[var(--border)]">
+            <img src={photoUrl} alt="Aperçu POD"
+              className="w-full max-h-48 object-contain bg-[var(--bg-elevated)]" />
+          </div>
+        )}
+      </div>
+
+      {isReadOnly ? (
+        <p className="text-[var(--fs-sm)] text-[var(--text-muted)] italic">
+          La livraison est annulée — la preuve n'est pas modifiable.
+        </p>
+      ) : (
+        <Button
+          variant="primary"
+          onClick={handleSave}
+          disabled={saving || !photoDoc || !recipient.trim()}
+        >
+          {saving ? 'Enregistrement…' : 'Enregistrer la preuve'}
+        </Button>
+      )}
     </div>
   )
 }

@@ -385,9 +385,14 @@ export function Livraisons() {
                         {row.km != null ? `${row.km} km` : '—'}
                       </td>
                       <td className="px-4 py-3">
-                        <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>
-                          {STATUS_LABELS[row.statut] ?? row.statut}
-                        </Badge>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>
+                            {STATUS_LABELS[row.statut] ?? row.statut}
+                          </Badge>
+                          {row.pod_captured_at && (
+                            <Badge color="success">Preuve ✓</Badge>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <Button variant="ghost" size="compact"
@@ -440,9 +445,14 @@ export function Livraisons() {
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <span className="font-medium text-[var(--text)]">{row.clients?.name ?? '—'}</span>
-                      <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>
-                        {STATUS_LABELS[row.statut] ?? row.statut}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>
+                          {STATUS_LABELS[row.statut] ?? row.statut}
+                        </Badge>
+                        {row.pod_captured_at && (
+                          <Badge color="success">Preuve ✓</Badge>
+                        )}
+                      </div>
                     </div>
                     <div className="flex items-end justify-between gap-2">
                       <div className="flex flex-col gap-0.5 text-[var(--fs-xs)] text-[var(--text-muted)]">

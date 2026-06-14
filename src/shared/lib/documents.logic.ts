@@ -1,7 +1,7 @@
 import type { DocumentCategory } from './documents.types'
 
 export const DOCUMENT_CATEGORIES: DocumentCategory[] = [
-  'Administratif', 'Comptable', 'RH', 'Véhicule', 'Client', 'Autre',
+  'Administratif', 'Comptable', 'RH', 'Véhicule', 'Client', 'POD', 'Autre',
 ]
 
 /** 1 Go en octets — quota par société. */

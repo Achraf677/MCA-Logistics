@@ -177,6 +177,17 @@ export async function getActiveDrivers() {
     .order('full_name')
 }
 
+// ── Preuve de livraison (POD) ─────────────────────────────────────────────────
+export async function savePod(id: string, recipientName: string) {
+  return supabase
+    .from('deliveries')
+    .update({
+      pod_recipient_name: recipientName,
+      pod_captured_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+}
+
 // ── Export CSV ────────────────────────────────────────────────────────────────
 export async function exportDeliveriesCSV(filters: DeliveryFilters = {}) {
   const { data } = await getDeliveries(filters)
