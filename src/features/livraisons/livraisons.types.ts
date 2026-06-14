@@ -50,6 +50,10 @@ export interface Delivery {
   sync_pending: boolean
   sync_error: string | null
   notes: string | null
+  /** Nombre de relances envoyées (défaut DB : 0) */
+  relance_count: number
+  /** Horodatage de la dernière relance envoyée */
+  last_relance_at: string | null
   created_at: string
   updated_at: string
 }
@@ -70,6 +74,8 @@ export type DeliveryInsert = Omit<
   // montant_ttc_cts est GENERATED ALWAYS ; montant_ht_cts a désormais DEFAULT 0 ;
   // tva_rate a DEFAULT 20 — on ne les écrit plus, on utilise amount_* v2.
   | 'montant_ht_cts' | 'tva_rate' | 'montant_ttc_cts'
+  // Gestion des relances : mise à jour via relances.queries (markRelanceSent), pas lors du create.
+  | 'relance_count' | 'last_relance_at'
 >
 
 export type DeliveryUpdate = Partial<Omit<Delivery, 'id' | 'company_id' | 'created_at'>>

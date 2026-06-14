@@ -5,6 +5,7 @@ import { Tresorerie } from '../../features/tresorerie/Tresorerie'
 import { Charges } from '../../features/charges/Charges'
 import { Encaissement } from '../../features/encaissement/Encaissement'
 import { Tva } from '../../features/tva/Tva'
+import { Relances } from '../../features/relances/Relances'
 
 /**
  * Domaine FINANCE — page à sous-onglets regroupant 4 pages existantes.
@@ -20,6 +21,7 @@ export function FinanceSection() {
           { key: 'charges', label: 'Charges', element: <Charges /> },
           { key: 'encaissement', label: 'Encaissement', element: <Encaissement /> },
           { key: 'tva', label: 'TVA', element: <Tva /> },
+          { key: 'relances', label: 'Relances', element: <Relances /> },
         ]}
       />
     </Shell>
