@@ -16,6 +16,13 @@ import {
 } from '../../shared/lib/documents.logic'
 import type { DocumentRow, DocumentCategory } from '../../shared/lib/documents.types'
 
+const ENTITY_LABEL: Record<string, string> = {
+  vehicle:     'Véhicule',
+  team_member: 'Salarié',
+  client:      'Client',
+  delivery:    'Livraison',
+}
+
 // ── Barre de quota ────────────────────────────────────────────────────────────
 
 function QuotaBar({ usedBytes }: { usedBytes: number }) {
@@ -280,7 +287,7 @@ export function Documents() {
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                  {['Nom', 'Type', 'Taille', 'Catégorie', 'Date', ''].map(h => (
+                  {['Nom', 'Type', 'Taille', 'Catégorie', 'Rattaché à', 'Date', ''].map(h => (
                     <th
                       key={h}
                       className="px-4 py-2.5 text-left font-medium text-[var(--text-muted)] text-[var(--fs-xs)] uppercase tracking-wide whitespace-nowrap"
@@ -315,6 +322,15 @@ export function Documents() {
                       {doc.category ? (
                         <span className="inline-flex items-center rounded-[var(--r-sm)] bg-[var(--brand-soft)] px-2 py-0.5 text-[var(--fs-xs)] text-[var(--brand)]">
                           {doc.category}
+                        </span>
+                      ) : (
+                        <span className="text-[var(--text-muted)]">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {doc.entity_type ? (
+                        <span className="inline-flex items-center rounded-[var(--r-sm)] bg-[var(--border)] px-1.5 py-0.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
+                          {ENTITY_LABEL[doc.entity_type] ?? doc.entity_type}
                         </span>
                       ) : (
                         <span className="text-[var(--text-muted)]">—</span>

@@ -16,6 +16,7 @@ import {
 import { formatMoney } from '../../shared/lib/money'
 import type { Client, ClientInsert, DeliveryForEncours, TariffMode } from './clients.types'
 import { useProfile } from '../../app/providers'
+import { DocumentsPanel } from '../documents/DocumentsPanel'
 
 interface DrawerClientProps {
   open: boolean
@@ -31,7 +32,7 @@ const EMPTY_FORM: Partial<ClientInsert> = {
   tariff_mode: 'manuel', tariff_rate_cts: null,
 }
 
-type Tab = 'detail' | 'historique' | 'encours'
+type Tab = 'detail' | 'historique' | 'encours' | 'documents'
 
 export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientProps) {
   const { companyId, profile } = useProfile()
@@ -159,7 +160,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
       {/* Tabs */}
       {isEdit && (
         <div className="flex gap-1 mb-5 border-b border-[var(--border)] -mx-5 px-5">
-          {(['detail', 'historique', 'encours'] as Tab[]).map(t => (
+          {(['detail', 'historique', 'encours', 'documents'] as Tab[]).map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -169,7 +170,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
                   : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text)]'
               }`}
             >
-              {t === 'detail' ? 'Détail' : t === 'historique' ? 'Historique' : 'Encours & paiements'}
+              {t === 'detail' ? 'Détail' : t === 'historique' ? 'Historique' : t === 'encours' ? 'Encours & paiements' : 'Documents'}
             </button>
           ))}
         </div>
@@ -401,6 +402,11 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
             </>
           )}
         </div>
+      )}
+
+      {/* ── Onglet Documents ── */}
+      {tab === 'documents' && (
+        <DocumentsPanel entityType="client" entityId={client?.id ?? null} />
       )}
 
       <ConfirmDialog
