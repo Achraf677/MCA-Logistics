@@ -22,6 +22,7 @@ function input(p: Partial<AlertsInput>): AlertsInput {
     deliveries: [],
     incidents: [],
     inspections: [],
+    company: null,
     ...p,
   }
 }
@@ -318,6 +319,52 @@ describe('détection fin de CDD', () => {
 
   it('non-CDD → aucune alerte', () => {
     const a = detectAlerts(input({ drivers: [cdd(rel(5), { contract_type: 'cdi' })] }), TODAY)
+    expect(a).toHaveLength(0)
+  })
+})
+
+// ── Conformité société ────────────────────────────────────────────────────────
+describe('détection conformité société', () => {
+  const co = (overrides: Partial<{ transport_license_expiry: string | null; rc_pro_expiry: string | null }> = {}) => ({
+    id: 'c1',
+    transport_license_expiry: null,
+    rc_pro_expiry: null,
+    ...overrides,
+  })
+
+  it('licence dépassée → critique, catégorie conformite', () => {
+    const a = detectAlerts(input({ company: co({ transport_license_expiry: rel(-5) }) }), TODAY)
+    expect(a).toHaveLength(1)
+    expect(a[0].category).toBe('conformite')
+    expect(a[0].severity).toBe('critique')
+    expect(a[0].ref).toEqual({ table: 'companies', id: 'c1' })
+  })
+
+  it('RC pro dans ≤7j → urgent', () => {
+    const a = detectAlerts(input({ company: co({ rc_pro_expiry: rel(5) }) }), TODAY)
+    expect(a).toHaveLength(1)
+    expect(a[0].severity).toBe('urgent')
+    expect(a[0].category).toBe('conformite')
+  })
+
+  it('deux échéances → deux alertes conformite', () => {
+    const a = detectAlerts(input({ company: co({ transport_license_expiry: rel(-1), rc_pro_expiry: rel(20) }) }), TODAY)
+    expect(a).toHaveLength(2)
+    expect(a.every(x => x.category === 'conformite')).toBe(true)
+  })
+
+  it('dates nulles → aucune alerte (pas de faux positif)', () => {
+    const a = detectAlerts(input({ company: co() }), TODAY)
+    expect(a).toHaveLength(0)
+  })
+
+  it('company null → aucune alerte', () => {
+    const a = detectAlerts(input({ company: null }), TODAY)
+    expect(a).toHaveLength(0)
+  })
+
+  it('échéance lointaine > 30j → aucune alerte', () => {
+    const a = detectAlerts(input({ company: co({ rc_pro_expiry: rel(60) }) }), TODAY)
     expect(a).toHaveLength(0)
   })
 })

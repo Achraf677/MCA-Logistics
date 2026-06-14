@@ -10,6 +10,7 @@ import type {
   AlertThresholds,
   AlertsInput,
   AlertsSummary,
+  CompanyAlertRow,
   DeliveryAlertRow,
   DriverAlertRow,
   IncidentAlertRow,
@@ -228,6 +229,34 @@ function detectIncidents(rows: IncidentAlertRow[], today: Date, t: AlertThreshol
   return out
 }
 
+const COMPANY_FIELDS: Array<{ key: string; field: keyof CompanyAlertRow; label: string }> = [
+  { key: 'transport_license', field: 'transport_license_expiry', label: 'Licence de transport (DREAL)' },
+  { key: 'rc_pro',            field: 'rc_pro_expiry',            label: 'Assurance RC pro + marchandises' },
+]
+
+function detectCompany(company: CompanyAlertRow | null | undefined, today: Date, t: AlertThresholds): Alert[] {
+  if (!company) return []
+  const out: Alert[] = []
+  for (const { key, field, label } of COMPANY_FIELDS) {
+    const date = company[field] as string | null
+    const daysLeft = daysLeftUntil(date, today)
+    if (daysLeft === null) continue
+    const severity = expirySeverity(daysLeft, t)
+    if (!severity) continue
+    out.push({
+      id: `companies:${company.id}:${key}`,
+      category: 'conformite',
+      severity,
+      title: label,
+      detail: dueDetail(date as string, daysLeft),
+      dueDate: date,
+      daysLeft,
+      ref: { table: 'companies', id: company.id },
+    })
+  }
+  return out
+}
+
 function detectInspections(rows: InspectionAlertRow[], today: Date): Alert[] {
   const out: Alert[] = []
   for (const ins of rows) {
@@ -306,13 +335,14 @@ export function detectAlerts(
     ...detectDeliveries(input.deliveries ?? [], today, thresholds),
     ...detectIncidents(input.incidents ?? [], today, thresholds),
     ...detectInspections(input.inspections ?? [], today),
+    ...detectCompany(input.company, today, thresholds),
   ]
   return sortAlerts(dedupe(all))
 }
 
 const EMPTY_SEVERITE: Record<AlertSeverity, number> = { info: 0, warning: 0, urgent: 0, critique: 0 }
 const EMPTY_CATEGORIE: Record<AlertCategory, number> = {
-  vehicule: 0, chauffeur: 0, entretien: 0, livraison: 0, facture: 0, incident: 0, inspection: 0, rh: 0,
+  vehicule: 0, chauffeur: 0, entretien: 0, livraison: 0, facture: 0, incident: 0, inspection: 0, rh: 0, conformite: 0,
 }
 
 /** Agrège les alertes par sévérité et par catégorie. */

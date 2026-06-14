@@ -14,6 +14,7 @@ const EMPTY: Omit<CompanyData, 'id'> = {
   name: '', siren: '', siret: '', tva_intra: '',
   address: '', depot_lat: null, depot_lng: null,
   capital_cts: null, iban: '', bic: '',
+  transport_license_expiry: null, rc_pro_expiry: null,
 }
 
 export function Parametres() {
@@ -51,6 +52,8 @@ export function Parametres() {
           capital_cts: data.capital_cts,
           iban:        data.iban ?? '',
           bic:         data.bic ?? '',
+          transport_license_expiry: data.transport_license_expiry,
+          rc_pro_expiry:            data.rc_pro_expiry,
         })
       }
       setLoading(false)
@@ -76,6 +79,8 @@ export function Parametres() {
       capital_cts: form.capital_cts,
       iban:      form.iban || null,
       bic:       form.bic || null,
+      transport_license_expiry: form.transport_license_expiry || null,
+      rc_pro_expiry:            form.rc_pro_expiry || null,
     })
     if (error) toast((error as Error).message, 'error')
     else { toast('Paramètres enregistrés'); setDirty(false) }
@@ -172,6 +177,32 @@ export function Parametres() {
               {form.iban.replace(/(.{4})/g, '$1 ').trim()}
             </p>
           )}
+        </Section>
+
+        {/* Section Conformité */}
+        <Section title="Conformité / Documents société">
+          <Field label="Licence de transport / inscription registre (DREAL)">
+            <input
+              type="date"
+              value={form.transport_license_expiry ?? ''}
+              onChange={e => {
+                setForm(p => ({ ...p, transport_license_expiry: e.target.value || null }))
+                setDirty(true)
+              }}
+              className={inputCls}
+            />
+          </Field>
+          <Field label="Assurance RC pro + marchandises">
+            <input
+              type="date"
+              value={form.rc_pro_expiry ?? ''}
+              onChange={e => {
+                setForm(p => ({ ...p, rc_pro_expiry: e.target.value || null }))
+                setDirty(true)
+              }}
+              className={inputCls}
+            />
+          </Field>
         </Section>
 
         {/* Actions */}

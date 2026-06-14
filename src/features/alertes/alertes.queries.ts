@@ -3,7 +3,7 @@ import type { Alert, AlertsInput } from './alertes.types'
 
 /** Charge les projections nécessaires au moteur de détection (alertes.logic.ts). */
 export async function getAlertesDetectionData(): Promise<AlertsInput> {
-  const [vehicles, drivers, maintenances, deliveries, incidents, inspections] = await Promise.all([
+  const [vehicles, drivers, maintenances, deliveries, incidents, inspections, company] = await Promise.all([
     supabase
       .from('vehicles')
       .select('id, label, plate, status, ct_expiry, insurance_expiry, next_revision_date')
@@ -28,6 +28,10 @@ export async function getAlertesDetectionData(): Promise<AlertsInput> {
       .from('inspections')
       .select('id, status, date, vehicles!vehicle_id(label)')
       .in('status', ['defauts', 'refuse']),
+    supabase
+      .from('companies')
+      .select('id, transport_license_expiry, rc_pro_expiry')
+      .single(),
   ])
 
   const join = (row: { label?: string } | { label?: string }[] | null): string | null =>
@@ -85,6 +89,13 @@ export async function getAlertesDetectionData(): Promise<AlertsInput> {
       date: i.date,
       vehicleLabel: join(i.vehicles as never),
     })),
+    company: company.data
+      ? {
+          id: company.data.id,
+          transport_license_expiry: company.data.transport_license_expiry,
+          rc_pro_expiry: company.data.rc_pro_expiry,
+        }
+      : null,
   }
 }
 
