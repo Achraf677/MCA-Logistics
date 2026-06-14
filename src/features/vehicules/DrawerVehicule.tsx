@@ -6,6 +6,7 @@ import { createVehicle, updateVehicle } from './vehicules.queries'
 import { validatePtac, STATUS_LABELS, FUEL_LABELS, vehicleEcheances } from './vehicules.logic'
 import type { Vehicle, VehicleInsert } from './vehicules.types'
 import { useProfile } from '../../app/providers'
+import { DocumentsPanel } from '../documents/DocumentsPanel'
 
 interface DrawerVehiculeProps {
   open: boolean
@@ -231,6 +232,14 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
           <Button variant="primary" onClick={handleSave} disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
           <Button variant="secondary" onClick={onClose}>Annuler</Button>
         </div>
+
+        {/* Documents rattachés — visible uniquement après sauvegarde */}
+        {isEdit && (
+          <div className="flex flex-col gap-3 pt-3 border-t border-[var(--border-soft)]">
+            <p className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">Documents</p>
+            <DocumentsPanel entityType="vehicle" entityId={vehicle!.id} />
+          </div>
+        )}
       </div>
     </Drawer>
   )

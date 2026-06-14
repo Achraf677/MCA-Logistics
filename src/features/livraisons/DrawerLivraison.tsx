@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { Trash2, Loader2 } from 'lucide-react'
+import { DocumentsPanel } from '../documents/DocumentsPanel'
 import { Drawer }      from '../../shared/ui/Drawer'
 import { Button }      from '../../shared/ui/Button'
 import { Badge }       from '../../shared/ui/Badge'
@@ -32,7 +33,7 @@ interface Props {
   onSaved: () => void
 }
 
-type Tab = 'detail' | 'montant' | 'suivi'
+type Tab = 'detail' | 'montant' | 'suivi' | 'documents'
 
 interface ClientLookup extends ClientTariff {
   id: string
@@ -210,7 +211,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   const isMontantReadOnly = isEdit && lockedStatuses.includes(delivery?.statut ?? '')
 
   const tabs: { key: Tab; label: string }[] = isEdit
-    ? [{ key: 'detail', label: 'Détail' }, { key: 'montant', label: 'Montant' }, { key: 'suivi', label: 'Suivi' }]
+    ? [{ key: 'detail', label: 'Détail' }, { key: 'montant', label: 'Montant' }, { key: 'suivi', label: 'Suivi' }, { key: 'documents', label: 'Documents' }]
     : [{ key: 'detail', label: 'Détail' }, { key: 'montant', label: 'Montant' }]
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
@@ -514,6 +515,11 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
           onTransition={handleTransition}
           onClose={onClose}
         />
+      )}
+
+      {/* ── Onglet Documents ─────────────────────────────────────────────────── */}
+      {tab === 'documents' && (
+        <DocumentsPanel entityType="delivery" entityId={delivery?.id ?? null} />
       )}
 
       <ConfirmDialog

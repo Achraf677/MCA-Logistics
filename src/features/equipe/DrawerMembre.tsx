@@ -3,6 +3,7 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
+import { DocumentsPanel } from '../documents/DocumentsPanel'
 import { useProfile } from '../../app/providers'
 import { createTeamMember, updateTeamMember, deactivateTeamMember, getMemberRecentDeliveries } from './equipe.queries'
 import {
@@ -70,7 +71,7 @@ function ValiditesBloc({ member }: { member: TeamMember }) {
   )
 }
 
-type Tab = 'detail' | 'validites' | 'historique'
+type Tab = 'detail' | 'validites' | 'historique' | 'documents'
 
 export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembreProps) {
   const { companyId } = useProfile()
@@ -166,6 +167,7 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
     { key: 'detail',    label: 'Détail' },
     ...(showValidites ? [{ key: 'validites' as Tab, label: 'Validités' }] : []),
     { key: 'historique', label: 'Historique' },
+    { key: 'documents',  label: 'Documents' },
   ]
 
   return (
@@ -326,6 +328,11 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
           </div>
         )}
       </div>
+
+        {/* ── Tab : Documents ── */}
+        {isEdit && tab === 'documents' && (
+          <DocumentsPanel entityType="team_member" entityId={member?.id ?? null} />
+        )}
 
       <ConfirmDialog
         open={confirmDeactivate}
