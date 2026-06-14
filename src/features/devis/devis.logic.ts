@@ -7,6 +7,7 @@ export const STATUS_LABELS: Record<QuoteStatus, string> = {
   refuse:    'Refusé',
   expire:    'Expiré',
   facture:   'Facturé',
+  transforme: 'Transformé',
 }
 
 export const STATUS_COLORS: Record<QuoteStatus, 'muted' | 'info' | 'success' | 'danger' | 'warning' | 'purple'> = {
@@ -16,6 +17,7 @@ export const STATUS_COLORS: Record<QuoteStatus, 'muted' | 'info' | 'success' | '
   refuse:    'danger',
   expire:    'warning',
   facture:   'purple',
+  transforme: 'info',
 }
 
 export function isExpiredDisplay(valid_until: string | null, statut: QuoteStatus): boolean {

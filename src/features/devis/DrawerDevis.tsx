@@ -11,7 +11,7 @@ import {
 } from './devis.logic'
 import {
   createQuote, updateQuote, updateQuoteStatus, deleteQuote,
-  listClientsLight, sendToPennylane, convertToInvoice,
+  listClientsLight, sendToPennylane, convertToInvoice, transformToDelivery,
 } from './devis.queries'
 import type { Quote, QuoteStatus } from './devis.types'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -108,7 +108,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
 
   const statut: QuoteStatus = quote?.statut ?? 'brouillon'
   const isReadOnly = isEdit && statut !== 'brouillon'
-  const isTerminal = ['refuse', 'facture', 'expire'].includes(statut)
+  const isTerminal = ['refuse', 'facture', 'expire', 'transforme'].includes(statut)
   const expired    = isExpiredDisplay(quote?.valid_until ?? null, statut)
 
   // ── Validation ────────────────────────────────────────────────────────────
@@ -194,6 +194,18 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
     toast(`Devis marqué : ${STATUS_LABELS[s]}`)
     onSaved()
     onClose()
+  }
+
+  // ── Transformer en livraison ──────────────────────────────────────────────
+
+  const handleTransform = async () => {
+    if (!quote || !companyId) return
+    setActioning(true)
+    const { error } = await transformToDelivery(quote, companyId)
+    setActioning(false)
+    if (error) { toast((error as Error).message ?? 'Erreur', 'error'); return }
+    toast('Devis transformé en livraison (à planifier)')
+    onSaved(); onClose()
   }
 
   // ── Convertir en facture ──────────────────────────────────────────────────
@@ -373,11 +385,14 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
             </>
           )}
 
-          {/* Accepté : convertir + marquer refusé */}
+          {/* Accepté : transformer en livraison + facturer directement + marquer refusé */}
           {statut === 'accepte' && (
             <>
-              <Button variant="primary" onClick={handleConvert} disabled={actioning}>
-                {actioning ? '…' : 'Convertir en facture'}
+              <Button variant="primary" onClick={handleTransform} disabled={actioning}>
+                {actioning ? '…' : 'Transformer en livraison'}
+              </Button>
+              <Button variant="secondary" onClick={handleConvert} disabled={actioning}>
+                Facturer directement
               </Button>
               <Button variant="secondary" onClick={() => handleMark('refuse')} disabled={actioning}
                 className="text-[var(--danger)] border-[var(--danger)]/40">

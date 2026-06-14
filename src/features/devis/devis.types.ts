@@ -5,6 +5,7 @@ export type QuoteStatus =
   | 'refuse'
   | 'expire'
   | 'facture'
+  | 'transforme'
 
 export interface Quote {
   id: string
