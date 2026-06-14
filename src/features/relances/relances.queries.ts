@@ -8,7 +8,6 @@ type RawRow = {
   client_id: string
   pennylane_invoice_id: string | null
   amount_ttc_cts: number | null
-  montant_ttc_cts: number | null
   invoiced_at: string
   relance_count: number | null
   last_relance_at: string | null
@@ -20,7 +19,7 @@ export async function getOverdueInvoices(): Promise<{ data: RelanceRow[] | null;
     .from('deliveries')
     .select(`
       id, client_id, pennylane_invoice_id,
-      amount_ttc_cts, montant_ttc_cts,
+      amount_ttc_cts,
       invoiced_at, relance_count, last_relance_at,
       clients!client_id(name, email, payment_terms)
     `)
