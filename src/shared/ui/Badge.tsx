@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-type Color = 'success' | 'danger' | 'warning' | 'info' | 'muted'
+type Color = 'success' | 'danger' | 'warning' | 'info' | 'muted' | 'purple'
 
 const colorMap: Record<Color, string> = {
   success: 'bg-[var(--success)]/15 text-[var(--success)]',
@@ -8,6 +8,7 @@ const colorMap: Record<Color, string> = {
   warning: 'bg-[var(--warning)]/15 text-[var(--warning)]',
   info:    'bg-[var(--info)]/15 text-[var(--info)]',
   muted:   'bg-[var(--border)] text-[var(--text-muted)]',
+  purple:  'bg-purple-500/15 text-purple-600',
 }
 
 export function Badge({ children, color = 'muted' }: { children: ReactNode; color?: Color }) {
