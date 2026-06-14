@@ -228,7 +228,21 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
     onClose()
   }
 
-  const canDelete = isEdit && profile?.role === 'president'
+  const canDelete  = isEdit && profile?.role === 'president'
+  const isInvoiced = statut === 'facture' || !!quote?.pennylane_invoice_id
+  const isLinked   = !!quote?.pennylane_quote_id || !!quote?.pennylane_invoice_id
+
+  const deleteMessage = isInvoiced
+    ? "Ce devis est facturé. Le supprimer ici ne touche PAS Pennylane : la facture devra être annulée par un avoir séparément. Action irréversible."
+    : isLinked
+    ? "Ce devis existe chez Pennylane. Le supprimer ici ne le supprime pas chez Pennylane. Action irréversible."
+    : "Action irréversible."
+
+  const deleteAcknowledge = isInvoiced
+    ? "Je comprends que ce devis est facturé : la facture Pennylane devra être annulée par un avoir, et cette suppression est irréversible."
+    : isLinked
+    ? "Je comprends que le devis restera présent chez Pennylane et que cette suppression est irréversible."
+    : undefined
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -330,7 +344,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
         {/* Actions principales */}
         <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[var(--border)]">
 
-          {/* Brouillon : enregistrer + envoyer + supprimer */}
+          {/* Brouillon : enregistrer + envoyer */}
           {statut === 'brouillon' && (
             <>
               <Button variant="primary" onClick={handleSave} disabled={saving || actioning}>
@@ -342,12 +356,6 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
                 </Button>
               )}
               <Button variant="secondary" onClick={onClose}>Annuler</Button>
-              {canDelete && (
-                <Button variant="ghost" onClick={() => setConfirmDelete(true)}
-                  className="ml-auto text-[var(--danger)]">
-                  Supprimer
-                </Button>
-              )}
             </>
           )}
 
@@ -383,13 +391,22 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
           {isTerminal && (
             <Button variant="secondary" onClick={onClose}>Fermer</Button>
           )}
+
+          {/* Suppression globale — président uniquement, tous statuts */}
+          {canDelete && (
+            <Button variant="ghost" onClick={() => setConfirmDelete(true)}
+              className="ml-auto text-[var(--danger)]">
+              Supprimer
+            </Button>
+          )}
         </div>
       </div>
 
       <ConfirmDialog
         open={confirmDelete}
         title="Supprimer ce devis ?"
-        message="Action irréversible."
+        message={deleteMessage}
+        acknowledgeLabel={deleteAcknowledge}
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(false)}
         loading={deleting}
