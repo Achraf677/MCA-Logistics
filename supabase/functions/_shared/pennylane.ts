@@ -116,3 +116,28 @@ export async function finalizeInvoice(token: string, invoiceId: number): Promise
     headers: headers(token),
   });
 }
+
+/** Crée un devis Pennylane. Renvoie l'id du devis. Scope requis : quotes:all. */
+export async function createQuote(
+  token: string,
+  body: { customer_id: number; date: string; deadline: string; invoice_lines: InvoiceLine[] },
+): Promise<number> {
+  const data = await fetchJson<Record<string, unknown>>(`${BASE_URL}/quotes`, {
+    method: 'POST',
+    headers: headers(token),
+    body: { ...body, currency: 'EUR', language: 'fr_FR' },
+  });
+  const quote = (data.quote ?? data) as { id: number };
+  return quote.id;
+}
+
+/** Crée une facture client finalisée à partir d'un devis. Renvoie l'id de la facture.
+ *  Scope requis : customer_invoices:all. */
+export async function createInvoiceFromQuote(token: string, quoteId: number): Promise<number> {
+  const data = await fetchJson<Record<string, unknown>>(
+    `${BASE_URL}/customer_invoices/create_from_quote`,
+    { method: 'POST', headers: headers(token), body: { quote_id: quoteId, draft: false } },
+  );
+  const invoice = (data.invoice ?? data.customer_invoice ?? data) as { id: number };
+  return invoice.id;
+}
