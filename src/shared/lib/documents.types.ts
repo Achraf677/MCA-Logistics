@@ -4,6 +4,7 @@ export type DocumentCategory =
   | 'RH'
   | 'Véhicule'
   | 'Client'
+  | 'POD'
   | 'Autre'
 
 export interface DocumentRow {

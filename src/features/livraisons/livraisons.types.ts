@@ -54,6 +54,9 @@ export interface Delivery {
   relance_count: number
   /** Horodatage de la dernière relance envoyée */
   last_relance_at: string | null
+  /** Preuve de livraison (POD) */
+  pod_recipient_name: string | null
+  pod_captured_at: string | null
   created_at: string
   updated_at: string
 }
@@ -76,6 +79,8 @@ export type DeliveryInsert = Omit<
   | 'montant_ht_cts' | 'tva_rate' | 'montant_ttc_cts'
   // Gestion des relances : mise à jour via relances.queries (markRelanceSent), pas lors du create.
   | 'relance_count' | 'last_relance_at'
+  // POD : mis à jour via savePod(), pas lors du create.
+  | 'pod_recipient_name' | 'pod_captured_at'
 >
 
 export type DeliveryUpdate = Partial<Omit<Delivery, 'id' | 'company_id' | 'created_at'>>
