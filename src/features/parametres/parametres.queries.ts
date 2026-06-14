@@ -13,12 +13,14 @@ export interface CompanyData {
   capital_cts: number | null
   iban: string | null
   bic: string | null
+  transport_license_expiry: string | null
+  rc_pro_expiry: string | null
 }
 
 export async function getCompany(companyId: string) {
   return supabase
     .from('companies')
-    .select('id, name, siren, siret, tva_intra, address, depot_lat, depot_lng, capital_cts, iban, bic')
+    .select('id, name, siren, siret, tva_intra, address, depot_lat, depot_lng, capital_cts, iban, bic, transport_license_expiry, rc_pro_expiry')
     .eq('id', companyId)
     .single()
 }

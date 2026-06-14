@@ -29,6 +29,7 @@ const TABLE_ROUTE: Record<string, string> = {
   deliveries: '/livraisons',
   incidents: '/incidents',
   inspections: '/inspections',
+  companies: '/parametres',
 }
 
 const CATEGORY_LABEL: Record<AlertCategory, string> = {
@@ -40,6 +41,7 @@ const CATEGORY_LABEL: Record<AlertCategory, string> = {
   facture: 'Facture',
   incident: 'Incident',
   inspection: 'Inspection',
+  conformite: 'Conformité',
 }
 
 // Filtres catégorie (chauffeur + rh regroupés en « Équipe »).
@@ -51,6 +53,7 @@ const CATEGORY_FILTERS: Array<{ key: string; label: string; match: AlertCategory
   { key: 'facture',    label: 'Facture',    match: ['facture'] },
   { key: 'incident',   label: 'Incident',   match: ['incident'] },
   { key: 'inspection', label: 'Inspection', match: ['inspection'] },
+  { key: 'conformite', label: 'Conformité', match: ['conformite'] },
 ]
 
 /** Échéance lisible à partir de daysLeft (déjà calculé par le moteur via les helpers de dates). */

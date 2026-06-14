@@ -12,6 +12,7 @@ export type AlertCategory =
   | 'incident'
   | 'inspection'
   | 'rh'
+  | 'conformite'
 
 export interface Alert {
   /** Identité stable = clé de déduplication `${table}:${id}:${type}`. */
@@ -107,6 +108,12 @@ export interface InspectionAlertRow {
   vehicleLabel?: string | null
 }
 
+export interface CompanyAlertRow {
+  id: string
+  transport_license_expiry: string | null
+  rc_pro_expiry: string | null
+}
+
 export interface AlertsInput {
   vehicles: VehicleAlertRow[]
   drivers: DriverAlertRow[]
@@ -114,6 +121,7 @@ export interface AlertsInput {
   deliveries: DeliveryAlertRow[]
   incidents: IncidentAlertRow[]
   inspections: InspectionAlertRow[]
+  company?: CompanyAlertRow | null
 }
 
 export interface AlertsSummary {
