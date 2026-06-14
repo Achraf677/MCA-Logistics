@@ -511,7 +511,6 @@ export function CalculateurRentabilite() {
       ...f,
       distanceCharge: Math.round(d.distance_km),
       dureeH:         Math.round((d.duree_min / 60) * 10) / 10,
-      peages:         d.peage_estime_eur,
     }))
   }
 
@@ -978,10 +977,6 @@ export function CalculateurRentabilite() {
                     <span style={{ color: C.muted }}>
                       Durée : <b className="font-mono" style={{ color: C.ink }}>{trajetResult.duree_min} min</b>
                     </span>
-                    <span style={{ color: C.muted }}>
-                      Péage ~ : <b className="font-mono" style={{ color: C.ink }}>{eur2(trajetResult.peage_estime_eur)}</b>
-                      <span className="ml-1 text-[10px]" style={{ color: C.faint }}>(0,14 €/km est.)</span>
-                    </span>
                   </div>
                   <p className="text-[10px]" style={{ color: C.faint }}>
                     Résultats injectés dans le simulateur — modifiables manuellement
@@ -1018,7 +1013,7 @@ export function CalculateurRentabilite() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Field label="Trajet à vide" suffix="km" value={courseForm.kilometresVide}
               onChange={(v) => setCourseForm((f) => ({ ...f, kilometresVide: v as number | '' }))} step={5} />
-            <Field label="Péages" suffix="€" value={courseForm.peages}
+            <Field label="Péages (si autoroute à péage)" suffix="€" value={courseForm.peages}
               onChange={(v) => setCourseForm((f) => ({ ...f, peages: v as number | '' }))} step={1} />
             <Field label="Attente" suffix="h" value={courseForm.attenteH}
               onChange={(v) => setCourseForm((f) => ({ ...f, attenteH: v as number | '' }))} step={0.25} />

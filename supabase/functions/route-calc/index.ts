@@ -1,8 +1,7 @@
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 
-const GEO_API       = 'https://api-adresse.data.gouv.fr/search'
-const IGN_API       = 'https://data.geopf.fr/navigation/itineraire'
-const TARIF_PEAGE   = 0.14   // €/km, classe 2 utilitaire
+const GEO_API = 'https://api-adresse.data.gouv.fr/search'
+const IGN_API = 'https://data.geopf.fr/navigation/itineraire'
 
 async function geocode(adresse: string): Promise<[number, number] | null> {
   try {
@@ -55,16 +54,15 @@ Deno.serve(async (req: Request) => {
 
   const ign = await ignRes.json()
 
-  const distance_km      = Math.round((ign.distance as number) / 100) / 10
-  const duree_min        = Math.round((ign.duration as number) / 60)
-  const peage_estime_eur = Math.round(distance_km * TARIF_PEAGE * 10) / 10
+  const distance_km = Math.round((ign.distance as number) / 100) / 10
+  const duree_min   = Math.round((ign.duration as number) / 60)
 
   return jsonResponse({
     ok: true,
     data: {
       distance_km,
       duree_min,
-      peage_estime_eur,
+      peage_estime_eur: 0,
       geometry:       ign.geometry,
       depart_label:   depart,
       arrivee_label:  arrivee,
