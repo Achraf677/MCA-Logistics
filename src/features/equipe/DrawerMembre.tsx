@@ -121,14 +121,22 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
   const handleSave = async () => {
     if (!form.full_name?.trim()) { toast('Le nom est requis', 'error'); return }
     setSaving(true)
+    // Normalize optional date fields: empty string '' → null to avoid Postgres type error.
+    const payload = {
+      ...form,
+      start_date:           form.start_date           || null,
+      end_date:             form.end_date             || null,
+      licence_b_expiry:     form.licence_b_expiry     || null,
+      medical_visit_expiry: form.medical_visit_expiry || null,
+    }
     try {
       if (isEdit && member) {
-        const { error } = await updateTeamMember(member.id, form)
+        const { error } = await updateTeamMember(member.id, payload)
         if (error) throw error
         toast('Membre mis à jour')
       } else {
         if (!companyId) throw new Error('Profil non chargé')
-        const { error } = await createTeamMember({ ...form, company_id: companyId } as TeamMemberInsert)
+        const { error } = await createTeamMember({ ...payload, company_id: companyId } as TeamMemberInsert)
         if (error) throw error
         toast('Membre ajouté')
       }

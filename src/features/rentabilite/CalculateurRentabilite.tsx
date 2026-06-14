@@ -261,6 +261,7 @@ export function CalculateurRentabilite() {
   const [opBusy, setOpBusy]                 = useState(false)
   const [opMsg, setOpMsg]                   = useState<{ ok: boolean; text: string } | null>(null)
   const [newName, setNewName]               = useState<string | null>(null)
+  const loadLockRef                         = useRef(false)
 
   useEffect(() => {
     try {
@@ -309,7 +310,10 @@ export function CalculateurRentabilite() {
     listProfils().then(({ data }) => setProfils((data ?? []) as CostProfil[]))
 
   function doLoadProfil(p: CostProfil) {
+    // Guard against rapid double-clicks causing multiple simultaneous state updates (freeze).
+    if (loadLockRef.current || opBusy) return
     if (hasData && !window.confirm(`Charger "${p.name}" remplacera votre saisie en cours. Continuer ?`)) return
+    loadLockRef.current = true
     setParams(p.data.params as unknown as Params)
     setRecettes(p.data.recettes as unknown as LineItem[])
     setDepenses(p.data.depenses as unknown as LineItem[])
@@ -317,6 +321,7 @@ export function CalculateurRentabilite() {
     setSelectedId(p.id)
     setCourseForm(DEF_COURSE)
     setOpMsg({ ok: true, text: `Profil "${p.name}" chargé.` })
+    requestAnimationFrame(() => { loadLockRef.current = false })
   }
 
   async function doSaveProfil() {
@@ -352,17 +357,18 @@ export function CalculateurRentabilite() {
   }
 
   async function doDeleteProfil() {
-    const p = profils.find((x) => x.id === loadedId)
+    // Use selectedId (not loadedId) so the button works after a page reload.
+    const p = profils.find((x) => x.id === selectedId)
     if (!p || !window.confirm(`Supprimer le profil "${p.name}" ? Cette action est irréversible.`)) return
     setOpBusy(true)
-    const { error } = await deleteProfil(loadedId!)
+    const { error } = await deleteProfil(p.id)
     setOpBusy(false)
     if (error) {
       setOpMsg({ ok: false, text: `Erreur suppression : ${(error as { message: string }).message}` })
       return
     }
     const nom = p.name
-    setLoadedId(null)
+    if (loadedId === p.id) setLoadedId(null)
     setSelectedId('')
     await refreshProfils()
     setOpMsg({ ok: true, text: `Profil "${nom}" supprimé.` })
@@ -564,7 +570,7 @@ export function CalculateurRentabilite() {
               </button>
             )}
 
-            {loadedId && (
+            {selectedId && (
               <button
                 onClick={doDeleteProfil}
                 disabled={opBusy}

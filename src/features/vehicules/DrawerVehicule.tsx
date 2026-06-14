@@ -99,14 +99,22 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
     }
     setPtacError('')
     setSaving(true)
+    // Normalize optional date fields: empty string '' → null to avoid Postgres type error.
+    const payload = {
+      ...form,
+      purchase_date:     form.purchase_date     || null,
+      ct_expiry:         form.ct_expiry         || null,
+      insurance_expiry:  form.insurance_expiry  || null,
+      next_revision_date: form.next_revision_date || null,
+    }
     try {
       if (isEdit && vehicle) {
-        const { error } = await updateVehicle(vehicle.id, form)
+        const { error } = await updateVehicle(vehicle.id, payload)
         if (error) throw error
         toast('Véhicule mis à jour')
       } else {
         if (!companyId) throw new Error('Profil non chargé')
-        const { error } = await createVehicle({ ...form, company_id: companyId } as VehicleInsert)
+        const { error } = await createVehicle({ ...payload, company_id: companyId } as VehicleInsert)
         if (error) throw error
         toast('Véhicule créé')
       }

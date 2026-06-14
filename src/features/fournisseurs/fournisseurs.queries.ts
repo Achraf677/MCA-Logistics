@@ -25,3 +25,7 @@ export async function updateSupplier(id: string, data: SupplierUpdate) {
 export async function deactivateSupplier(id: string) {
   return supabase.from('suppliers').update({ active: false }).eq('id', id)
 }
+
+export async function deleteSupplier(id: string) {
+  return supabase.from('suppliers').delete().eq('id', id)
+}

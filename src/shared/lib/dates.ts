@@ -4,3 +4,8 @@ export function toLocalISO(d: Date): string {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
+
+/** Converts empty string '' to null for optional DB date columns. */
+export function nullIfEmpty(v: string | null | undefined): string | null {
+  return v || null
+}
