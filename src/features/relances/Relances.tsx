@@ -111,14 +111,17 @@ export function Relances() {
     }
   }
 
-  // ── Lien mailto ───────────────────────────────────────────────────────────────
+  // ── Ouvrir Gmail compose ─────────────────────────────────────────────────────
 
-  function mailtoHref(row: RelanceRow, draftText: string): string {
+  function openGmail(row: RelanceRow, draftText: string) {
     const subject = row.pennylane_invoice_id
       ? `Relance facture ${row.pennylane_invoice_id}`
       : 'Relance règlement en attente'
-    const body = encodeURIComponent(draftText)
-    return `mailto:${row.client_email ?? ''}?subject=${encodeURIComponent(subject)}&body=${body}`
+    const url = 'https://mail.google.com/mail/?view=cm&fs=1'
+      + `&to=${encodeURIComponent(row.client_email ?? '')}`
+      + `&su=${encodeURIComponent(subject)}`
+      + `&body=${encodeURIComponent(draftText)}`
+    window.open(url, '_blank', 'noopener')
   }
 
   // ── Marquer comme relancée ────────────────────────────────────────────────────
@@ -254,20 +257,18 @@ export function Relances() {
                         Copier
                       </Button>
 
-                      {activeRow.client_email ? (
-                        <a
-                          href={mailtoHref(activeRow, draft)}
-                          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[var(--r-md)]
-                            border border-[var(--border)] bg-[var(--bg)] text-[var(--fs-sm)] text-[var(--text)]
-                            hover:border-[var(--brand)] hover:text-[var(--brand)] transition-colors">
-                          <Mail size={13} />
-                          Ouvrir dans ma messagerie
-                        </a>
-                      ) : (
-                        <span className="text-[var(--fs-xs)] text-[var(--text-muted)] italic">
-                          Copiez le brouillon manuellement (email manquant).
-                        </span>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => activeRow.client_email && openGmail(activeRow, draft)}
+                        disabled={!activeRow.client_email}
+                        title={!activeRow.client_email ? 'Pas d\'email pour ce client' : undefined}
+                        className="inline-flex items-center gap-1.5 h-9 px-3 rounded-[var(--r-md)]
+                          border border-[var(--border)] bg-[var(--bg)] text-[var(--fs-sm)] text-[var(--text)]
+                          hover:enabled:border-[var(--brand)] hover:enabled:text-[var(--brand)] transition-colors
+                          disabled:opacity-40 disabled:cursor-not-allowed">
+                        <Mail size={13} />
+                        Ouvrir dans Gmail
+                      </button>
 
                       <Button
                         variant="primary"
