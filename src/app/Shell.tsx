@@ -4,12 +4,13 @@ import { NavLink, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Package, CalendarDays, Truck,
   Users, Wallet, UserCheck, Settings,
-  Menu, X,
+  Menu, X, LogOut,
 } from 'lucide-react'
 import { features } from '../features.config'
 import { ActionBar } from '../shared/actions/ActionBar'
 import type { ActionKey } from '../shared/actions/ActionBar'
 import { AssistantWidget } from '../features/assistant/AssistantWidget'
+import { supabase, useProfile } from './providers'
 
 interface NavItem {
   key: string
@@ -79,6 +80,14 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
   const nested = useContext(ShellNestContext)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const [logoutLoading, setLogoutLoading] = useState(false)
+  const { profile } = useProfile()
+
+  const handleLogout = async () => {
+    setLogoutLoading(true)
+    await supabase.auth.signOut()
+    // onAuthStateChange → user=null → AppCore affiche LoginPage automatiquement
+  }
 
   // Sous-vue d'une page à sous-onglets : pas de chrome, on garde juste les actions.
   if (nested) {
@@ -138,6 +147,24 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
         </div>
 
         <SidebarNav collapsed={collapsed} />
+
+        {/* Bas de sidebar : déconnexion */}
+        <div className="shrink-0 border-t border-[var(--border)] p-2">
+          {!collapsed && profile && (
+            <p className="px-3 py-1 text-[var(--fs-xs)] text-[var(--text-muted)] truncate">
+              {profile.full_name}
+            </p>
+          )}
+          <button
+            onClick={handleLogout}
+            disabled={logoutLoading}
+            title={collapsed ? 'Se déconnecter' : undefined}
+            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-[var(--r-md)] text-[var(--fs-sm)] text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--bg-card-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <LogOut size={15} className="shrink-0" />
+            {!collapsed && <span>{logoutLoading ? 'Déconnexion…' : 'Se déconnecter'}</span>}
+          </button>
+        </div>
       </aside>
 
       {/* Zone principale */}

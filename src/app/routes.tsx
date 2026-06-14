@@ -2,6 +2,7 @@ import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { features } from '../features.config'
 import { Livraisons }   from '../features/livraisons/Livraisons'
+import { AuthCallback } from './AuthCallback'
 import { PilotageSection } from './sections/PilotageSection'
 import { FinanceSection }  from './sections/FinanceSection'
 import { FlotteSection }   from './sections/FlotteSection'
@@ -58,6 +59,7 @@ export function AppRoutes() {
       <Route path="/systeme"       element={guard(features.systeme,      <SystemeSection />)} />
       <Route path="/alertes"       element={<Navigate to="/systeme?tab=alertes"    replace />} />
       <Route path="/parametres"    element={<Navigate to="/systeme?tab=parametres" replace />} />
+      <Route path="/auth/callback"  element={<AuthCallback />} />
       <Route path="*"              element={<Navigate to="/" replace />} />
     </Routes>
   )

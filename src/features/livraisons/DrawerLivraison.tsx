@@ -72,6 +72,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   const [form, setForm]         = useState(EMPTY_FORM)
   const [tvaTouched, setTvaTouched] = useState(false)
   const [saving, setSaving]     = useState(false)
+  const [clientError, setClientError] = useState('')
   const [transitioning, setTransitioning] = useState<DeliveryStatus | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -188,7 +189,12 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
-    if (!form.client_id) { toast('Le client est requis', 'error'); return }
+    if (!form.client_id) {
+      setClientError('Le client est requis')
+      toast('Le client est requis', 'error')
+      return
+    }
+    setClientError('')
     if (!form.date)       { toast('La date est requise', 'error'); return }
 
     setSaving(true)
@@ -338,8 +344,9 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
             </Field>
           </div>
 
-          <Field label="Client *">
-            <select value={form.client_id} onChange={e => set('client_id', e.target.value)}
+          <Field label="Client *" error={clientError}>
+            <select value={form.client_id}
+              onChange={e => { set('client_id', e.target.value); setClientError('') }}
               disabled={isDetailReadOnly} className={inputCls}>
               <option value="">— Sélectionner un client —</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
@@ -701,13 +708,14 @@ function Input({
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, children, error }: { label: string; children: ReactNode; error?: string }) {
   return (
     <div className="flex flex-col gap-1">
       <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
         {label}
       </label>
       {children}
+      {error && <span className="text-[var(--danger)] text-[var(--fs-xs)]">{error}</span>}
     </div>
   )
 }

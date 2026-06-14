@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Building2 } from 'lucide-react'
+import { Building2, Trash2 } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -10,26 +10,27 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
-import { getSuppliers, createSupplier, updateSupplier, deactivateSupplier } from './fournisseurs.queries'
-import { CATEGORY_LABELS, getCategoryLabel, isTvaDeductible, countByCategory, normalizeSiren, findDuplicate } from './fournisseurs.logic'
+import { getSuppliers, createSupplier, updateSupplier, deactivateSupplier, deleteSupplier } from './fournisseurs.queries'
+import { CATEGORY_LABELS, getCategoryLabel, isTvaDeductible, countByCategory, normalizeSiren, validateSiren, findDuplicate } from './fournisseurs.logic'
 import type { Supplier, SupplierInsert, SupplierFilters } from './fournisseurs.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
 const inputClass = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
   text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)] transition-colors`
 
-function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
+function FieldGroup({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
   return (
     <div className="flex flex-col gap-1">
       <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
       {children}
+      {error && <span className="text-[var(--danger)] text-[var(--fs-xs)]">{error}</span>}
     </div>
   )
 }
 
 export function Fournisseurs() {
   const { toast } = useToast()
-  const { companyId } = useProfile()
+  const { companyId, profile } = useProfile()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -39,8 +40,12 @@ export function Fournisseurs() {
   const [selected, setSelected] = useState<Supplier | null>(null)
   const [form, setForm] = useState<Partial<SupplierInsert>>({})
   const [saving, setSaving] = useState(false)
+  const [sirenError, setSirenError] = useState('')
   const [confirmDuplicate, setConfirmDuplicate] = useState(false)
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const isPresident = profile?.role === 'president'
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -60,6 +65,7 @@ export function Fournisseurs() {
       category: s.category, pennylane_id: s.pennylane_id ?? '',
       notes: s.notes ?? '', active: s.active, company_id: s.company_id,
     } : { active: true, company_id: companyId ?? '' })
+    setSirenError('')
     setDrawerOpen(true)
   }
 
@@ -73,6 +79,10 @@ export function Fournisseurs() {
 
   const handleSave = () => {
     if (!form.name?.trim()) { toast('Le nom est requis', 'error'); return }
+    if (form.siren && !validateSiren(form.siren)) {
+      setSirenError('SIREN invalide (9 chiffres)'); return
+    }
+    setSirenError('')
     if (duplicate) { setConfirmDuplicate(true); return }
     void doSave()
   }
@@ -110,6 +120,17 @@ export function Fournisseurs() {
     const { error } = await deactivateSupplier(selected.id)
     if (error) { toast(error.message, 'error'); return }
     toast(`${selected.name} désactivé`)
+    load(); setDrawerOpen(false)
+  }
+
+  const doDelete = async () => {
+    if (!selected) return
+    setDeleting(true)
+    const { error } = await deleteSupplier(selected.id)
+    setDeleting(false)
+    if (error) { toast(error.message, 'error'); return }
+    setConfirmDelete(false)
+    toast(`${selected.name} supprimé`)
     load(); setDrawerOpen(false)
   }
 
@@ -241,10 +262,10 @@ export function Fournisseurs() {
             </p>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <FieldGroup label="SIREN">
+            <FieldGroup label="SIREN" error={sirenError}>
               <input
                 value={form.siren ?? ''}
-                onChange={e => set('siren', normalizeSiren(e.target.value))}
+                onChange={e => { set('siren', normalizeSiren(e.target.value)); setSirenError('') }}
                 maxLength={9}
                 className={inputClass}
                 placeholder="9 chiffres"
@@ -298,6 +319,13 @@ export function Fournisseurs() {
             {selected?.active && (
               <Button variant="ghost" onClick={handleDeactivate} className="ml-auto text-[var(--danger)]">Désactiver</Button>
             )}
+            {selected && isPresident && (
+              <Button variant="ghost" onClick={() => setConfirmDelete(true)}
+                className={`${selected.active ? '' : 'ml-auto'} text-[var(--danger)]`}>
+                <Trash2 size={14} />
+                Supprimer
+              </Button>
+            )}
           </div>
         </div>
       </Drawer>
@@ -322,6 +350,15 @@ export function Fournisseurs() {
         onConfirm={doDeactivate}
         onCancel={() => setConfirmDeactivate(false)}
         loading={false}
+      />
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Supprimer ce fournisseur ?"
+        message="Action irréversible."
+        onConfirm={doDelete}
+        onCancel={() => setConfirmDelete(false)}
+        loading={deleting}
       />
     </Shell>
   )

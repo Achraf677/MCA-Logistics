@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { Trash2 } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
-import { createCharge, updateCharge } from './charges.queries'
+import { createCharge, updateCharge, deleteCharge } from './charges.queries'
 import { CATEGORY_LABELS, CATEGORY_COLOR, formatCents, computeTtcCts } from './charges.logic'
 import type { ChargeRow, ChargeInsert, ChargeCategory } from './charges.types'
 
@@ -36,12 +38,15 @@ const EMPTY_FORM = {
 }
 
 export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
-  const { companyId } = useProfile()
+  const { companyId, profile } = useProfile()
   const { toast } = useToast()
   const isEdit = !!charge
+  const isPresident = profile?.role === 'president'
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [suppliers, setSuppliers] = useState<Lookup[]>([])
 
   useEffect(() => {
@@ -110,6 +115,18 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleDelete = async () => {
+    if (!charge) return
+    setDeleting(true)
+    const { error } = await deleteCharge(charge.id)
+    setDeleting(false)
+    if (error) { toast(error.message, 'error'); return }
+    setConfirmDelete(false)
+    toast('Charge supprimée')
+    onSaved()
+    onClose()
   }
 
   return (
@@ -190,8 +207,23 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
             {saving ? 'Enregistrement…' : 'Enregistrer'}
           </Button>
           <Button variant="secondary" onClick={onClose}>Annuler</Button>
+          {isEdit && isPresident && (
+            <Button variant="ghost" onClick={() => setConfirmDelete(true)} className="ml-auto text-[var(--danger)]">
+              <Trash2 size={14} />
+              Supprimer
+            </Button>
+          )}
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Supprimer cette charge ?"
+        message="Action irréversible."
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+        loading={deleting}
+      />
     </Drawer>
   )
 }

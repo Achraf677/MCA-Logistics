@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Building2 } from 'lucide-react'
+import { Building2, LogOut } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
-import { useProfile } from '../../app/providers'
+import { useProfile, supabase } from '../../app/providers'
 import { getCompany, updateCompany } from './parametres.queries'
 import type { CompanyData } from './parametres.queries'
 
@@ -17,12 +17,20 @@ const EMPTY: Omit<CompanyData, 'id'> = {
 }
 
 export function Parametres() {
-  const { companyId, loading: profileLoading } = useProfile()
+  const { companyId, loading: profileLoading, profile } = useProfile()
   const { toast } = useToast()
-  const [form, setForm]       = useState(EMPTY)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving]   = useState(false)
-  const [dirty, setDirty]     = useState(false)
+  const [form, setForm]           = useState(EMPTY)
+  const [loading, setLoading]     = useState(true)
+  const [saving, setSaving]       = useState(false)
+  const [dirty, setDirty]         = useState(false)
+  const [logoutLoading, setLogoutLoading] = useState(false)
+
+  const handleLogout = async () => {
+    setLogoutLoading(true)
+    const { error } = await supabase.auth.signOut()
+    if (error) { toast(error.message, 'error'); setLogoutLoading(false) }
+    // Succès : onAuthStateChange → user=null → LoginPage
+  }
 
   useEffect(() => {
     // Attendre que le profil soit chargé
@@ -175,6 +183,26 @@ export function Parametres() {
             <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Aucune modification</span>
           )}
         </div>
+
+        {/* Section Compte */}
+        <Section title="Compte">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-[var(--fs-body)] text-[var(--text)]">{profile?.full_name ?? '—'}</p>
+              {profile?.email && (
+                <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">{profile.email}</p>
+              )}
+            </div>
+            <button
+              onClick={handleLogout}
+              disabled={logoutLoading}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--r-md)] border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text-muted)] hover:text-[var(--danger)] hover:border-[var(--danger)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <LogOut size={14} />
+              {logoutLoading ? 'Déconnexion…' : 'Se déconnecter'}
+            </button>
+          </div>
+        </Section>
       </div>
     </Shell>
   )
