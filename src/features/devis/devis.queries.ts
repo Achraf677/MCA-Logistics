@@ -51,3 +51,20 @@ export async function convertToInvoice(quoteId: string) {
     body: { action: 'convert', quote_id: quoteId },
   })
 }
+
+export async function transformToDelivery(quote: Quote, companyId: string) {
+  const { error: dErr } = await supabase.from('deliveries').insert({
+    company_id: companyId,
+    client_id: quote.client_id,
+    date: new Date().toISOString().slice(0, 10),
+    statut: 'planifiee',
+    description: quote.description,
+    amount_ht_cts: quote.amount_ht_cts,
+    tva_rate: quote.tva_rate,
+    tva_cts: quote.tva_cts,
+    amount_ttc_cts: quote.amount_ttc_cts,
+    quote_id: quote.id,
+  })
+  if (dErr) return { error: dErr }
+  return supabase.from('quotes').update({ statut: 'transforme' }).eq('id', quote.id)
+}
