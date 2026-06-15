@@ -8,7 +8,7 @@ import { supabase } from '../../app/providers'
 import { effectiveHtCts, effectiveTtcCts, centimesToEuros } from '../../shared/lib/money'
 import type { PendingAction } from './AssistantContext'
 // Queries LOCALES à l'assistant (étanchéité) pour la modification de client.
-import { findClientsByName, updateClient } from './assistant.queries'
+import { findClientsByName, updateClient, updateDelivery } from './assistant.queries'
 
 import { getAlertesDetectionData } from '../alertes/alertes.queries'
 import { detectAlerts, summarizeAlerts } from '../alertes/alertes.logic'
@@ -1040,6 +1040,141 @@ export async function prepareModifierClient(args: ModifierClientArgs): Promise<P
         const { error } = await updateClient(c.id, patch)
         if (error) return `❌ La modification a échoué : ${(error as Error).message}.`
         return `✅ Client ${c.name} mis à jour.`
+      },
+    },
+  }
+}
+
+// ── b ter) modifier_livraison ─────────────────────────────────────────────────
+// Patron modifier_* : résout le client, identifie la livraison (date optionnelle),
+// vérifie le verrou facturée/payée, construit un patch partiel AVANT→APRÈS,
+// exécute updateDelivery (query LOCALE à l'assistant). Colonnes générées jamais écrites.
+
+export interface ModifierLivraisonArgs {
+  client?: string
+  date?: string
+  nouvelle_date?: string
+  montant_ht_eur?: number
+  type?: string
+  description?: string
+  adresse_livraison?: string
+  adresse_retrait?: string
+  poids_kg?: number
+  km?: number
+  km_vide?: number
+}
+
+export async function prepareModifierLivraison(args: ModifierLivraisonArgs): Promise<PrepareResult> {
+  const r = await resolveClient(args.client ?? '')
+  if (!r.ok) return r
+  const client = r.client
+
+  const date = (args.date ?? '').trim()
+  const hasDate = /^\d{4}-\d{2}-\d{2}$/.test(date)
+  const suffixe = hasDate ? ` le ${date}` : ''
+
+  const filters: DeliveryFilters = { client_id: client.id }
+  if (hasDate) { filters.date_from = date; filters.date_to = date }
+  const { data } = await getDeliveries(filters)
+  const dels = (data ?? []) as unknown as DeliveryRow[]
+
+  if (dels.length === 0) {
+    return { ok: false, message: `Aucune livraison trouvée pour ${client.name}${suffixe}.` }
+  }
+  if (dels.length > 1) {
+    const liste = dels.slice(0, 5).map(d => {
+      const ttc = centimesToEuros(effectiveTtcCts(d))
+      return `${d.date} · ${ttc} € · ${statutLabel(d.statut)}`
+    }).join(' ; ')
+    return { ok: false, message: `Plusieurs livraisons correspondent : ${liste}. Précise la date.` }
+  }
+  const d = dels[0]
+
+  if (d.statut === 'facturee' || d.statut === 'payee') {
+    return { ok: false, message: `Livraison déjà ${statutLabel(d.statut)} : modification impossible (passe par un avoir ou l'onglet).` }
+  }
+
+  const patch: Record<string, unknown> = {}
+  const lines: { label: string; value: string }[] = []
+  const change = (label: string, ancien: string | null, nouveau: string) =>
+    lines.push({ label, value: `${ancien || '—'} → ${nouveau}` })
+
+  const nouvelleDate = args.nouvelle_date?.trim()
+  if (nouvelleDate && /^\d{4}-\d{2}-\d{2}$/.test(nouvelleDate)) {
+    patch.date = nouvelleDate
+    change('Date', d.date, nouvelleDate)
+  }
+
+  if (typeof args.montant_ht_eur === 'number' && args.montant_ht_eur > 0) {
+    const htCts = Math.round(args.montant_ht_eur * 100)
+    const computed = computeAmount(
+      { tariff_mode: 'manuel', tariff_rate_cts: null },
+      { manual_ht_cts: htCts },
+    )
+    if (computed) {
+      patch.amount_ht_cts  = computed.amount_ht_cts
+      patch.tva_cts        = computed.tva_cts
+      patch.amount_ttc_cts = computed.amount_ttc_cts
+      const ancienHt = d.amount_ht_cts != null ? `${centimesToEuros(d.amount_ht_cts)} €` : null
+      change('Montant HT', ancienHt, `${args.montant_ht_eur} €`)
+    }
+  }
+
+  if (args.type && DELIVERY_TYPES.includes(args.type)) {
+    patch.type = args.type as DeliveryType
+    change('Type', (d as unknown as { type: string | null }).type ?? null, args.type)
+  }
+
+  const desc = args.description?.trim()
+  if (desc) {
+    patch.description = desc
+    change('Description', (d as unknown as { description: string | null }).description ?? null, desc)
+  }
+
+  const addrLiv = args.adresse_livraison?.trim()
+  if (addrLiv) {
+    patch.delivery_address = addrLiv
+    change('Adresse livraison', d.delivery_address ?? null, addrLiv)
+  }
+
+  const addrRet = args.adresse_retrait?.trim()
+  if (addrRet) {
+    patch.pickup_address = addrRet
+    change('Adresse retrait', (d as unknown as { pickup_address: string | null }).pickup_address ?? null, addrRet)
+  }
+
+  if (typeof args.poids_kg === 'number') {
+    patch.weight_kg = args.poids_kg
+    const dw = (d as unknown as { weight_kg: number | null }).weight_kg
+    change('Poids', dw != null ? `${dw} kg` : null, `${args.poids_kg} kg`)
+  }
+
+  if (typeof args.km === 'number') {
+    patch.km = args.km
+    const dk = (d as unknown as { km: number | null }).km
+    change('km en charge', dk != null ? `${dk} km` : null, `${args.km} km`)
+  }
+
+  if (typeof args.km_vide === 'number') {
+    patch.empty_km = args.km_vide
+    const de = (d as unknown as { empty_km: number | null }).empty_km
+    change('km à vide', de != null ? `${de} km` : null, `${args.km_vide} km`)
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { ok: false, message: 'Rien à modifier : précise au moins un champ.' }
+  }
+
+  return {
+    ok: true,
+    action: {
+      title: `Modifier la livraison ${client.name} ${d.date}`,
+      lines,
+      confirmLabel: 'Confirmer',
+      run: async () => {
+        const { error } = await updateDelivery(d.id, patch)
+        if (error) return `❌ La modification a échoué : ${(error as Error).message}.`
+        return `✅ Livraison ${client.name} ${d.date} mise à jour.`
       },
     },
   }
