@@ -23,7 +23,7 @@ import type { ClientTariff } from './livraisons.logic'
 import {
   createDelivery, updateDelivery, transitionDelivery, deleteDelivery,
   getActiveClients, getActiveVehicles, getActiveDrivers, savePod,
-  listDeliveryTemplates,
+  listDeliveryTemplates, createDeliveryTemplate,
 } from './livraisons.queries'
 import type { DeliveryTemplateLite } from './livraisons.queries'
 import type { DeliveryRow, DeliveryStatus } from './livraisons.types'
@@ -97,6 +97,11 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   const [templates, setTemplates]     = useState<DeliveryTemplateLite[]>([])
   const [templateId, setTemplateId]   = useState('')
 
+  // « Enregistrer comme modèle » — champ inline (libellé) + état de création.
+  const [saveAsTplOpen, setSaveAsTplOpen] = useState(false)
+  const [tplLabel, setTplLabel]           = useState('')
+  const [savingTpl, setSavingTpl]         = useState(false)
+
   // ── Référentiels ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -154,6 +159,43 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
     setTvaTouched(true)
   }
 
+  // Crée un modèle (delivery_templates) depuis les champs ACTUELS du form.
+  // PIÈGE TVA (inverse) : le form porte tva_override = MONTANT TVA (€) et manual_ht = HT (€) ;
+  // le modèle veut tva_rate = TAUX en %. On déduit le taux brut puis on le SNAPPE au taux légal.
+  const handleSaveAsTemplate = async () => {
+    const label = tplLabel.trim()
+    if (!label) { toast('Le libellé du modèle est requis', 'error'); return }
+    if (!companyId) { toast('Profil non chargé', 'error'); return }
+
+    const rawRate = (form.tva_override && parseFloat(form.manual_ht) > 0)
+      ? parseFloat(form.tva_override) / parseFloat(form.manual_ht) * 100 : 20
+    const LEGAL = [0, 2.1, 5.5, 10, 20]
+    const tva_rate = LEGAL.reduce((b, r) => Math.abs(r - rawRate) < Math.abs(b - rawRate) ? r : b, 20)
+
+    setSavingTpl(true)
+    const { error } = await createDeliveryTemplate({
+      company_id:       companyId,
+      label,
+      client_id:        form.client_id || null,
+      description:      form.description || null,
+      pickup_address:   form.pickup_address || null,
+      delivery_address: form.delivery_address || null,
+      amount_ht_cts:    form.manual_ht ? Math.round(parseFloat(form.manual_ht) * 100) : null,
+      tva_rate,
+      type:             form.type || null,
+      weight_kg:        form.pallets  ? Number(form.pallets)  : null,
+      km:               form.km       ? Number(form.km)       : null,
+      empty_km:         form.empty_km ? Number(form.empty_km) : null,
+      vehicle_id:       form.vehicle_id || null,
+      driver_id:        form.driver_id || null,
+    })
+    setSavingTpl(false)
+    if (error) { toast((error as Error).message ?? 'Erreur', 'error'); return }
+    toast(`Modèle « ${label} » enregistré`)
+    setSaveAsTplOpen(false)
+    setTplLabel('')
+  }
+
   // ── Initialisation formulaire ─────────────────────────────────────────────────
 
   useEffect(() => {
@@ -184,6 +226,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
       setForm({ ...EMPTY_FORM, date: TODAY })
       setDeliveryCoords({ lat: null, lng: null })
     }
+    setSaveAsTplOpen(false)
+    setTplLabel('')
     setTab('detail')
   }, [delivery, open])
 
@@ -546,6 +590,32 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
                 <Trash2 size={14} />
                 Supprimer
               </Button>
+            )}
+          </div>
+
+          {/* Enregistrer la course courante comme modèle réutilisable (création + édition). */}
+          <div className="pt-3 border-t border-[var(--border)]">
+            {!saveAsTplOpen ? (
+              <Button variant="secondary" onClick={() => setSaveAsTplOpen(true)}>
+                Enregistrer comme modèle
+              </Button>
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Field label="Libellé du modèle *">
+                  <Input value={tplLabel} onChange={setTplLabel}
+                    placeholder="Nom du modèle…" />
+                </Field>
+                <div className="flex items-center gap-2">
+                  <Button variant="primary" onClick={handleSaveAsTemplate} disabled={savingTpl}>
+                    {savingTpl ? 'Création…' : 'Créer le modèle'}
+                  </Button>
+                  <Button variant="secondary"
+                    onClick={() => { setSaveAsTplOpen(false); setTplLabel('') }}
+                    disabled={savingTpl}>
+                    Annuler
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
         </div>

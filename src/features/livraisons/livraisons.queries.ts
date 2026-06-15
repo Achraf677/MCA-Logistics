@@ -194,6 +194,18 @@ export async function listDeliveryTemplates(): Promise<{ data: DeliveryTemplateL
     .order('label')
 }
 
+export interface DeliveryTemplateInsert {
+  company_id: string; label: string; client_id: string | null;
+  description: string | null; pickup_address: string | null; delivery_address: string | null;
+  amount_ht_cts: number | null; tva_rate: number; type: string | null;
+  weight_kg: number | null; km: number | null; empty_km: number | null;
+  vehicle_id: string | null; driver_id: string | null;
+}
+
+export async function createDeliveryTemplate(payload: DeliveryTemplateInsert) {
+  return supabase.from('delivery_templates').insert(payload).select().single()
+}
+
 // ── Preuve de livraison (POD) ─────────────────────────────────────────────────
 export async function savePod(id: string, recipientName: string) {
   return supabase
