@@ -1,0 +1,2 @@
+[functions.drive-oauth-callback]
+verify_jwt = false
