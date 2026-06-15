@@ -41,8 +41,40 @@ const ASSISTANT_TOOLS: Record<string, (args: any) => Promise<unknown>> = {
 const WRITE_TOOLS = new Set<string>([
   'create_livraison', 'changer_statut_livraison',
   'create_charge', 'create_client', 'create_plein', 'create_incident',
-  'create_fournisseur', 'create_vehicule',
+  'create_fournisseur', 'create_vehicule', 'modifier_client',
 ])
+
+// ── Queries LOCALES à l'assistant pour modifier_client (étanchéité : aucune
+// dépendance à features/clients). Périmètre société courante assuré par la RLS.
+
+export interface AssistantClientMatch {
+  id: string
+  name: string
+  city: string | null
+  address: string | null
+  email: string | null
+  phone: string | null
+  type: string | null
+  payment_terms: number | null
+}
+
+/** Recherche partielle de clients par nom (insensible à la casse, société courante via RLS). */
+export async function findClientsByName(nom: string): Promise<AssistantClientMatch[]> {
+  const q = (nom ?? '').trim().replace(/[(),]/g, '')
+  if (!q) return []
+  const { data, error } = await supabase
+    .from('clients')
+    .select('id, name, city, address, email, phone, type, payment_terms')
+    .ilike('name', `%${q}%`)
+    .order('name')
+  if (error) throw new Error(error.message)
+  return (data ?? []) as AssistantClientMatch[]
+}
+
+/** Update partiel d'un client (uniquement les colonnes fournies dans `patch`). */
+export async function updateClient(id: string, patch: Record<string, unknown>) {
+  return supabase.from('clients').update(patch).eq('id', id)
+}
 
 // Outils de RÉDACTION : produisent un brouillon de texte (aucune écriture base,
 // pas de carte de confirmation). La boucle s'arrête et délègue au front.

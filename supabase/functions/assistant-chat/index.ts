@@ -25,7 +25,8 @@ const SYSTEM_BASE =
   "est vide, dis-le simplement (ex. 'aucune facture impayée').\n" +
   "- ACTIONS : tu peux proposer certaines actions via des outils dédiés : créer une livraison (create_livraison), " +
   "changer le statut d'une livraison (changer_statut_livraison : facturer, encaisser/marquer payée, annuler…), " +
-  "ajouter une charge/dépense (create_charge), créer un client (create_client), créer un fournisseur " +
+  "ajouter une charge/dépense (create_charge), créer un client (create_client), modifier un client existant " +
+  "(modifier_client, en ne renseignant QUE les champs à changer), créer un fournisseur " +
   "(create_fournisseur), ajouter un véhicule à la flotte (create_vehicule), ajouter un plein de carburant " +
   "(create_plein), déclarer un incident (create_incident). Quand l'utilisateur demande clairement une action, " +
   "appelle l'outil avec les informations fournies. TRÈS IMPORTANT : l'application affichera à l'utilisateur une " +
@@ -178,6 +179,18 @@ const TOOLS = [
         vehicule: { type: 'string', description: 'Véhicule concerné (plaque ou nom). Optionnel.' },
         type: { type: 'string', description: 'Type d\'incident (ex. accident, panne, vol, retard). Optionnel.' },
       }, required: ['description', 'date'] } } },
+  { type: 'function', function: { name: 'modifier_client',
+      description: "Modifie un client EXISTANT (coordonnées, type, délai de paiement, nom). Carte de confirmation AVANT enregistrement : ne confirme pas toi-même. Identifie le client par son nom. Ne renseigne QUE les champs à changer.",
+      parameters: { type: 'object', properties: {
+        nom: { type: 'string', description: 'Nom (ou partie) du client à modifier.' },
+        nouveau_nom: { type: 'string', description: 'Nouveau nom si on renomme. Optionnel.' },
+        ville: { type: 'string', description: 'Nouvelle ville. Optionnel.' },
+        adresse: { type: 'string', description: 'Nouvelle adresse. Optionnel.' },
+        email: { type: 'string', description: 'Nouvel email. Optionnel.' },
+        telephone: { type: 'string', description: 'Nouveau téléphone. Optionnel.' },
+        delai_paiement_jours: { type: 'number', description: 'Nouveau délai de paiement (jours). Optionnel.' },
+        type: { type: 'string', enum: ['medical','ecommerce','retail','particulier'], description: 'Nouveau type. Optionnel.' },
+      }, required: ['nom'] } } },
 
   // ── RÉDACTION : génère un brouillon de texte (pas d'écriture base). Exécuté par le front via brouillons-generate ──
   { type: 'function', function: { name: 'generer_mail',

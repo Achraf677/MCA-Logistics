@@ -7,6 +7,8 @@
 import { supabase } from '../../app/providers'
 import { effectiveHtCts, effectiveTtcCts, centimesToEuros } from '../../shared/lib/money'
 import type { PendingAction } from './AssistantContext'
+// Queries LOCALES à l'assistant (étanchéité) pour la modification de client.
+import { findClientsByName, updateClient } from './assistant.queries'
 
 import { getAlertesDetectionData } from '../alertes/alertes.queries'
 import { detectAlerts, summarizeAlerts } from '../alertes/alertes.logic'
@@ -957,6 +959,87 @@ export async function prepareCreateClient(args: CreateClientArgs): Promise<Prepa
         const { error } = await createClient(payload)
         if (error) return `❌ La création a échoué : ${(error as Error).message}.`
         return `✅ Client créé : ${nom}.`
+      },
+    },
+  }
+}
+
+// ── b bis) modifier_client ─────────────────────────────────────────────────────
+// Patron des outils modifier_* : résout le client par nom (findClientsByName,
+// query LOCALE à l'assistant), construit un PATCH partiel (uniquement les champs
+// fournis) et présente une carte AVANT→APRÈS. Exécution via updateClient au clic.
+
+export interface ModifierClientArgs {
+  nom?: string
+  nouveau_nom?: string
+  ville?: string
+  adresse?: string
+  email?: string
+  telephone?: string
+  delai_paiement_jours?: number
+  type?: string
+}
+
+export async function prepareModifierClient(args: ModifierClientArgs): Promise<PrepareResult> {
+  const nom = (args.nom ?? '').trim()
+  if (!nom) return { ok: false, message: 'Précise le nom du client à modifier.' }
+
+  const matches = await findClientsByName(nom)
+  if (matches.length === 0) return { ok: false, message: `Aucun client « ${nom} » trouvé.` }
+  if (matches.length > 1) {
+    return { ok: false, message: `Plusieurs clients correspondent : ${matches.map(m => m.name).join(', ')}. Lequel veux-tu modifier ?` }
+  }
+  const c = matches[0]
+
+  // PATCH partiel : UNIQUEMENT les champs fournis. Mapping ville→city, adresse→address,
+  // telephone→phone, nouveau_nom→name, delai_paiement_jours→payment_terms. Type validé.
+  const patch: Record<string, unknown> = {}
+  const lines: { label: string; value: string }[] = []
+  const change = (label: string, ancien: string | null, nouveau: string) =>
+    lines.push({ label, value: `${ancien || '—'} → ${nouveau}` })
+
+  const nouveauNom = args.nouveau_nom?.trim()
+  if (nouveauNom) { patch.name = nouveauNom; change('Nom', c.name, nouveauNom) }
+
+  const ville = args.ville?.trim()
+  if (ville) { patch.city = ville; change('Ville', c.city, ville) }
+
+  const adresse = args.adresse?.trim()
+  if (adresse) { patch.address = adresse; change('Adresse', c.address, adresse) }
+
+  const email = args.email?.trim()
+  if (email) { patch.email = email; change('Email', c.email, email) }
+
+  const telephone = args.telephone?.trim()
+  if (telephone) { patch.phone = telephone; change('Téléphone', c.phone, telephone) }
+
+  if (typeof args.delai_paiement_jours === 'number' && args.delai_paiement_jours > 0) {
+    const nv = Math.round(args.delai_paiement_jours)
+    patch.payment_terms = nv
+    change('Délai paiement', c.payment_terms != null ? `${c.payment_terms} j` : null, `${nv} j`)
+  }
+
+  if (args.type && CLIENT_TYPES.includes(args.type)) {
+    patch.type = args.type
+    const ancienType = c.type ? (CLIENT_TYPE_LABELS[c.type as keyof typeof CLIENT_TYPE_LABELS] ?? c.type) : null
+    const nouveauType = CLIENT_TYPE_LABELS[args.type as keyof typeof CLIENT_TYPE_LABELS] ?? args.type
+    change('Type', ancienType, nouveauType)
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { ok: false, message: 'Rien à modifier : précise au moins un champ (nom, ville, adresse, email, téléphone, type, délai de paiement).' }
+  }
+
+  return {
+    ok: true,
+    action: {
+      title: `Modifier le client ${c.name}`,
+      lines,
+      confirmLabel: 'Confirmer',
+      run: async () => {
+        const { error } = await updateClient(c.id, patch)
+        if (error) return `❌ La modification a échoué : ${(error as Error).message}.`
+        return `✅ Client ${c.name} mis à jour.`
       },
     },
   }
