@@ -61,7 +61,8 @@ export function AppRoutes() {
       <Route path="/heures"        element={<Navigate to="/equipe-hub?tab=heures"  replace />} />
       {/* Domaine Système à sous-onglets ; anciennes routes → redirection */}
       <Route path="/systeme"       element={guard(features.systeme,      <SystemeSection />)} />
-      <Route path="/alertes"       element={<Navigate to="/systeme?tab=alertes"    replace />} />
+      {/* Alertes : plus d'onglet — désormais une cloche dans le header. Ancien lien → dashboard. */}
+      <Route path="/alertes"       element={<Navigate to="/" replace />} />
       <Route path="/parametres"    element={<Navigate to="/systeme?tab=parametres" replace />} />
       <Route path="/auth/callback"  element={<AuthCallback />} />
       <Route path="*"              element={<Navigate to="/" replace />} />

@@ -10,6 +10,7 @@ import { features } from '../features.config'
 import { ActionBar } from '../shared/actions/ActionBar'
 import type { ActionKey } from '../shared/actions/ActionBar'
 import { AssistantWidget } from '../features/assistant/AssistantWidget'
+import { AlertesBell } from '../features/alertes/AlertesBell'
 import { supabase, useProfile } from './providers'
 
 interface NavItem {
@@ -183,7 +184,10 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
               {pageTitle}
             </h1>
           </div>
-          <ActionBar actions={actions} onAction={onAction} />
+          <div className="flex items-center gap-2">
+            <ActionBar actions={actions} onAction={onAction} />
+            <AlertesBell />
+          </div>
         </header>
 
         {/* Contenu de l'onglet — tout Shell rendu ici devient « imbriqué » (sous-onglet). */}
