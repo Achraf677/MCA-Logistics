@@ -7,8 +7,9 @@ export default defineConfig({
   server: {
     host: true,                 // écoute sur 0.0.0.0 (accès via le port transféré du Codespace)
     allowedHosts: ['.app.github.dev'],  // autorise le domaine de forwarding GitHub Codespaces
+    port: 5173,
+    strictPort: true,
   },
   test: { environment: 'node' },
-  server: { port: 5173, strictPort: true },
   preview: { port: 5173, strictPort: true },
 })
