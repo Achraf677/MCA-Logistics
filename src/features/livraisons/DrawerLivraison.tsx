@@ -11,7 +11,7 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
 import { useToast }    from '../../shared/ui/useToast'
 import { useProfile, supabase } from '../../app/providers'
-import { formatMoney, addTva } from '../../shared/lib/money'
+import { formatMoney, addTva, centimesToEuros } from '../../shared/lib/money'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
   TRANSITION_ACTION_LABELS,
@@ -23,7 +23,9 @@ import type { ClientTariff } from './livraisons.logic'
 import {
   createDelivery, updateDelivery, transitionDelivery, deleteDelivery,
   getActiveClients, getActiveVehicles, getActiveDrivers, savePod,
+  listDeliveryTemplates,
 } from './livraisons.queries'
+import type { DeliveryTemplateLite } from './livraisons.queries'
 import type { DeliveryRow, DeliveryStatus } from './livraisons.types'
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
@@ -91,6 +93,10 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
   const [vehicles, setVehicles] = useState<Lookup[]>([])
   const [drivers,  setDrivers]  = useState<Lookup[]>([])
 
+  // Modèles de course — chargés uniquement en CRÉATION (pré-remplissage).
+  const [templates, setTemplates]     = useState<DeliveryTemplateLite[]>([])
+  const [templateId, setTemplateId]   = useState('')
+
   // ── Référentiels ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -110,6 +116,43 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
       setDrivers((data ?? []).map(m => ({ id: m.id, label: m.full_name })))
     )
   }, [open])
+
+  // ── Modèles de course (création uniquement) ────────────────────────────────────
+
+  useEffect(() => {
+    if (!open || delivery) { setTemplates([]); return }
+    setTemplateId('')
+    listDeliveryTemplates().then(({ data }) => setTemplates(data ?? []))
+  }, [open, delivery])
+
+  // Pré-remplit le formulaire depuis un modèle, sans toucher à la date ni au statut.
+  // PIÈGE TVA : le modèle stocke un TAUX (tva_rate, en %) ; le form attend un MONTANT
+  // de TVA en euros (tva_override). On convertit, puis setTvaTouched(true) pour figer.
+  const applyTemplate = (id: string) => {
+    setTemplateId(id)
+    if (!id) return
+    const t = templates.find(x => x.id === id)
+    if (!t) return
+    const tvaCts = t.amount_ht_cts != null && t.tva_rate != null
+      ? Math.round(t.amount_ht_cts * t.tva_rate / 100)
+      : null
+    setForm(p => ({
+      ...p,
+      client_id:        t.client_id ?? '',
+      vehicle_id:       t.vehicle_id ?? '',
+      driver_id:        t.driver_id ?? '',
+      type:             t.type ?? '',
+      description:      t.description ?? '',
+      pickup_address:   t.pickup_address ?? '',
+      delivery_address: t.delivery_address ?? '',
+      km:               t.km != null ? String(t.km) : '',
+      empty_km:         t.empty_km != null ? String(t.empty_km) : '',
+      pallets:          t.weight_kg != null ? String(t.weight_kg) : '',
+      manual_ht:        t.amount_ht_cts != null ? String(centimesToEuros(t.amount_ht_cts)) : '',
+      tva_override:     tvaCts != null ? String(centimesToEuros(tvaCts)) : '',
+    }))
+    setTvaTouched(true)
+  }
 
   // ── Initialisation formulaire ─────────────────────────────────────────────────
 
@@ -365,6 +408,16 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
       {/* ── Onglet Détail ────────────────────────────────────────────────────── */}
       {tab === 'detail' && (
         <div className="flex flex-col gap-4">
+          {/* Pré-remplissage depuis un modèle — création uniquement, masqué si aucun modèle. */}
+          {!isEdit && templates.length > 0 && (
+            <Field label="Partir d'un modèle…">
+              <select value={templateId} onChange={e => applyTemplate(e.target.value)}
+                className={inputCls}>
+                <option value="">— Aucun —</option>
+                {templates.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+              </select>
+            </Field>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Date planifiée *">
               <Input type="date" value={form.date} onChange={v => set('date', v)}
