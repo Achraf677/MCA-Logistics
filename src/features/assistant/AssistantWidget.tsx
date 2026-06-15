@@ -6,7 +6,7 @@ import type { PendingAction } from './AssistantContext'
 import { runAssistantTurn } from './assistant.queries'
 import {
   prepareCreateLivraison, prepareChangerStatutLivraison,
-  prepareCreateCharge, prepareCreateClient, prepareCreatePlein, prepareCreateIncident,
+  prepareCreateCharge, prepareCreateClient, prepareModifierClient, prepareCreatePlein, prepareCreateIncident,
   prepareCreateFournisseur, prepareCreateVehicule, runGenererMail, runExtractDeliveries,
   prepareImportLivraisons,
 } from './assistant.tools'
@@ -23,7 +23,7 @@ function readDataUrl(file: File): Promise<string> {
   })
 }
 
-// Routage des 8 outils d'ÉCRITURE → leur préparateur. Doit couvrir TOUTES les
+// Routage des 9 outils d'ÉCRITURE → leur préparateur. Doit couvrir TOUTES les
 // actions de WRITE_TOOLS (assistant.queries.ts). Une action absente d'ici =
 // « Action non prise en charge » côté UI.
 const ACTION_PREPARERS: Record<string, (args: unknown) => Promise<PrepareResult>> = {
@@ -31,6 +31,7 @@ const ACTION_PREPARERS: Record<string, (args: unknown) => Promise<PrepareResult>
   changer_statut_livraison: (a) => prepareChangerStatutLivraison(a as never),
   create_charge:            (a) => prepareCreateCharge(a as never),
   create_client:            (a) => prepareCreateClient(a as never),
+  modifier_client:          (a) => prepareModifierClient(a as never),
   create_plein:             (a) => prepareCreatePlein(a as never),
   create_incident:          (a) => prepareCreateIncident(a as never),
   create_fournisseur:       (a) => prepareCreateFournisseur(a as never),
