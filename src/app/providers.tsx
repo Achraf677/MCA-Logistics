@@ -8,6 +8,26 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey)
 
+// Capture du provider_refresh_token Google après une connexion Drive.
+// Ce champ n'existe QUE dans l'événement qui suit l'échange OAuth (jamais dans getSession()).
+// Listener au niveau module = en place avant la fin de l'échange (detectSessionInUrl).
+if (typeof window !== 'undefined') {
+  supabase.auth.onAuthStateChange((_event, session) => {
+    const refresh = session?.provider_refresh_token
+    // Aide au diagnostic (n'expose jamais le token, juste un booléen) :
+    console.debug('[drive] auth event', _event, 'has_refresh', !!refresh,
+      'flag', window.sessionStorage.getItem('mca_drive_connect'))
+    if (refresh && window.sessionStorage.getItem('mca_drive_connect') === '1') {
+      window.sessionStorage.removeItem('mca_drive_connect')
+      supabase.functions
+        .invoke('drive-connect', {
+          body: { refresh_token: refresh, email: session?.user?.email ?? null },
+        })
+        .catch(() => { /* l'état réel reste visible via drive-status */ })
+    }
+  })
+}
+
 // ── Auth context ─────────────────────────────────────────
 interface AuthCtx {
   user: User | null
