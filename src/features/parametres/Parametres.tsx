@@ -9,6 +9,7 @@ import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
 import { useProfile, supabase } from '../../app/providers'
 import { getCompany, updateCompany } from './parametres.queries'
 import type { CompanyData } from './parametres.queries'
+import { DriveConnect } from './DriveConnect'
 
 const EMPTY: Omit<CompanyData, 'id'> = {
   name: '', siren: '', siret: '', tva_intra: '',
@@ -214,6 +215,11 @@ export function Parametres() {
             <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Aucune modification</span>
           )}
         </div>
+
+        {/* Section Google Drive */}
+        <Section title="Google Drive">
+          <DriveConnect />
+        </Section>
 
         {/* Section Compte */}
         <Section title="Compte">
