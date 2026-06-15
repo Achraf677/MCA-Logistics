@@ -177,6 +177,23 @@ export async function getActiveDrivers() {
     .order('full_name')
 }
 
+// ── Modèles de course (pré-remplissage en création) ──────────────────────────
+// Lecture locale de delivery_templates : on NE dépend PAS de features/modeles
+// (étanchéité entre features). Lecture seule, version allégée pour le formulaire.
+export interface DeliveryTemplateLite {
+  id: string; label: string; client_id: string | null;
+  description: string | null; pickup_address: string | null; delivery_address: string | null;
+  amount_ht_cts: number | null; tva_rate: number | null; type: string | null;
+  weight_kg: number | null; km: number | null; empty_km: number | null;
+  vehicle_id: string | null; driver_id: string | null;
+}
+
+export async function listDeliveryTemplates(): Promise<{ data: DeliveryTemplateLite[] | null; error: unknown }> {
+  return supabase.from('delivery_templates')
+    .select('id, label, client_id, description, pickup_address, delivery_address, amount_ht_cts, tva_rate, type, weight_kg, km, empty_km, vehicle_id, driver_id')
+    .order('label')
+}
+
 // ── Preuve de livraison (POD) ─────────────────────────────────────────────────
 export async function savePod(id: string, recipientName: string) {
   return supabase
