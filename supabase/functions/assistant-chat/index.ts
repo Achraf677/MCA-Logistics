@@ -26,7 +26,8 @@ const SYSTEM_BASE =
   "- ACTIONS : tu peux proposer certaines actions via des outils dédiés : créer une livraison (create_livraison), " +
   "changer le statut d'une livraison (changer_statut_livraison : facturer, encaisser/marquer payée, annuler…), " +
   "ajouter une charge/dépense (create_charge), créer un client (create_client), modifier un client existant " +
-  "(modifier_client, en ne renseignant QUE les champs à changer), créer un fournisseur " +
+  "(modifier_client, en ne renseignant QUE les champs à changer), modifier une livraison existante " +
+  "(modifier_livraison, sauf si facturée/payée, en ne renseignant que les champs à changer), créer un fournisseur " +
   "(create_fournisseur), ajouter un véhicule à la flotte (create_vehicule), ajouter un plein de carburant " +
   "(create_plein), déclarer un incident (create_incident). Quand l'utilisateur demande clairement une action, " +
   "appelle l'outil avec les informations fournies. TRÈS IMPORTANT : l'application affichera à l'utilisateur une " +
@@ -191,6 +192,22 @@ const TOOLS = [
         delai_paiement_jours: { type: 'number', description: 'Nouveau délai de paiement (jours). Optionnel.' },
         type: { type: 'string', enum: ['medical','ecommerce','retail','particulier'], description: 'Nouveau type. Optionnel.' },
       }, required: ['nom'] } } },
+
+  { type: 'function', function: { name: 'modifier_livraison',
+      description: "Modifie une livraison EXISTANTE (montant, date, type, description, adresses, poids, km). NE change PAS le statut (utilise changer_statut_livraison). Impossible si la livraison est déjà facturée ou payée. Carte de confirmation AVANT enregistrement : ne confirme pas toi-même. Identifie la livraison par client (et date si plusieurs). Ne renseigne QUE les champs à changer.",
+      parameters: { type: 'object', properties: {
+        client: { type: 'string', description: 'Nom du client de la livraison à modifier.' },
+        date: { type: 'string', description: "Date actuelle de la livraison (YYYY-MM-DD), pour l'identifier si plusieurs." },
+        nouvelle_date: { type: 'string', description: 'Nouvelle date (YYYY-MM-DD). Optionnel.' },
+        montant_ht_eur: { type: 'number', description: 'Nouveau montant HT en euros (TVA et TTC recalculés). Optionnel.' },
+        type: { type: 'string', enum: ['medical','ecommerce','retail','particulier'], description: 'Nouveau type. Optionnel.' },
+        description: { type: 'string', description: 'Nouvelle description. Optionnel.' },
+        adresse_livraison: { type: 'string', description: 'Nouvelle adresse de livraison. Optionnel.' },
+        adresse_retrait: { type: 'string', description: 'Nouvelle adresse de retrait. Optionnel.' },
+        poids_kg: { type: 'number', description: 'Nouveau poids (kg). Optionnel.' },
+        km: { type: 'number', description: 'Nouveau kilométrage en charge. Optionnel.' },
+        km_vide: { type: 'number', description: 'Nouveau kilométrage à vide. Optionnel.' },
+      }, required: ['client'] } } },
 
   // ── RÉDACTION : génère un brouillon de texte (pas d'écriture base). Exécuté par le front via brouillons-generate ──
   { type: 'function', function: { name: 'generer_mail',

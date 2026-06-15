@@ -41,7 +41,7 @@ const ASSISTANT_TOOLS: Record<string, (args: any) => Promise<unknown>> = {
 const WRITE_TOOLS = new Set<string>([
   'create_livraison', 'changer_statut_livraison',
   'create_charge', 'create_client', 'create_plein', 'create_incident',
-  'create_fournisseur', 'create_vehicule', 'modifier_client',
+  'create_fournisseur', 'create_vehicule', 'modifier_client', 'modifier_livraison',
 ])
 
 // ── Queries LOCALES à l'assistant pour modifier_client (étanchéité : aucune
@@ -74,6 +74,11 @@ export async function findClientsByName(nom: string): Promise<AssistantClientMat
 /** Update partiel d'un client (uniquement les colonnes fournies dans `patch`). */
 export async function updateClient(id: string, patch: Record<string, unknown>) {
   return supabase.from('clients').update(patch).eq('id', id)
+}
+
+/** Update partiel d'une livraison (uniquement les colonnes fournies dans `patch`). */
+export async function updateDelivery(id: string, patch: Record<string, unknown>) {
+  return supabase.from('deliveries').update(patch).eq('id', id)
 }
 
 // Outils de RÉDACTION : produisent un brouillon de texte (aucune écriture base,

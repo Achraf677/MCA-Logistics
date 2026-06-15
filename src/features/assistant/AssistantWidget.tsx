@@ -8,7 +8,7 @@ import {
   prepareCreateLivraison, prepareChangerStatutLivraison,
   prepareCreateCharge, prepareCreateClient, prepareModifierClient, prepareCreatePlein, prepareCreateIncident,
   prepareCreateFournisseur, prepareCreateVehicule, runGenererMail, runExtractDeliveries,
-  prepareImportLivraisons,
+  prepareImportLivraisons, prepareModifierLivraison,
 } from './assistant.tools'
 import type { PrepareResult, GenererMailArgs } from './assistant.tools'
 
@@ -32,6 +32,7 @@ const ACTION_PREPARERS: Record<string, (args: unknown) => Promise<PrepareResult>
   create_charge:            (a) => prepareCreateCharge(a as never),
   create_client:            (a) => prepareCreateClient(a as never),
   modifier_client:          (a) => prepareModifierClient(a as never),
+  modifier_livraison:       (a) => prepareModifierLivraison(a as never),
   create_plein:             (a) => prepareCreatePlein(a as never),
   create_incident:          (a) => prepareCreateIncident(a as never),
   create_fournisseur:       (a) => prepareCreateFournisseur(a as never),
