@@ -42,6 +42,15 @@ export async function countDeliveriesForClient(id: string): Promise<number> {
   return count ?? 0
 }
 
+export async function countQuotesForClient(id: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('quotes')
+    .select('id', { count: 'exact' })
+    .eq('client_id', id)
+  if (error) throw error
+  return count ?? 0
+}
+
 // Suppression (RLS : président uniquement, via clients_delete_president).
 // Interdite côté UI si le client a des livraisons (voir countDeliveriesForClient).
 export async function deleteClient(id: string) {
