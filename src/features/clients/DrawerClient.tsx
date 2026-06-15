@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import {
   createClient, updateClient, deactivateClient, deleteClient,
-  countDeliveriesForClient, getClientDeliveries,
+  countDeliveriesForClient, countQuotesForClient, getClientDeliveries,
 } from './clients.queries'
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, validateSiret,
@@ -128,14 +128,20 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
   const handleDeleteClick = async () => {
     if (!client) return
     try {
-      const n = await countDeliveriesForClient(client.id)
-      if (n > 0) {
-        toast(`Ce client a ${n} livraison(s) liée(s), suppression impossible`, 'error')
+      const [nLiv, nDevis] = await Promise.all([
+        countDeliveriesForClient(client.id),
+        countQuotesForClient(client.id),
+      ])
+      if (nLiv > 0 || nDevis > 0) {
+        const parts: string[] = []
+        if (nDevis > 0) parts.push(`${nDevis} devis`)
+        if (nLiv > 0) parts.push(`${nLiv} livraison(s)`)
+        toast(`Ce client a ${parts.join(' et ')} rattaché(s) : suppression impossible. Désactive-le plutôt pour le retirer des listes sans perdre l'historique.`, 'error')
         return
       }
       setConfirmDelete(true)
     } catch (e) {
-      toast(`Vérification des livraisons liées impossible : ${(e as Error).message}`, 'error')
+      toast(`Vérification des éléments liés impossible : ${(e as Error).message}`, 'error')
     }
   }
 
@@ -144,7 +150,14 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
     setDeleting(true)
     const { error } = await deleteClient(client.id)
     setDeleting(false)
-    if (error) { toast(error.message, 'error'); return }
+    if (error) {
+      const err = error as { code?: string; message?: string }
+      const isFk = err.code === '23503' || /foreign key/i.test(err.message ?? '')
+      toast(isFk
+        ? 'Ce client a des éléments liés : suppression impossible. Désactive-le plutôt.'
+        : (err.message ?? 'Erreur'), 'error')
+      return
+    }
     setConfirmDelete(false)
     toast(`${client.name} supprimé`)
     onSaved()
