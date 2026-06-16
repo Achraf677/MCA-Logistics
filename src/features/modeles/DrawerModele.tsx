@@ -4,6 +4,7 @@ import { Drawer }     from '../../shared/ui/Drawer'
 import { Button }     from '../../shared/ui/Button'
 import { useToast }   from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { eurosToCentimes, centimesToEuros, formatMoney } from '../../shared/lib/money'
 import { ttcFromHt } from './modeles.logic'
@@ -49,7 +50,8 @@ const EMPTY_FORM = {
 // ── Composant ─────────────────────────────────────────────────────────────────
 
 export function DrawerModele({ open, onClose, template, onSaved }: Props) {
-  const { companyId, profile } = useProfile()
+  const { companyId } = useProfile()
+  const { can } = usePermissions()
   const { toast } = useToast()
   const isEdit = !!template
 
@@ -172,7 +174,7 @@ export function DrawerModele({ open, onClose, template, onSaved }: Props) {
     onClose()
   }
 
-  const canDelete = isEdit && profile?.role === 'president'
+  const canDelete = isEdit && can('livraisons.modeles', 'delete')
 
   // ── Render ────────────────────────────────────────────────────────────────
 

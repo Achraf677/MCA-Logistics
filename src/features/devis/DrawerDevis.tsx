@@ -5,6 +5,7 @@ import { Button }     from '../../shared/ui/Button'
 import { Badge }      from '../../shared/ui/Badge'
 import { useToast }   from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 import { eurosToCentimes, centimesToEuros, formatMoney } from '../../shared/lib/money'
 import {
   STATUS_LABELS, STATUS_COLORS, isExpiredDisplay, addDays,
@@ -54,7 +55,8 @@ const EMPTY_FORM = {
 // ── Composant ─────────────────────────────────────────────────────────────────
 
 export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
-  const { companyId, profile } = useProfile()
+  const { companyId } = useProfile()
+  const { can } = usePermissions()
   const { toast } = useToast()
   const isEdit = !!quote
 
@@ -240,7 +242,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
     onClose()
   }
 
-  const canDelete  = isEdit && profile?.role === 'president'
+  const canDelete  = isEdit && can('livraisons.devis', 'delete')
   const isInvoiced = statut === 'facture' || !!quote?.pennylane_invoice_id
   const isLinked   = !!quote?.pennylane_quote_id || !!quote?.pennylane_invoice_id
 

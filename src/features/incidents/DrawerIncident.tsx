@@ -7,6 +7,7 @@ import { Badge } from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 import { createIncident, updateIncident, deleteIncident } from './incidents.queries'
 import {
   TYPE_LABELS, TYPE_COLOR, STATUS_LABELS, STATUS_COLOR, formatCents,
@@ -41,10 +42,10 @@ const EMPTY_FORM = {
 }
 
 export function DrawerIncident({ open, onClose, incident, onSaved }: Props) {
-  const { companyId, profile } = useProfile()
+  const { companyId } = useProfile()
+  const { can } = usePermissions()
   const { toast } = useToast()
   const isEdit = !!incident
-  const isPresident = profile?.role === 'president'
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
@@ -238,7 +239,7 @@ export function DrawerIncident({ open, onClose, incident, onSaved }: Props) {
             {saving ? 'Enregistrement…' : 'Enregistrer'}
           </Button>
           <Button variant="secondary" onClick={onClose}>Annuler</Button>
-          {isEdit && isPresident && (
+          {isEdit && can('flotte.incidents', 'delete') && (
             <Button variant="ghost" onClick={() => setConfirmDelete(true)} className="ml-auto text-[var(--danger)]">
               <Trash2 size={14} />
               Supprimer
