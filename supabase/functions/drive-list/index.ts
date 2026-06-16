@@ -1,4 +1,6 @@
-// Edge `drive-list` — liste les fichiers du dossier "MCA Documents" (étape 1c). verify_jwt=true.
+// Edge `drive-list` — liste les fichiers du dossier "MCA Documents" de la société (étape 1c).
+// verify_jwt=true. Si aucun dossier racine (jamais d'upload), renvoie une liste vide.
+// ACCÈS RÉSERVÉ : président OU compte avec drive_access=true.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -48,8 +50,12 @@ Deno.serve(async (req: Request) => {
 
   const service = createClient(url, svcKey, { auth: { persistSession: false } });
   const { data: profile } = await service
-    .from('profiles').select('company_id').eq('id', user.id).single();
+    .from('profiles').select('company_id, role, drive_access').eq('id', user.id).single();
   if (!profile?.company_id) return json({ ok: false, error: 'société introuvable' }, 400);
+  // Garde d'accès Drive : président toujours OK, sinon drive_access requis.
+  if (profile.role !== 'president' && profile.drive_access !== true) {
+    return json({ ok: false, error: 'drive_access_denied' }, 403);
+  }
 
   const { data: tok } = await service
     .from('google_drive_tokens').select('refresh_token, root_folder_id')

@@ -1,5 +1,5 @@
-// Edge `drive-delete` — met un fichier à la corbeille Drive (étape 1c). verify_jwt=true.
-// Sécurité : vérifie que le fichier est dans le dossier racine de la société. trashed=true (réversible 30 j).
+// Edge `drive-delete` v2 — met un fichier OU un dossier à la corbeille Drive. verify_jwt=true.
+// trashed=true (réversible 30 j). ACCÈS RÉSERVÉ : président OU compte avec drive_access=true.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -56,27 +56,21 @@ Deno.serve(async (req: Request) => {
 
   const service = createClient(url, svcKey, { auth: { persistSession: false } });
   const { data: profile } = await service
-    .from('profiles').select('company_id').eq('id', user.id).single();
+    .from('profiles').select('company_id, role, drive_access').eq('id', user.id).single();
   if (!profile?.company_id) return json({ ok: false, error: 'société introuvable' }, 400);
+  // Garde d'accès Drive : président toujours OK, sinon drive_access requis.
+  if (profile.role !== 'president' && profile.drive_access !== true) {
+    return json({ ok: false, error: 'drive_access_denied' }, 403);
+  }
 
   const { data: tok } = await service
-    .from('google_drive_tokens').select('refresh_token, root_folder_id')
+    .from('google_drive_tokens').select('refresh_token')
     .eq('company_id', profile.company_id).maybeSingle();
   if (!tok?.refresh_token) return json({ ok: false, error: 'drive_not_connected' }, 400);
-  if (!tok.root_folder_id) return json({ ok: false, error: 'no_root_folder' }, 400);
 
   let accessToken: string;
   try { accessToken = await getAccessToken(tok.refresh_token); }
   catch { return json({ ok: false, error: 'token_refresh_failed' }, 502); }
-
-  const checkUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=parents`;
-  const cr = await fetch(checkUrl, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!cr.ok) return json({ ok: false, error: 'file_not_found' }, 404);
-  const cj = await cr.json();
-  const parents: string[] = cj.parents ?? [];
-  if (!parents.includes(tok.root_folder_id)) {
-    return json({ ok: false, error: 'forbidden_out_of_scope' }, 403);
-  }
 
   const delUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=id`;
   const dr = await fetch(delUrl, {

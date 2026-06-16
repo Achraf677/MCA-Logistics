@@ -1,6 +1,5 @@
-// Edge `drive-upload` v2 — envoie un fichier dans le Drive. verify_jwt=true.
-// FormData : 'file' (requis) + 'folder_id' (optionnel = dossier de destination).
-// Si folder_id absent → comportement historique : dossier "MCA Documents" (root_folder_id).
+// Edge `drive-rename` — renomme un fichier OU un dossier du Drive. verify_jwt=true.
+// body { file_id, name }.
 // ACCÈS RÉSERVÉ : président OU compte avec drive_access=true.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -13,7 +12,6 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const ROOT_FOLDER_NAME = 'MCA Documents';
 
 async function getAccessToken(refreshToken: string): Promise<string> {
   const form = new URLSearchParams({
@@ -39,6 +37,16 @@ Deno.serve(async (req: Request) => {
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader) return json({ ok: false, error: 'missing Authorization' }, 401);
 
+  let fileId = '';
+  let name = '';
+  try {
+    const b = await req.json();
+    fileId = typeof b?.file_id === 'string' ? b.file_id : '';
+    name = typeof b?.name === 'string' ? b.name.trim() : '';
+  } catch { /* champs vérifiés ci-dessous */ }
+  if (!fileId) return json({ ok: false, error: 'file_id requis' }, 400);
+  if (!name) return json({ ok: false, error: 'name requis' }, 400);
+
   const url = Deno.env.get('SUPABASE_URL')!;
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
   const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -58,63 +66,23 @@ Deno.serve(async (req: Request) => {
   if (profile.role !== 'president' && profile.drive_access !== true) {
     return json({ ok: false, error: 'drive_access_denied' }, 403);
   }
-  const companyId = profile.company_id;
 
   const { data: tok } = await service
-    .from('google_drive_tokens').select('refresh_token, root_folder_id')
-    .eq('company_id', companyId).maybeSingle();
+    .from('google_drive_tokens').select('refresh_token')
+    .eq('company_id', profile.company_id).maybeSingle();
   if (!tok?.refresh_token) return json({ ok: false, error: 'drive_not_connected' }, 400);
-
-  let file: File | null = null;
-  let destFolderId = '';
-  try {
-    const fd = await req.formData();
-    const f = fd.get('file');
-    if (f instanceof File) file = f;
-    const v = fd.get('folder_id');
-    if (typeof v === 'string' && v) destFolderId = v;
-  } catch { /* pas de form-data */ }
-  if (!file) return json({ ok: false, error: 'no_file' }, 400);
 
   let accessToken: string;
   try { accessToken = await getAccessToken(tok.refresh_token); }
   catch { return json({ ok: false, error: 'token_refresh_failed' }, 502); }
 
-  // Destination : folder_id fourni, sinon dossier historique "MCA Documents"
-  let folderId = destFolderId;
-  if (!folderId) {
-    folderId = tok.root_folder_id as string | null ?? '';
-    if (!folderId) {
-      const fr = await fetch('https://www.googleapis.com/drive/v3/files?fields=id', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: ROOT_FOLDER_NAME, mimeType: 'application/vnd.google-apps.folder' }),
-      });
-      if (!fr.ok) return json({ ok: false, error: 'folder_create_failed', detail: (await fr.text()).slice(0, 200) }, 502);
-      folderId = (await fr.json()).id;
-      await service.from('google_drive_tokens')
-        .update({ root_folder_id: folderId, updated_at: new Date().toISOString() })
-        .eq('company_id', companyId);
-    }
-  }
+  const r = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?fields=id,name`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+  if (!r.ok) return json({ ok: false, error: 'rename_failed', detail: (await r.text()).slice(0, 200) }, 502);
+  const j = await r.json();
 
-  const boundary = '----mca' + crypto.randomUUID().replace(/-/g, '');
-  const metadata = JSON.stringify({ name: file.name, parents: [folderId] });
-  const pre = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${file.type || 'application/octet-stream'}\r\n\r\n`;
-  const post = `\r\n--${boundary}--`;
-  const fileBytes = new Uint8Array(await file.arrayBuffer());
-  const body = new Blob([pre, fileBytes, post]);
-
-  const up = await fetch(
-    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink',
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': `multipart/related; boundary=${boundary}` },
-      body,
-    },
-  );
-  if (!up.ok) return json({ ok: false, error: 'upload_failed', detail: (await up.text()).slice(0, 200) }, 502);
-  const uj = await up.json();
-
-  return json({ ok: true, file_id: uj.id, name: uj.name, web_link: uj.webViewLink });
+  return json({ ok: true, id: j.id, name: j.name });
 });
