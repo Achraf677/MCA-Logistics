@@ -10,6 +10,7 @@ import { useProfile, supabase } from '../../app/providers'
 import { getCompany, updateCompany } from './parametres.queries'
 import type { CompanyData } from './parametres.queries'
 import { DriveConnect } from './DriveConnect'
+import { DriveAccess } from './DriveAccess'
 
 const EMPTY: Omit<CompanyData, 'id'> = {
   name: '', siren: '', siret: '', tva_intra: '',
@@ -220,6 +221,13 @@ export function Parametres() {
         <Section title="Google Drive">
           <DriveConnect />
         </Section>
+
+        {/* Section Accès Drive — président uniquement */}
+        {profile?.role === 'president' && (
+          <Section title="Accès Drive">
+            <DriveAccess />
+          </Section>
+        )}
 
         {/* Section Compte */}
         <Section title="Compte">
