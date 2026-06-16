@@ -3,6 +3,8 @@ import { X } from 'lucide-react'
 import { supabase } from '../../app/providers'
 import { useToast } from '../../shared/ui/useToast'
 import { Button } from '../../shared/ui/Button'
+import { ROLE_OPTIONS } from './admins.types'
+import type { AdminRole } from './admins.types'
 
 interface Props {
   open: boolean
@@ -22,6 +24,7 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
   const [email, setEmail] = useState('')
   const [fullName, setFullName] = useState('')
   const [password, setPassword] = useState('')
+  const [role, setRole] = useState<AdminRole>('admin')
   const [loading, setLoading] = useState(false)
   const [inviteWarning, setInviteWarning] = useState<string | null>(null)
 
@@ -31,6 +34,7 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
       setEmail('')
       setFullName('')
       setPassword('')
+      setRole('admin')
       setInviteWarning(null)
     }
   }, [open])
@@ -46,7 +50,7 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
     if (!email || !fullName || !password) return
     setLoading(true)
     const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'create', email, full_name: fullName, password },
+      body: { action: 'create', email, full_name: fullName, password, role },
     })
     setLoading(false)
     if (error || !data?.ok) {
@@ -63,7 +67,7 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
     setInviteWarning(null)
     setLoading(true)
     const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'invite', email, full_name: fullName },
+      body: { action: 'invite', email, full_name: fullName, role },
     })
     setLoading(false)
     if (error || !data?.ok) {
@@ -144,6 +148,12 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
                 <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••" className={inputCls} disabled={loading} />
               </Field>
+              <Field label="Rôle">
+                <select value={role} onChange={e => setRole(e.target.value as AdminRole)}
+                  className={inputCls} disabled={loading}>
+                  {ROLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </Field>
             </>
           ) : (
             <>
@@ -154,6 +164,12 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
               <Field label="Email *">
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)}
                   placeholder="marie@exemple.fr" className={inputCls} disabled={loading} />
+              </Field>
+              <Field label="Rôle">
+                <select value={role} onChange={e => setRole(e.target.value as AdminRole)}
+                  className={inputCls} disabled={loading}>
+                  {ROLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
               </Field>
               <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
                 Un email d'invitation sera envoyé. Requiert un SMTP configuré dans Supabase Auth.
