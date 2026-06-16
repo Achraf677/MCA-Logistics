@@ -16,7 +16,6 @@ import {
 import { formatMoney } from '../../shared/lib/money'
 import type { Client, ClientInsert, DeliveryForEncours, TariffMode } from './clients.types'
 import { useProfile } from '../../app/providers'
-import { usePermissions } from '../../shared/permissions/usePermissions'
 import { DocumentsPanel } from '../documents/DocumentsPanel'
 
 interface DrawerClientProps {
@@ -36,7 +35,7 @@ const EMPTY_FORM: Partial<ClientInsert> = {
 type Tab = 'detail' | 'historique' | 'encours' | 'documents'
 
 export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientProps) {
-  const { companyId } = useProfile()
+  const { companyId, profile } = useProfile()
   const { toast } = useToast()
   const [tab, setTab] = useState<Tab>('detail')
   const [form, setForm] = useState<Partial<ClientInsert>>(EMPTY_FORM)
@@ -165,7 +164,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
     onClose()
   }
 
-  const { can } = usePermissions()
+  const isPresident = profile?.role === 'president'
 
   const encours = computeEncours(deliveries)
 
@@ -309,18 +308,16 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
           </FieldGroup>
 
           <div className="flex items-center gap-2 pt-2 border-t border-[var(--border)]">
-            {can('tiers.clients', isEdit ? 'update' : 'create') && (
-              <Button variant="primary" onClick={handleSave} disabled={saving}>
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
-              </Button>
-            )}
+            <Button variant="primary" onClick={handleSave} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
             <Button variant="secondary" onClick={onClose}>Annuler</Button>
             {isEdit && client!.active && (
               <Button variant="ghost" onClick={() => setConfirmDeactivate(true)} className="ml-auto text-[var(--danger)]">
                 Désactiver
               </Button>
             )}
-            {isEdit && can('tiers.clients', 'delete') && (
+            {isEdit && isPresident && (
               <Button variant="ghost" onClick={handleDeleteClick}
                 className={`${isEdit && client!.active ? '' : 'ml-auto'} text-[var(--danger)]`}>
                 <Trash2 size={14} />

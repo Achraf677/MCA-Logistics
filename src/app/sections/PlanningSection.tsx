@@ -16,9 +16,9 @@ export function PlanningSection() {
     <Shell pageTitle="Planning">
       <TabbedSection
         tabs={[
-          { key: 'tournees',   label: 'Tournées',   element: <Tournees />,   permKey: 'planning.tournees'   },
-          { key: 'planning',   label: 'Planning',   element: <Planning />,   permKey: 'planning.planning'   },
-          { key: 'calendrier', label: 'Calendrier', element: <Calendrier />, permKey: 'planning.calendrier' },
+          { key: 'tournees', label: 'Tournées', element: <Tournees /> },
+          { key: 'planning', label: 'Planning', element: <Planning /> },
+          { key: 'calendrier', label: 'Calendrier', element: <Calendrier /> },
         ]}
       />
     </Shell>

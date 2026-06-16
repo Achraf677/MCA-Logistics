@@ -4,7 +4,6 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import { AuthProvider, ProfileProvider, useAuth, useProfile, supabase } from './app/providers'
 import { ToastProvider } from './shared/ui/useToast'
-import { PermissionsProvider } from './shared/permissions/PermissionsProvider'
 import { AppRoutes } from './app/routes'
 import { LoginPage } from './app/LoginPage'
 import { Button } from './shared/ui/Button'
@@ -73,11 +72,9 @@ function AppCore() {
       <ProfileGate>
         {/* Conversation de l'assistant : état stable au-dessus du routeur,
             pour survivre aux changements d'onglet. */}
-        <PermissionsProvider>
-          <AssistantProvider>
-            <AppRoutes />
-          </AssistantProvider>
-        </PermissionsProvider>
+        <AssistantProvider>
+          <AppRoutes />
+        </AssistantProvider>
       </ProfileGate>
     </ProfileProvider>
   )

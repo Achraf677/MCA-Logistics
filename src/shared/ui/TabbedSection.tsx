@@ -1,13 +1,10 @@
 import { useSearchParams } from 'react-router-dom'
 import type { ReactNode } from 'react'
-import { usePermissions } from '../permissions/usePermissions'
 
 export interface SubTab {
   key: string
   label: string
   element: ReactNode
-  /** Clé catalogue (ex. 'finance.charges'). Si absent, l'onglet est toujours visible. */
-  permKey?: string
 }
 
 /**
@@ -17,15 +14,9 @@ export interface SubTab {
  * Réutilisé par les domaines (Finance, Flotte, …) pour ré-agencer les pages existantes.
  */
 export function TabbedSection({ tabs }: { tabs: SubTab[] }) {
-  const { can } = usePermissions()
   const [params, setParams] = useSearchParams()
-
-  // Filtre les onglets dont l'utilisateur n'a pas la permission 'view'.
-  // Les onglets sans permKey sont toujours visibles.
-  const visibleTabs = tabs.filter(t => !t.permKey || can(t.permKey, 'view'))
-
   const current = params.get('tab')
-  const active = visibleTabs.find(t => t.key === current) ?? visibleTabs[0]
+  const active = tabs.find(t => t.key === current) ?? tabs[0]
 
   const select = (key: string) => {
     const next = new URLSearchParams(params)
@@ -37,7 +28,7 @@ export function TabbedSection({ tabs }: { tabs: SubTab[] }) {
     <div className="flex flex-col gap-5">
       {/* Barre de sous-onglets */}
       <div className="flex gap-0 border-b border-[var(--border)] overflow-x-auto">
-        {visibleTabs.map(t => {
+        {tabs.map(t => {
           const isActive = t.key === active.key
           return (
             <button
@@ -55,7 +46,7 @@ export function TabbedSection({ tabs }: { tabs: SubTab[] }) {
       </div>
 
       {/* Contenu de l'onglet actif (re-monté à chaque changement d'onglet) */}
-      <div key={active?.key}>{active?.element}</div>
+      <div key={active.key}>{active.element}</div>
     </div>
   )
 }

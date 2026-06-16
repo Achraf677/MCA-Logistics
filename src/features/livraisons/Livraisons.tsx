@@ -9,8 +9,7 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { DrawerLivraison } from './DrawerLivraison'
 import { useToast }    from '../../shared/ui/useToast'
-import { supabase } from '../../app/providers'
-import { usePermissions } from '../../shared/permissions/usePermissions'
+import { useProfile, supabase } from '../../app/providers'
 import { downloadCSV } from '../../shared/lib/download'
 import { getDeliveries, exportDeliveriesCSV, getPendingSyncDeliveries, resyncPending, deleteDeliveries } from './livraisons.queries'
 import {
@@ -33,9 +32,8 @@ const isInvoiceable = (row: DeliveryRow) =>
 
 export function Livraisons() {
   const { toast } = useToast()
-  const { can } = usePermissions()
-  const canCreate = can('livraisons.livraisons', 'create')
-  const canDelete = can('livraisons.livraisons', 'delete')
+  const { profile } = useProfile()
+  const isPresident = profile?.role === 'president'
 
   // ── État principal ─────────────────────────────────────────────────────────
   const [rows, setRows]         = useState<DeliveryRow[]>([])
@@ -177,7 +175,7 @@ export function Livraisons() {
   const kpis = kpiSummary(rows)
 
   return (
-    <Shell pageTitle="Livraisons" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
+    <Shell pageTitle="Livraisons" actions={['nouveau', 'export']} onAction={handleAction}>
 
       {/* KPIs */}
       {loading ? (
@@ -259,8 +257,8 @@ export function Livraisons() {
         </div>
       )}
 
-      {/* Barre d'action suppression (permission delete, ≥ 1 sélectionnée) */}
-      {canDelete && selectedIds.size > 0 && (
+      {/* Barre d'action suppression (président, ≥ 1 sélectionnée) */}
+      {isPresident && selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4 px-4 py-2.5
           rounded-[var(--r-lg)] border border-[var(--danger)]/30 bg-[var(--danger)]/10">
           <span className="text-[var(--fs-sm)] text-[var(--text)]">
@@ -289,7 +287,7 @@ export function Livraisons() {
           description={hasFilters
             ? 'Aucune livraison ne correspond aux filtres.'
             : 'Commencez par saisir votre première course.'}
-          action={!hasFilters && canCreate
+          action={!hasFilters
             ? { label: '+ Nouvelle livraison', onClick: () => { setSelected(null); setDrawerOpen(true) } }
             : undefined}
         />
@@ -308,8 +306,8 @@ export function Livraisons() {
                     )}
                   </th>
 
-                  {/* Colonne case suppression */}
-                  {canDelete && (
+                  {/* Colonne case suppression (président uniquement) */}
+                  {isPresident && (
                     <th className="px-3 py-2.5 w-9">
                       <input
                         type="checkbox"
@@ -356,8 +354,8 @@ export function Livraisons() {
                         )}
                       </td>
 
-                      {/* Case à cocher suppression */}
-                      {canDelete && (
+                      {/* Case à cocher suppression (président) */}
+                      {isPresident && (
                         <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                           {isDeletable(row) && (
                             <input
@@ -428,7 +426,7 @@ export function Livraisons() {
                     />
                   ) : (
                     /* Case suppression si pas facturable, président */
-                    canDelete && isDeletable(row) ? (
+                    isPresident && isDeletable(row) ? (
                       <input
                         type="checkbox"
                         checked={selectedIds.has(row.id)}
