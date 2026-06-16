@@ -10,7 +10,9 @@ export type DocumentCategory =
 export interface DocumentRow {
   id: string
   company_id: string
-  storage_path: string
+  storage_path: string | null
+  drive_file_id: string | null
+  drive_link: string | null
   file_name: string
   mime_type: string | null
   size_bytes: number | null
