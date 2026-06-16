@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Folder, FileText, Upload, FolderPlus, Trash2, ExternalLink, ChevronRight,
+  Pencil, Move, Check, X,
 } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
@@ -40,6 +41,13 @@ export function Documents() {
   const [creating, setCreating]           = useState(false)
 
   const [uploading, setUploading] = useState(false)
+
+  // Renommage (édition inline)
+  const [renamingId, setRenamingId]   = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  // Déplacement (couper / coller)
+  const [movingItem, setMovingItem] = useState<DriveItem | null>(null)
 
   const current = path[path.length - 1]
 
@@ -110,6 +118,46 @@ export function Documents() {
     if (file) handleUpload(file)
   }
 
+  // ── Renommage ───────────────────────────────────────────────────────────────────
+
+  const startRename = (item: DriveItem) => {
+    setRenamingId(item.id)
+    setRenameValue(item.name)
+  }
+  const cancelRename = () => setRenamingId(null)
+  const confirmRename = async () => {
+    const name = renameValue.trim()
+    if (!name || !renamingId) return
+    const { data, error } = await supabase.functions.invoke('drive-rename', {
+      body: { file_id: renamingId, name },
+    })
+    if (error || !data?.ok) {
+      toast(data?.error ?? error?.message ?? 'Renommage impossible', 'error')
+      return
+    }
+    setRenamingId(null)
+    toast(`Renommé en "${name}"`)
+    await browse(current.id)
+  }
+
+  // ── Déplacement ───────────────────────────────────────────────────────────────
+
+  const startMove  = (item: DriveItem) => setMovingItem(item)
+  const cancelMove = () => setMovingItem(null)
+  const dropHere   = async () => {
+    if (!movingItem) return
+    const { data, error } = await supabase.functions.invoke('drive-move', {
+      body: { file_id: movingItem.id, target_folder_id: current.id },
+    })
+    if (error || !data?.ok) {
+      toast(data?.error ?? error?.message ?? 'Déplacement impossible', 'error')
+      return
+    }
+    toast(`"${movingItem.name}" déplacé`)
+    setMovingItem(null)
+    await browse(current.id)
+  }
+
   // ── Suppression ───────────────────────────────────────────────────────────────
 
   const confirmDelete = async () => {
@@ -127,6 +175,76 @@ export function Documents() {
     setDeleteTarget(null)
     await browse(current.id)
   }
+
+  // ── Ligne (dossier ou fichier) ─────────────────────────────────────────────────
+
+  const renderRow = (item: DriveItem, isFolder: boolean) => (
+    <div key={item.id} className="group flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-card-hover)] transition-colors">
+      {renamingId === item.id ? (
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {isFolder
+            ? <Folder size={18} className="shrink-0 text-[var(--brand)]" />
+            : <FileText size={18} className="shrink-0 text-[var(--text-muted)]" />}
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={e => setRenameValue(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') confirmRename(); if (e.key === 'Escape') cancelRename() }}
+            className="flex-1 min-w-0 h-8 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-2 text-[var(--fs-sm)] text-[var(--text)] focus:outline-none focus:border-[var(--brand)] transition-colors"
+          />
+          <Button variant="icon" onClick={confirmRename} title="Valider">
+            <Check size={14} />
+          </Button>
+          <Button variant="icon" onClick={cancelRename} title="Annuler">
+            <X size={14} />
+          </Button>
+        </div>
+      ) : (
+        <>
+          <button
+            onClick={() => (isFolder ? enterFolder(item) : openFile(item))}
+            className="flex items-center gap-3 flex-1 min-w-0 text-left"
+          >
+            {isFolder
+              ? <Folder size={18} className="shrink-0 text-[var(--brand)]" />
+              : <FileText size={18} className="shrink-0 text-[var(--text-muted)]" />}
+            <span className="font-medium text-[var(--text)] truncate">{item.name}</span>
+          </button>
+          {!isFolder && item.size && (
+            <span className="font-mono text-[var(--fs-xs)] text-[var(--text-muted)] whitespace-nowrap">
+              {formatBytes(Number(item.size))}
+            </span>
+          )}
+          {!isFolder && item.modifiedTime && (
+            <span className="text-[var(--fs-xs)] text-[var(--text-muted)] whitespace-nowrap">
+              {new Date(item.modifiedTime).toLocaleDateString('fr-FR')}
+            </span>
+          )}
+          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+            <Button variant="icon" onClick={() => startRename(item)} title="Renommer">
+              <Pencil size={14} />
+            </Button>
+            <Button variant="icon" onClick={() => startMove(item)} title="Déplacer">
+              <Move size={14} />
+            </Button>
+            {!isFolder && (
+              <Button variant="icon" onClick={() => openFile(item)} title="Ouvrir">
+                <ExternalLink size={14} />
+              </Button>
+            )}
+            <Button
+              variant="icon"
+              onClick={() => setDeleteTarget(item)}
+              title="Supprimer"
+              className="hover:text-[var(--danger)] hover:bg-[var(--danger)]/10"
+            >
+              <Trash2 size={14} />
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  )
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
@@ -189,6 +307,24 @@ export function Documents() {
           </div>
         )}
 
+        {/* Bannière de déplacement */}
+        {movingItem && (
+          <div className="flex flex-wrap items-center gap-3 rounded-[var(--r-lg)] border border-[var(--brand)]/30 bg-[var(--brand-soft)] p-3">
+            <span className="flex-1 min-w-0 text-[var(--fs-sm)] text-[var(--text)]">
+              Déplacement de « {movingItem.name} » — ouvrez le dossier cible puis cliquez « Déposer ici »
+            </span>
+            {current.id !== movingItem.id && (
+              <Button variant="primary" onClick={dropHere}>
+                <Move size={14} />
+                Déposer ici
+              </Button>
+            )}
+            <Button variant="ghost" onClick={cancelMove}>
+              Annuler
+            </Button>
+          </div>
+        )}
+
         {/* Liste */}
         {loading ? (
           <SkeletonTable />
@@ -200,60 +336,8 @@ export function Documents() {
           />
         ) : (
           <div className="rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden divide-y divide-[var(--border)]">
-            {/* Dossiers d'abord */}
-            {folders.map(f => (
-              <div key={f.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-card-hover)] transition-colors">
-                <button
-                  onClick={() => enterFolder(f)}
-                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                >
-                  <Folder size={18} className="shrink-0 text-[var(--brand)]" />
-                  <span className="font-medium text-[var(--text)] truncate">{f.name}</span>
-                </button>
-                <Button
-                  variant="icon"
-                  onClick={() => setDeleteTarget(f)}
-                  title="Supprimer"
-                  className="hover:text-[var(--danger)] hover:bg-[var(--danger)]/10"
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
-            ))}
-
-            {/* Fichiers */}
-            {files.map(f => (
-              <div key={f.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-card-hover)] transition-colors">
-                <button
-                  onClick={() => openFile(f)}
-                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
-                >
-                  <FileText size={18} className="shrink-0 text-[var(--text-muted)]" />
-                  <span className="font-medium text-[var(--text)] truncate">{f.name}</span>
-                </button>
-                {f.size && (
-                  <span className="font-mono text-[var(--fs-xs)] text-[var(--text-muted)] whitespace-nowrap">
-                    {formatBytes(Number(f.size))}
-                  </span>
-                )}
-                {f.modifiedTime && (
-                  <span className="text-[var(--fs-xs)] text-[var(--text-muted)] whitespace-nowrap">
-                    {new Date(f.modifiedTime).toLocaleDateString('fr-FR')}
-                  </span>
-                )}
-                <Button variant="icon" onClick={() => openFile(f)} title="Ouvrir">
-                  <ExternalLink size={14} />
-                </Button>
-                <Button
-                  variant="icon"
-                  onClick={() => setDeleteTarget(f)}
-                  title="Supprimer"
-                  className="hover:text-[var(--danger)] hover:bg-[var(--danger)]/10"
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
-            ))}
+            {folders.map(f => renderRow(f, true))}
+            {files.map(f => renderRow(f, false))}
           </div>
         )}
 
