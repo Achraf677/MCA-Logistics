@@ -17,11 +17,11 @@ export function FlotteSection() {
     <Shell pageTitle="Flotte">
       <TabbedSection
         tabs={[
-          { key: 'vehicules', label: 'Véhicules', element: <Vehicules /> },
-          { key: 'carburant', label: 'Carburant', element: <Carburant /> },
-          { key: 'entretiens', label: 'Entretiens', element: <Entretiens /> },
-          { key: 'inspections', label: 'Inspections', element: <Inspections /> },
-          { key: 'incidents', label: 'Incidents', element: <Incidents /> },
+          { key: 'vehicules',   label: 'Véhicules',   element: <Vehicules />,   permKey: 'flotte.vehicules'   },
+          { key: 'carburant',   label: 'Carburant',   element: <Carburant />,   permKey: 'flotte.carburant'   },
+          { key: 'entretiens',  label: 'Entretiens',  element: <Entretiens />,  permKey: 'flotte.entretiens'  },
+          { key: 'inspections', label: 'Inspections', element: <Inspections />, permKey: 'flotte.inspections' },
+          { key: 'incidents',   label: 'Incidents',   element: <Incidents />,   permKey: 'flotte.incidents'   },
         ]}
       />
     </Shell>
