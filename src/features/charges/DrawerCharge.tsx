@@ -7,6 +7,7 @@ import { Badge } from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 import { createCharge, updateCharge, deleteCharge } from './charges.queries'
 import { CATEGORY_LABELS, CATEGORY_COLOR, formatCents, computeTtcCts } from './charges.logic'
 import type { ChargeRow, ChargeInsert, ChargeCategory } from './charges.types'
@@ -38,10 +39,10 @@ const EMPTY_FORM = {
 }
 
 export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
-  const { companyId, profile } = useProfile()
+  const { companyId } = useProfile()
   const { toast } = useToast()
   const isEdit = !!charge
-  const isPresident = profile?.role === 'president'
+  const { can } = usePermissions()
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
@@ -203,11 +204,13 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
         </Field>
 
         <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
-          <Button variant="primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Enregistrement…' : 'Enregistrer'}
-          </Button>
+          {can('finance.charges', isEdit ? 'update' : 'create') && (
+            <Button variant="primary" onClick={handleSave} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          )}
           <Button variant="secondary" onClick={onClose}>Annuler</Button>
-          {isEdit && isPresident && (
+          {isEdit && can('finance.charges', 'delete') && (
             <Button variant="ghost" onClick={() => setConfirmDelete(true)} className="ml-auto text-[var(--danger)]">
               <Trash2 size={14} />
               Supprimer

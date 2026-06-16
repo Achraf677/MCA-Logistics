@@ -17,11 +17,11 @@ export function FinanceSection() {
     <Shell pageTitle="Finance">
       <TabbedSection
         tabs={[
-          { key: 'tresorerie', label: 'Trésorerie', element: <Tresorerie /> },
-          { key: 'charges', label: 'Charges', element: <Charges /> },
-          { key: 'encaissement', label: 'Encaissement', element: <Encaissement /> },
-          { key: 'tva', label: 'TVA', element: <Tva /> },
-          { key: 'relances', label: 'Relances', element: <Relances /> },
+          { key: 'tresorerie',   label: 'Trésorerie',   element: <Tresorerie />,   permKey: 'finance.tresorerie'   },
+          { key: 'charges',      label: 'Charges',      element: <Charges />,      permKey: 'finance.charges'      },
+          { key: 'encaissement', label: 'Encaissement', element: <Encaissement />, permKey: 'finance.encaissement' },
+          { key: 'tva',          label: 'TVA',          element: <Tva />,          permKey: 'finance.tva'          },
+          { key: 'relances',     label: 'Relances',     element: <Relances />,     permKey: 'finance.relances'     },
         ]}
       />
     </Shell>

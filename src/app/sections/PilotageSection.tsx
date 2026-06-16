@@ -24,9 +24,9 @@ export function PilotageSection() {
     <Shell pageTitle="Pilotage">
       <TabbedSection
         tabs={[
-          { key: 'dashboard',    label: 'Dashboard',    element: <Dashboard /> },
-          { key: 'rentabilite',  label: 'Rentabilité',  element: <CalculateurRentabilite /> },
-          { key: 'statistiques', label: 'Statistiques', element: <Statistiques /> },
+          { key: 'dashboard',    label: 'Dashboard',    element: <Dashboard />,               permKey: 'pilotage.dashboard'    },
+          { key: 'rentabilite',  label: 'Rentabilité',  element: <CalculateurRentabilite />,  permKey: 'pilotage.rentabilite'  },
+          { key: 'statistiques', label: 'Statistiques', element: <Statistiques />,            permKey: 'pilotage.statistiques' },
         ]}
       />
     </Shell>

@@ -8,6 +8,7 @@ import { EmptyState } from '../../shared/ui/EmptyState'
 import { SkeletonTable, SkeletonKpis } from '../../shared/ui/Skeleton'
 import { DrawerClient } from './DrawerClient'
 import { useToast } from '../../shared/ui/useToast'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 import { getClients, exportClientsCSV, getFacturedDeliveries } from './clients.queries'
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, countByType,
@@ -26,6 +27,8 @@ interface ClientEncours {
 
 export function Clients() {
   const { toast } = useToast()
+  const { can } = usePermissions()
+  const canCreate = can('tiers.clients', 'create')
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -104,7 +107,7 @@ export function Clients() {
     : clients
 
   return (
-    <Shell pageTitle="Clients" actions={['nouveau', 'export']} onAction={handleAction}>
+    <Shell pageTitle="Clients" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
         {loading
@@ -174,7 +177,7 @@ export function Clients() {
           icon={<Users size={48} />}
           title="Aucun client"
           description={filters.withEncours ? 'Aucun client avec encours.' : 'Commencez par ajouter votre premier client.'}
-          action={!filters.withEncours ? { label: '+ Nouveau client', onClick: () => { setSelected(null); setDrawerOpen(true) } } : undefined}
+          action={!filters.withEncours && canCreate ? { label: '+ Nouveau client', onClick: () => { setSelected(null); setDrawerOpen(true) } } : undefined}
         />
       ) : (
         <>
