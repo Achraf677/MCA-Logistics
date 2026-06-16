@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CheckCircle2, HardDrive } from 'lucide-react'
 import { supabase } from '../../app/providers'
 import { Button } from '../../shared/ui/Button'
@@ -8,6 +8,32 @@ export function DriveConnect() {
   const [connected, setConnected] = useState(false)
   const [email, setEmail] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [uploadMsg, setUploadMsg] = useState<string | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleTestUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setUploadMsg(null)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const { data, error: upErr } = await supabase.functions.invoke('drive-upload', { body: fd })
+      if (upErr || !data?.ok) {
+        setUploadMsg(`Échec : ${data?.error ?? upErr?.message ?? 'inconnu'}`)
+      } else {
+        setUploadMsg(`✅ Envoyé : ${data.name}`)
+        if (data.web_link) window.open(data.web_link, '_blank')
+      }
+    } catch (err) {
+      setUploadMsg(`Échec : ${(err as Error).message}`)
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
 
   async function refreshStatus() {
     setLoading(true)
@@ -67,6 +93,13 @@ export function DriveConnect() {
           <Button variant="secondary" size="compact" onClick={connect}>
             Reconnecter
           </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <input ref={fileInputRef} type="file" className="hidden" onChange={handleTestUpload} disabled={uploading} />
+          <Button variant="secondary" size="compact" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+            {uploading ? 'Envoi…' : "Tester l'upload Drive"}
+          </Button>
+          {uploadMsg && <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">{uploadMsg}</span>}
         </div>
         {error && (
           <p className="text-[var(--fs-xs)] text-[var(--danger,#dc2626)]">{error}</p>
