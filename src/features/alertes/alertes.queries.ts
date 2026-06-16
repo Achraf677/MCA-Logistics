@@ -25,7 +25,7 @@ export async function getAlertesDetectionData(): Promise<AlertsInput> {
       .select('id, status, date, type, vehicles!vehicle_id(label)')
       .in('status', ['ouvert', 'en_cours']),
     supabase
-      .from('inspections')
+      .from('vehicle_inspections')
       .select('id, status, date, vehicles!vehicle_id(label)')
       .in('status', ['defauts', 'refuse']),
     supabase
