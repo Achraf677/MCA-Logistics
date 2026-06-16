@@ -10,6 +10,7 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 import { getSuppliers, createSupplier, updateSupplier, deactivateSupplier, deleteSupplier } from './fournisseurs.queries'
 import { CATEGORY_LABELS, getCategoryLabel, isTvaDeductible, countByCategory, normalizeSiren, validateSiren, findDuplicate } from './fournisseurs.logic'
 import type { Supplier, SupplierInsert, SupplierFilters } from './fournisseurs.types'
@@ -30,7 +31,9 @@ function FieldGroup({ label, children, error }: { label: string; children: React
 
 export function Fournisseurs() {
   const { toast } = useToast()
-  const { companyId, profile } = useProfile()
+  const { companyId } = useProfile()
+  const { can } = usePermissions()
+  const canCreate = can('tiers.fournisseurs', 'create')
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -45,7 +48,6 @@ export function Fournisseurs() {
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
-  const isPresident = profile?.role === 'president'
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -142,7 +144,7 @@ export function Fournisseurs() {
   const actifs = suppliers.filter(s => s.active).length
 
   return (
-    <Shell pageTitle="Fournisseurs" actions={['nouveau', 'export']} onAction={handleAction}>
+    <Shell pageTitle="Fournisseurs" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {loading ? <SkeletonKpis count={4} /> : <>
@@ -187,7 +189,7 @@ export function Fournisseurs() {
             icon={<Building2 size={48} />}
             title="Aucun fournisseur"
             description="Ajoutez vos fournisseurs récurrents."
-            action={{ label: '+ Nouveau fournisseur', onClick: () => openDrawer() }}
+            action={canCreate ? { label: '+ Nouveau fournisseur', onClick: () => openDrawer() } : undefined}
           />
         ) : (
           <>
@@ -319,7 +321,7 @@ export function Fournisseurs() {
             {selected?.active && (
               <Button variant="ghost" onClick={handleDeactivate} className="ml-auto text-[var(--danger)]">Désactiver</Button>
             )}
-            {selected && isPresident && (
+            {selected && can('tiers.fournisseurs', 'delete') && (
               <Button variant="ghost" onClick={() => setConfirmDelete(true)}
                 className={`${selected.active ? '' : 'ml-auto'} text-[var(--danger)]`}>
                 <Trash2 size={14} />
