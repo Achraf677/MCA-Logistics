@@ -1,369 +1,259 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { Upload, Download, Trash2, Search, X, FileText } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import {
+  Folder, FileText, Upload, FolderPlus, Trash2, ExternalLink, ChevronRight,
+} from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { SkeletonTable } from '../../shared/ui/Skeleton'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
-import { useProfile } from '../../app/providers'
-import {
-  uploadDocument, listDocuments, getDownloadUrl,
-  deleteDocument, getStorageUsage,
-} from '../../shared/lib/documents.queries'
-import {
-  DOCUMENT_CATEGORIES, QUOTA_BYTES, formatBytes, quotaStatus, fileLabel,
-} from '../../shared/lib/documents.logic'
-import type { DocumentRow, DocumentCategory } from '../../shared/lib/documents.types'
+import { supabase } from '../../app/providers'
+import { formatBytes } from '../../shared/lib/documents.logic'
 
-const ENTITY_LABEL: Record<string, string> = {
-  vehicle:     'Véhicule',
-  team_member: 'Salarié',
-  client:      'Client',
-  delivery:    'Livraison',
+type DriveItem = {
+  id: string
+  name: string
+  mimeType: string
+  webViewLink?: string
+  iconLink?: string
+  modifiedTime?: string
+  size?: string
 }
-
-// ── Barre de quota ────────────────────────────────────────────────────────────
-
-function QuotaBar({ usedBytes }: { usedBytes: number }) {
-  const pct = Math.min(100, (usedBytes / QUOTA_BYTES) * 100)
-  const status = quotaStatus(usedBytes)
-  const barColor =
-    status === 'danger'  ? 'bg-[var(--danger)]'  :
-    status === 'warning' ? 'bg-[var(--warning)]' :
-    'bg-[var(--brand)]'
-  const textColor =
-    status === 'danger'  ? 'text-[var(--danger)]'  :
-    status === 'warning' ? 'text-[var(--warning)]' :
-    'text-[var(--text)]'
-
-  return (
-    <div className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)] p-4 flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Stockage utilisé</span>
-        <span className={`font-mono text-[var(--fs-xs)] font-medium ${textColor}`}>
-          {formatBytes(usedBytes)} / {formatBytes(QUOTA_BYTES)}
-        </span>
-      </div>
-      <div className="h-2 rounded-full bg-[var(--border)] overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-300 ${barColor}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  )
-}
-
-// ── Composant principal ───────────────────────────────────────────────────────
-
-const inputCls =
-  'h-9 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-3 ' +
-  'text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] transition-colors'
 
 export function Documents() {
-  const { companyId, profile } = useProfile()
   const { toast } = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const [docs, setDocs]       = useState<DocumentRow[]>([])
+  const [path, setPath] = useState<{ id: string; name: string }[]>([
+    { id: 'root', name: 'Mon Drive' },
+  ])
+  const [folders, setFolders] = useState<DriveItem[]>([])
+  const [files, setFiles]     = useState<DriveItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [usage, setUsage]     = useState(0)
 
-  // Upload
-  const [pendingFile, setPendingFile] = useState<File | null>(null)
-  const [category, setCategory]       = useState<DocumentCategory>('Autre')
-  const [notes, setNotes]             = useState('')
-  const [uploading, setUploading]     = useState(false)
-
-  // Filtres
-  const [search, setSearch]       = useState('')
-  const [catFilter, setCatFilter] = useState('')
-
-  // Suppression
-  const [deleteTarget, setDeleteTarget] = useState<DocumentRow | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<DriveItem | null>(null)
   const [deleting, setDeleting]         = useState(false)
 
-  // ── Chargement ────────────────────────────────────────────────────────────────
+  const [showNewFolder, setShowNewFolder] = useState(false)
+  const [newFolderName, setNewFolderName] = useState('')
+  const [creating, setCreating]           = useState(false)
 
-  const load = useCallback(async () => {
+  const [uploading, setUploading] = useState(false)
+
+  const current = path[path.length - 1]
+
+  // ── Navigation ────────────────────────────────────────────────────────────────
+
+  const browse = useCallback(async (folderId: string) => {
     setLoading(true)
-    const [{ data }, used] = await Promise.all([listDocuments(), getStorageUsage()])
-    setDocs((data as DocumentRow[]) ?? [])
-    setUsage(used)
+    const { data, error } = await supabase.functions.invoke('drive-browse', {
+      body: { folder_id: folderId },
+    })
+    if (error || !data?.ok) {
+      toast(data?.error ?? error?.message ?? 'Chargement du dossier impossible', 'error')
+      setFolders([])
+      setFiles([])
+    } else {
+      setFolders(data.folders ?? [])
+      setFiles(data.files ?? [])
+    }
     setLoading(false)
-  }, [])
+  }, [toast])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { browse(current.id) }, [current.id, browse])
+
+  const enterFolder = (f: DriveItem) => setPath(p => [...p, { id: f.id, name: f.name }])
+  const goToCrumb   = (i: number) => setPath(p => p.slice(0, i + 1))
+  const openFile    = (f: DriveItem) => { if (f.webViewLink) window.open(f.webViewLink, '_blank') }
+
+  // ── Création de dossier ─────────────────────────────────────────────────────────
+
+  const createFolder = async () => {
+    const name = newFolderName.trim()
+    if (!name) return
+    setCreating(true)
+    const { data, error } = await supabase.functions.invoke('drive-create-folder', {
+      body: { name, parent_id: current.id },
+    })
+    setCreating(false)
+    if (error || !data?.ok) {
+      toast(data?.error ?? error?.message ?? 'Création du dossier impossible', 'error')
+      return
+    }
+    setNewFolderName('')
+    setShowNewFolder(false)
+    toast(`Dossier "${name}" créé`)
+    await browse(current.id)
+  }
 
   // ── Upload ────────────────────────────────────────────────────────────────────
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPendingFile(e.target.files?.[0] ?? null)
-  }
-
-  const handleUpload = async () => {
-    if (!pendingFile || !companyId) return
+  const handleUpload = async (file: File) => {
     setUploading(true)
-    const { data, error } = await uploadDocument(pendingFile, companyId, {
-      category,
-      notes: notes.trim() || undefined,
-    })
+    const fd = new FormData()
+    fd.append('file', file)
+    fd.append('folder_id', current.id)
+    const { data, error } = await supabase.functions.invoke('drive-upload', { body: fd })
     setUploading(false)
-    if (error) {
-      toast(error.message, 'error')
-    } else if (data) {
-      toast(`${pendingFile.name} ajouté`)
-      setPendingFile(null)
-      setNotes('')
-      if (fileRef.current) fileRef.current.value = ''
-      await load()
+    if (fileRef.current) fileRef.current.value = ''
+    if (error || !data?.ok) {
+      toast(data?.error ?? error?.message ?? 'Upload impossible', 'error')
+      return
     }
+    toast(`${data.name ?? file.name} ajouté`)
+    await browse(current.id)
   }
 
-  // ── Téléchargement ────────────────────────────────────────────────────────────
-
-  const handleDownload = async (doc: DocumentRow) => {
-    const url = await getDownloadUrl(doc)
-    if (!url) { toast('Impossible de générer le lien', 'error'); return }
-    window.open(url, '_blank', 'noopener')
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) handleUpload(file)
   }
 
   // ── Suppression ───────────────────────────────────────────────────────────────
 
-  const handleDeleteConfirm = async () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return
     setDeleting(true)
-    const { error } = await deleteDocument(deleteTarget)
+    const { data, error } = await supabase.functions.invoke('drive-delete', {
+      body: { file_id: deleteTarget.id },
+    })
     setDeleting(false)
-    if (error) {
-      toast(error.message, 'error')
-    } else {
-      toast('Document supprimé')
-      setDeleteTarget(null)
-      await load()
+    if (error || !data?.ok) {
+      toast(data?.error ?? error?.message ?? 'Suppression impossible', 'error')
+      return
     }
+    toast(`"${deleteTarget.name}" mis à la corbeille`)
+    setDeleteTarget(null)
+    await browse(current.id)
   }
 
-  // ── Filtrage ──────────────────────────────────────────────────────────────────
-
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return docs.filter(d => {
-      if (catFilter && d.category !== catFilter) return false
-      if (q && !d.file_name.toLowerCase().includes(q)) return false
-      return true
-    })
-  }, [docs, search, catFilter])
-
   // ── Render ────────────────────────────────────────────────────────────────────
+
+  const isEmpty = folders.length === 0 && files.length === 0
 
   return (
     <Shell pageTitle="Documents">
       <div className="max-w-4xl flex flex-col gap-5">
 
-        {/* Quota */}
-        <QuotaBar usedBytes={usage} />
+        {/* Barre du haut : fil d'Ariane + actions */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <nav className="flex items-center gap-1 text-[var(--fs-sm)] min-w-0">
+            {path.map((c, i) => (
+              <span key={c.id} className="flex items-center gap-1 min-w-0">
+                {i > 0 && <ChevronRight size={14} className="text-[var(--text-disabled)] shrink-0" />}
+                {i === path.length - 1 ? (
+                  <span className="font-medium text-[var(--text)] truncate">{c.name}</span>
+                ) : (
+                  <button
+                    onClick={() => goToCrumb(i)}
+                    className="text-[var(--text-muted)] hover:text-[var(--brand)] hover:underline truncate"
+                  >
+                    {c.name}
+                  </button>
+                )}
+              </span>
+            ))}
+          </nav>
 
-        {/* Section upload */}
-        <div className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)] p-4 flex flex-col gap-3">
-          <p className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
-            Ajouter un document
-          </p>
-          <div className="flex flex-wrap items-end gap-3">
-
-            {/* Sélecteur de fichier */}
-            <div className="flex flex-col gap-1 flex-1 min-w-[180px]">
-              <label className="text-[var(--fs-xs)] text-[var(--text-muted)]">Fichier</label>
-              <input
-                ref={fileRef}
-                id="doc-file-input"
-                type="file"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <label
-                htmlFor="doc-file-input"
-                className={`${inputCls} flex items-center gap-2 cursor-pointer hover:border-[var(--brand)] w-full`}
-              >
-                <Upload size={13} className="shrink-0 text-[var(--text-muted)]" />
-                <span className="truncate text-[var(--fs-sm)] text-[var(--text-muted)]">
-                  {pendingFile ? pendingFile.name : 'Choisir un fichier…'}
-                </span>
-              </label>
-            </div>
-
-            {/* Catégorie */}
-            <div className="flex flex-col gap-1">
-              <label className="text-[var(--fs-xs)] text-[var(--text-muted)]">Catégorie</label>
-              <select
-                value={category}
-                onChange={e => setCategory(e.target.value as DocumentCategory)}
-                className={`${inputCls} pr-8`}
-              >
-                {DOCUMENT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-              </select>
-            </div>
-
-            {/* Notes */}
-            <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
-              <label className="text-[var(--fs-xs)] text-[var(--text-muted)]">Notes (facultatif)</label>
-              <input
-                type="text"
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="Ex. Contrat 2025"
-                className={inputCls}
-              />
-            </div>
-
-            <Button
-              variant="primary"
-              onClick={handleUpload}
-              disabled={!pendingFile || uploading || !companyId}
-            >
-              <Upload size={13} />
-              {uploading ? 'Upload…' : 'Uploader'}
+          <div className="flex items-center gap-2 shrink-0">
+            <Button variant="secondary" onClick={() => setShowNewFolder(v => !v)}>
+              <FolderPlus size={14} />
+              Nouveau dossier
+            </Button>
+            <input ref={fileRef} type="file" className="hidden" onChange={onFileChange} disabled={uploading} />
+            <Button variant="primary" onClick={() => fileRef.current?.click()} disabled={uploading}>
+              <Upload size={14} />
+              {uploading ? 'Dépôt…' : 'Déposer un fichier'}
             </Button>
           </div>
-
-          {pendingFile && (
-            <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-              {formatBytes(pendingFile.size)}
-              {pendingFile.type.startsWith('image/') && ' — compression auto (max 1 Mo / 1920 px)'}
-            </p>
-          )}
         </div>
 
-        {/* Filtres */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-disabled)] pointer-events-none" />
+        {/* Champ inline nouveau dossier */}
+        {showNewFolder && (
+          <div className="flex items-center gap-2 rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)] p-3">
             <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher par nom…"
-              className="w-full h-9 pl-9 pr-9 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] text-[var(--fs-sm)] text-[var(--text)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--brand)] transition-colors"
+              autoFocus
+              value={newFolderName}
+              onChange={e => setNewFolderName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName('') } }}
+              placeholder="Nom du dossier…"
+              className="flex-1 h-9 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-3 text-[var(--fs-sm)] text-[var(--text)] focus:outline-none focus:border-[var(--brand)] transition-colors"
             />
-            {search && (
-              <button
-                onClick={() => setSearch('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-[var(--text-muted)] hover:text-[var(--text)]"
-              >
-                <X size={13} />
-              </button>
-            )}
+            <Button variant="primary" onClick={createFolder} disabled={!newFolderName.trim() || creating}>
+              {creating ? 'Création…' : 'Valider'}
+            </Button>
+            <Button variant="secondary" onClick={() => { setShowNewFolder(false); setNewFolderName('') }}>
+              Annuler
+            </Button>
           </div>
-          <select
-            value={catFilter}
-            onChange={e => setCatFilter(e.target.value)}
-            className={`${inputCls} pr-8`}
-          >
-            <option value="">Toutes les catégories</option>
-            {DOCUMENT_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-          </select>
-        </div>
+        )}
 
-        {/* Tableau */}
+        {/* Liste */}
         {loading ? (
           <SkeletonTable />
-        ) : filtered.length === 0 ? (
+        ) : isEmpty ? (
           <EmptyState
-            icon={<FileText size={40} />}
-            title="Aucun document"
-            description={
-              docs.length === 0
-                ? 'Aucun document enregistré pour l\'instant.'
-                : 'Aucun résultat pour ces filtres.'
-            }
-            action={
-              (search || catFilter)
-                ? { label: 'Réinitialiser les filtres', onClick: () => { setSearch(''); setCatFilter('') } }
-                : undefined
-            }
+            icon={<Folder size={40} />}
+            title="Ce dossier est vide"
+            description="Déposez un fichier ou créez un sous-dossier."
           />
         ) : (
-          <div className="overflow-x-auto rounded-[var(--r-lg)] border border-[var(--border)]">
-            <table className="w-full text-[var(--fs-sm)]">
-              <thead>
-                <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                  {['Nom', 'Type', 'Taille', 'Catégorie', 'Rattaché à', 'Date', ''].map(h => (
-                    <th
-                      key={h}
-                      className="px-4 py-2.5 text-left font-medium text-[var(--text-muted)] text-[var(--fs-xs)] uppercase tracking-wide whitespace-nowrap"
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)]">
-                {filtered.map(doc => (
-                  <tr key={doc.id} className="hover:bg-[var(--bg-card-hover)] transition-colors">
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-[var(--text)] truncate max-w-[200px]" title={doc.file_name}>
-                        {doc.file_name}
-                      </p>
-                      {doc.notes && (
-                        <p className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate max-w-[200px]">
-                          {doc.notes}
-                        </p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center rounded-[var(--r-sm)] bg-[var(--border)] px-1.5 py-0.5 text-[var(--fs-xs)] font-mono text-[var(--text-muted)]">
-                        {fileLabel(doc.file_name)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 font-mono text-[var(--text-muted)] whitespace-nowrap">
-                      {doc.size_bytes != null ? formatBytes(doc.size_bytes) : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {doc.category ? (
-                        <span className="inline-flex items-center rounded-[var(--r-sm)] bg-[var(--brand-soft)] px-2 py-0.5 text-[var(--fs-xs)] text-[var(--brand)]">
-                          {doc.category}
-                        </span>
-                      ) : (
-                        <span className="text-[var(--text-muted)]">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {doc.entity_type ? (
-                        <span className="inline-flex items-center rounded-[var(--r-sm)] bg-[var(--border)] px-1.5 py-0.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
-                          {ENTITY_LABEL[doc.entity_type] ?? doc.entity_type}
-                        </span>
-                      ) : (
-                        <span className="text-[var(--text-muted)]">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-[var(--text-muted)] whitespace-nowrap text-[var(--fs-xs)]">
-                      {new Date(doc.created_at).toLocaleDateString('fr-FR')}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1 justify-end">
-                        <Button
-                          variant="icon"
-                          onClick={() => handleDownload(doc)}
-                          title="Télécharger"
-                        >
-                          <Download size={14} />
-                        </Button>
-                        {profile?.role === 'president' && (
-                          <Button
-                            variant="icon"
-                            onClick={() => setDeleteTarget(doc)}
-                            title="Supprimer"
-                            className="hover:text-[var(--danger)] hover:bg-[var(--danger)]/10"
-                          >
-                            <Trash2 size={14} />
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden divide-y divide-[var(--border)]">
+            {/* Dossiers d'abord */}
+            {folders.map(f => (
+              <div key={f.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-card-hover)] transition-colors">
+                <button
+                  onClick={() => enterFolder(f)}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                >
+                  <Folder size={18} className="shrink-0 text-[var(--brand)]" />
+                  <span className="font-medium text-[var(--text)] truncate">{f.name}</span>
+                </button>
+                <Button
+                  variant="icon"
+                  onClick={() => setDeleteTarget(f)}
+                  title="Supprimer"
+                  className="hover:text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                >
+                  <Trash2 size={14} />
+                </Button>
+              </div>
+            ))}
+
+            {/* Fichiers */}
+            {files.map(f => (
+              <div key={f.id} className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--bg-card-hover)] transition-colors">
+                <button
+                  onClick={() => openFile(f)}
+                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                >
+                  <FileText size={18} className="shrink-0 text-[var(--text-muted)]" />
+                  <span className="font-medium text-[var(--text)] truncate">{f.name}</span>
+                </button>
+                {f.size && (
+                  <span className="font-mono text-[var(--fs-xs)] text-[var(--text-muted)] whitespace-nowrap">
+                    {formatBytes(Number(f.size))}
+                  </span>
+                )}
+                {f.modifiedTime && (
+                  <span className="text-[var(--fs-xs)] text-[var(--text-muted)] whitespace-nowrap">
+                    {new Date(f.modifiedTime).toLocaleDateString('fr-FR')}
+                  </span>
+                )}
+                <Button variant="icon" onClick={() => openFile(f)} title="Ouvrir">
+                  <ExternalLink size={14} />
+                </Button>
+                <Button
+                  variant="icon"
+                  onClick={() => setDeleteTarget(f)}
+                  title="Supprimer"
+                  className="hover:text-[var(--danger)] hover:bg-[var(--danger)]/10"
+                >
+                  <Trash2 size={14} />
+                </Button>
+              </div>
+            ))}
           </div>
         )}
 
@@ -371,10 +261,10 @@ export function Documents() {
 
       <ConfirmDialog
         open={deleteTarget !== null}
-        title="Supprimer le document"
-        message={`Supprimer "${deleteTarget?.file_name}" ? Cette action est irréversible.`}
-        confirmLabel="Supprimer définitivement"
-        onConfirm={handleDeleteConfirm}
+        title="Mettre à la corbeille"
+        message={`"${deleteTarget?.name}" sera mis à la corbeille de votre Drive (récupérable 30 jours).`}
+        confirmLabel="Mettre à la corbeille"
+        onConfirm={confirmDelete}
         onCancel={() => setDeleteTarget(null)}
         loading={deleting}
       />
