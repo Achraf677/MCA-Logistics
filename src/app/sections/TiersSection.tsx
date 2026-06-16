@@ -10,8 +10,8 @@ export function TiersSection() {
     <Shell pageTitle="Tiers">
       <TabbedSection
         tabs={[
-          { key: 'clients', label: 'Clients', element: <Clients /> },
-          { key: 'fournisseurs', label: 'Fournisseurs', element: <Fournisseurs /> },
+          { key: 'clients',      label: 'Clients',      element: <Clients />,      permKey: 'tiers.clients'      },
+          { key: 'fournisseurs', label: 'Fournisseurs', element: <Fournisseurs />, permKey: 'tiers.fournisseurs' },
         ]}
       />
     </Shell>
