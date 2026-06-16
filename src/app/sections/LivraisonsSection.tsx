@@ -9,9 +9,9 @@ export function LivraisonsSection() {
     <Shell pageTitle="Livraisons">
       <TabbedSection
         tabs={[
-          { key: 'livraisons', label: 'Livraisons', element: <Livraisons /> },
-          { key: 'devis', label: 'Devis', element: <Devis /> },
-          { key: 'modeles', label: 'Modèles', element: <Modeles /> },
+          { key: 'livraisons', label: 'Livraisons', element: <Livraisons />, permKey: 'livraisons.livraisons' },
+          { key: 'devis',      label: 'Devis',      element: <Devis />,      permKey: 'livraisons.devis'      },
+          { key: 'modeles',    label: 'Modèles',    element: <Modeles />,    permKey: 'livraisons.modeles'    },
         ]}
       />
     </Shell>

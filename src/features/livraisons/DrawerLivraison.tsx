@@ -11,6 +11,7 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
 import { useToast }    from '../../shared/ui/useToast'
 import { useProfile, supabase } from '../../app/providers'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney, addTva, centimesToEuros } from '../../shared/lib/money'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
@@ -70,7 +71,8 @@ const EMPTY_FORM = {
 // ── Composant ─────────────────────────────────────────────────────────────────
 
 export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
-  const { companyId, profile } = useProfile()
+  const { companyId } = useProfile()
+  const { can }       = usePermissions()
   const { toast }     = useToast()
   const isEdit        = !!delivery
 
@@ -411,7 +413,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
 
   // Suppression unitaire : président uniquement, tous statuts.
   // Une livraison facturée/payée exige une double vérification (case à cocher).
-  const canDelete = isEdit && profile?.role === 'president'
+  const canDelete = isEdit && can('livraisons.livraisons', 'delete')
   const isInvoicedLike = ['facturee', 'payee'].includes(delivery?.statut ?? '')
 
   // ── Render ────────────────────────────────────────────────────────────────────
@@ -576,7 +578,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
           </Field>
 
           <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
-            {!isDetailReadOnly && (
+            {!isDetailReadOnly && can('livraisons.livraisons', isEdit ? 'update' : 'create') && (
               <Button variant="primary" onClick={handleSave} disabled={saving}>
                 {saving ? 'Enregistrement…' : 'Enregistrer'}
               </Button>
