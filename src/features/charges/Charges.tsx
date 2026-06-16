@@ -9,7 +9,6 @@ import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { DrawerCharge } from './DrawerCharge'
 import { useToast } from '../../shared/ui/useToast'
 import { getCharges, exportChargesCSV } from './charges.queries'
-import { usePermissions } from '../../shared/permissions/usePermissions'
 import {
   CATEGORY_LABELS, CATEGORY_COLOR, formatCents, kpiSummary,
 } from './charges.logic'
@@ -19,8 +18,6 @@ import type { ActionKey } from '../../shared/actions/ActionBar'
 
 export function Charges() {
   const { toast } = useToast()
-  const { can } = usePermissions()
-  const canCreate = can('finance.charges', 'create')
   const [rows, setRows]       = useState<ChargeRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
@@ -56,7 +53,7 @@ export function Charges() {
   )
 
   return (
-    <Shell pageTitle="Charges" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
+    <Shell pageTitle="Charges" actions={['nouveau', 'export']} onAction={handleAction}>
       {/* KPIs */}
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
@@ -114,7 +111,7 @@ export function Charges() {
           description={hasFilters
             ? 'Aucun résultat pour ces filtres.'
             : 'Commencez à saisir vos charges.'}
-          action={!hasFilters && canCreate
+          action={!hasFilters
             ? { label: '+ Nouvelle charge', onClick: () => { setSelected(null); setDrawerOpen(true) } }
             : undefined}
         />

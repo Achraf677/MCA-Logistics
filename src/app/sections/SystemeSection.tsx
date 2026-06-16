@@ -12,8 +12,8 @@ export function SystemeSection() {
   const { profile } = useProfile()
 
   const tabs = [
-    { key: 'documents',  label: 'Documents',  element: <Documents />,  permKey: 'systeme.documents'  },
-    { key: 'parametres', label: 'Paramètres', element: <Parametres />, permKey: 'systeme.parametres' },
+    { key: 'documents',  label: 'Documents',  element: <Documents /> },
+    { key: 'parametres', label: 'Paramètres', element: <Parametres /> },
     ...(profile?.role === 'president'
       ? [{ key: 'administrateurs', label: 'Administrateurs', element: <Admins /> }]
       : []),

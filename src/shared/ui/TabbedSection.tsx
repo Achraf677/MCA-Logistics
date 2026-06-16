@@ -1,33 +1,22 @@
 import { useSearchParams } from 'react-router-dom'
 import type { ReactNode } from 'react'
-import { usePermissions } from '../permissions/usePermissions'
 
 export interface SubTab {
-  key:      string
-  label:    string
-  element:  ReactNode
-  permKey?: string  // clé catalogue (ex: 'livraisons.devis') — absent = toujours visible
+  key: string
+  label: string
+  element: ReactNode
 }
 
 /**
- * Page à SOUS-ONGLETS générique.
- *
- * Masquage des onglets :
- *  - Seulement quand ready && !isPresident.
- *  - Tant que !ready : tous les onglets visibles (évite tout écran vide).
- *  - Si l'URL pointe vers un onglet masqué → redirige silencieusement vers le 1er visible.
- *  - Si tous les onglets sont masqués (ready) → "Accès non autorisé".
+ * Page à SOUS-ONGLETS générique : barre de sous-onglets + contenu de l'onglet actif.
+ * L'onglet actif est piloté par le query param `?tab=<key>` → liens profonds et
+ * bouton retour navigateur fonctionnent ; défaut = 1er onglet.
+ * Réutilisé par les domaines (Finance, Flotte, …) pour ré-agencer les pages existantes.
  */
 export function TabbedSection({ tabs }: { tabs: SubTab[] }) {
   const [params, setParams] = useSearchParams()
-  const { ready, isPresident, can } = usePermissions()
-
-  const visibleTabs = (ready && !isPresident)
-    ? tabs.filter(t => !t.permKey || can(t.permKey, 'view'))
-    : tabs
-
   const current = params.get('tab')
-  const active  = visibleTabs.find(t => t.key === current) ?? visibleTabs[0]
+  const active = tabs.find(t => t.key === current) ?? tabs[0]
 
   const select = (key: string) => {
     const next = new URLSearchParams(params)
@@ -35,23 +24,12 @@ export function TabbedSection({ tabs }: { tabs: SubTab[] }) {
     setParams(next)
   }
 
-  if (visibleTabs.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 gap-2">
-        <p className="text-[var(--fs-sm)] font-medium text-[var(--text-muted)]">Accès non autorisé</p>
-        <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-          Vous n'avez pas les droits pour accéder à cette section.
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div className="flex flex-col gap-5">
       {/* Barre de sous-onglets */}
       <div className="flex gap-0 border-b border-[var(--border)] overflow-x-auto">
-        {visibleTabs.map(t => {
-          const isActive = t.key === active?.key
+        {tabs.map(t => {
+          const isActive = t.key === active.key
           return (
             <button
               key={t.key}
@@ -67,8 +45,8 @@ export function TabbedSection({ tabs }: { tabs: SubTab[] }) {
         })}
       </div>
 
-      {/* Contenu de l'onglet actif */}
-      {active && <div key={active.key}>{active.element}</div>}
+      {/* Contenu de l'onglet actif (re-monté à chaque changement d'onglet) */}
+      <div key={active.key}>{active.element}</div>
     </div>
   )
 }

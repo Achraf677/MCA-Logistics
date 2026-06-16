@@ -12,48 +12,37 @@ import type { ActionKey } from '../shared/actions/ActionBar'
 import { AssistantWidget } from '../features/assistant/AssistantWidget'
 import { AlertesBell } from '../features/alertes/AlertesBell'
 import { supabase, useProfile } from './providers'
-import { usePermissions } from '../shared/permissions/usePermissions'
 
 interface NavItem {
-  key:        string
-  label:      string
-  icon:       React.ElementType
-  path:       string
+  key: string
+  label: string
+  icon: React.ElementType
+  path: string
   featureKey: keyof typeof features
-  section?:   string  // nom de section catalogue (ex: 'Livraisons')
 }
 
 // Sidebar plate, ultra-épurée : 8 entrées, chacune = une page à sous-onglets.
 const NAV: NavItem[] = [
-  { key: 'pilotage',   label: 'Pilotage',   icon: LayoutDashboard, path: '/pilotage',     featureKey: 'pilotage',    section: 'Pilotage'   },
-  { key: 'livraisons', label: 'Livraisons', icon: Package,         path: '/livraisons',   featureKey: 'livraisons',  section: 'Livraisons' },
-  { key: 'planning',   label: 'Planning',   icon: CalendarDays,    path: '/planning-hub', featureKey: 'planningHub', section: 'Planning'   },
-  { key: 'flotte',     label: 'Flotte',     icon: Truck,           path: '/flotte',       featureKey: 'flotte',      section: 'Flotte'     },
-  { key: 'tiers',      label: 'Tiers',      icon: Users,           path: '/tiers',        featureKey: 'tiers',       section: 'Tiers'      },
-  { key: 'finance',    label: 'Finance',    icon: Wallet,          path: '/finance',      featureKey: 'finance',     section: 'Finance'    },
-  { key: 'equipe',     label: 'Équipe',     icon: UserCheck,       path: '/equipe-hub',   featureKey: 'equipeHub',   section: 'Équipe'     },
-  { key: 'systeme',    label: 'Système',    icon: Settings,        path: '/systeme',      featureKey: 'systeme',     section: 'Système'    },
+  { key: 'pilotage',   label: 'Pilotage',   icon: LayoutDashboard, path: '/pilotage',     featureKey: 'pilotage'    },
+  { key: 'livraisons', label: 'Livraisons', icon: Package,         path: '/livraisons',   featureKey: 'livraisons'  },
+  { key: 'planning',   label: 'Planning',   icon: CalendarDays,    path: '/planning-hub', featureKey: 'planningHub' },
+  { key: 'flotte',     label: 'Flotte',     icon: Truck,           path: '/flotte',       featureKey: 'flotte'      },
+  { key: 'tiers',      label: 'Tiers',      icon: Users,           path: '/tiers',        featureKey: 'tiers'       },
+  { key: 'finance',    label: 'Finance',    icon: Wallet,          path: '/finance',      featureKey: 'finance'     },
+  { key: 'equipe',     label: 'Équipe',     icon: UserCheck,       path: '/equipe-hub',   featureKey: 'equipeHub'   },
+  { key: 'systeme',    label: 'Système',    icon: Settings,        path: '/systeme',      featureKey: 'systeme'     },
 ]
 
 function SidebarNav({ collapsed }: { collapsed: boolean }) {
   const { pathname } = useLocation()
-  const { ready, isPresident, canViewSection } = usePermissions()
-
   // Pilotage est aussi actif sur la racine "/" (l'app s'ouvre sur le Dashboard).
   const isItemActive = (item: NavItem) =>
     pathname === item.path || (item.path === '/pilotage' && pathname === '/')
 
-  // Masquage sidebar : seulement quand ready && !isPresident.
-  // Pendant !ready → nav complète (anti-écran-noir).
-  const visibleNav = NAV.filter(item =>
-    features[item.featureKey] &&
-    (!(ready && !isPresident) || !item.section || canViewSection(item.section))
-  )
-
   return (
     <nav className="flex-1 overflow-y-auto py-2">
       <ul>
-        {visibleNav.map((item) => (
+        {NAV.filter((item) => features[item.featureKey]).map((item) => (
           <li key={item.key}>
             <NavLink
               to={item.path}

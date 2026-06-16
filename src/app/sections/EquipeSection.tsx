@@ -14,8 +14,8 @@ export function EquipeSection() {
     <Shell pageTitle="Équipe">
       <TabbedSection
         tabs={[
-          { key: 'membres', label: 'Membres', element: <Equipe />, permKey: 'equipe.membres' },
-          { key: 'heures',  label: 'Heures',  element: <Heures />, permKey: 'equipe.heures'  },
+          { key: 'membres', label: 'Membres', element: <Equipe /> },
+          { key: 'heures', label: 'Heures', element: <Heures /> },
         ]}
       />
     </Shell>
