@@ -101,10 +101,10 @@ export function Parametres() {
 
   return (
     <Shell pageTitle="Paramètres">
-      <div className="max-w-2xl space-y-6">
+      <div className="max-w-6xl mx-auto">
 
-        {/* En-tête société */}
-        <div className="flex items-center gap-3 p-4 rounded-[var(--r-lg)] bg-[var(--brand-soft)] border border-[var(--brand)]/20">
+        {/* En-tête société — pleine largeur */}
+        <div className="flex items-center gap-3 p-4 rounded-[var(--r-lg)] bg-[var(--brand-soft)] border border-[var(--brand)]/20 mb-6">
           <Building2 size={20} className="text-[var(--brand)] shrink-0" />
           <div>
             <p className="font-semibold text-[var(--text)]">{form.name || 'Société'}</p>
@@ -112,142 +112,153 @@ export function Parametres() {
           </div>
         </div>
 
-        {/* Section Identité */}
-        <Section title="Identité légale">
-          <Field label="Raison sociale *">
-            <Input value={form.name} onChange={v => set('name', v)} placeholder="MCA Logistics" />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="SIREN">
-              <Input value={form.siren ?? ''} onChange={v => set('siren', v)} placeholder="123456789" />
-            </Field>
-            <Field label="SIRET">
-              <Input value={form.siret ?? ''} onChange={v => set('siret', v)} placeholder="12345678900001" />
-            </Field>
-          </div>
-          <Field label="N° TVA intracommunautaire">
-            <Input value={form.tva_intra ?? ''} onChange={v => set('tva_intra', v)} placeholder="FR12345678901" />
-          </Field>
-          <Field label="Capital social (€)">
-            <input
-              type="number"
-              value={form.capital_cts != null ? form.capital_cts / 100 : ''}
-              onChange={e => {
-                const v = e.target.value
-                setForm(p => ({ ...p, capital_cts: v ? Math.round(parseFloat(v) * 100) : null }))
-                setDirty(true)
-              }}
-              placeholder="7200"
-              className={inputCls}
-            />
-          </Field>
-        </Section>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
 
-        {/* Section Coordonnées */}
-        <Section title="Coordonnées">
-          <AddressAutocomplete
-            label="Adresse du dépôt"
-            value={form.address ?? ''}
-            placeholder="17 rue de la Chapelle, 67540 Ostwald"
-            onChange={v => {
-              setForm(p => ({ ...p, address: v, depot_lat: null, depot_lng: null }))
-              setDirty(true)
-            }}
-            onSelect={s => {
-              setForm(p => ({ ...p, address: s.address, depot_lat: s.lat, depot_lng: s.lng }))
-              setDirty(true)
-            }}
-          />
-          {form.depot_lat != null && form.depot_lng != null && (
-            <p className="text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
-              📍 {form.depot_lat.toFixed(5)}, {form.depot_lng.toFixed(5)}
-            </p>
-          )}
-        </Section>
+          {/* Colonne gauche */}
+          <div className="flex flex-col gap-6">
 
-        {/* Section Bancaire */}
-        <Section title="Informations bancaires">
-          <Field label="IBAN">
-            <Input value={form.iban ?? ''} onChange={v => set('iban', v.replace(/\s/g, ''))}
-              placeholder="FR7616958000019515253956892" />
-          </Field>
-          <Field label="BIC / SWIFT">
-            <Input value={form.bic ?? ''} onChange={v => set('bic', v)} placeholder="QNTOFRP1XXX" />
-          </Field>
-          {form.iban && (
-            <p className="text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
-              {form.iban.replace(/(.{4})/g, '$1 ').trim()}
-            </p>
-          )}
-        </Section>
+            {/* Section Identité */}
+            <Section title="Identité légale">
+              <Field label="Raison sociale *">
+                <Input value={form.name} onChange={v => set('name', v)} placeholder="MCA Logistics" />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="SIREN">
+                  <Input value={form.siren ?? ''} onChange={v => set('siren', v)} placeholder="123456789" />
+                </Field>
+                <Field label="SIRET">
+                  <Input value={form.siret ?? ''} onChange={v => set('siret', v)} placeholder="12345678900001" />
+                </Field>
+              </div>
+              <Field label="N° TVA intracommunautaire">
+                <Input value={form.tva_intra ?? ''} onChange={v => set('tva_intra', v)} placeholder="FR12345678901" />
+              </Field>
+              <Field label="Capital social (€)">
+                <input
+                  type="number"
+                  value={form.capital_cts != null ? form.capital_cts / 100 : ''}
+                  onChange={e => {
+                    const v = e.target.value
+                    setForm(p => ({ ...p, capital_cts: v ? Math.round(parseFloat(v) * 100) : null }))
+                    setDirty(true)
+                  }}
+                  placeholder="7200"
+                  className={inputCls}
+                />
+              </Field>
+            </Section>
 
-        {/* Section Conformité */}
-        <Section title="Conformité / Documents société">
-          <Field label="Licence de transport / inscription registre (DREAL)">
-            <input
-              type="date"
-              value={form.transport_license_expiry ?? ''}
-              onChange={e => {
-                setForm(p => ({ ...p, transport_license_expiry: e.target.value || null }))
-                setDirty(true)
-              }}
-              className={inputCls}
-            />
-          </Field>
-          <Field label="Assurance RC pro + marchandises">
-            <input
-              type="date"
-              value={form.rc_pro_expiry ?? ''}
-              onChange={e => {
-                setForm(p => ({ ...p, rc_pro_expiry: e.target.value || null }))
-                setDirty(true)
-              }}
-              className={inputCls}
-            />
-          </Field>
-        </Section>
+            {/* Section Coordonnées */}
+            <Section title="Coordonnées">
+              <AddressAutocomplete
+                label="Adresse du dépôt"
+                value={form.address ?? ''}
+                placeholder="17 rue de la Chapelle, 67540 Ostwald"
+                onChange={v => {
+                  setForm(p => ({ ...p, address: v, depot_lat: null, depot_lng: null }))
+                  setDirty(true)
+                }}
+                onSelect={s => {
+                  setForm(p => ({ ...p, address: s.address, depot_lat: s.lat, depot_lng: s.lng }))
+                  setDirty(true)
+                }}
+              />
+              {form.depot_lat != null && form.depot_lng != null && (
+                <p className="text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
+                  📍 {form.depot_lat.toFixed(5)}, {form.depot_lng.toFixed(5)}
+                </p>
+              )}
+            </Section>
 
-        {/* Actions */}
-        <div className="flex items-center gap-3 pt-2">
-          <Button variant="primary" onClick={handleSave} disabled={saving || !dirty}>
-            {saving ? 'Enregistrement…' : 'Enregistrer les modifications'}
-          </Button>
-          {!dirty && !saving && (
-            <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Aucune modification</span>
-          )}
-        </div>
+            {/* Section Bancaire */}
+            <Section title="Informations bancaires">
+              <Field label="IBAN">
+                <Input value={form.iban ?? ''} onChange={v => set('iban', v.replace(/\s/g, ''))}
+                  placeholder="FR7616958000019515253956892" />
+              </Field>
+              <Field label="BIC / SWIFT">
+                <Input value={form.bic ?? ''} onChange={v => set('bic', v)} placeholder="QNTOFRP1XXX" />
+              </Field>
+              {form.iban && (
+                <p className="text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
+                  {form.iban.replace(/(.{4})/g, '$1 ').trim()}
+                </p>
+              )}
+            </Section>
 
-        {/* Section Google Drive */}
-        <Section title="Google Drive">
-          <DriveConnect />
-        </Section>
-
-        {/* Section Accès Drive — président uniquement */}
-        {profile?.role === 'president' && (
-          <Section title="Accès Drive">
-            <DriveAccess />
-          </Section>
-        )}
-
-        {/* Section Compte */}
-        <Section title="Compte">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[var(--fs-body)] text-[var(--text)]">{profile?.full_name ?? '—'}</p>
-              {profile?.email && (
-                <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">{profile.email}</p>
+            {/* Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              <Button variant="primary" onClick={handleSave} disabled={saving || !dirty}>
+                {saving ? 'Enregistrement…' : 'Enregistrer les modifications'}
+              </Button>
+              {!dirty && !saving && (
+                <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Aucune modification</span>
               )}
             </div>
-            <button
-              onClick={handleLogout}
-              disabled={logoutLoading}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--r-md)] border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text-muted)] hover:text-[var(--danger)] hover:border-[var(--danger)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <LogOut size={14} />
-              {logoutLoading ? 'Déconnexion…' : 'Se déconnecter'}
-            </button>
           </div>
-        </Section>
+
+          {/* Colonne droite */}
+          <div className="flex flex-col gap-6">
+
+            {/* Section Conformité */}
+            <Section title="Conformité / Documents société">
+              <Field label="Licence de transport / inscription registre (DREAL)">
+                <input
+                  type="date"
+                  value={form.transport_license_expiry ?? ''}
+                  onChange={e => {
+                    setForm(p => ({ ...p, transport_license_expiry: e.target.value || null }))
+                    setDirty(true)
+                  }}
+                  className={inputCls}
+                />
+              </Field>
+              <Field label="Assurance RC pro + marchandises">
+                <input
+                  type="date"
+                  value={form.rc_pro_expiry ?? ''}
+                  onChange={e => {
+                    setForm(p => ({ ...p, rc_pro_expiry: e.target.value || null }))
+                    setDirty(true)
+                  }}
+                  className={inputCls}
+                />
+              </Field>
+            </Section>
+
+            {/* Section Google Drive */}
+            <Section title="Google Drive">
+              <DriveConnect />
+            </Section>
+
+            {/* Section Accès Drive — président uniquement */}
+            {profile?.role === 'president' && (
+              <Section title="Accès Drive">
+                <DriveAccess />
+              </Section>
+            )}
+
+            {/* Section Compte */}
+            <Section title="Compte">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[var(--fs-body)] text-[var(--text)]">{profile?.full_name ?? '—'}</p>
+                  {profile?.email && (
+                    <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">{profile.email}</p>
+                  )}
+                </div>
+                <button
+                  onClick={handleLogout}
+                  disabled={logoutLoading}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--r-md)] border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text-muted)] hover:text-[var(--danger)] hover:border-[var(--danger)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <LogOut size={14} />
+                  {logoutLoading ? 'Déconnexion…' : 'Se déconnecter'}
+                </button>
+              </div>
+            </Section>
+          </div>
+        </div>
       </div>
     </Shell>
   )
