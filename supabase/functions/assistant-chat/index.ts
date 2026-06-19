@@ -305,7 +305,11 @@ Deno.serve(async (req: Request) => {
   const knowledge = typeof body.knowledge === 'string' ? body.knowledge.slice(0, 20000) : '';
   const currentTab = typeof body.currentTab === 'string' ? body.currentTab.slice(0, 80) : '';
 
+  const nowFr = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+  const nowIso = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  const curYear = nowIso.slice(0, 4);
   let system = SYSTEM_BASE;
+  system += `\n\n# DATE DU JOUR\nNous sommes le ${nowFr} (${nowIso}). Utilise EXCLUSIVEMENT cette date comme référence temporelle. Quand l'utilisateur dit « aujourd'hui », « ce mois », « ce mois-ci », « cette année » ou un mois sans année (ex. « juin »), rapporte-le à cette date : l'année courante est ${curYear}. Ne déduis JAMAIS l'année toi-même et n'utilise jamais une autre année par défaut.`;
   if (knowledge) system += `\n\n# CARTE DU SITE\n${knowledge}`;
   if (currentTab) system += `\n\n# CONTEXTE\nL'utilisateur consulte actuellement l'onglet : ${currentTab}.`;
 
