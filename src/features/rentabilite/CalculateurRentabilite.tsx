@@ -14,21 +14,21 @@ import L from 'leaflet'
 
 /* Tokens couleur propres au calculateur */
 const C = {
-  ink:       '#0B1F3A',
-  navy:      '#13294B',
-  steel:     '#1E3A5F',
-  amber:     '#F59E0B',
-  profit:    '#15803D',
-  profitBg:  '#DCFCE7',
-  warn:      '#B45309',
-  warnBg:    '#FEF3C7',
-  loss:      '#DC2626',
-  lossBg:    '#FEE2E2',
-  bg:        '#EEF2F7',
-  card:      '#FFFFFF',
-  border:    '#DDE4ED',
-  muted:     '#64748B',
-  faint:     '#94A3B8',
+  ink:      '#f1f3f5',
+  navy:     '#e9ecf1',
+  steel:    '#cbd3df',
+  amber:    '#ffd60a',
+  profit:   '#06d6a0',
+  profitBg: 'rgba(6, 214, 160, 0.15)',
+  warn:     '#ffd60a',
+  warnBg:   'rgba(255, 214, 10, 0.15)',
+  loss:     '#ff6b35',
+  lossBg:   'rgba(255, 107, 53, 0.15)',
+  bg:       '#1a1d22',
+  card:     '#2a2f37',
+  border:   '#3a4150',
+  muted:    '#adb5bd',
+  faint:    '#6c757d',
 } as const
 
 const eur0 = (n: number) =>
@@ -99,7 +99,7 @@ function Field({ label, suffix, value, onChange, step = 1, min = 0 }: {
   return (
     <label className="flex flex-col gap-1">
       <span className="text-[11px] uppercase tracking-wide" style={{ color: C.muted }}>{label}</span>
-      <div className="flex items-center rounded-lg overflow-hidden" style={{ border: `1px solid ${C.border}`, background: '#fff' }}>
+      <div className="flex items-center rounded-lg overflow-hidden" style={{ border: `1px solid ${C.border}`, background: C.card }}>
         <input
           type="number" step={step} min={min} value={value}
           onChange={(e) => onChange(e.target.value === '' ? '' : parseFloat(e.target.value))}
@@ -121,23 +121,23 @@ function Row({ item, onChange, onDelete, color }: {
         value={item.label}
         onChange={(e) => onChange({ ...item, label: e.target.value })}
         className="col-span-5 px-2 py-1.5 text-sm rounded-md outline-none"
-        style={{ border: `1px solid ${C.border}`, color: C.ink }}
+        style={{ border: `1px solid ${C.border}`, color: C.ink, background: C.card }}
       />
       <select
         value={item.freq}
         onChange={(e) => onChange({ ...item, freq: e.target.value as Freq })}
         className="col-span-3 px-1.5 py-1.5 text-xs rounded-md outline-none"
-        style={{ border: `1px solid ${C.border}`, color: C.muted, background: '#fff' }}
+        style={{ border: `1px solid ${C.border}`, color: C.muted, background: C.card }}
       >
         <option value="mensuel">/ mois</option>
         <option value="parJour">/ jour</option>
         <option value="auKm">/ km</option>
       </select>
-      <div className="col-span-3 flex items-center rounded-md overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
+      <div className="col-span-3 flex items-center rounded-md overflow-hidden" style={{ border: `1px solid ${C.border}`, background: C.card }}>
         <input
           type="number" step="0.01" value={item.montant}
           onChange={(e) => onChange({ ...item, montant: e.target.value === '' ? '' : parseFloat(e.target.value) })}
-          className="font-mono w-full px-2 py-1.5 text-sm outline-none text-right"
+          className="font-mono w-full px-2 py-1.5 text-sm outline-none text-right bg-transparent"
           style={{ color }}
         />
         <span className="text-[10px] px-1.5" style={{ color: C.faint }}>€</span>
@@ -538,7 +538,7 @@ export function CalculateurRentabilite() {
               onChange={(e) => setSelectedId(e.target.value)}
               disabled={opBusy}
               className="text-sm rounded-lg px-2 py-1.5 outline-none"
-              style={{ border: `1px solid ${C.border}`, color: C.ink, background: '#fff', minWidth: 120, maxWidth: 220 }}
+              style={{ border: `1px solid ${C.border}`, color: C.ink, background: C.card, minWidth: 120, maxWidth: 220 }}
             >
               <option value="">— aucun —</option>
               {profils.map((p) => (
@@ -602,7 +602,7 @@ export function CalculateurRentabilite() {
               onKeyDown={(e) => { if (e.key === 'Enter') doSaveProfil(); if (e.key === 'Escape') setNewName(null) }}
               placeholder="Nom du profil"
               className="text-sm px-2 py-1.5 rounded-lg outline-none"
-              style={{ border: `1px solid ${C.border}`, color: C.ink, minWidth: 160 }}
+              style={{ border: `1px solid ${C.border}`, color: C.ink, background: C.card, minWidth: 160 }}
             />
             <button
               onClick={doSaveProfil}
@@ -669,7 +669,7 @@ export function CalculateurRentabilite() {
           <section className="rounded-2xl p-5" style={{ background: C.card, border: `1px solid ${C.border}` }}>
             <div className="flex items-center gap-2 mb-4">
               <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: C.bg, color: C.muted }}>01</span>
-              <h2 className="font-semibold">Paramètres d'exploitation</h2>
+              <h2 className="font-semibold" style={{ color: C.ink }}>Paramètres d'exploitation</h2>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               <Field label="Jours travaillés / mois" value={params.jours}     onChange={(v) => setParams({ ...params, jours: v })} />
@@ -693,7 +693,7 @@ export function CalculateurRentabilite() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: C.bg, color: C.muted }}>02</span>
-                <h2 className="font-semibold">Recettes</h2>
+                <h2 className="font-semibold" style={{ color: C.ink }}>Recettes</h2>
               </div>
               <button
                 onClick={() => setRecettes([...recettes, { id: uid(), label: 'Nouvelle recette', freq: 'parJour', montant: 0 }])}
@@ -727,7 +727,7 @@ export function CalculateurRentabilite() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: C.bg, color: C.muted }}>03</span>
-                <h2 className="font-semibold">Dépenses</h2>
+                <h2 className="font-semibold" style={{ color: C.ink }}>Dépenses</h2>
               </div>
               <button
                 onClick={() => setDepenses([...depenses, { id: uid(), label: 'Nouvelle dépense', freq: 'mensuel', montant: 0 }])}
@@ -776,7 +776,7 @@ export function CalculateurRentabilite() {
           </div>
 
           {/* Seuil de rentabilité */}
-          <div className="rounded-2xl p-5" style={{ background: C.ink }}>
+          <div className="rounded-2xl p-5" style={{ background: C.bg }}>
             <div className="flex items-center justify-between mb-1">
               <h3 className="font-semibold text-white text-sm">Seuil de rentabilité</h3>
               <span className="font-mono text-xs" style={{ color: C.amber }}>point mort</span>
@@ -810,7 +810,7 @@ export function CalculateurRentabilite() {
 
           {/* Graphique CVP */}
           <div className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <h3 className="font-semibold text-sm mb-2">CA vs charges selon le nombre de jours</h3>
+            <h3 className="font-semibold text-sm mb-2" style={{ color: C.ink }}>CA vs charges selon le nombre de jours</h3>
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={r.cvp} margin={{ top: 5, right: 8, left: -8, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
@@ -823,7 +823,7 @@ export function CalculateurRentabilite() {
                 <Tooltip
                   formatter={(v: unknown) => eur0(Number(v))}
                   labelFormatter={(l: unknown) => `${l} jours`}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.border}` }}
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.ink }}
                 />
                 <Line type="monotone" dataKey="CA"      stroke={C.profit} strokeWidth={2} dot={false} />
                 <Line type="monotone" dataKey="Charges" stroke={C.loss}   strokeWidth={2} dot={false} />
@@ -859,7 +859,7 @@ export function CalculateurRentabilite() {
 
           {/* Répartition des charges */}
           <div className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <h3 className="font-semibold text-sm mb-2">Répartition des charges / mois</h3>
+            <h3 className="font-semibold text-sm mb-2" style={{ color: C.ink }}>Répartition des charges / mois</h3>
             <ResponsiveContainer width="100%" height={Math.max(120, r.breakdown.length * 26)}>
               <BarChart data={r.breakdown} layout="vertical" margin={{ top: 0, right: 12, left: 0, bottom: 0 }}>
                 <XAxis type="number" hide />
@@ -867,7 +867,7 @@ export function CalculateurRentabilite() {
                   tick={{ fontSize: 10, fill: C.muted }} width={120} tickLine={false} axisLine={false} />
                 <Tooltip
                   formatter={(v: unknown) => eur0(Number(v))}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.border}` }}
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.ink }}
                   cursor={{ fill: C.bg }}
                 />
                 <Bar dataKey="value" radius={[0, 4, 4, 0] as [number, number, number, number]}>
@@ -881,7 +881,7 @@ export function CalculateurRentabilite() {
 
           {/* Projection annuelle + IS */}
           <div className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <h3 className="font-semibold text-sm mb-3">Projection annuelle</h3>
+            <h3 className="font-semibold text-sm mb-3" style={{ color: C.ink }}>Projection annuelle</h3>
             <div className="flex flex-col gap-2 text-sm">
               <div className="flex justify-between">
                 <span style={{ color: C.muted }}>Résultat avant IS</span>
@@ -892,7 +892,7 @@ export function CalculateurRentabilite() {
                 <span className="font-mono">{eur0(r.is)}</span>
               </div>
               <div className="flex justify-between pt-2" style={{ borderTop: `1px solid ${C.border}` }}>
-                <span className="font-semibold">Résultat net</span>
+                <span className="font-semibold" style={{ color: C.ink }}>Résultat net</span>
                 <span className="font-mono font-semibold" style={{ color: r.netAnnuel >= 0 ? C.profit : C.loss }}>
                   {eur0(r.netAnnuel)}
                 </span>
@@ -909,7 +909,7 @@ export function CalculateurRentabilite() {
 
       {/* ── Simulateur de course ───────────────────────────────────────────────── */}
       <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
-        <div className="px-5 py-4" style={{ background: C.navy }}>
+        <div className="px-5 py-4" style={{ background: C.bg }}>
           <h2 className="font-semibold text-white">Simulateur de course (go / no-go)</h2>
           <p className="text-xs mt-0.5" style={{ color: '#9DB2CE' }}>
             Calcule si une course est rentable · coûts issus des hypothèses ci-dessus, mis à jour en direct
@@ -936,7 +936,7 @@ export function CalculateurRentabilite() {
                     onKeyDown={(e) => e.key === 'Enter' && calculerTrajet()}
                     placeholder="Ex. Strasbourg"
                     className="px-3 py-2 text-sm rounded-lg outline-none"
-                    style={{ border: `1px solid ${C.border}`, color: C.ink, background: '#fff' }}
+                    style={{ border: `1px solid ${C.border}`, color: C.ink, background: C.card }}
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -948,7 +948,7 @@ export function CalculateurRentabilite() {
                     onKeyDown={(e) => e.key === 'Enter' && calculerTrajet()}
                     placeholder="Ex. Colmar"
                     className="px-3 py-2 text-sm rounded-lg outline-none"
-                    style={{ border: `1px solid ${C.border}`, color: C.ink, background: '#fff' }}
+                    style={{ border: `1px solid ${C.border}`, color: C.ink, background: C.card }}
                   />
                 </label>
               </div>
