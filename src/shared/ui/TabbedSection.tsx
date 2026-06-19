@@ -49,17 +49,17 @@ export function TabbedSection({ tabs }: { tabs: SubTab[] }) {
   return (
     <div className="flex flex-col gap-5">
       {/* Barre de sous-onglets */}
-      <div className="flex gap-0 border-b border-[var(--border)] overflow-x-auto">
+      <div className="flex gap-1 border-b border-[var(--border)] overflow-x-auto">
         {visibleTabs.map(t => {
           const isActive = t.key === active?.key
           return (
             <button
               key={t.key}
               onClick={() => select(t.key)}
-              className={`px-4 py-2 text-[var(--fs-sm)] whitespace-nowrap transition-colors -mb-px
+              className={`px-4 py-2.5 text-[var(--fs-sm)] whitespace-nowrap transition-colors -mb-px
                 ${isActive
                   ? 'text-[var(--brand)] border-b-2 border-[var(--brand)] font-medium'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card)] rounded-t-[var(--r-sm)]'}`}
             >
               {t.label}
             </button>
