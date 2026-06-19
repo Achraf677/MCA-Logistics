@@ -103,26 +103,38 @@ export function Dashboard() {
               {loading ? (
                 <Skeleton className="h-24" />
               ) : (
-                <div className="flex items-end gap-2 h-24">
-                  {trend.map((t, i) => {
-                    const height = maxCa > 0 ? Math.max((t.caHtCts / maxCa) * 100, 4) : 4
-                    const isCurrent = i === trend.length - 1
-                    return (
-                      <div key={t.month} className="flex flex-col items-center gap-1 flex-1">
-                        <span className="text-[10px] text-[var(--text-disabled)] font-mono">
-                          {t.caHtCts > 0 ? `${Math.round(t.caHtCts / 100)}€` : ''}
-                        </span>
-                        <div
-                          className={`w-full rounded-t-[3px] transition-all ${
-                            isCurrent ? 'bg-[var(--brand)]' : 'bg-[var(--brand)]/30'
-                          }`}
-                          style={{ height: `${height}%` }}
-                          title={`${t.month} : ${formatCents(t.caHtCts)} — ${t.nb} livraison${t.nb !== 1 ? 's' : ''}`}
-                        />
-                        <span className="text-[10px] text-[var(--text-muted)] capitalize">{t.month}</span>
-                      </div>
-                    )
-                  })}
+                <div>
+                  {/* Zone barres à hauteur fixe — chaque colonne occupe toute la hauteur et aligne la barre en bas */}
+                  <div className="flex gap-2 h-24">
+                    {trend.map((t, i) => {
+                      const height = maxCa > 0 ? Math.max((t.caHtCts / maxCa) * 100, 4) : 4
+                      const isCurrent = i === trend.length - 1
+                      return (
+                        <div key={t.month} className="flex-1 h-full flex flex-col justify-end">
+                          {t.caHtCts > 0 && (
+                            <span className="text-[10px] text-[var(--text-disabled)] font-mono text-center block mb-0.5">
+                              {Math.round(t.caHtCts / 100)}€
+                            </span>
+                          )}
+                          <div
+                            className={`w-full rounded-t-[3px] transition-all ${
+                              isCurrent ? 'bg-[var(--brand)]' : 'bg-[var(--brand)]/30'
+                            }`}
+                            style={{ height: `${height}%` }}
+                            title={`${t.month} : ${formatCents(t.caHtCts)} — ${t.nb} livraison${t.nb !== 1 ? 's' : ''}`}
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {/* Rangée labels mois séparée */}
+                  <div className="flex gap-2 mt-1">
+                    {trend.map(t => (
+                      <span key={t.month} className="flex-1 text-[10px] text-[var(--text-muted)] capitalize text-center">
+                        {t.month}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
