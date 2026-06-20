@@ -10,6 +10,7 @@ interface KpiCardProps {
   icon?: ReactNode
   delta?: { value: string; dir: 'up' | 'down' }
   progress?: number
+  spark?: number[]
   /** @deprecated conservé pour compat — n'affecte plus la couleur */
   accent?: boolean
 }
@@ -41,16 +42,23 @@ const toneGradient: Record<Tone, string> = {
   danger:  'linear-gradient(90deg, #ff5247, #e63946)',
 }
 
-export function KpiCard({ label, value, sub, tone = 'neutral', icon, delta, progress }: KpiCardProps) {
+export function KpiCard({ label, value, sub, tone = 'neutral', icon, delta, progress, spark }: KpiCardProps) {
   return (
     <div className={`bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] px-5 py-4 flex flex-col gap-1 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-1 ${toneHoverBorder[tone]}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">{label}</span>
-        {icon && (
-          <span className={`w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center shrink-0 ${tonePill[tone]}`}>
-            {icon}
-          </span>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {spark && spark.length > 1 && (() => {
+            const mx = Math.max(...spark, 1), mn = Math.min(...spark, 0), sp = mx - mn || 1
+            const pts = spark.map((v,i)=>`${(i*74/(spark.length-1)).toFixed(1)},${(26-((v-mn)/sp)*22).toFixed(1)}`).join(' ')
+            return <svg width="74" height="28" viewBox="0 0 74 28"><polyline points={pts} fill="none" stroke="var(--brand)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.9"/></svg>
+          })()}
+          {icon && (
+            <span className={`w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center shrink-0 ${tonePill[tone]}`}>
+              {icon}
+            </span>
+          )}
+        </div>
       </div>
       <span className="font-mono font-semibold leading-none text-[var(--text)] mt-1" style={{ fontSize: 'var(--fs-kpi)' }}>
         {value}
