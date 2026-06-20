@@ -1,6 +1,6 @@
 import { useState, createContext, useContext } from 'react'
 import type { ReactNode } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, CalendarDays, Truck,
   Users, Wallet, UserCheck, Settings,
@@ -91,9 +91,11 @@ const ShellNestContext = createContext(false)
 export function Shell({ children, pageTitle, actions = [], onAction }: ShellProps) {
   const nested = useContext(ShellNestContext)
   const location = useLocation()
+  const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
+  const [q, setQ] = useState('')
   const { profile } = useProfile()
 
   const handleLogout = async () => {
@@ -139,11 +141,14 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
         {/* Logo */}
         <div className="flex items-center justify-between h-[var(--topbar-h)] px-3 border-b border-[var(--border)] shrink-0">
           {!collapsed && (
-            <span className="inline-flex items-center font-display font-bold text-[var(--fs-h3)] text-[var(--brand)] tracking-tight">
-              <span className="inline-grid place-items-center w-6 h-6 rounded-[var(--r-md)] mr-2 shrink-0 font-display font-bold text-white text-[11px]"
+            <div className="flex items-center gap-3 min-w-0">
+              <span className="inline-grid place-items-center w-10 h-10 rounded-[var(--r-lg)] shrink-0 font-display font-bold text-white text-[16px]"
                     style={{ background: 'linear-gradient(135deg, var(--brand), var(--brand-deep))' }}>M</span>
-              MCA Logistics
-            </span>
+              <div className="flex flex-col min-w-0">
+                <span className="font-display font-bold text-[var(--fs-h3)] text-[var(--text)] leading-tight">MCA Logistics</span>
+                <span className="text-[var(--fs-xs)] text-[var(--text-muted)] leading-tight">Pilotage interne</span>
+              </div>
+            </div>
           )}
           <button
             onClick={() => { setCollapsed(!collapsed); setSidebarOpen(false) }}
@@ -163,30 +168,45 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
 
         <SidebarNav collapsed={collapsed} />
 
-        {/* Bas de sidebar : déconnexion */}
-        <div className="shrink-0 border-t border-[var(--border)] p-2">
-          {!collapsed && profile && (
-            <p className="px-3 py-1 text-[var(--fs-xs)] text-[var(--text-muted)] truncate">
-              {profile.full_name}
-            </p>
+        {/* Bas de sidebar : carte utilisateur */}
+        <div className="shrink-0 border-t border-[var(--border)] p-3">
+          {!collapsed && profile ? (
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-full grid place-items-center text-white font-display font-semibold text-[var(--fs-sm)] shrink-0"
+                   style={{ background: 'var(--grad)' }}>
+                {profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[var(--fs-sm)] font-medium text-[var(--text)] truncate leading-tight">{profile.full_name}</p>
+                <p className="text-[var(--fs-xs)] text-[var(--text-muted)] leading-tight">Président</p>
+              </div>
+              <button
+                onClick={handleLogout}
+                disabled={logoutLoading}
+                title="Se déconnecter"
+                className="p-1.5 text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--bg-card-hover)] rounded-[var(--r-sm)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleLogout}
+              disabled={logoutLoading}
+              title="Se déconnecter"
+              className="flex items-center justify-center w-full p-2 rounded-[var(--r-md)] text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--bg-card-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <LogOut size={15} />
+            </button>
           )}
-          <button
-            onClick={handleLogout}
-            disabled={logoutLoading}
-            title={collapsed ? 'Se déconnecter' : undefined}
-            className="flex items-center gap-2.5 w-full px-3 py-2 rounded-[var(--r-md)] text-[var(--fs-sm)] text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--bg-card-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <LogOut size={15} className="shrink-0" />
-            {!collapsed && <span>{logoutLoading ? 'Déconnexion…' : 'Se déconnecter'}</span>}
-          </button>
         </div>
       </aside>
 
       {/* Zone principale */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Topbar */}
-        <header className="flex items-center justify-between h-[var(--topbar-h)] px-4 bg-[var(--bg-elevated)] border-b border-[var(--border)] shrink-0">
-          <div className="flex items-center gap-3">
+        <header className="flex items-center h-[var(--topbar-h)] px-4 gap-3 bg-[var(--bg-elevated)] border-b border-[var(--border)] shrink-0">
+          <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => setSidebarOpen(true)}
               className="p-1.5 text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)] rounded-[var(--r-sm)] transition-colors lg:hidden"
@@ -198,9 +218,27 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
               {pageTitle}
             </h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex-1 max-w-[420px] mx-4 hidden md:block">
+            <input
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && q.trim()) navigate('/livraisons?q=' + encodeURIComponent(q.trim())) }}
+              placeholder="Rechercher une livraison, un client…"
+              className="w-full h-9 rounded-[var(--r-pill)] bg-[var(--bg-card)] border border-[var(--border)] px-4 text-[var(--fs-sm)] text-[var(--text)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--brand)] transition-colors"
+            />
+          </div>
+          <div className="flex items-center gap-2 ml-auto shrink-0">
             <ActionBar actions={actions} onAction={onAction} />
             <AlertesBell />
+            {profile && (
+              <div
+                className="w-9 h-9 rounded-full grid place-items-center text-white font-display font-semibold text-[var(--fs-sm)] shrink-0"
+                style={{ background: 'var(--grad)' }}
+                title={profile.full_name}
+              >
+                {profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+              </div>
+            )}
           </div>
         </header>
 
