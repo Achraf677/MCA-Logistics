@@ -65,7 +65,8 @@ export function Rentabilite() {
             <KpiCard label="CA HT"         value={fmt(totals.caHt)} tone="success" icon={<Euro size={18} />} />
             <KpiCard label="Total charges"  value={fmt(totals.charges + totals.carburant + totals.entretiens)} tone="warning" icon={<TrendingDown size={18} />} />
             <KpiCard label="Résultat brut"  value={fmt(totals.resultat)} tone={totals.resultat >= 0 ? 'success' : 'danger'} icon={<Wallet size={18} />} />
-            <KpiCard label="Taux de marge"  value={fmtMarge(margeRatio(totals))} tone="violet" icon={<Percent size={18} />} />
+            <KpiCard label="Taux de marge"  value={fmtMarge(margeRatio(totals))} tone="violet" icon={<Percent size={18} />}
+              progress={margeRatio(totals) != null ? Math.round(margeRatio(totals)! * 100) : undefined} />
           </div>
         )}
 

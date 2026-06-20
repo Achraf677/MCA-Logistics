@@ -67,9 +67,9 @@ export function Dashboard() {
                   icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M12 3v18M8 7h6a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h7"/></svg>} />
                 <KpiCard label="Livraisons" value={kpis!.nbLivraisons} tone="info"
                   icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 8l9-4 9 4-9 4-9-4Z"/><path d="M3 8v8l9 4 9-4V8"/></svg>} />
-                <KpiCard label="% Facturé" value={`${kpis!.factureePct} %`} tone="violet"
+                <KpiCard label="% Facturé" value={`${kpis!.factureePct} %`} tone="violet" progress={kpis!.factureePct}
                   icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M9 12l2 2 4-4"/></svg>} />
-                <KpiCard label="% Payé" value={`${kpis!.payeePct} %`} tone="warning"
+                <KpiCard label="% Payé" value={`${kpis!.payeePct} %`} tone="warning" progress={kpis!.payeePct}
                   icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>} />
               </>
             )}

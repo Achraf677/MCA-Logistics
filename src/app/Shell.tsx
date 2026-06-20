@@ -139,7 +139,9 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
         {/* Logo */}
         <div className="flex items-center justify-between h-[var(--topbar-h)] px-3 border-b border-[var(--border)] shrink-0">
           {!collapsed && (
-            <span className="font-display font-bold text-[var(--fs-h3)] text-[var(--brand)] tracking-tight">
+            <span className="inline-flex items-center font-display font-bold text-[var(--fs-h3)] text-[var(--brand)] tracking-tight">
+              <span className="inline-grid place-items-center w-6 h-6 rounded-[var(--r-md)] mr-2 shrink-0 font-display font-bold text-white text-[11px]"
+                    style={{ background: 'linear-gradient(135deg, var(--brand), var(--brand-deep))' }}>M</span>
               MCA Logistics
             </span>
           )}
