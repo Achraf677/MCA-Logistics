@@ -208,7 +208,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
         <main
           className="flex-1 overflow-auto p-4 md:p-6"
           style={{ backgroundImage:
-            'radial-gradient(900px 400px at 15% -5%, rgba(76,141,255,.06), transparent 70%), radial-gradient(700px 360px at 95% 0%, rgba(255,61,77,.05), transparent 70%)' }}
+            'radial-gradient(900px 400px at 15% -5%, var(--glow-1), transparent 70%), radial-gradient(700px 360px at 95% 0%, var(--glow-2), transparent 70%)' }}
         >
           <div key={location.pathname} className="page-enter">
             <ShellNestContext.Provider value={true}>

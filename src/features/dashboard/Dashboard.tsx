@@ -52,20 +52,22 @@ export function Dashboard() {
 
   return (
     <Shell pageTitle="Dashboard">
-      <div className="space-y-4">
+      <div className="space-y-4 min-w-0">
 
         {/* ── En-tête ── */}
         <div className="flex items-end justify-between gap-4 mb-1">
-          <div>
+          <div className="min-w-0">
             <h2 className="font-display text-[28px] font-bold tracking-tight leading-none">Vue d'ensemble</h2>
             <p className="text-[var(--fs-sm)] text-[var(--text-muted)] mt-2 flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" style={{ boxShadow: '0 0 8px var(--success)' }} />
               Activité du mois · mise à jour à l'instant
             </p>
           </div>
-          <Button variant="primary" onClick={() => { setSelected(null); setDrawerOpen(true) }}>
-            + Nouvelle livraison
-          </Button>
+          <div className="shrink-0">
+            <Button variant="primary" onClick={() => { setSelected(null); setDrawerOpen(true) }}>
+              + Nouvelle livraison
+            </Button>
+          </div>
         </div>
 
         {/* ── KPIs ── */}
@@ -166,7 +168,8 @@ export function Dashboard() {
           ) : (
             <>
               {/* Desktop */}
-              <div className="hidden md:block overflow-x-auto">
+              <div className="hidden md:block">
+                <div className="overflow-x-auto">
                 <table className="w-full text-[var(--fs-sm)]">
                   <thead>
                     <tr className="bg-[var(--bg-elevated)] text-left">
@@ -209,6 +212,7 @@ export function Dashboard() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
 
               {/* Mobile */}
