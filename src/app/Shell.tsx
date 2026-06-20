@@ -51,14 +51,14 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
   )
 
   return (
-    <nav className="flex-1 overflow-y-auto py-2">
+    <nav className="flex-1 overflow-y-auto py-2 px-2">
       <ul>
         {visibleNav.map((item) => (
           <li key={item.key}>
             <NavLink
               to={item.path}
               className={() =>
-                `flex items-center gap-2.5 px-3 py-2 mx-1 rounded-[var(--r-md)] text-[var(--fs-sm)] transition-colors ${
+                `flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--r-md)] text-[var(--fs-sm)] transition-colors ${
                   isItemActive(item)
                     ? 'bg-[var(--brand-soft)] text-[var(--brand)] font-medium'
                     : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]'
@@ -244,7 +244,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
 
         {/* Contenu de l'onglet — tout Shell rendu ici devient « imbriqué » (sous-onglet). */}
         <main
-          className="flex-1 overflow-auto p-4 md:p-6"
+          className="flex-1 overflow-auto p-5 md:p-8 lg:p-10"
           style={{ backgroundImage:
             'radial-gradient(900px 400px at 15% -5%, var(--glow-1), transparent 70%), radial-gradient(700px 360px at 95% 0%, var(--glow-2), transparent 70%)' }}
         >

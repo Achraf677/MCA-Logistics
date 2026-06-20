@@ -44,7 +44,7 @@ const toneGradient: Record<Tone, string> = {
 
 export function KpiCard({ label, value, sub, tone = 'neutral', icon, delta, progress, spark }: KpiCardProps) {
   return (
-    <div className={`bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] px-5 py-4 flex flex-col gap-1 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-1 ${toneHoverBorder[tone]}`}>
+    <div className={`bg-[var(--bg-card)] rounded-[var(--r-xl)] border border-[var(--border)] px-5 py-5 flex flex-col gap-1 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-1 ${toneHoverBorder[tone]}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">{label}</span>
         <div className="flex items-center gap-2 shrink-0">
@@ -54,7 +54,7 @@ export function KpiCard({ label, value, sub, tone = 'neutral', icon, delta, prog
             return <svg width="74" height="28" viewBox="0 0 74 28"><polyline points={pts} fill="none" stroke="var(--brand)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" opacity="0.9"/></svg>
           })()}
           {icon && (
-            <span className={`w-8 h-8 rounded-[var(--r-md)] flex items-center justify-center shrink-0 ${tonePill[tone]}`}>
+            <span className={`w-10 h-10 rounded-[var(--r-md)] flex items-center justify-center shrink-0 ${tonePill[tone]}`}>
               {icon}
             </span>
           )}

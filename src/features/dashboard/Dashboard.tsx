@@ -52,10 +52,10 @@ export function Dashboard() {
 
   return (
     <Shell pageTitle="Dashboard">
-      <div className="space-y-4 min-w-0">
+      <div className="space-y-6 min-w-0">
 
         {/* ── En-tête ── */}
-        <div className="flex items-end justify-between gap-4 mb-1">
+        <div className="flex flex-wrap items-end justify-between gap-4 mb-1">
           <div className="min-w-0">
             <h2 className="font-display text-[28px] font-bold tracking-tight leading-none">Vue d'ensemble</h2>
             <p className="text-[var(--fs-sm)] text-[var(--text-muted)] mt-2 flex items-center gap-2">
@@ -71,7 +71,7 @@ export function Dashboard() {
         </div>
 
         {/* ── KPIs ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 [&>*]:min-w-0">
           {loading ? (
             [0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[88px]" />)
           ) : (
@@ -89,10 +89,10 @@ export function Dashboard() {
         </div>
 
         {/* ── Graphe + Référentiels ── */}
-        <div className="grid lg:grid-cols-[1.6fr_1fr] gap-4">
+        <div className="grid lg:grid-cols-[1.6fr_1fr] gap-5 [&>*]:min-w-0">
 
           {/* Courbe CA */}
-          <div className="glass rounded-[var(--r-lg)] p-5">
+          <div className="glass rounded-[var(--r-xl)] p-6">
             <div className="flex items-baseline gap-3 mb-1">
               <span className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">
                 Chiffre d'affaires HT
@@ -106,7 +106,7 @@ export function Dashboard() {
           </div>
 
           {/* Référentiels */}
-          <div className="glass rounded-[var(--r-lg)] p-2">
+          <div className="glass rounded-[var(--r-xl)] p-3">
             <div className="px-3 py-2.5 mb-1">
               <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
                 Référentiels
@@ -144,7 +144,7 @@ export function Dashboard() {
         </div>
 
         {/* ── Dernières livraisons ── */}
-        <div className="glass rounded-[var(--r-lg)] overflow-hidden">
+        <div className="glass rounded-[var(--r-xl)] overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
             <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
               Dernières livraisons
