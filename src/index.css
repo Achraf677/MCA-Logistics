@@ -1,30 +1,31 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 @import "tailwindcss";
 
 /* ── Design Tokens MCA Logistics ───────────────────────── */
 :root {
   /* Couleurs */
-  --bg:            #1a1d22;
-  --bg-elevated:   #22262d;
-  --bg-card:       #2a2f37;
-  --bg-card-hover: #323843;
-  --bg-deep:       #0e0f12;
-  --border:        #3a4150;
-  --border-soft:   rgba(173, 181, 189, 0.16);
+  --bg:            #0d1117;
+  --bg-elevated:   #111822;
+  --bg-card:       #161c24;
+  --bg-card-hover: #1e2531;
+  --bg-deep:       #070a0f;
+  --border:        #232a33;
+  --border-strong: #303a46;
+  --border-soft:   rgba(48, 58, 70, 0.50);
   --brand:         #e63946;
-  --brand-hover:   #ff4d5c;
+  --brand-hover:   #ff5263;
   --brand-soft:    rgba(230, 57, 70, 0.15);
-  --success:       #06d6a0;
-  --danger:        #ff6b35;
-  --warning:       #ffd60a;
-  --info:          #4cc9f0;
-  --text:          #f1f3f5;
-  --text-muted:    #adb5bd;
-  --text-disabled: #6c757d;
+  --success:       #12b76a;
+  --danger:        #f04438;
+  --warning:       #f5a623;
+  --info:          #4c8dff;
+  --text:          #e6edf3;
+  --text-muted:    #94a3b5;
+  --text-disabled: #5b6675;
 
   /* Typographie */
-  --font-display: "Syne", system-ui, sans-serif;
-  --font-body:    "DM Sans", system-ui, sans-serif;
+  --font-display: "Inter", system-ui, sans-serif;
+  --font-body:    "Inter", system-ui, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, monospace;
   --fs-display:   clamp(28px, 3.4vw, 44px);
   --fs-h1:        28px;

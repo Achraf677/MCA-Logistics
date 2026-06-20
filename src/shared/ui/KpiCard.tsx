@@ -7,7 +7,7 @@ interface KpiCardProps {
 
 export function KpiCard({ label, value, sub, accent }: KpiCardProps) {
   return (
-    <div className="bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] px-5 py-4 flex flex-col gap-1">
+    <div className="bg-[var(--bg-card)] rounded-xl border border-[var(--border)] px-5 py-4 flex flex-col gap-1">
       <span className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">{label}</span>
       <span
         className="font-mono font-semibold leading-none"

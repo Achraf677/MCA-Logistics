@@ -57,7 +57,7 @@ export function ConfirmDialog({
       />
 
       {/* Panel */}
-      <div className="relative w-full max-w-sm bg-[var(--bg-elevated)] border border-[var(--border)] rounded-[var(--r-lg)] shadow-lg p-5 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
+      <div className="relative w-full max-w-sm bg-[var(--bg-elevated)] border border-[var(--border)] rounded-xl shadow-lg p-5 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150">
         <div className="flex flex-col gap-1.5">
           <h2 className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">{title}</h2>
           <p className="text-[var(--fs-sm)] text-[var(--text-muted)]">{message}</p>
