@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Euro, TrendingDown, Fuel, Wrench, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Skeleton } from '../../shared/ui/Skeleton'
@@ -60,10 +61,10 @@ export function Statistiques() {
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {loading ? [0,1,2,3].map(i => <Skeleton key={i} className="h-[72px]" />) : <>
-              <KpiCard label="CA HT" value={formatCents(caTotal)} accent />
-              <KpiCard label="Charges HT" value={formatCents(chargesTotal)} />
-              <KpiCard label="Carburant" value={formatCents(fuelTotal)} />
-              <KpiCard label="Entretiens" value={formatCents(maintenanceTotal)} />
+              <KpiCard label="CA HT"      value={formatCents(caTotal)} tone="success" icon={<Euro size={18} />} />
+              <KpiCard label="Charges HT" value={formatCents(chargesTotal)} tone="warning" icon={<TrendingDown size={18} />} />
+              <KpiCard label="Carburant"  value={formatCents(fuelTotal)} tone="warning" icon={<Fuel size={18} />} />
+              <KpiCard label="Entretiens" value={formatCents(maintenanceTotal)} tone="warning" icon={<Wrench size={18} />} />
             </>}
           </div>
         </section>
@@ -180,12 +181,13 @@ export function Statistiques() {
               Résultat estimé
             </h2>
             <div className="grid grid-cols-3 gap-3">
-              <KpiCard label="CA HT" value={formatCents(caTotal)} accent />
-              <KpiCard label="Total charges HT" value={formatCents(chargesTotal + fuelTotal + maintenanceTotal)} />
+              <KpiCard label="CA HT"           value={formatCents(caTotal)} tone="success" icon={<Euro size={18} />} />
+              <KpiCard label="Total charges HT" value={formatCents(chargesTotal + fuelTotal + maintenanceTotal)} tone="warning" icon={<TrendingDown size={18} />} />
               <KpiCard
                 label="Marge brute"
                 value={formatCents(caTotal - chargesTotal - fuelTotal - maintenanceTotal)}
-                accent={caTotal > chargesTotal + fuelTotal + maintenanceTotal}
+                tone={caTotal - chargesTotal - fuelTotal - maintenanceTotal >= 0 ? 'success' : 'danger'}
+                icon={<Wallet size={18} />}
               />
             </div>
           </section>

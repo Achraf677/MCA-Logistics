@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Copy, Loader2, CheckCircle } from 'lucide-react'
+import { Copy, Loader2, CheckCircle, AlertTriangle, FileText, Users } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
 import { KpiCard }     from '../../shared/ui/KpiCard'
 import { Badge }       from '../../shared/ui/Badge'
@@ -136,9 +136,9 @@ export function Relances() {
 
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-          <KpiCard label="Total en retard" value={formatMoney(totalCts)} accent />
-          <KpiCard label="Factures échues" value={rows.length} sub="en attente de paiement" />
-          <KpiCard label="Clients concernés" value={uniqueClients} />
+          <KpiCard label="Total en retard"   value={formatMoney(totalCts)} tone="danger" icon={<AlertTriangle size={18} />} />
+          <KpiCard label="Factures échues"   value={rows.length} sub="en attente de paiement" tone="warning" icon={<FileText size={18} />} />
+          <KpiCard label="Clients concernés" value={uniqueClients} tone="info" icon={<Users size={18} />} />
         </div>
 
         {/* Corps */}

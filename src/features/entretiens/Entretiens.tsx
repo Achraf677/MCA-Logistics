@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Wrench, AlertTriangle } from 'lucide-react'
+import { Wrench, AlertTriangle, Euro, Calendar } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -63,11 +63,10 @@ export function Entretiens() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <KpiCard label="Opérations"    value={kpis.nb} />
-          <KpiCard label="Coût total"    value={formatCents(kpis.totalCostCts)} accent />
-          <KpiCard label="Avec échéance" value={kpis.withNextDue} />
-          <KpiCard label="Échéances dépassées" value={kpis.overdue}
-            accent={kpis.overdue > 0} />
+          <KpiCard label="Opérations"          value={kpis.nb} tone="info" icon={<Wrench size={18} />} />
+          <KpiCard label="Coût total"          value={formatCents(kpis.totalCostCts)} tone="warning" icon={<Euro size={18} />} />
+          <KpiCard label="Avec échéance"       value={kpis.withNextDue} tone="info" icon={<Calendar size={18} />} />
+          <KpiCard label="Échéances dépassées" value={kpis.overdue} tone={kpis.overdue > 0 ? 'danger' : 'neutral'} icon={<AlertTriangle size={18} />} />
         </div>
       )}
 

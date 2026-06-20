@@ -10,16 +10,16 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const base =
-  'inline-flex items-center justify-center gap-1.5 font-medium transition-colors duration-[120ms] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--brand)]'
+  'inline-flex items-center justify-center gap-1.5 font-medium transition-colors duration-[120ms] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--info)]'
 
 const variants: Record<Variant, string> = {
   primary:
-    'bg-[var(--brand)] text-white hover:bg-[var(--brand-hover)] rounded-[var(--r-md)] px-3',
+    'bg-gradient-to-b from-[var(--brand)] to-[var(--brand-deep)] text-white hover:from-[var(--brand-hover)] hover:to-[var(--brand)] rounded-lg px-3 shadow-[0_8px_20px_-12px_rgba(255,61,77,.6)]',
   secondary:
-    'bg-transparent border border-[var(--border-soft)] text-[var(--text)] hover:bg-[var(--bg-card-hover)] rounded-[var(--r-md)] px-3',
+    'bg-transparent border border-[var(--border)] text-[var(--text)] hover:border-[var(--border-strong)] hover:bg-[var(--bg-card-hover)] rounded-lg px-3',
   ghost:
-    'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)] rounded-[var(--r-md)] px-2',
-  icon: 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)] rounded-[var(--r-md)] p-1.5',
+    'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)] rounded-lg px-2',
+  icon: 'bg-transparent text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)] rounded-lg p-1.5',
 }
 
 const sizes: Record<Size, string> = {

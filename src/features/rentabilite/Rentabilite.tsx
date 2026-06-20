@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Euro, TrendingDown, Wallet, Percent } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Button } from '../../shared/ui/Button'
@@ -62,10 +62,11 @@ export function Rentabilite() {
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiCard label="CA HT" value={fmt(totals.caHt)} accent />
-            <KpiCard label="Total charges" value={fmt(totals.charges + totals.carburant + totals.entretiens)} />
-            <KpiCard label="Résultat brut" value={fmt(totals.resultat)} accent={totals.resultat > 0} />
-            <KpiCard label="Taux de marge" value={fmtMarge(margeRatio(totals))} />
+            <KpiCard label="CA HT"         value={fmt(totals.caHt)} tone="success" icon={<Euro size={18} />} />
+            <KpiCard label="Total charges"  value={fmt(totals.charges + totals.carburant + totals.entretiens)} tone="warning" icon={<TrendingDown size={18} />} />
+            <KpiCard label="Résultat brut"  value={fmt(totals.resultat)} tone={totals.resultat >= 0 ? 'success' : 'danger'} icon={<Wallet size={18} />} />
+            <KpiCard label="Taux de marge"  value={fmtMarge(margeRatio(totals))} tone="violet" icon={<Percent size={18} />}
+              progress={margeRatio(totals) != null ? Math.round(margeRatio(totals)! * 100) : undefined} />
           </div>
         )}
 

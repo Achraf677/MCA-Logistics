@@ -6,6 +6,7 @@ import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
+import { DriverAvatar } from '../../shared/ui/DriverAvatar'
 import { DrawerLivraison } from '../livraisons/DrawerLivraison'
 import { getDashboardKpis, getRecentDeliveries, getMonthlyTrend } from './dashboard.queries'
 import { formatCents, STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
@@ -62,10 +63,14 @@ export function Dashboard() {
               [0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[72px]" />)
             ) : (
               <>
-                <KpiCard label="CA HT du mois" value={formatCents(kpis!.caHtCts)} accent />
-                <KpiCard label="Livraisons" value={kpis!.nbLivraisons} />
-                <KpiCard label="% Facturé" value={`${kpis!.factureePct} %`} />
-                <KpiCard label="% Payé" value={`${kpis!.payeePct} %`} accent={kpis!.payeePct >= 80} />
+                <KpiCard label="CA HT du mois" value={formatCents(kpis!.caHtCts)} tone="success"
+                  icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M12 3v18M8 7h6a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h7"/></svg>} />
+                <KpiCard label="Livraisons" value={kpis!.nbLivraisons} tone="info"
+                  icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 8l9-4 9 4-9 4-9-4Z"/><path d="M3 8v8l9 4 9-4V8"/></svg>} />
+                <KpiCard label="% Facturé" value={`${kpis!.factureePct} %`} tone="violet" progress={kpis!.factureePct}
+                  icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M9 12l2 2 4-4"/></svg>} />
+                <KpiCard label="% Payé" value={`${kpis!.payeePct} %`} tone="warning" progress={kpis!.payeePct}
+                  icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>} />
               </>
             )}
           </div>
@@ -117,10 +122,13 @@ export function Dashboard() {
                             </span>
                           )}
                           <div
-                            className={`w-full rounded-t-[3px] transition-all ${
-                              isCurrent ? 'bg-[var(--brand)]' : 'bg-[var(--brand)]/30'
-                            }`}
-                            style={{ height: `${height}%` }}
+                            className="w-full rounded-t-[3px] transition-all"
+                            style={{
+                              height: `${height}%`,
+                              background: isCurrent
+                                ? 'linear-gradient(180deg, var(--info), #234d9e)'
+                                : 'rgba(76,141,255,0.28)',
+                            }}
                             title={`${t.month} : ${formatCents(t.caHtCts)} — ${t.nb} livraison${t.nb !== 1 ? 's' : ''}`}
                           />
                         </div>
@@ -192,7 +200,12 @@ export function Dashboard() {
                           {row.clients?.name ?? '—'}
                         </td>
                         <td className="px-4 py-3 text-[var(--text-muted)]">
-                          {row.team_members?.full_name ?? '—'}
+                          {row.team_members?.full_name
+                            ? <span className="inline-flex items-center gap-2">
+                                <DriverAvatar name={row.team_members.full_name} />
+                                {row.team_members.full_name}
+                              </span>
+                            : '—'}
                         </td>
                         <td className="px-4 py-3 font-mono text-[var(--text)]">
                           {formatCents(effectiveHtCts(row))}

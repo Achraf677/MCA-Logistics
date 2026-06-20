@@ -521,7 +521,7 @@ export function CalculateurRentabilite() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
 
       {/* ── Barre Profils ─────────────────────────────────────────────────────── */}
       <div className="rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap"
@@ -660,14 +660,14 @@ export function CalculateurRentabilite() {
       </div>
 
       {/* Grille principale */}
-      <div className="grid lg:grid-cols-[1fr_400px] gap-6 items-start">
+      <div className="grid lg:grid-cols-[1fr_380px] gap-4 items-start">
 
         {/* COLONNE GAUCHE : saisies */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
 
           {/* 01 Paramètres */}
-          <section className="rounded-2xl p-5" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <div className="flex items-center gap-2 mb-4">
+          <section className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
+            <div className="flex items-center gap-2 mb-3">
               <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: C.bg, color: C.muted }}>01</span>
               <h2 className="font-semibold" style={{ color: C.ink }}>Paramètres d'exploitation</h2>
             </div>
@@ -689,8 +689,8 @@ export function CalculateurRentabilite() {
           </section>
 
           {/* 02 Recettes */}
-          <section className="rounded-2xl p-5" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <div className="flex items-center justify-between mb-4">
+          <section className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
+            <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: C.bg, color: C.muted }}>02</span>
                 <h2 className="font-semibold" style={{ color: C.ink }}>Recettes</h2>
@@ -723,8 +723,8 @@ export function CalculateurRentabilite() {
           </section>
 
           {/* 03 Dépenses */}
-          <section className="rounded-2xl p-5" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <div className="flex items-center justify-between mb-4">
+          <section className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
+            <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: C.bg, color: C.muted }}>03</span>
                 <h2 className="font-semibold" style={{ color: C.ink }}>Dépenses</h2>
@@ -776,7 +776,7 @@ export function CalculateurRentabilite() {
           </div>
 
           {/* Seuil de rentabilité */}
-          <div className="rounded-2xl p-5" style={{ background: C.bg }}>
+          <div className="rounded-2xl p-4" style={{ background: C.bg }}>
             <div className="flex items-center justify-between mb-1">
               <h3 className="font-semibold text-white text-sm">Seuil de rentabilité</h3>
               <span className="font-mono text-xs" style={{ color: C.amber }}>point mort</span>
@@ -916,7 +916,7 @@ export function CalculateurRentabilite() {
           </p>
         </div>
 
-        <div className="p-5 space-y-4" style={{ background: C.card }}>
+        <div className="p-5 space-y-3" style={{ background: C.card }}>
 
           {/* ── Trajet A→B ───────────────────────────────────────── */}
           <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
