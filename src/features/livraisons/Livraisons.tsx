@@ -7,6 +7,7 @@ import { Button }      from '../../shared/ui/Button'
 import { EmptyState }  from '../../shared/ui/EmptyState'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
+import { DriverAvatar } from '../../shared/ui/DriverAvatar'
 import { DrawerLivraison } from './DrawerLivraison'
 import { useToast }    from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
@@ -379,7 +380,12 @@ export function Livraisons() {
                         {row.clients?.name ?? '—'}
                       </td>
                       <td className="px-4 py-3 text-[var(--text-muted)]">
-                        {row.team_members?.full_name ?? '—'}
+                        {row.team_members?.full_name
+                          ? <span className="inline-flex items-center gap-2">
+                              <DriverAvatar name={row.team_members.full_name} />
+                              {row.team_members.full_name}
+                            </span>
+                          : '—'}
                       </td>
                       <td className="px-4 py-3 font-mono text-[var(--text)]">
                         {effectiveTtcCts(row) > 0 ? formatCents(effectiveTtcCts(row)) : '—'}
