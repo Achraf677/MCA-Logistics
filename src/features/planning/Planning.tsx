@@ -118,15 +118,15 @@ export function Planning() {
                 >
                   <div className={`px-2 py-2 text-center border-b shrink-0
                     ${isToday
-                      ? 'bg-[var(--brand)] border-[var(--brand)]'
+                      ? 'bg-[var(--brand-soft)] border-[var(--brand)]'
                       : 'bg-[var(--bg-elevated)] border-[var(--border)]'}`}
                   >
                     <div className={`text-[10px] font-semibold uppercase tracking-wide
-                      ${isToday ? 'text-white/80' : 'text-[var(--text-muted)]'}`}>
+                      ${isToday ? 'text-[var(--brand)]' : 'text-[var(--text-muted)]'}`}>
                       {FR_DAYS_SHORT[i]}
                     </div>
                     <div className={`text-[var(--fs-body)] font-bold leading-tight
-                      ${isToday ? 'text-white' : 'text-[var(--text)]'}`}>
+                      ${isToday ? 'text-[var(--brand)]' : 'text-[var(--text)]'}`}>
                       {day.getDate()}
                     </div>
                   </div>
@@ -173,11 +173,11 @@ export function Planning() {
                   ${isToday ? 'border-[var(--brand)]' : 'border-[var(--border)]'}`}>
                   <div className={`flex items-center justify-between px-4 py-2 border-b
                     ${isToday
-                      ? 'bg-[var(--brand)] border-[var(--brand)]'
+                      ? 'bg-[var(--brand-soft)] border-[var(--brand)]'
                       : 'bg-[var(--bg-elevated)] border-[var(--border)]'}`}
                   >
                     <span className={`font-semibold text-[var(--fs-sm)]
-                      ${isToday ? 'text-white' : 'text-[var(--text)]'}`}>
+                      ${isToday ? 'text-[var(--brand)]' : 'text-[var(--text)]'}`}>
                       {FR_DAYS_LONG[i]} {day.getDate()} {FR_MONTHS[day.getMonth()]}
                     </span>
                     {deliveries.length > 0 && (
