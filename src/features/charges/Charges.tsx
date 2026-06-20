@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CreditCard } from 'lucide-react'
+import { CreditCard, Receipt, Euro, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -64,9 +64,9 @@ export function Charges() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
-          <KpiCard label="Charges"      value={kpis.nb} />
-          <KpiCard label="Total HT"     value={formatCents(kpis.totalHtCts)} accent />
-          <KpiCard label="Total TTC"    value={formatCents(kpis.totalTtcCts)} />
+          <KpiCard label="Charges"   value={kpis.nb} tone="info" icon={<Receipt size={18} />} />
+          <KpiCard label="Total HT"  value={formatCents(kpis.totalHtCts)} tone="warning" icon={<Euro size={18} />} />
+          <KpiCard label="Total TTC" value={formatCents(kpis.totalTtcCts)} tone="warning" icon={<Wallet size={18} />} />
         </div>
       )}
 

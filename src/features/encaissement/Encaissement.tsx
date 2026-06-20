@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Banknote } from 'lucide-react'
+import { Banknote, CreditCard, Euro } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -69,9 +69,9 @@ export function Encaissement() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
-          <KpiCard label="Paiements" value={kpis.nb} />
-          <KpiCard label="Total encaissé" value={formatCents(kpis.totalCts)} accent />
-          <KpiCard label="Virements" value={formatCents(kpis.byMethod['virement'] ?? 0)} />
+          <KpiCard label="Paiements"      value={kpis.nb} tone="info" icon={<CreditCard size={18} />} />
+          <KpiCard label="Total encaissé" value={formatCents(kpis.totalCts)} tone="success" icon={<Euro size={18} />} />
+          <KpiCard label="Virements"      value={formatCents(kpis.byMethod['virement'] ?? 0)} tone="info" icon={<Banknote size={18} />} />
         </div>
       )}
 
