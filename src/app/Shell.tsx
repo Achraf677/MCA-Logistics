@@ -90,6 +90,7 @@ const ShellNestContext = createContext(false)
 
 export function Shell({ children, pageTitle, actions = [], onAction }: ShellProps) {
   const nested = useContext(ShellNestContext)
+  const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
@@ -202,10 +203,16 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
         </header>
 
         {/* Contenu de l'onglet — tout Shell rendu ici devient « imbriqué » (sous-onglet). */}
-        <main className="flex-1 overflow-auto p-4 md:p-6">
-          <ShellNestContext.Provider value={true}>
-            {children}
-          </ShellNestContext.Provider>
+        <main
+          className="flex-1 overflow-auto p-4 md:p-6"
+          style={{ backgroundImage:
+            'radial-gradient(900px 400px at 15% -5%, rgba(76,141,255,.06), transparent 70%), radial-gradient(700px 360px at 95% 0%, rgba(255,61,77,.05), transparent 70%)' }}
+        >
+          <div key={location.pathname} className="page-enter">
+            <ShellNestContext.Provider value={true}>
+              {children}
+            </ShellNestContext.Provider>
+          </div>
         </main>
       </div>
 

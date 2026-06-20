@@ -83,3 +83,8 @@ html, body, #root {
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Transition de page ─────────────────────────────────── */
+@keyframes pageEnter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+.page-enter { animation: pageEnter .35s cubic-bezier(.22,.61,.36,1); }
+@media (prefers-reduced-motion: reduce) { .page-enter { animation: none; } }
