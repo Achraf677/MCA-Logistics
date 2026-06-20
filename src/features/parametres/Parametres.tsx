@@ -11,6 +11,7 @@ import { getCompany, updateCompany } from './parametres.queries'
 import type { CompanyData } from './parametres.queries'
 import { DriveConnect } from './DriveConnect'
 import { DriveAccess } from './DriveAccess'
+import { ThemeSelector } from '../../shared/theme/ThemeSelector'
 
 const EMPTY: Omit<CompanyData, 'id'> = {
   name: '', siren: '', siret: '', tva_intra: '',
@@ -110,6 +111,14 @@ export function Parametres() {
             <p className="font-semibold text-[var(--text)]">{form.name || 'Société'}</p>
             {form.siren && <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">SIREN : {form.siren}</p>}
           </div>
+        </div>
+
+        {/* Section Apparence — pleine largeur, avant les colonnes */}
+        <div className="mb-6">
+          <Section title="Apparence">
+            <p className="text-[var(--fs-sm)] text-[var(--text-muted)] mb-3">Choisis l'ambiance visuelle de ton espace.</p>
+            <ThemeSelector />
+          </Section>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
