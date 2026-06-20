@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Package, RefreshCw, Loader2, Trash2, FileText } from 'lucide-react'
+import { Package, RefreshCw, Loader2, Trash2, FileText, Euro, Clock } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
 import { KpiCard }     from '../../shared/ui/KpiCard'
 import { Badge }       from '../../shared/ui/Badge'
@@ -188,10 +188,10 @@ export function Livraisons() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <KpiCard label="Ce mois"     value={kpis.nbMois} />
-          <KpiCard label="CA facturé"  value={formatCents(kpis.caFactureCts)} accent />
-          <KpiCard label="À facturer"  value={kpis.enAttenteFacturation} />
-          <KpiCard label="En att. paiement" value={formatCents(kpis.enAttentePaiementCts)} />
+          <KpiCard label="Ce mois"          value={kpis.nbMois} tone="info" icon={<Package size={18} />} />
+          <KpiCard label="CA facturé"        value={formatCents(kpis.caFactureCts)} tone="success" icon={<Euro size={18} />} />
+          <KpiCard label="À facturer"        value={kpis.enAttenteFacturation} tone="violet" icon={<FileText size={18} />} />
+          <KpiCard label="En att. paiement"  value={formatCents(kpis.enAttentePaiementCts)} tone="warning" icon={<Clock size={18} />} />
         </div>
       )}
 

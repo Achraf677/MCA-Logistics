@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Clock } from 'lucide-react'
+import { Clock, Timer, Users, Package } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Button } from '../../shared/ui/Button'
@@ -59,10 +59,10 @@ export function Heures() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <KpiCard label="Saisies" value={kpis.nb} />
-          <KpiCard label="Heures totales" value={formatMinutes(kpis.totalMinutes)} accent />
-          <KpiCard label="Chauffeurs" value={kpis.uniqueDrivers} />
-          <KpiCard label="Avec livraison" value={kpis.withDelivery} />
+          <KpiCard label="Saisies"        value={kpis.nb} tone="info" icon={<Clock size={18} />} />
+          <KpiCard label="Heures totales" value={formatMinutes(kpis.totalMinutes)} tone="violet" icon={<Timer size={18} />} />
+          <KpiCard label="Chauffeurs"     value={kpis.uniqueDrivers} tone="info" icon={<Users size={18} />} />
+          <KpiCard label="Avec livraison" value={kpis.withDelivery} tone="info" icon={<Package size={18} />} />
         </div>
       )}
 

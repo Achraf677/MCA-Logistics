@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Fuel } from 'lucide-react'
+import { Fuel, Euro, Droplet, Gauge } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -72,10 +72,10 @@ export function Carburant() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <KpiCard label="Plein(s)"       value={kpis.nb} />
-          <KpiCard label="Total TTC"      value={formatCents(kpis.totalCts)} accent />
-          <KpiCard label="Litres"         value={formatLiters(kpis.totalLiters)} />
-          <KpiCard label="Prix moy. / L"  value={formatPricePerLiter(kpis.avgPricePerLiter)} />
+          <KpiCard label="Plein(s)"      value={kpis.nb} tone="info" icon={<Fuel size={18} />} />
+          <KpiCard label="Total TTC"     value={formatCents(kpis.totalCts)} tone="warning" icon={<Euro size={18} />} />
+          <KpiCard label="Litres"        value={formatLiters(kpis.totalLiters)} tone="info" icon={<Droplet size={18} />} />
+          <KpiCard label="Prix moy. / L" value={formatPricePerLiter(kpis.avgPricePerLiter)} tone="violet" icon={<Gauge size={18} />} />
         </div>
       )}
 

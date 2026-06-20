@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, AlertCircle, Clock, Euro } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -54,10 +54,10 @@ export function Incidents() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-          <KpiCard label="Incidents" value={kpis.nb} />
-          <KpiCard label="Ouverts" value={kpis.ouverts} accent={kpis.ouverts > 0} />
-          <KpiCard label="En cours" value={kpis.enCours} />
-          <KpiCard label="Coût total" value={formatCents(kpis.totalDmg)} />
+          <KpiCard label="Incidents"  value={kpis.nb} tone="info" icon={<AlertTriangle size={18} />} />
+          <KpiCard label="Ouverts"    value={kpis.ouverts} tone={kpis.ouverts > 0 ? 'danger' : 'neutral'} icon={<AlertCircle size={18} />} />
+          <KpiCard label="En cours"   value={kpis.enCours} tone="warning" icon={<Clock size={18} />} />
+          <KpiCard label="Coût total" value={formatCents(kpis.totalDmg)} tone="warning" icon={<Euro size={18} />} />
         </div>
       )}
 
