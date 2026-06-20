@@ -211,7 +211,7 @@ export function Fournisseurs() {
                       <td className="px-4 py-3 font-medium text-[var(--text)]">
                         {s.name}
                         {isTvaDeductible(s.category) && (
-                          <span className="ml-2 text-[var(--fs-xs)] text-[var(--success)]" title="TVA 100% déductible">TVA ✓</span>
+                          <span className="ml-2.5 inline-flex items-center px-2 py-0.5 rounded-[var(--r-pill)] text-[var(--fs-xs)] font-semibold bg-[var(--success)]/15 text-[var(--success)] border border-[var(--success)]/35 align-middle" title="TVA 100% déductible">TVA ✓</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
