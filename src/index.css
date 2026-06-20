@@ -1,30 +1,34 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;450;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 /* ── Design Tokens MCA Logistics ───────────────────────── */
 :root {
   /* Couleurs */
   --bg:            #0d1117;
-  --bg-elevated:   #111822;
-  --bg-card:       #161c24;
-  --bg-card-hover: #1e2531;
-  --bg-deep:       #070a0f;
+  --bg-elevated:   #161c24;
+  --bg-card:       #1a212c;
+  --bg-card-hover: #222b37;
+  --bg-deep:       #090c10;
   --border:        #232a33;
-  --border-strong: #303a46;
-  --border-soft:   rgba(48, 58, 70, 0.50);
-  --brand:         #e63946;
-  --brand-hover:   #ff5263;
-  --brand-soft:    rgba(230, 57, 70, 0.15);
-  --success:       #12b76a;
-  --danger:        #f04438;
-  --warning:       #f5a623;
+  --border-soft:   rgba(148, 161, 178, 0.12);
+  --border-strong: #2e3845;
+  --brand:         #ff3d4d;
+  --brand-hover:   #ff5a68;
+  --brand-soft:    rgba(255, 61, 77, 0.14);
+  --brand-deep:    #e63946;
+  --success:       #1fd18e;
+  --danger:        #ff5247;
+  --warning:       #ffb020;
   --info:          #4c8dff;
+  --accent-violet: #9b8cff;
   --text:          #e6edf3;
   --text-muted:    #94a3b5;
   --text-disabled: #5b6675;
+  --shadow-card:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  --r-pill:        999px;
 
   /* Typographie */
-  --font-display: "Inter", system-ui, sans-serif;
+  --font-display: "Space Grotesk", system-ui, sans-serif;
   --font-body:    "Inter", system-ui, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, monospace;
   --fs-display:   clamp(28px, 3.4vw, 44px);
@@ -67,6 +71,10 @@ html, body, #root {
   font-family: var(--font-body);
   font-size: var(--fs-body);
   background-color: var(--bg);
+  background-image:
+    radial-gradient(900px 380px at 18% -8%, rgba(76,141,255,.07), transparent 70%),
+    radial-gradient(700px 340px at 92% -4%, rgba(255,61,77,.06), transparent 70%);
+  background-attachment: fixed;
   color: var(--text);
   -webkit-font-smoothing: antialiased;
 }

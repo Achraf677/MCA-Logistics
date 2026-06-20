@@ -8,12 +8,12 @@ const colorMap: Record<Color, string> = {
   warning: 'bg-[var(--warning)]/15 text-[var(--warning)]',
   info:    'bg-[var(--info)]/15 text-[var(--info)]',
   muted:   'bg-[var(--border)] text-[var(--text-muted)]',
-  purple:  'bg-purple-500/15 text-purple-400',
+  purple:  'bg-[var(--accent-violet)]/15 text-[var(--accent-violet)]',
 }
 
 export function Badge({ children, color = 'muted' }: { children: ReactNode; color?: Color }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[var(--fs-xs)] font-medium ${colorMap[color]}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-[var(--r-pill)] text-[var(--fs-xs)] font-medium ${colorMap[color]}`}>
       {children}
     </span>
   )
