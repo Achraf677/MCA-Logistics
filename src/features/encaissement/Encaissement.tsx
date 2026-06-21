@@ -64,11 +64,11 @@ export function Encaissement() {
     <Shell pageTitle="Encaissement" actions={['nouveau', 'export']} onAction={handleAction}>
       {/* KPIs */}
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">
           {[0, 1, 2].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">
           <KpiCard label="Paiements"      value={kpis.nb} tone="info" icon={<CreditCard size={18} />} />
           <KpiCard label="Total encaissé" value={formatCents(kpis.totalCts)} tone="success" icon={<Euro size={18} />} />
           <KpiCard label="Virements"      value={formatCents(kpis.byMethod['virement'] ?? 0)} tone="info" icon={<Banknote size={18} />} />
@@ -76,7 +76,7 @@ export function Encaissement() {
       )}
 
       {/* Filtres */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
         <input type="date" value={filters.date_from ?? ''}
           onChange={e => setFilters(f => ({ ...f, date_from: e.target.value || undefined }))}
           title="Date début" className={filterCls} />
@@ -120,7 +120,7 @@ export function Encaissement() {
       ) : (
         <>
           {/* Desktop */}
-          <div className="hidden md:block overflow-x-auto rounded-[var(--r-lg)] border border-[var(--border)]">
+          <div className="hidden md:block overflow-x-auto glass rounded-[var(--r-xl)]">
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">

@@ -82,11 +82,11 @@ export function Tva() {
 
         {/* KPIs */}
         {loading ? (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-5 [&>*]:min-w-0">
             {[0,1,2,3].map(i => <Skeleton key={i} className="h-[72px]" />)}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-5 [&>*]:min-w-0">
             <KpiCard label="TVA collectée" value={fmt(result!.tvaCollecteeCts)} accent />
             <KpiCard label="TVA déductible charges" value={fmt(result!.tvaDeductibleCharges)} />
             <KpiCard label="TVA déductible carburant" value={fmt(result!.tvaDeductibleCarburant)} />
@@ -99,7 +99,7 @@ export function Tva() {
         )}
 
         {/* Détail */}
-        <div className="rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden">
+        <div className="glass rounded-[var(--r-xl)] overflow-hidden">
           <div className="px-4 py-2.5 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
             <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
               Déclaration TVA — {periodLabel}

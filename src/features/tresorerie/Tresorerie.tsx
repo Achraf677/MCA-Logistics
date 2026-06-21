@@ -68,11 +68,11 @@ export function Tresorerie() {
     <Shell pageTitle="Trésorerie">
       {/* KPIs */}
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
           {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
           <KpiCard label="Solde actuel"     value={snapshot ? formatMoney(snapshot.balance_cts) : '—'} accent />
           <KpiCard label="Solde autorisé"   value={snapshot ? formatMoney(snapshot.authorized_balance_cts) : '—'} />
           <KpiCard label="Dernière synchro" value={formatSnapshotDate(snapshot?.fetched_at ?? null)} />
@@ -81,7 +81,7 @@ export function Tresorerie() {
       )}
 
       {/* Actions */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
         <Button variant="primary" onClick={handleSync} disabled={pending}>
           <RefreshCw size={14} className={pending ? 'animate-spin' : ''} />
           Synchroniser Qonto
@@ -109,7 +109,7 @@ export function Tresorerie() {
       ) : (
         <>
           {/* Desktop */}
-          <div className="hidden md:block overflow-x-auto rounded-[var(--r-lg)] border border-[var(--border)]">
+          <div className="hidden md:block overflow-x-auto glass rounded-[var(--r-xl)]">
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
