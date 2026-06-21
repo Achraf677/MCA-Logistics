@@ -244,9 +244,10 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
 
         {/* Contenu de l'onglet — tout Shell rendu ici devient « imbriqué » (sous-onglet). */}
         <main
-          className="flex-1 overflow-auto p-5 md:p-8 lg:p-10"
+          className="flex-1 overflow-auto p-5 md:p-8 lg:p-10 pl-20"
           style={{ backgroundImage:
-            'radial-gradient(900px 400px at 15% -5%, var(--glow-1), transparent 70%), radial-gradient(700px 360px at 95% 0%, var(--glow-2), transparent 70%)' }}
+            'radial-gradient(900px 400px at 15% -5%, var(--glow-1), transparent 70%), radial-gradient(700px 360px at 95% 0%, var(--glow-2), transparent 70%)',
+            outline: '8px solid #39ff14', outlineOffset: '-8px' }}
         >
           <div key={location.pathname} className="page-enter">
             <ShellNestContext.Provider value={true}>
