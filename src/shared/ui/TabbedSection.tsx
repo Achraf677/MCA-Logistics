@@ -51,7 +51,7 @@ export function TabbedSection({ tabs }: { tabs: SubTab[] }) {
       <div className="flex flex-col gap-5">
         {/* Barre de sous-onglets + slot d'actions à droite (aligné sur la barre fine) */}
         <div className="flex items-end justify-between gap-3 border-b border-[var(--border)]">
-          <div className="flex gap-1 overflow-x-auto">
+          <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {visibleTabs.map(t => {
               const isActive = t.key === active?.key
               return (
