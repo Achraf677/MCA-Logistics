@@ -91,7 +91,7 @@ export function Equipe() {
   return (
     <Shell pageTitle="Équipe" actions={['nouveau', 'export']} onAction={handleAction}>
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
         {loading ? <SkeletonKpis count={4} /> : <>
           <KpiCard label="Membres actifs" value={actifs} />
           <KpiCard label="Masse salariale / mois" value={formatSalaryMonthly(masse)} />
@@ -101,7 +101,7 @@ export function Equipe() {
       </div>
 
       {/* Filtres */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
         <select
           value={filters.role ?? 'all'}
           onChange={e => setFilters(f => ({ ...f, role: (e.target.value || 'all') as TeamFilters['role'] }))}
@@ -144,7 +144,7 @@ export function Equipe() {
         ) : (
           <>
             {/* Desktop */}
-            <div className="hidden md:block overflow-x-auto rounded-[var(--r-lg)] border border-[var(--border)]">
+            <div className="hidden md:block overflow-x-auto glass rounded-[var(--r-xl)]">
               <table className="w-full text-[var(--fs-sm)]">
                 <thead>
                   <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">

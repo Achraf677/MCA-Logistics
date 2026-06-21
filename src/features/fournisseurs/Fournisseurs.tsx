@@ -146,7 +146,7 @@ export function Fournisseurs() {
   return (
     <Shell pageTitle="Fournisseurs" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
         {loading ? <SkeletonKpis count={4} /> : <>
           <KpiCard label="Actifs" value={actifs} />
           <KpiCard label="Carburant" value={byCategory.carburant ?? 0} />
@@ -156,7 +156,7 @@ export function Fournisseurs() {
       </div>
 
       {/* Filtres */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
         <input
           type="search" placeholder="Rechercher…" value={search}
           onChange={e => setSearch(e.target.value)}
@@ -194,7 +194,7 @@ export function Fournisseurs() {
         ) : (
           <>
             {/* Desktop */}
-            <div className="hidden md:block overflow-x-auto rounded-[var(--r-lg)] border border-[var(--border)]">
+            <div className="hidden md:block overflow-x-auto glass rounded-[var(--r-xl)]">
               <table className="w-full text-[var(--fs-sm)]">
                 <thead>
                   <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">

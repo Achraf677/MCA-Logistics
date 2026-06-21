@@ -335,7 +335,7 @@ export function Documents() {
             description="Déposez un fichier ou créez un sous-dossier."
           />
         ) : (
-          <div className="rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden divide-y divide-[var(--border)]">
+          <div className="glass rounded-[var(--r-xl)] overflow-hidden divide-y divide-[var(--border)]">
             {folders.map(f => renderRow(f, true))}
             {files.map(f => renderRow(f, false))}
           </div>
