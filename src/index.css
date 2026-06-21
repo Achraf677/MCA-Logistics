@@ -3,27 +3,31 @@
 
 /* ── Design Tokens MCA Logistics ───────────────────────── */
 :root {
-  /* Couleurs */
-  --bg:            #0d1117;
-  --bg-elevated:   #161c24;
-  --bg-card:       #1a212c;
-  --bg-card-hover: #2c3644;
-  --bg-deep:       #090c10;
-  --border:        #232a33;
-  --border-soft:   rgba(148, 161, 178, 0.12);
-  --border-strong: #2e3845;
-  --brand:         #ff3d4d;
-  --brand-hover:   #ff5a68;
-  --brand-soft:    rgba(255, 61, 77, 0.14);
-  --brand-deep:    #e63946;
-  --success:       #1fd18e;
+  /* Couleurs — thème cockpit par défaut (écrasé par applyTheme au runtime) */
+  --bg:            #0b0809;
+  --bg-elevated:   #15100f;
+  --bg-card:       #1a1416;
+  --bg-card-hover: #251c1e;
+  --bg-deep:       #070405;
+  --border:        #2a2123;
+  --border-soft:   rgba(245,239,239,.10);
+  --border-strong: #3a2e30;
+  --brand:         #ff2e3e;
+  --brand-hover:   #ff5563;
+  --brand-soft:    rgba(255,46,62,.14);
+  --brand-deep:    #c81414;
+  --gold:          #f5b424;
+  --grad:          linear-gradient(120deg,#ff2e3e,#f5b424);
+  --success:       #21e0a0;
   --danger:        #ff5247;
-  --warning:       #ffb020;
-  --info:          #4c8dff;
-  --accent-violet: #9b8cff;
-  --text:          #e6edf3;
-  --text-muted:    #94a3b5;
-  --text-disabled: #5b6675;
+  --warning:       #f5b424;
+  --info:          #4ca8ff;
+  --accent-violet: #a98bff;
+  --text:          #f5efef;
+  --text-muted:    #a99fa0;
+  --text-disabled: #6f6566;
+  --glow-1:        rgba(255,46,62,.10);
+  --glow-2:        rgba(245,180,36,.08);
   --shadow-card:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
   --r-pill:        999px;
 
@@ -57,14 +61,19 @@
   --r-lg: 12px;
   --r-xl: 16px;
 
+  /* Easing */
+  --ease: cubic-bezier(.22,.61,.36,1);
+
   /* Shell */
-  --sidebar-w:      220px;
+  --sidebar-w:      260px;
   --sidebar-w-icon: 56px;
-  --topbar-h:       52px;
+  --topbar-h:       68px;
 }
 
 /* ── Reset ─────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+}
 
 html, body, #root {
   height: 100%;
@@ -72,8 +81,8 @@ html, body, #root {
   font-size: var(--fs-body);
   background-color: var(--bg);
   background-image:
-    radial-gradient(900px 380px at 18% -8%, rgba(76,141,255,.07), transparent 70%),
-    radial-gradient(700px 340px at 92% -4%, rgba(255,61,77,.06), transparent 70%);
+    radial-gradient(900px 500px at 12% -8%, var(--glow-1), transparent 60%),
+    radial-gradient(800px 460px at 100% -5%, var(--glow-2), transparent 62%);
   background-attachment: fixed;
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -88,3 +97,13 @@ html, body, #root {
 @keyframes pageEnter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .page-enter { animation: pageEnter .35s cubic-bezier(.22,.61,.36,1); }
 @media (prefers-reduced-motion: reduce) { .page-enter { animation: none; } }
+
+/* ── Glass morphism ─────────────────────────────────────── */
+.glass{ background:color-mix(in srgb, var(--bg-card) 72%, transparent); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border:1px solid var(--border); box-shadow:0 24px 50px -28px rgba(0,0,0,.85); }
+
+/* ── Line chart animations ──────────────────────────────── */
+.lc-line{ stroke-dasharray:2200; stroke-dashoffset:2200; animation:lcDraw 1.6s var(--ease) .3s forwards }
+.lc-area{ opacity:0; animation:lcFade 1.2s ease 1s forwards }
+@keyframes lcDraw{ to{ stroke-dashoffset:0 } }
+@keyframes lcFade{ to{ opacity:1 } }
+@media (prefers-reduced-motion:reduce){ .lc-line{animation:none;stroke-dashoffset:0} .lc-area{animation:none;opacity:1} }

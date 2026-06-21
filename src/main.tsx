@@ -2,6 +2,8 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
+import { applyTheme, getThemeId } from './shared/theme/themes'
+applyTheme(getThemeId())
 import { AuthProvider, ProfileProvider, useAuth, useProfile, supabase } from './app/providers'
 import { ToastProvider } from './shared/ui/useToast'
 import { AppRoutes } from './app/routes'

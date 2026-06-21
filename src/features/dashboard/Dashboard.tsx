@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ArrowRight, TrendingUp } from 'lucide-react'
+import { ChevronRight, Euro, Package, FileCheck2, CheckCircle2, Truck, Users, Building2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
@@ -7,6 +7,7 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { DriverAvatar } from '../../shared/ui/DriverAvatar'
+import { LineChart } from '../../shared/ui/LineChart'
 import { DrawerLivraison } from '../livraisons/DrawerLivraison'
 import { getDashboardKpis, getRecentDeliveries, getMonthlyTrend } from './dashboard.queries'
 import { formatCents, STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
@@ -38,130 +39,123 @@ export function Dashboard() {
 
   useEffect(() => { load() }, [load])
 
-  const monthLabel = new Date().toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
-
   const openRow = (row: DeliveryRow) => { setSelected(row); setDrawerOpen(true) }
 
-  const maxCa = trend.length ? Math.max(...trend.map(t => t.caHtCts), 1) : 1
+  const last = trend[trend.length - 1]
+  const prev = trend[trend.length - 2]
+  const deltaCA = (last && prev && prev.caHtCts > 0)
+    ? { value: ((last.caHtCts - prev.caHtCts) / prev.caHtCts * 100).toFixed(1).replace('.', ',') + '%', dir: (last.caHtCts >= prev.caHtCts ? 'up' : 'down') as 'up' | 'down' }
+    : undefined
+  const deltaLiv = (last && prev)
+    ? { value: String(Math.abs(last.nb - prev.nb)), dir: (last.nb >= prev.nb ? 'up' : 'down') as 'up' | 'down' }
+    : undefined
 
   return (
     <Shell pageTitle="Dashboard">
-      <div className="space-y-8">
+      <div className="space-y-6 min-w-0">
 
-        {/* ── KPIs du mois ── */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest capitalize">
-              {monthLabel}
-            </h2>
-            <Button variant="ghost" size="compact" onClick={() => navigate('/livraisons')}>
-              Voir toutes <ArrowRight size={13} />
+        {/* ── En-tête ── */}
+        <div className="flex flex-wrap items-end justify-between gap-4 mb-1">
+          <div className="min-w-0">
+            <h2 className="font-display text-[28px] font-bold tracking-tight leading-none">Vue d'ensemble</h2>
+            <p className="text-[var(--fs-sm)] text-[var(--text-muted)] mt-2 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" style={{ boxShadow: '0 0 8px var(--success)' }} />
+              Activité du mois · mise à jour à l'instant
+            </p>
+          </div>
+          <div className="shrink-0">
+            <Button variant="primary" onClick={() => { setSelected(null); setDrawerOpen(true) }}>
+              + Nouvelle livraison
             </Button>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {loading ? (
-              [0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[72px]" />)
-            ) : (
-              <>
-                <KpiCard label="CA HT du mois" value={formatCents(kpis!.caHtCts)} tone="success"
-                  icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M12 3v18M8 7h6a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h7"/></svg>} />
-                <KpiCard label="Livraisons" value={kpis!.nbLivraisons} tone="info"
-                  icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M3 8l9-4 9 4-9 4-9-4Z"/><path d="M3 8v8l9 4 9-4V8"/></svg>} />
-                <KpiCard label="% Facturé" value={`${kpis!.factureePct} %`} tone="violet" progress={kpis!.factureePct}
-                  icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6z"/><path d="M9 12l2 2 4-4"/></svg>} />
-                <KpiCard label="% Payé" value={`${kpis!.payeePct} %`} tone="warning" progress={kpis!.payeePct}
-                  icon={<svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>} />
-              </>
-            )}
-          </div>
-        </section>
+        </div>
 
-        {/* ── Référentiels + Tendance ── */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* ── KPIs ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 [&>*]:min-w-0">
+          {loading ? (
+            [0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[88px]" />)
+          ) : (
+            <>
+              <KpiCard label="CA HT du mois" value={formatCents(kpis!.caHtCts)} tone="success"
+                icon={<Euro size={18} />} delta={deltaCA} spark={trend.map(t => t.caHtCts)} />
+              <KpiCard label="Livraisons" value={kpis!.nbLivraisons} tone="info"
+                icon={<Package size={18} />} delta={deltaLiv} spark={trend.map(t => t.nb)} />
+              <KpiCard label="% Facturé" value={`${kpis!.factureePct} %`} tone="violet"
+                icon={<FileCheck2 size={18} />} progress={kpis!.factureePct} />
+              <KpiCard label="% Payé" value={`${kpis!.payeePct} %`} tone="warning"
+                icon={<CheckCircle2 size={18} />} progress={kpis!.payeePct} />
+            </>
+          )}
+        </div>
+
+        {/* ── Graphe + Référentiels ── */}
+        <div className="grid lg:grid-cols-[1.6fr_1fr] gap-5 [&>*]:min-w-0">
+
+          {/* Courbe CA */}
+          <div className="glass rounded-[var(--r-xl)] p-6">
+            <div className="flex items-baseline gap-3 mb-1">
+              <span className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">
+                Chiffre d'affaires HT
+              </span>
+              <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">6 derniers mois</span>
+            </div>
+            {loading
+              ? <Skeleton className="h-[220px]" />
+              : <LineChart points={trend.map(t => ({ label: t.month, value: t.caHtCts }))} />
+            }
+          </div>
+
           {/* Référentiels */}
-          <div className="space-y-3">
-            <h2 className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
-              Référentiels
-            </h2>
-            <div className="grid grid-cols-3 gap-2">
-              {loading ? (
-                [0, 1, 2].map(i => <Skeleton key={i} className="h-[72px]" />)
-              ) : (
-                <>
-                  <KpiCard label="Véhicules" value={kpis!.vehiculesActifs} sub="actifs" />
-                  <KpiCard label="Chauffeurs" value={kpis!.chauffeurs} sub="actifs" />
-                  <KpiCard label="Clients" value={kpis!.clientsActifs} sub="actifs" />
-                </>
-              )}
+          <div className="glass rounded-[var(--r-xl)] p-3">
+            <div className="px-3 py-2.5 mb-1">
+              <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
+                Référentiels
+              </span>
             </div>
-          </div>
-
-          {/* Tendance 6 mois */}
-          <div className="md:col-span-2">
-            <div className="flex items-center gap-2 mb-3">
-              <TrendingUp size={13} className="text-[var(--text-muted)]" />
-              <h2 className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
-                CA HT — 6 derniers mois
-              </h2>
-            </div>
-            <div className="bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4">
-              {loading ? (
-                <Skeleton className="h-24" />
-              ) : (
-                <div>
-                  {/* Zone barres à hauteur fixe — chaque colonne occupe toute la hauteur et aligne la barre en bas */}
-                  <div className="flex gap-2 h-24">
-                    {trend.map((t, i) => {
-                      const height = maxCa > 0 ? Math.max((t.caHtCts / maxCa) * 100, 4) : 4
-                      const isCurrent = i === trend.length - 1
-                      return (
-                        <div key={t.month} className="flex-1 h-full flex flex-col justify-end">
-                          {t.caHtCts > 0 && (
-                            <span className="text-[10px] text-[var(--text-disabled)] font-mono text-center block mb-0.5">
-                              {Math.round(t.caHtCts / 100)}€
-                            </span>
-                          )}
-                          <div
-                            className="w-full rounded-t-[3px] transition-all"
-                            style={{
-                              height: `${height}%`,
-                              background: isCurrent
-                                ? 'linear-gradient(180deg, var(--info), #234d9e)'
-                                : 'rgba(76,141,255,0.28)',
-                            }}
-                            title={`${t.month} : ${formatCents(t.caHtCts)} — ${t.nb} livraison${t.nb !== 1 ? 's' : ''}`}
-                          />
-                        </div>
-                      )
-                    })}
-                  </div>
-                  {/* Rangée labels mois séparée */}
-                  <div className="flex gap-2 mt-1">
-                    {trend.map(t => (
-                      <span key={t.month} className="flex-1 text-[10px] text-[var(--text-muted)] capitalize text-center">
-                        {t.month}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
+            {loading ? (
+              <div className="flex flex-col gap-2 p-1">
+                {[0, 1, 2].map(i => <Skeleton key={i} className="h-16" />)}
+              </div>
+            ) : (
+              <div className="flex flex-col">
+                {[
+                  { icon: <Truck size={18} />, value: kpis!.vehiculesActifs, label: 'Véhicules actifs', path: '/flotte' },
+                  { icon: <Users size={18} />, value: kpis!.chauffeurs, label: 'Chauffeurs actifs', path: '/equipe-hub' },
+                  { icon: <Building2 size={18} />, value: kpis!.clientsActifs, label: 'Clients actifs', path: '/tiers' },
+                ].map(item => (
+                  <button
+                    key={item.path}
+                    onClick={() => navigate(item.path)}
+                    className="w-full flex items-center gap-3 p-3 rounded-[var(--r-md)] hover:bg-[var(--bg-card-hover)] transition-colors text-left"
+                  >
+                    <span className="w-10 h-10 rounded-[var(--r-md)] grid place-items-center bg-[var(--brand-soft)] text-[var(--brand)] shrink-0">
+                      {item.icon}
+                    </span>
+                    <span>
+                      <b className="font-mono text-xl text-[var(--text)]">{item.value}</b>
+                      <small className="block text-[var(--text-muted)] text-[var(--fs-xs)]">{item.label}</small>
+                    </span>
+                    <ChevronRight size={18} className="ml-auto text-[var(--text-disabled)]" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
         {/* ── Dernières livraisons ── */}
-        <section>
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
+        <div className="glass rounded-[var(--r-xl)] overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
+            <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
               Dernières livraisons
-            </h2>
+            </span>
             <Button variant="ghost" size="compact" onClick={() => navigate('/livraisons')}>
-              Voir tout <ArrowRight size={13} />
+              Voir tout <ChevronRight size={13} />
             </Button>
           </div>
 
           {loading ? (
-            <div className="space-y-2">
+            <div className="p-4 space-y-2">
               {[0, 1, 2, 3, 4].map(i => <Skeleton key={i} className="h-12" />)}
             </div>
           ) : recent.length === 0 ? (
@@ -174,7 +168,8 @@ export function Dashboard() {
           ) : (
             <>
               {/* Desktop */}
-              <div className="hidden md:block rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden">
+              <div className="hidden md:block">
+                <div className="overflow-x-auto">
                 <table className="w-full text-[var(--fs-sm)]">
                   <thead>
                     <tr className="bg-[var(--bg-elevated)] text-left">
@@ -217,10 +212,11 @@ export function Dashboard() {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
 
               {/* Mobile */}
-              <div className="md:hidden flex flex-col gap-2">
+              <div className="md:hidden flex flex-col gap-2 p-3">
                 {recent.map(row => (
                   <button
                     key={row.id}
@@ -245,7 +241,8 @@ export function Dashboard() {
               </div>
             </>
           )}
-        </section>
+        </div>
+
       </div>
 
       <DrawerLivraison
