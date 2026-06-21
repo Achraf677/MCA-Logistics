@@ -87,7 +87,7 @@ export function Calendrier() {
       {loading ? (
         <Skeleton className="h-96" />
       ) : (
-        <div className="rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden">
+        <div className="glass rounded-[var(--r-xl)] overflow-hidden">
           {/* En-têtes jours */}
           <div className="grid grid-cols-7 border-b border-[var(--border)] bg-[var(--bg-elevated)]">
             {FR_DAYS.map(d => (
