@@ -135,7 +135,7 @@ export function Relances() {
       <div className="flex flex-col gap-5">
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 [&>*]:min-w-0">
           <KpiCard label="Total en retard"   value={formatMoney(totalCts)} tone="danger" icon={<AlertTriangle size={18} />} />
           <KpiCard label="Factures échues"   value={rows.length} sub="en attente de paiement" tone="warning" icon={<FileText size={18} />} />
           <KpiCard label="Clients concernés" value={uniqueClients} tone="info" icon={<Users size={18} />} />
@@ -154,7 +154,7 @@ export function Relances() {
           />
         ) : (
           <div className="flex flex-col gap-4">
-            <div className="overflow-x-auto rounded-[var(--r-lg)] border border-[var(--border)]">
+            <div className="overflow-x-auto glass rounded-[var(--r-xl)]">
               <table className="w-full text-[var(--fs-sm)]">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
