@@ -81,7 +81,7 @@ export function Tresorerie() {
       )}
 
       {/* Actions */}
-      <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
+      <div className="flex flex-wrap gap-2 mb-4">
         <Button variant="primary" onClick={handleSync} disabled={pending}>
           <RefreshCw size={14} className={pending ? 'animate-spin' : ''} />
           Synchroniser Qonto
