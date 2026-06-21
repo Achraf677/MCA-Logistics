@@ -8,6 +8,7 @@ import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { DriverAvatar } from '../../shared/ui/DriverAvatar'
 import { LineChart } from '../../shared/ui/LineChart'
+import { TabActions } from '../../shared/ui/TabbedSection'
 import { DrawerLivraison } from '../livraisons/DrawerLivraison'
 import { getDashboardKpis, getRecentDeliveries, getMonthlyTrend } from './dashboard.queries'
 import { formatCents, STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
@@ -63,11 +64,11 @@ export function Dashboard() {
               Activité du mois · mise à jour à l'instant
             </p>
           </div>
-          <div className="shrink-0">
-            <Button variant="primary" onClick={() => { setSelected(null); setDrawerOpen(true) }}>
+          <TabActions>
+            <Button variant="primary" size="compact" onClick={() => { setSelected(null); setDrawerOpen(true) }}>
               + Nouvelle livraison
             </Button>
-          </div>
+          </TabActions>
         </div>
 
         {/* ── KPIs ── */}
