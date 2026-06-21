@@ -80,7 +80,7 @@ export function Vehicules() {
   return (
     <Shell pageTitle="Véhicules" actions={['nouveau', 'export']} onAction={handleAction}>
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
         {loading ? <SkeletonKpis count={4} /> : <>
           <KpiCard label="Véhicules actifs" value={actifs} sub={`${vehicles.length} au total`} />
           <KpiCard label="Km total flotte" value={formatMileage(kmTotal)} />
@@ -90,7 +90,7 @@ export function Vehicules() {
       </div>
 
       {/* Filtres */}
-      <div className="flex flex-wrap gap-2 mb-6">
+      <div className="flex flex-wrap items-center gap-3 mb-6 glass rounded-[var(--r-xl)] px-4 py-3">
         <select
           value={filters.status ?? 'all'}
           onChange={e => setFilters(f => ({ ...f, status: (e.target.value || 'all') as VehicleFilters['status'] }))}
@@ -132,7 +132,7 @@ export function Vehicules() {
           />
         ) : (
           /* Vue garage — cartes (desktop ET mobile) */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 [&>*]:min-w-0">
             {displayedVehicles.map(v => (
               <button
                 key={v.id}
