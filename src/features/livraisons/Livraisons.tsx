@@ -183,11 +183,11 @@ export function Livraisons() {
 
       {/* KPIs */}
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
           {[0,1,2,3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
           <KpiCard label="Ce mois"          value={kpis.nbMois} tone="info" icon={<Package size={18} />} />
           <KpiCard label="CA facturé"        value={formatCents(kpis.caFactureCts)} tone="success" icon={<Euro size={18} />} />
           <KpiCard label="À facturer"        value={kpis.enAttenteFacturation} tone="violet" icon={<FileText size={18} />} />
@@ -198,7 +198,7 @@ export function Livraisons() {
       {/* Bandeau resync Pennylane */}
       {pendingSync > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4 px-4 py-3
-          rounded-[var(--r-lg)] border border-[var(--warning)]/30 bg-[var(--warning)]/10">
+          rounded-[var(--r-xl)] border border-[var(--warning)]/30 bg-[var(--warning)]/10">
           <span className="text-[var(--fs-sm)] text-[var(--text)]">
             {pendingSync} livraison(s) en attente de synchronisation Pennylane
           </span>
@@ -212,7 +212,7 @@ export function Livraisons() {
       )}
 
       {/* Filtres */}
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
         <input type="date" value={filters.date_from ?? ''}
           onChange={e => setFilters(f => ({ ...f, date_from: e.target.value || undefined }))}
           title="Date début" className={filterCls} />
@@ -241,7 +241,7 @@ export function Livraisons() {
       {/* ── Barre d'action facturation groupée (≥ 1 cochée) ─────────────────── */}
       {invoiceIds.size > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4 px-4 py-2.5
-          rounded-[var(--r-lg)] border border-[var(--brand)]/40 bg-[var(--brand)]/8">
+          rounded-[var(--r-xl)] border border-[var(--brand)]/40 bg-[var(--brand)]/8">
           <div className="flex flex-wrap items-center gap-3 text-[var(--fs-sm)] text-[var(--text)]">
             <span>
               <b>{invoiceIds.size}</b> course(s) · <b>{invoiceClientName}</b>
@@ -264,7 +264,7 @@ export function Livraisons() {
       {/* Barre d'action suppression (≥ 1 sélectionnée, si droit delete) */}
       {canDelete && selectedIds.size > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4 px-4 py-2.5
-          rounded-[var(--r-lg)] border border-[var(--danger)]/30 bg-[var(--danger)]/10">
+          rounded-[var(--r-xl)] border border-[var(--danger)]/30 bg-[var(--danger)]/10">
           <span className="text-[var(--fs-sm)] text-[var(--text)]">
             {selectedIds.size} sélectionnée(s)
           </span>
@@ -298,7 +298,7 @@ export function Livraisons() {
       ) : (
         <>
           {/* Desktop : tableau */}
-          <div className="hidden md:block overflow-x-auto rounded-[var(--r-lg)] border border-[var(--border)]">
+          <div className="hidden md:block overflow-x-auto glass rounded-[var(--r-xl)]">
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
