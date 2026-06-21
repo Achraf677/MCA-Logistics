@@ -61,6 +61,9 @@
   --r-lg: 12px;
   --r-xl: 16px;
 
+  /* Easing */
+  --ease: cubic-bezier(.22,.61,.36,1);
+
   /* Shell */
   --sidebar-w:      260px;
   --sidebar-w-icon: 56px;
@@ -68,7 +71,9 @@
 }
 
 /* ── Reset ─────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+}
 
 html, body, #root {
   height: 100%;
