@@ -11,6 +11,7 @@ import { ActionBar } from '../shared/actions/ActionBar'
 import type { ActionKey } from '../shared/actions/ActionBar'
 import { AssistantWidget } from '../features/assistant/AssistantWidget'
 import { AlertesBell } from '../features/alertes/AlertesBell'
+import { TabActions } from '../shared/ui/TabbedSection'
 import { supabase, useProfile } from './providers'
 import { usePermissions } from '../shared/permissions/usePermissions'
 
@@ -109,9 +110,9 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
     return (
       <div className="flex flex-col gap-4">
         {actions.length > 0 && (
-          <div className="flex justify-end">
+          <TabActions>
             <ActionBar actions={actions} onAction={onAction} />
-          </div>
+          </TabActions>
         )}
         {children}
       </div>
