@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { CreditCard, Receipt, Euro, Wallet, RefreshCw, Lock } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { CreditCard, Receipt, Euro, Wallet, Lock } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
+import { SyncButton } from '../../shared/ui/SyncButton'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { TabActions } from '../../shared/ui/TabbedSection'
@@ -11,7 +12,7 @@ import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { DrawerCharge } from './DrawerCharge'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
-import { getCharges, exportChargesCSV, syncPennylane, updateCharge } from './charges.queries'
+import { getCharges, exportChargesCSV, syncPennylane, updateCharge, getLastPennylaneSync } from './charges.queries'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatCents, categoryColor, kpiSummary } from './charges.logic'
 import { getCategories } from '../../shared/lib/categories.queries'
@@ -32,7 +33,7 @@ export function Charges() {
   const [filters, setFilters]         = useState<ChargeFilters>({})
   const [drawerOpen, setDrawerOpen]   = useState(false)
   const [selected, setSelected]       = useState<ChargeRow | null>(null)
-  const [syncPending, setSyncPending] = useState(false)
+  const [lastSyncAt, setLastSyncAt]   = useState<string | null>(null)
 
   // Chargement des catégories (une fois par companyId)
   useEffect(() => {
@@ -48,14 +49,13 @@ export function Charges() {
     setLoading(false)
   }, [filters])
 
-  useEffect(() => { load() }, [load])
+  const fetchLastSync = useCallback(async () => {
+    const ts = await getLastPennylaneSync()
+    setLastSyncAt(ts)
+  }, [])
 
-  const lastSync = useMemo(() => {
-    return rows.reduce((max, r) => {
-      if (!r.pennylane_synced_at) return max
-      return (!max || r.pennylane_synced_at > max) ? r.pennylane_synced_at : max
-    }, null as string | null)
-  }, [rows])
+  useEffect(() => { load() }, [load])
+  useEffect(() => { fetchLastSync() }, [fetchLastSync])
 
   const handleAction = async (key: ActionKey) => {
     if (key === 'nouveau') { setSelected(null); setDrawerOpen(true) }
@@ -64,19 +64,6 @@ export function Charges() {
       downloadCSV(csv, 'charges.csv')
       toast('Export téléchargé')
     }
-  }
-
-  const handleSync = async () => {
-    setSyncPending(true)
-    const { data, error } = await syncPennylane()
-    setSyncPending(false)
-    if (error || data?.ok === false) {
-      toast(error?.message ?? data?.error ?? 'Échec de la synchronisation Pennylane', 'error')
-      return
-    }
-    const n = data?.data?.charges_upserts ?? 0
-    await load()
-    toast(n > 0 ? `${n} facture(s) synchronisée(s)` : 'Aucune nouvelle facture')
   }
 
   const handleCategoryChange = async (rowId: string, categoryId: string | null) => {
@@ -103,17 +90,20 @@ export function Charges() {
   return (
     <Shell pageTitle="Charges" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
       <TabActions>
-        <div className="flex items-center gap-3">
-          {lastSync && (
-            <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] hidden sm:inline">
-              Synchro : {new Date(lastSync).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-            </span>
-          )}
-          <Button variant="secondary" size="compact" onClick={handleSync} disabled={syncPending}>
-            <RefreshCw size={13} className={syncPending ? 'animate-spin' : ''} />
-            <span className="hidden sm:inline">Synchroniser Pennylane</span>
-          </Button>
-        </div>
+        <SyncButton
+          label="Synchroniser Pennylane"
+          lastSyncAt={lastSyncAt}
+          onSync={async () => {
+            const { data, error } = await syncPennylane()
+            if (error || data?.ok === false) {
+              return { ok: false, message: error?.message ?? data?.error ?? 'Échec Pennylane' }
+            }
+            const n = data?.data?.charges_upserts ?? 0
+            await load()
+            await fetchLastSync()
+            return { ok: true, message: n > 0 ? `${n} facture(s) synchronisée(s)` : 'Aucune nouvelle facture' }
+          }}
+        />
       </TabActions>
 
       {/* KPIs */}

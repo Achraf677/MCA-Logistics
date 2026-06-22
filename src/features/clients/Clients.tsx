@@ -4,11 +4,13 @@ import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
+import { SyncButton } from '../../shared/ui/SyncButton'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { SkeletonTable, SkeletonKpis } from '../../shared/ui/Skeleton'
+import { TabActions } from '../../shared/ui/TabbedSection'
 import { DrawerClient } from './DrawerClient'
 import { useToast } from '../../shared/ui/useToast'
-import { getClients, exportClientsCSV, getFacturedDeliveries } from './clients.queries'
+import { getClients, exportClientsCSV, getFacturedDeliveries, syncPennylaneClients } from './clients.queries'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, countByType,
@@ -108,6 +110,21 @@ export function Clients() {
 
   return (
     <Shell pageTitle="Clients" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
+      <TabActions>
+        <SyncButton
+          label="Synchroniser clients Pennylane"
+          onSync={async () => {
+            const { data, error } = await syncPennylaneClients()
+            if (error || data?.ok === false) {
+              return { ok: false, message: error?.message ?? data?.error ?? 'Échec de la synchronisation clients' }
+            }
+            const n = data?.data?.clients_upserts ?? 0
+            await load()
+            return { ok: true, message: n > 0 ? `${n} client(s) synchronisé(s)` : 'Aucun nouveau client' }
+          }}
+        />
+      </TabActions>
+
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
         {loading
