@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
 import { Search, X, FileText } from 'lucide-react'
-import { Badge } from '../../shared/ui/Badge'
 import { getUnlinkedCharges } from './carburant.queries'
 import type { ChargePick } from './carburant.types'
 
@@ -8,12 +7,6 @@ interface Props {
   open: boolean
   onClose: () => void
   onSelect: (charge: ChargePick) => void
-}
-
-const FUEL_SUPPLIER_RE = /total|bp|shell|esso|leclerc|intermarché|carrefour|station/i
-
-function isFuelLike(c: ChargePick): boolean {
-  return c.category === 'carburant' || FUEL_SUPPLIER_RE.test(c.suppliers?.name ?? '')
 }
 
 export function SelecteurCharge({ open, onClose, onSelect }: Props) {
@@ -40,13 +33,6 @@ export function SelecteurCharge({ open, onClose, onSelect }: Props) {
     c.label.toLowerCase().includes(q) ||
     (c.suppliers?.name ?? '').toLowerCase().includes(q)
   )
-  // Charges carburant-like en tête, sinon ordre date desc conservé
-  const sorted = [...filtered].sort((a, b) => {
-    const af = isFuelLike(a), bf = isFuelLike(b)
-    if (af && !bf) return -1
-    if (!af && bf) return  1
-    return 0
-  })
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
@@ -80,12 +66,12 @@ export function SelecteurCharge({ open, onClose, onSelect }: Props) {
             <div className="px-4 py-10 text-center text-[var(--text-muted)] text-[var(--fs-sm)]">
               Chargement…
             </div>
-          ) : sorted.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <div className="px-4 py-10 text-center text-[var(--text-muted)] text-[var(--fs-sm)]">
               {search ? 'Aucun résultat pour cette recherche.' : 'Toutes les charges sont déjà rapprochées.'}
             </div>
           ) : (
-            sorted.map(c => (
+            filtered.map(c => (
               <button
                 key={c.id}
                 onClick={() => { onSelect(c); onClose() }}
@@ -96,7 +82,6 @@ export function SelecteurCharge({ open, onClose, onSelect }: Props) {
                     <span className="font-medium text-[var(--text)] text-[var(--fs-sm)] truncate">
                       {c.label}
                     </span>
-                    {isFuelLike(c) && <Badge color="warning">Carburant</Badge>}
                   </div>
                   <div className="flex items-center gap-2 text-[var(--fs-xs)] text-[var(--text-muted)]">
                     <span>{new Date(c.date).toLocaleDateString('fr-FR')}</span>
