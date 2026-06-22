@@ -9,10 +9,10 @@ import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { TabActions } from '../../shared/ui/TabbedSection'
 import { DrawerCharge } from './DrawerCharge'
 import { useToast } from '../../shared/ui/useToast'
-import { getCharges, exportChargesCSV, syncPennylane } from './charges.queries'
+import { getCharges, exportChargesCSV, syncPennylane, updateCharge } from './charges.queries'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import {
-  CATEGORY_LABELS, CATEGORY_COLOR, formatCents, kpiSummary,
+  CHARGE_CATEGORIES, CATEGORY_LABELS, formatCents, kpiSummary,
 } from './charges.logic'
 import { downloadCSV } from '../../shared/lib/download'
 import type { ChargeRow, ChargeFilters, ChargeCategory } from './charges.types'
@@ -68,6 +68,12 @@ export function Charges() {
     const n = data?.data?.charges_upserts ?? 0
     await load()
     toast(n > 0 ? `${n} facture(s) synchronisée(s)` : 'Aucune nouvelle facture')
+  }
+
+  const handleCategoryChange = async (rowId: string, category: ChargeCategory | null) => {
+    setRows(prev => prev.map(r => r.id === rowId ? { ...r, category } : r))
+    const { error } = await updateCharge(rowId, { category })
+    if (error) { toast(error.message, 'error'); load() }
   }
 
   // Seules les charges manuelles (sans pennylane_id) ouvrent le drawer d'édition
@@ -197,10 +203,17 @@ export function Charges() {
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-3">
-                        {row.category
-                          ? <Badge color={CATEGORY_COLOR[row.category]}>{CATEGORY_LABELS[row.category]}</Badge>
-                          : <span className="text-[var(--text-disabled)]">—</span>}
+                      <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                        <select
+                          value={row.category ?? ''}
+                          onChange={e => handleCategoryChange(row.id, (e.target.value as ChargeCategory) || null)}
+                          className={categoryCls}
+                        >
+                          <option value="">Non catégorisé</option>
+                          {CHARGE_CATEGORIES.map(c => (
+                            <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-4 py-3 font-mono">{formatCents(row.montant_ht_cts)}</td>
                       <td className="px-4 py-3 font-mono">{row.tva_cts != null ? formatCents(row.tva_cts) : '—'}</td>
@@ -255,9 +268,18 @@ export function Charges() {
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <span className="font-medium text-[var(--text)] truncate">{row.label}</span>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                       {isPennylane && <Badge color="muted">Pennylane</Badge>}
-                      {row.category && <Badge color={CATEGORY_COLOR[row.category]}>{CATEGORY_LABELS[row.category]}</Badge>}
+                      <select
+                        value={row.category ?? ''}
+                        onChange={e => handleCategoryChange(row.id, (e.target.value as ChargeCategory) || null)}
+                        className={categoryCls}
+                      >
+                        <option value="">Non catégorisé</option>
+                        {CHARGE_CATEGORIES.map(c => (
+                          <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                   <div className="flex items-end justify-between gap-2">
@@ -307,3 +329,7 @@ export function Charges() {
 
 const filterCls = `h-8 px-3 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)]
   text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] transition-colors`
+
+const categoryCls = `h-7 px-2 rounded-[var(--r-sm)] bg-[var(--bg-elevated)] border border-[var(--border)]
+  text-[var(--text)] text-[var(--fs-xs)] focus:outline-none focus:border-[var(--brand)]
+  transition-colors cursor-pointer max-w-[140px]`

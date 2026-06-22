@@ -1,5 +1,12 @@
 import type { ChargeCategory, ChargeRow } from './charges.types'
 
+/** Source unique — utilisée par le filtre, le dropdown inline et le drawer. */
+export const CHARGE_CATEGORIES: ChargeCategory[] = [
+  'carburant', 'assurance', 'entretien', 'salaire',
+  'logiciel', 'telecom', 'loyer', 'frais_bancaires',
+  'comptabilite', 'publicite', 'autre',
+]
+
 export const CATEGORY_LABELS: Record<ChargeCategory, string> = {
   carburant:      'Carburant',
   assurance:      'Assurance',

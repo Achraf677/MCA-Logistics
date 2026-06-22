@@ -9,7 +9,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { createCharge, updateCharge, deleteCharge } from './charges.queries'
-import { CATEGORY_LABELS, CATEGORY_COLOR, formatCents, computeTtcCts } from './charges.logic'
+import { CHARGE_CATEGORIES, CATEGORY_LABELS, CATEGORY_COLOR, formatCents, computeTtcCts } from './charges.logic'
 import type { ChargeRow, ChargeInsert, ChargeCategory } from './charges.types'
 
 interface Props {
@@ -21,11 +21,6 @@ interface Props {
 
 type Lookup = { id: string; label: string }
 
-const CATEGORIES: ChargeCategory[] = [
-  'carburant', 'assurance', 'entretien', 'salaire',
-  'logiciel', 'telecom', 'loyer', 'frais_bancaires',
-  'comptabilite', 'publicite', 'autre',
-]
 const TVA_OPTIONS = ['0', '5.5', '10', '20']
 
 const EMPTY_FORM = {
@@ -173,7 +168,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
           <Field label="Catégorie">
             <select value={form.category} onChange={e => set('category', e.target.value)} className={inputCls}>
               <option value="">— Aucune —</option>
-              {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+              {CHARGE_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
             </select>
           </Field>
         </div>
