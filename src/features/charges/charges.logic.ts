@@ -35,12 +35,7 @@ export const CATEGORY_COLOR: Record<ChargeCategory, 'muted' | 'info' | 'warning'
   autre:           'muted',
 }
 
-export function formatCents(cts: number): string {
-  return (cts / 100).toLocaleString('fr-FR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }) + ' €'
-}
+export { formatCents } from '../../shared/lib/money'
 
 export function computeTtcCts(htCts: number, tvaRate: number): number {
   return htCts + Math.round((htCts * tvaRate) / 100)

@@ -22,12 +22,7 @@ export const MAINTENANCE_TYPE_COLOR: Record<MaintenanceType, 'muted' | 'info' | 
   autre:              'muted',
 }
 
-export function formatCents(cts: number): string {
-  return (cts / 100).toLocaleString('fr-FR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }) + ' €'
-}
+export { formatCents } from '../../shared/lib/money'
 
 export function formatMileage(km: number): string {
   return km.toLocaleString('fr-FR') + ' km'
