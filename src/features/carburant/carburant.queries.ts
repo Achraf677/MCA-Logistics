@@ -5,7 +5,7 @@ const WITH_JOINS = [
   '*',
   'vehicles!vehicle_id(label, plate)',
   'team_members!driver_id(full_name)',
-  'charges!charge_id(id, label, montant_ttc_cts, receipt_url)',
+  'charges!charge_id(id, label, montant_ttc_cts, receipt_url, pennylane_id)',
 ].join(', ')
 
 export async function getFuelLogs(filters: FuelFilters = {}) {
@@ -47,7 +47,7 @@ export async function getUnlinkedCharges() {
   // Étape 2 : charges non dans cette liste
   let q = supabase
     .from('charges')
-    .select('id, date, label, montant_ht_cts, montant_ttc_cts, tva_cts, tva_rate, receipt_url, supplier_id, category, suppliers!supplier_id(name)')
+    .select('id, date, label, montant_ht_cts, montant_ttc_cts, tva_cts, tva_rate, receipt_url, pennylane_id, supplier_id, category, suppliers!supplier_id(name)')
     .order('date', { ascending: false })
     .limit(200)
 

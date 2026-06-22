@@ -33,15 +33,6 @@ export async function syncPennylane() {
   return supabase.functions.invoke('pennylane-sync', { body: {} })
 }
 
-/** Récupère l'URL fraîche du PDF d'une facture fournisseur Pennylane.
- *  public_file_url expire → toujours passer par cette fonction, jamais par receipt_url. */
-export async function getChargeFileUrl(pennylane_id: string) {
-  return supabase.functions.invoke<{ ok: boolean; url?: string; error?: string }>(
-    'pennylane-file',
-    { body: { pennylane_id } },
-  )
-}
-
 export async function exportChargesCSV(filters: ChargeFilters = {}) {
   const { data } = await getCharges(filters)
   if (!data) return ''

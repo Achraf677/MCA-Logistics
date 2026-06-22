@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Link2, Unlink, ExternalLink } from 'lucide-react'
+import { Link2, Unlink } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -8,6 +8,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import { createFuelLog, updateFuelLog } from './carburant.queries'
 import { SelecteurCharge } from './SelecteurCharge'
+import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, formatCents } from './carburant.logic'
 import type { FuelLogRow, FuelLogInsert, FuelType, ChargePick } from './carburant.types'
 
@@ -225,18 +226,12 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
                     {formatCents(linkedCharge.montant_ttc_cts)}
                   </span>
                 )}
-                {linkedCharge.receipt_url && (
-                  <a
-                    href={linkedCharge.receipt_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={e => e.stopPropagation()}
-                    className="flex items-center gap-1 text-[var(--fs-xs)] text-[var(--brand)] hover:underline"
-                  >
-                    <ExternalLink size={11} />
-                    Facture PDF
-                  </a>
-                )}
+                <FacturePdfLink
+                  pennylane_id={linkedCharge.pennylane_id}
+                  receipt_url={linkedCharge.receipt_url}
+                  label="Facture PDF"
+                  className="inline-flex items-center gap-1 text-[var(--fs-xs)] text-[var(--brand)] hover:underline disabled:opacity-50"
+                />
               </div>
             </div>
           ) : (
