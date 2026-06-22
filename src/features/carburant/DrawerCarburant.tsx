@@ -89,7 +89,8 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
           tva_rate: 0,
           receipt_url: fuelLog.charges.receipt_url,
           supplier_id: null as string | null,
-          category: null as string | null,
+          category_id: null,
+          charge_categories: null,
           suppliers: null,
         } as ChargePick)
       } else {

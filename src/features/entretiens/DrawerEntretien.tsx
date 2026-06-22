@@ -91,7 +91,8 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
           receipt_url: maintenance.charges.receipt_url,
           pennylane_id: maintenance.charges.pennylane_id,
           supplier_id: null,
-          category: null,
+          category_id: null,
+          charge_categories: null,
           suppliers: null,
         })
       } else {

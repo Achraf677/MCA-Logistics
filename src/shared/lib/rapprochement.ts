@@ -3,9 +3,16 @@ import type { ChargePick } from '../types/charges'
 
 export type RapprochementTarget = 'fuel_logs' | 'vehicle_maintenances'
 
+/** Slug de type correspondant à chaque table cible. */
+const TARGET_TYPE: Record<RapprochementTarget, string> = {
+  fuel_logs:            'carburant',
+  vehicle_maintenances: 'entretien',
+}
+
 /**
- * Retourne les charges non encore liées à la table cible.
- * Utilisé par les sélecteurs de rapprochement (carburant, entretiens…).
+ * Retourne les charges non encore liées à la table cible,
+ * filtrées par type (charges du bon type + non catégorisées).
+ * Ex : fuel_logs → Carburant + category_id null. Jamais "Entretien" dans Carburant.
  */
 export async function getUnlinkedChargesFor(target: RapprochementTarget): Promise<ChargePick[]> {
   const { data: linked } = await supabase
@@ -19,7 +26,7 @@ export async function getUnlinkedChargesFor(target: RapprochementTarget): Promis
 
   let q = supabase
     .from('charges')
-    .select('id, date, label, montant_ht_cts, montant_ttc_cts, tva_cts, tva_rate, receipt_url, pennylane_id, supplier_id, category, suppliers!supplier_id(name)')
+    .select('id, date, label, montant_ht_cts, montant_ttc_cts, tva_cts, tva_rate, receipt_url, pennylane_id, supplier_id, category_id, charge_categories!category_id(name, slug, type), suppliers!supplier_id(name)')
     .order('date', { ascending: false })
     .limit(200)
 
@@ -28,5 +35,9 @@ export async function getUnlinkedChargesFor(target: RapprochementTarget): Promis
   }
 
   const { data } = await q
-  return (data ?? []) as unknown as ChargePick[]
+  const rows = (data ?? []) as unknown as ChargePick[]
+
+  // Filtre strict : uniquement les charges du type correspondant à la cible
+  const targetType = TARGET_TYPE[target]
+  return rows.filter(r => r.charge_categories?.type === targetType)
 }
