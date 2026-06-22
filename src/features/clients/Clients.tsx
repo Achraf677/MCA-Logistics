@@ -127,6 +127,10 @@ export function Clients() {
             if (error || data?.ok === false) {
               return { ok: false, message: error?.message ?? data?.error ?? 'Échec de la synchronisation clients' }
             }
+            const errors: string[] = data?.data?.errors ?? []
+            if (errors.length > 0) {
+              return { ok: false, message: errors[0] }
+            }
             const n = data?.data?.clients_upserts ?? 0
             await load()
             await fetchLastSync()
