@@ -153,6 +153,14 @@ export function Dashboard() {
                   key={`${period}-${metric}`}
                   points={trend.map(t => ({ label: t.month, value: metric === 'ca' ? t.caHtCts : t.nb }))}
                   formatValue={metric === 'ca' ? formatCents : v => `${v} liv.`}
+                  formatAxisY={metric === 'ca'
+                    ? (v: number) => {
+                        if (v === 0) return '0'
+                        const eur = Math.round(v / 100)
+                        return eur >= 1000 ? `${Math.round(eur / 1000)} k€` : `${eur} €`
+                      }
+                    : (v: number) => String(Math.round(v))
+                  }
                 />
             }
           </div>

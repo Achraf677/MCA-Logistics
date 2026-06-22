@@ -5,12 +5,14 @@ interface Pt { label: string; value: number }
 interface LineChartProps {
   points: Pt[]
   formatValue?: (v: number) => string
+  formatAxisY?: (v: number) => string
 }
 
-/** Catmull-Rom → cubic Bezier pour une courbe lissée passant par chaque point. */
+/** Catmull-Rom → cubic Bezier, lissage fidèle aux données. */
 function smoothPath(pts: { x: number; y: number }[]): string {
   if (pts.length < 2) return ''
-  if (pts.length === 2) return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} L${pts[1].x.toFixed(1)},${pts[1].y.toFixed(1)}`
+  if (pts.length === 2)
+    return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} L${pts[1].x.toFixed(1)},${pts[1].y.toFixed(1)}`
   const d: string[] = [`M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`]
   for (let i = 0; i < pts.length - 1; i++) {
     const p0 = pts[Math.max(i - 1, 0)]
@@ -26,8 +28,9 @@ function smoothPath(pts: { x: number; y: number }[]): string {
   return d.join(' ')
 }
 
-export function LineChart({ points, formatValue }: LineChartProps) {
-  const W = 620, H = 220, pad = 18
+export function LineChart({ points, formatValue, formatAxisY }: LineChartProps) {
+  const W = 620, H = 220
+  const padL = 52, padR = 18      // padL réservé aux labels Y
   const chartTop = 8, chartBot = H - 34
 
   const [hovered, setHovered] = useState<number | null>(null)
@@ -35,36 +38,48 @@ export function LineChart({ points, formatValue }: LineChartProps) {
 
   if (!points.length) return <div style={{ height: H }} />
 
-  const vals = points.map(p => p.value)
-  const max = Math.max(...vals, 1)
-  const min = Math.min(...vals, 0)
-  const span = max - min || 1
+  const vals  = points.map(p => p.value)
+  const maxV  = Math.max(...vals, 1)
+  const minV  = Math.min(...vals, 0)
+  const span  = maxV - minV || 1
 
-  const x = (i: number) => pad + (i * (W - pad * 2)) / Math.max(points.length - 1, 1)
-  const y = (v: number) => chartBot - ((v - min) / span) * (chartBot - chartTop)
+  const x = (i: number) => padL + (i * (W - padL - padR)) / Math.max(points.length - 1, 1)
+  const y = (v: number) => chartBot - ((v - minV) / span) * (chartBot - chartTop)
 
-  const pts = points.map((p, i) => ({ x: x(i), y: y(p.value) }))
+  const pts   = points.map((p, i) => ({ x: x(i), y: y(p.value) }))
   const lineD = smoothPath(pts)
   const areaD = `${lineD} L${pts[pts.length - 1].x.toFixed(1)},${chartBot} L${pts[0].x.toFixed(1)},${chartBot} Z`
 
-  const fmt = formatValue ?? (v => String(v))
-  const hpt = hovered !== null ? points[hovered] : null
+  const fmt     = formatValue ?? (v => String(v))
+  const fmtAxis = formatAxisY ?? (v => {
+    if (v === 0) return '0'
+    if (Math.abs(v) >= 1000) return `${Math.round(v / 1000)}k`
+    return String(Math.round(v))
+  })
+
+  const hpt     = hovered !== null ? points[hovered] : null
   const animKey = vals.join(',')
+
+  // Grille Y : 3 niveaux (min, mid, max)
+  const gridTicks = [0, 0.5, 1].map(f => ({
+    value: minV + f * span,
+    svgY: y(minV + f * span),
+  }))
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect()
     const svgX = ((e.clientX - rect.left) / rect.width) * W
-    const idx = points.reduce((best, _, i) =>
+    const idx  = points.reduce((best, _, i) =>
       Math.abs(x(i) - svgX) < Math.abs(x(best) - svgX) ? i : best, 0)
     setHovered(idx)
     setTipPos({
       pctX: (e.clientX - rect.left) / rect.width,
-      pctY: (e.clientY - rect.top) / rect.height,
+      pctY: (e.clientY - rect.top)  / rect.height,
     })
   }
 
   const tipOnRight = tipPos.pctX > 0.65
-  const tipAbove  = tipPos.pctY > 0.55
+  const tipAbove   = tipPos.pctY > 0.55
 
   return (
     <div style={{ position: 'relative' }}>
@@ -78,31 +93,59 @@ export function LineChart({ points, formatValue }: LineChartProps) {
         onMouseLeave={() => setHovered(null)}
       >
         <defs>
-          {/* Dégradé horizontal de la courbe : brand → gold */}
           <linearGradient id="lc-line" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0" stopColor="var(--brand)" />
-            <stop offset="1" stopColor="var(--gold)" />
+            <stop offset="1" stopColor="var(--gold)"  />
           </linearGradient>
-          {/* Dégradé vertical de l'aire : brand léger → transparent */}
           <linearGradient id="lc-area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="var(--brand)" stopOpacity="0.12" />
-            <stop offset="1" stopColor="var(--brand)" stopOpacity="0" />
+            <stop offset="0" stopColor="var(--brand)" stopOpacity="0.22" />
+            <stop offset="1" stopColor="var(--brand)" stopOpacity="0"    />
           </linearGradient>
+          {/* Clip : empêche l'overshoot de la courbe de dépasser l'axe */}
+          <clipPath id="lc-clip">
+            <rect x={padL} y={chartTop} width={W - padL - padR} height={chartBot - chartTop + 1} />
+          </clipPath>
         </defs>
 
-        {/* Aire dégradée douce */}
-        <path key={`area-${animKey}`} d={areaD} fill="url(#lc-area)" className="lc-area" />
+        {/* Grille horizontale discrète */}
+        {gridTicks.map((t, i) => (
+          <g key={i}>
+            <line
+              x1={padL} y1={t.svgY} x2={W - padR} y2={t.svgY}
+              stroke="var(--border)" strokeWidth="1" opacity="0.45"
+            />
+            <text
+              x={padL - 6} y={t.svgY + 4}
+              textAnchor="end"
+              fontSize="10"
+              fill="var(--text-disabled)"
+              style={{ fontFamily: 'var(--font-mono)' }}
+            >
+              {fmtAxis(t.value)}
+            </text>
+          </g>
+        ))}
 
-        {/* Courbe nette — un seul trait, pas de glow/blur */}
+        {/* Aire dégradée — clippée */}
+        <path
+          key={`area-${animKey}`}
+          d={areaD}
+          fill="url(#lc-area)"
+          clipPath="url(#lc-clip)"
+          className="lc-area"
+        />
+
+        {/* Courbe nette — clippée, un seul trait dégradé, sans glow */}
         <path
           key={`line-${animKey}`}
           d={lineD}
           fill="none"
           stroke="url(#lc-line)"
-          strokeWidth="2.5"
+          strokeWidth="3"
           strokeLinecap="round"
           strokeLinejoin="round"
           shapeRendering="geometricPrecision"
+          clipPath="url(#lc-clip)"
           pathLength="1"
           className="lc-line"
         />
@@ -115,12 +158,11 @@ export function LineChart({ points, formatValue }: LineChartProps) {
           />
         )}
 
-        {/* Points + labels */}
+        {/* Points + labels axe X */}
         {points.map((p, i) => {
           const isHov = i === hovered
           return (
             <g key={i}>
-              {/* Halo léger uniquement au survol */}
               {isHov && (
                 <circle cx={x(i)} cy={y(p.value)} r={14}
                   fill="var(--brand)" opacity="0.15" />
@@ -148,7 +190,7 @@ export function LineChart({ points, formatValue }: LineChartProps) {
         })}
       </svg>
 
-      {/* Tooltip HTML — rendu hors SVG pour éviter la distorsion preserveAspectRatio */}
+      {/* Tooltip HTML — hors SVG, pas de distorsion preserveAspectRatio */}
       {hpt && hovered !== null && (
         <div style={{
           position: 'absolute',
