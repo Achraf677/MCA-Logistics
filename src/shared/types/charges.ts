@@ -11,6 +11,7 @@ export interface ChargePick {
   receipt_url: string | null
   pennylane_id?: string | null
   supplier_id: string | null
-  category: string | null
+  category_id: string | null
+  charge_categories: { name: string; slug: string; type: string | null } | null
   suppliers: { name: string } | null
 }
