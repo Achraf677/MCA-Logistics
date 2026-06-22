@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Trash2, Lock, ExternalLink } from 'lucide-react'
+import { Trash2, Lock } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -10,6 +10,7 @@ import { supabase, useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { createCharge, updateCharge, deleteCharge } from './charges.queries'
 import { CHARGE_CATEGORIES, CATEGORY_LABELS, CATEGORY_COLOR, formatCents, computeTtcCts } from './charges.logic'
+import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import type { ChargeRow, ChargeInsert, ChargeCategory } from './charges.types'
 
 interface Props {
@@ -138,17 +139,12 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
           <div className="flex items-center gap-2 px-3 py-2.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text-muted)]">
             <Lock size={14} className="shrink-0" />
             <span>Géré dans Pennylane — lecture seule</span>
-            {charge?.receipt_url && (
-              <a
-                href={charge.receipt_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="ml-auto inline-flex items-center gap-1 text-[var(--info)] hover:underline text-[var(--fs-xs)]"
-              >
-                <ExternalLink size={11} />
-                Voir la facture
-              </a>
-            )}
+            <FacturePdfLink
+              pennylane_id={charge?.pennylane_id}
+              receipt_url={charge?.receipt_url}
+              label="Voir la facture"
+              className="ml-auto inline-flex items-center gap-1 text-[var(--info)] hover:underline text-[var(--fs-xs)] disabled:opacity-50"
+            />
           </div>
         )}
 

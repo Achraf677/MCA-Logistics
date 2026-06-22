@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { CreditCard, Receipt, Euro, Wallet, RefreshCw, Lock, ExternalLink } from 'lucide-react'
+import { CreditCard, Receipt, Euro, Wallet, RefreshCw, Lock } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -14,6 +14,7 @@ import { usePermissions } from '../../shared/permissions/usePermissions'
 import {
   CHARGE_CATEGORIES, CATEGORY_LABELS, formatCents, kpiSummary,
 } from './charges.logic'
+import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { downloadCSV } from '../../shared/lib/download'
 import type { ChargeRow, ChargeFilters, ChargeCategory } from './charges.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
@@ -221,20 +222,8 @@ export function Charges() {
                         {row.montant_ttc_cts ? formatCents(row.montant_ttc_cts) : '—'}
                       </td>
                       <td className="px-4 py-3">
-                        {row.receipt_url ? (
-                          <a
-                            href={row.receipt_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-[var(--info)] hover:underline text-[var(--fs-xs)]"
-                          >
-                            <ExternalLink size={11} />
-                            Facture
-                          </a>
-                        ) : (
-                          <span className="text-[var(--text-disabled)]">—</span>
-                        )}
+                        <FacturePdfLink pennylane_id={row.pennylane_id} receipt_url={row.receipt_url} />
+                        {!row.receipt_url && !row.pennylane_id && <span className="text-[var(--text-disabled)]">—</span>}
                       </td>
                       <td className="px-4 py-3 text-right">
                         {isPennylane ? (
@@ -296,18 +285,11 @@ export function Charges() {
                       <span className="font-mono font-semibold text-[var(--text)]">
                         {formatCents(row.montant_ht_cts)} HT
                       </span>
-                      {row.receipt_url && (
-                        <a
-                          href={row.receipt_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={e => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 text-[var(--info)] text-[var(--fs-xs)]"
-                        >
-                          <ExternalLink size={10} />
-                          Facture
-                        </a>
-                      )}
+                      <FacturePdfLink
+                        pennylane_id={row.pennylane_id}
+                        receipt_url={row.receipt_url}
+                        iconSize={10}
+                      />
                     </div>
                   </div>
                 </div>

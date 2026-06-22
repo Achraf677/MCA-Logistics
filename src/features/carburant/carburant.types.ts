@@ -25,7 +25,7 @@ export interface FuelLog {
 export interface FuelLogRow extends FuelLog {
   vehicles: { label: string; plate: string } | null
   team_members: { full_name: string } | null
-  charges: { id: string; label: string; montant_ttc_cts: number | null; receipt_url: string | null } | null
+  charges: { id: string; label: string; montant_ttc_cts: number | null; receipt_url: string | null; pennylane_id: string | null } | null
 }
 
 // charge_id optionnel : les pleins manuels (sans rapprochement) ne l'incluent pas
@@ -48,6 +48,7 @@ export interface ChargePick {
   tva_cts: number | null
   tva_rate: number
   receipt_url: string | null
+  pennylane_id?: string | null
   supplier_id: string | null
   category: string | null
   suppliers: { name: string } | null

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Fuel, Euro, Droplet, Gauge, ExternalLink } from 'lucide-react'
+import { Fuel, Euro, Droplet, Gauge } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -14,6 +14,7 @@ import {
   FUEL_TYPE_LABELS, FUEL_TYPE_COLOR,
   formatCents, formatLiters, formatPricePerLiter, kpiSummary,
 } from './carburant.logic'
+import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { downloadCSV } from '../../shared/lib/download'
 import type { FuelLogRow, FuelFilters } from './carburant.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
@@ -176,17 +177,13 @@ export function Carburant() {
                       {row.charges ? (
                         <div className="flex items-center gap-2">
                           <Badge color="success">Facturé</Badge>
-                          {row.charges.receipt_url && (
-                            <a
-                              href={row.charges.receipt_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={e => e.stopPropagation()}
-                              className="text-[var(--brand)] hover:opacity-80"
-                            >
-                              <ExternalLink size={13} />
-                            </a>
-                          )}
+                          <FacturePdfLink
+                            pennylane_id={row.charges.pennylane_id}
+                            receipt_url={row.charges.receipt_url}
+                            label=""
+                            iconSize={13}
+                            className="inline-flex items-center text-[var(--brand)] hover:opacity-80 disabled:opacity-50"
+                          />
                         </div>
                       ) : (
                         <span className="text-[var(--text-disabled)]">—</span>
