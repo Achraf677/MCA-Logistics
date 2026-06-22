@@ -206,9 +206,9 @@ export function Charges() {
                       <td className="px-4 py-3 text-[var(--text-muted)] max-w-[140px] truncate">
                         {row.suppliers?.name ?? '—'}
                       </td>
-                      <td className="px-4 py-3 max-w-[200px]">
+                      <td className="px-4 py-3 max-w-[260px]">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-[var(--text)] truncate">{row.label}</span>
+                          <span title={row.label} className="font-medium text-[var(--text)] truncate">{row.label}</span>
                           {isPennylane && <Badge color="muted">Pennylane</Badge>}
                         </div>
                       </td>
@@ -263,7 +263,7 @@ export function Charges() {
                     ${isPennylane ? 'cursor-default' : 'cursor-pointer hover:bg-[var(--bg-card-hover)]'}`}
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className="font-medium text-[var(--text)] truncate">{row.label}</span>
+                    <span title={row.label} className="font-medium text-[var(--text)] truncate">{row.label}</span>
                     <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                       {isPennylane && <Badge color="muted">Pennylane</Badge>}
                       {cat && <Badge color={categoryColor(cat.slug)}>{cat.name}</Badge>}
