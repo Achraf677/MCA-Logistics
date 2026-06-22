@@ -167,7 +167,7 @@ export function Charges() {
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['Date', 'Fournisseur', 'Libellé', 'Catégorie', 'Montant HT', 'TVA%', 'Total TTC', 'Facture', ''].map(h => (
+                  {['Date', 'Fournisseur', 'Libellé', 'Catégorie', 'Montant HT', 'TVA', 'Total TTC', 'Facture', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -203,7 +203,7 @@ export function Charges() {
                           : <span className="text-[var(--text-disabled)]">—</span>}
                       </td>
                       <td className="px-4 py-3 font-mono">{formatCents(row.montant_ht_cts)}</td>
-                      <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">{row.tva_rate} %</td>
+                      <td className="px-4 py-3 font-mono">{row.tva_cts != null ? formatCents(row.tva_cts) : '—'}</td>
                       <td className="px-4 py-3 font-mono font-semibold text-[var(--text)]">
                         {row.montant_ttc_cts ? formatCents(row.montant_ttc_cts) : '—'}
                       </td>
