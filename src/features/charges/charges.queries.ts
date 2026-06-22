@@ -37,16 +37,6 @@ export async function syncPennylane() {
   return supabase.functions.invoke('pennylane-sync', { body: {} })
 }
 
-export async function getLastPennylaneSync(): Promise<string | null> {
-  const { data } = await supabase
-    .from('charges')
-    .select('pennylane_synced_at')
-    .not('pennylane_synced_at', 'is', null)
-    .order('pennylane_synced_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  return (data as { pennylane_synced_at: string } | null)?.pennylane_synced_at ?? null
-}
 
 export async function exportChargesCSV(filters: ChargeFilters = {}) {
   const { data } = await getCharges(filters)

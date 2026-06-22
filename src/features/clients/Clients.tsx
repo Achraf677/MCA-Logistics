@@ -11,6 +11,7 @@ import { TabActions } from '../../shared/ui/TabbedSection'
 import { DrawerClient } from './DrawerClient'
 import { useToast } from '../../shared/ui/useToast'
 import { getClients, exportClientsCSV, getFacturedDeliveries, syncPennylaneClients } from './clients.queries'
+import { getSyncState } from '../../shared/lib/syncState'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, countByType,
@@ -38,6 +39,7 @@ export function Clients() {
   const [search, setSearch] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<Client | null>(null)
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
 
   // Encours data: map clientId -> encours
   const [encoursByClient, setEncoursByClient] = useState<Map<string, ClientEncours>>(new Map())
@@ -79,7 +81,13 @@ export function Clients() {
     loadEncours(clientList)
   }, [filters, search, loadEncours])
 
+  const fetchLastSync = useCallback(async () => {
+    const ts = await getSyncState('pennylane_clients')
+    setLastSyncAt(ts)
+  }, [])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => { fetchLastSync() }, [fetchLastSync])
 
   const handleAction = async (key: ActionKey) => {
     if (key === 'nouveau') { setSelected(null); setDrawerOpen(true) }
@@ -113,6 +121,7 @@ export function Clients() {
       <TabActions>
         <SyncButton
           label="Synchroniser clients Pennylane"
+          lastSyncAt={lastSyncAt}
           onSync={async () => {
             const { data, error } = await syncPennylaneClients()
             if (error || data?.ok === false) {
@@ -120,6 +129,7 @@ export function Clients() {
             }
             const n = data?.data?.clients_upserts ?? 0
             await load()
+            await fetchLastSync()
             return { ok: true, message: n > 0 ? `${n} client(s) synchronisé(s)` : 'Aucun nouveau client' }
           }}
         />

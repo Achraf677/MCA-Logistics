@@ -12,7 +12,8 @@ import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { DrawerCharge } from './DrawerCharge'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
-import { getCharges, exportChargesCSV, syncPennylane, updateCharge, getLastPennylaneSync } from './charges.queries'
+import { getCharges, exportChargesCSV, syncPennylane, updateCharge } from './charges.queries'
+import { getSyncState } from '../../shared/lib/syncState'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatCents, categoryColor, kpiSummary } from './charges.logic'
 import { getCategories } from '../../shared/lib/categories.queries'
@@ -50,7 +51,7 @@ export function Charges() {
   }, [filters])
 
   const fetchLastSync = useCallback(async () => {
-    const ts = await getLastPennylaneSync()
+    const ts = await getSyncState('pennylane_charges')
     setLastSyncAt(ts)
   }, [])
 

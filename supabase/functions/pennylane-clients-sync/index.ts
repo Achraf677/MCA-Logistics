@@ -127,6 +127,12 @@ Deno.serve(async (req) => {
       cursor = page.has_more ? (page.next_cursor ?? null) : null;
     } while (cursor !== null);
 
+    // Horodatage du dernier run réussi — même si 0 nouveauté.
+    await supabase.from('integration_sync_state').upsert(
+      { company_id: companyId, integration: 'pennylane_clients', last_run_at: new Date().toISOString() },
+      { onConflict: 'company_id,integration' },
+    );
+
     return jsonResponse({
       ok:   true,
       data: {
