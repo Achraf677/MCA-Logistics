@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Trash2 } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
-import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
+import { DeleteButton } from '../../shared/ui/DeleteButton'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
@@ -49,7 +48,6 @@ export function DrawerIncident({ open, onClose, incident, onSaved }: Props) {
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
   const [vehicles, setVehicles] = useState<Lookup[]>([])
   const [drivers, setDrivers]   = useState<Lookup[]>([])
 
@@ -126,11 +124,9 @@ export function DrawerIncident({ open, onClose, incident, onSaved }: Props) {
   }
 
   const handleDelete = async () => {
-    if (!incident) return
-    const { error } = await deleteIncident(incident.id)
-    if (error) { toast(error.message, 'error'); return }
-    toast('Incident supprimé', 'success')
-    setConfirmDelete(false)
+    const { error } = await deleteIncident(incident!.id)
+    if (error) throw error
+    toast('Incident supprimé')
     onSaved()
     onClose()
   }
@@ -240,23 +236,16 @@ export function DrawerIncident({ open, onClose, incident, onSaved }: Props) {
           </Button>
           <Button variant="secondary" onClick={onClose}>Annuler</Button>
           {isEdit && can('flotte.incidents', 'delete') && (
-            <Button variant="ghost" onClick={() => setConfirmDelete(true)} className="ml-auto text-[var(--danger)]">
-              <Trash2 size={14} />
-              Supprimer
-            </Button>
+            <DeleteButton
+              onDelete={handleDelete}
+              confirmTitle="Supprimer l'incident ?"
+              confirmMessage="Cette action est irréversible. L'incident sera définitivement supprimé."
+              className="ml-auto"
+            />
           )}
         </div>
       </div>
 
-      <ConfirmDialog
-        open={confirmDelete}
-        title="Supprimer l'incident"
-        message="Cette action est irréversible. L'incident sera définitivement supprimé."
-        confirmLabel="Supprimer"
-        onConfirm={handleDelete}
-        onCancel={() => setConfirmDelete(false)}
-        loading={false}
-      />
     </Drawer>
   )
 }

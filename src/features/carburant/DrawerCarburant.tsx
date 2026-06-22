@@ -6,9 +6,10 @@ import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
-import { createFuelLog, updateFuelLog } from './carburant.queries'
+import { createFuelLog, updateFuelLog, deleteFuelLog } from './carburant.queries'
 import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
 import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
+import { DeleteButton } from '../../shared/ui/DeleteButton'
 import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, formatCents } from './carburant.logic'
 import type { FuelLogRow, FuelLogInsert, FuelType, ChargePick } from './carburant.types'
@@ -186,6 +187,14 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
     }
   }
 
+  const handleDelete = async () => {
+    const { error } = await deleteFuelLog(fuelLog!.id)
+    if (error) throw error
+    toast('Plein supprimé')
+    onSaved()
+    onClose()
+  }
+
   return (
     <>
       <Drawer
@@ -301,6 +310,14 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>
             <Button variant="secondary" onClick={onClose}>Annuler</Button>
+            {isEdit && (
+              <DeleteButton
+                onDelete={handleDelete}
+                confirmTitle="Supprimer ce plein ?"
+                confirmMessage="La charge liée ne sera pas supprimée. Action irréversible."
+                className="ml-auto"
+              />
+            )}
           </div>
         </div>
       </Drawer>

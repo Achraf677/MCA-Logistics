@@ -6,11 +6,12 @@ import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
-import { createInspection, updateInspection } from './inspections.queries'
+import { createInspection, updateInspection, deleteInspection } from './inspections.queries'
 import {
   TYPE_LABELS, STATUS_LABELS, STATUS_COLOR, CHECKLIST_LABELS, computeStatus,
 } from './inspections.logic'
 import type { InspectionRow, InspectionInsert, InspectionType, InspectionStatus } from './inspections.types'
+import { DeleteButton } from '../../shared/ui/DeleteButton'
 
 interface Props {
   open: boolean
@@ -137,6 +138,14 @@ export function DrawerInspection({ open, onClose, inspection, onSaved }: Props) 
     }
   }
 
+  const handleDelete = async () => {
+    const { error } = await deleteInspection(inspection!.id)
+    if (error) throw error
+    toast('Inspection supprimée')
+    onSaved()
+    onClose()
+  }
+
   const nokCount = CHECKLIST_KEYS.filter(k => !checklist[k]).length
 
   return (
@@ -251,6 +260,14 @@ export function DrawerInspection({ open, onClose, inspection, onSaved }: Props) 
             {saving ? 'Enregistrement…' : 'Enregistrer'}
           </Button>
           <Button variant="secondary" onClick={onClose}>Annuler</Button>
+          {isEdit && (
+            <DeleteButton
+              onDelete={handleDelete}
+              confirmTitle="Supprimer cette inspection ?"
+              confirmMessage="Action irréversible."
+              className="ml-auto"
+            />
+          )}
         </div>
       </div>
     </Drawer>

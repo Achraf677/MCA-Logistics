@@ -9,12 +9,13 @@ import { supabase, useProfile } from '../../app/providers'
 import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
 import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
 import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
-import { createMaintenance, updateMaintenance } from './entretiens.queries'
+import { createMaintenance, updateMaintenance, deleteMaintenance } from './entretiens.queries'
 import {
   MAINTENANCE_TYPE_LABELS, MAINTENANCE_TYPE_COLOR, formatCents,
 } from './entretiens.logic'
 import type { MaintenanceRow, MaintenanceInsert, MaintenanceType } from './entretiens.types'
 import type { ChargePick } from '../../shared/types/charges'
+import { DeleteButton } from '../../shared/ui/DeleteButton'
 
 interface Props {
   open: boolean
@@ -165,6 +166,14 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
     }
   }
 
+  const handleDelete = async () => {
+    const { error } = await deleteMaintenance(maintenance!.id)
+    if (error) throw error
+    toast('Entretien supprimé')
+    onSaved()
+    onClose()
+  }
+
   const drawerTitle = isEdit
     ? `Entretien — ${maintenance!.vehicles?.label ?? '...'}`
     : 'Nouvel entretien'
@@ -281,6 +290,14 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>
             <Button variant="secondary" onClick={onClose}>Annuler</Button>
+            {isEdit && (
+              <DeleteButton
+                onDelete={handleDelete}
+                confirmTitle="Supprimer cet entretien ?"
+                confirmMessage="La charge liée ne sera pas supprimée. Action irréversible."
+                className="ml-auto"
+              />
+            )}
           </div>
         </div>
       </Drawer>
