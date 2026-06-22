@@ -5,8 +5,8 @@ import type { DeliveryRow } from '../livraisons/livraisons.types'
 export interface DashboardKpis {
   caHtCts: number
   nbLivraisons: number
-  factureePct: number
-  payeePct: number
+  nbFacturee: number
+  nbPayee: number
   vehiculesActifs: number
   chauffeurs: number
   clientsActifs: number
@@ -38,8 +38,8 @@ export async function getDashboardKpis(): Promise<DashboardKpis> {
   return {
     caHtCts,
     nbLivraisons: nb,
-    factureePct: nb ? Math.round((nbFacturee / nb) * 100) : 0,
-    payeePct: nb ? Math.round((nbPayee / nb) * 100) : 0,
+    nbFacturee,
+    nbPayee,
     vehiculesActifs: vehiclesRes.count ?? 0,
     chauffeurs: teamRes.count ?? 0,
     clientsActifs: clientsRes.count ?? 0,
@@ -57,7 +57,7 @@ export async function getRecentDeliveries() {
 }
 
 export async function getMonthlyTrend() {
-  const results: { month: string; caHtCts: number; nb: number }[] = []
+  const results: { month: string; caHtCts: number; nb: number; nbFacturee: number; nbPayee: number }[] = []
   const now = new Date()
 
   for (let i = 5; i >= 0; i--) {
@@ -68,15 +68,18 @@ export async function getMonthlyTrend() {
 
     const { data } = await supabase
       .from('deliveries')
-      .select('amount_ht_cts')
+      .select('amount_ht_cts, statut')
       .gte('date', start)
       .lte('date', end)
       .neq('statut', 'annulee')
 
+    const rows = data ?? []
     results.push({
       month: label,
-      caHtCts: (data ?? []).reduce((s, d) => s + effectiveHtCts(d), 0),
-      nb: (data ?? []).length,
+      caHtCts: rows.reduce((s, d) => s + effectiveHtCts(d), 0),
+      nb: rows.length,
+      nbFacturee: rows.filter(d => d.statut === 'facturee' || d.statut === 'payee').length,
+      nbPayee: rows.filter(d => d.statut === 'payee').length,
     })
   }
 
