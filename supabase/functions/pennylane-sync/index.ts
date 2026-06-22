@@ -1,7 +1,4 @@
 // Edge Function `pennylane-sync` — ingestion factures fournisseurs Pennylane EN LECTURE SEULE.
-// Pour chaque facture fournisseur Pennylane :
-//   - upsert le fournisseur dans `suppliers` (company_id, pennylane_id) ;
-//   - upsert la charge dans `charges` (company_id, pennylane_id), idempotent.
 // Sens unique : uniquement des GET vers Pennylane. Jamais de POST/PUT/PATCH/DELETE.
 // Le token n'est ni loggué ni renvoyé au client.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
@@ -17,23 +14,27 @@ function pennylaneHeaders(token: string): Record<string, string> {
   };
 }
 
-// ── Types Pennylane V2 confirmés par inspection du payload réel ───────────────
-// Le fournisseur est un objet imbriqué { id, url } — PAS de champs plats supplier_id/supplier_name.
+// ── Types Pennylane V2 ─────────────────────────────────────────────────────────
 interface PennylaneSupplierRef {
   id:  number;
-  url: string;   // URL directe vers GET /suppliers/{id}
+  url: string;
+}
+
+interface PennylaneInvoiceLines {
+  url: string;
 }
 
 interface PennylaneSupplierInvoice {
   id:                           number;
   invoice_number:               string | null;
-  date:                         string | null;   // ISO 8601 YYYY-MM-DD
+  date:                         string | null;
   label:                        string | null;
-  currency_amount_before_tax:   string | null;   // HT en euros, string décimal
-  currency_tax:                 string | null;   // TVA en euros, string décimal
-  currency_amount:              string | null;   // TTC en euros, string décimal
+  currency_amount_before_tax:   string | null;
+  currency_tax:                 string | null;
+  currency_amount:              string | null;
   supplier:                     PennylaneSupplierRef | null;
-  public_file_url:              string | null;   // URL PDF (peut expirer)
+  public_file_url:              string | null;
+  invoice_lines:                PennylaneInvoiceLines | null;
 }
 
 interface InvoicesPage {
@@ -42,27 +43,86 @@ interface InvoicesPage {
   next_cursor: string | null;
 }
 
-// Détail fournisseur — GET /suppliers/{id} (ou via supplier.url)
+// Ligne de facture — champ vat_rate : code Pennylane ("FR_200", "FR_100", "FR_055", "FR_021", "FR_000")
+// ou valeur numérique directe selon la version de l'API.
+interface PennylaneInvoiceLine {
+  id:                         number;
+  label:                      string | null;
+  currency_amount_before_tax: string | null;  // montant HT de la ligne
+  vat_rate:                   string | number | null;
+}
+
+// Réponse GET /supplier_invoices/{id}/invoice_lines
+interface InvoiceLinesResponse {
+  invoice_lines?: PennylaneInvoiceLine[];
+  items?:         PennylaneInvoiceLine[];  // fallback si la clé change
+}
+
+// Détail fournisseur
 interface PennylaneSupplierDetail {
   id:               number;
   name:             string | null;
-  reg_no:           string | null;           // SIREN (9 chiffres)
-  establishment_no: string | null;           // SIRET (14 chiffres)
+  reg_no:           string | null;
+  establishment_no: string | null;
   vat_number:       string | null;
 }
-
-// L'API V2 enveloppe le détail dans { supplier: {...} }
 interface PennylaneSupplierDetailResponse {
   supplier?: PennylaneSupplierDetail;
-  // fallback : certaines réponses retournent l'objet directement
-  id?:  number;
-  name?: string;
+  id?:       number;
+  name?:     string;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function toCents(euroStr: string | null | undefined): number {
   if (!euroStr) return 0;
   return Math.round(parseFloat(euroStr) * 100);
+}
+
+/**
+ * Décode un code TVA Pennylane vers un taux numérique (%).
+ * "FR_200" → 20.0 · "FR_100" → 10.0 · "FR_055" → 5.5 · "FR_021" → 2.1 · "FR_000" → 0.0
+ * "exempt" → 0.0 (exonéré de TVA)
+ * Valeur numérique directe (ex. 20) → passée telle quelle.
+ * Code non reconnu → null (on ne devine jamais).
+ */
+function decodeVatCode(code: string | number | null | undefined): number | null {
+  if (code == null) return null;
+  if (typeof code === 'number') return code;
+  const s = String(code).toLowerCase().trim();
+  if (s === 'exempt' || s === 'fr_000' || s === '0') return 0;
+  // "FR_200" → extrait les chiffres finaux → parseInt / 10
+  const m = s.match(/(\d+)$/);
+  if (!m) return null;
+  return parseInt(m[1], 10) / 10;
+}
+
+/**
+ * Récupère le taux TVA dominant d'une facture via ses lignes.
+ * "Dominant" = ligne avec le plus grand montant HT.
+ * Retourne null si les lignes sont inaccessibles ou le code inconnu.
+ */
+async function fetchDominantVatRate(
+  invoiceLinesUrl: string,
+  token: string,
+): Promise<number | null> {
+  try {
+    const data = await fetchJson<InvoiceLinesResponse>(
+      invoiceLinesUrl,
+      { headers: pennylaneHeaders(token) },
+    );
+    const lines = data.invoice_lines ?? data.items ?? [];
+    if (lines.length === 0) return null;
+
+    let dominant = lines[0];
+    for (const line of lines) {
+      if (toCents(line.currency_amount_before_tax) > toCents(dominant.currency_amount_before_tax)) {
+        dominant = line;
+      }
+    }
+    return decodeVatCode(dominant.vat_rate);
+  } catch {
+    return null;
+  }
 }
 
 async function fetchSupplierDetail(
@@ -74,7 +134,6 @@ async function fetchSupplierDetail(
       supplierUrl,
       { headers: pennylaneHeaders(token) },
     );
-    // Gère wrapper { supplier: {...} } ET réponse directe
     return raw.supplier ?? (raw as unknown as PennylaneSupplierDetail) ?? null;
   } catch {
     return null;
@@ -119,8 +178,7 @@ Deno.serve(async (req) => {
       const invoices = page.items ?? [];
       if (invoices.length === 0) break;
 
-      // ── 1. Collecte les références fournisseurs uniques de la page ─────────
-      // Clé = String(supplier.id), valeur = supplier.url pour le fetch détail.
+      // ── 1. Fournisseurs uniques de la page ────────────────────────────────
       const supplierRefs = new Map<string, string>(); // pid → url
       for (const inv of invoices) {
         if (inv.supplier?.id != null) {
@@ -129,15 +187,14 @@ Deno.serve(async (req) => {
         }
       }
 
-      // ── 2. Fetch détail de chaque fournisseur unique (séquentiel, ~5-15/page) ─
-      const supplierDetailMap = new Map<string, PennylaneSupplierDetail>(); // pid → détail
+      // ── 2. Fetch détail fournisseurs ──────────────────────────────────────
+      const supplierDetailMap = new Map<string, PennylaneSupplierDetail>();
       for (const [pid, url] of supplierRefs.entries()) {
         const detail = await fetchSupplierDetail(url, token);
         if (detail) supplierDetailMap.set(pid, detail);
       }
 
-      // ── 3. Batch upsert fournisseurs ───────────────────────────────────────
-      // N'inclut que name/siret/tva_intra dans la row → les champs manuels sont préservés.
+      // ── 3. Batch upsert fournisseurs ──────────────────────────────────────
       const supplierRows = Array.from(supplierDetailMap.entries()).map(([pid, d]) => ({
         company_id:   companyId,
         pennylane_id: pid,
@@ -157,42 +214,47 @@ Deno.serve(async (req) => {
         suppliersUpserts += (upsertedSuppliers?.length ?? 0);
       }
 
-      // pid → UUID local (FK pour charges.supplier_id)
       const pidToUuid = new Map<string, string>();
       for (const s of (upsertedSuppliers ?? [])) {
         pidToUuid.set(s.pennylane_id, s.id);
       }
 
-      // ── 4. Batch upsert charges ────────────────────────────────────────────
-      const chargeRows = invoices
-        .filter((inv) => inv.date != null)
-        .map((inv) => {
-          const supplierPid = inv.supplier?.id != null ? String(inv.supplier.id) : null;
+      // ── 4. Batch upsert charges (tva_rate depuis les lignes, jamais recalculé) ─
+      const chargeRows: Record<string, unknown>[] = [];
+      for (const inv of invoices) {
+        if (inv.date == null) continue;
 
-          // GARDE-FOU : id fournisseur manquant → supplier_id null, jamais de placeholder
-          if (!supplierPid) {
-            errors.push(`warn: invoice ${inv.id} — supplier absent, supplier_id laissé null`);
-          }
+        const supplierPid = inv.supplier?.id != null ? String(inv.supplier.id) : null;
+        if (!supplierPid) {
+          errors.push(`warn: invoice ${inv.id} — supplier absent, supplier_id laissé null`);
+        }
 
-          const htCts  = toCents(inv.currency_amount_before_tax);
-          const tvaCts = toCents(inv.currency_tax);
-          const ttcCts = toCents(inv.currency_amount);
+        const htCts  = toCents(inv.currency_amount_before_tax);
+        const tvaCts = toCents(inv.currency_tax);
+        const ttcCts = toCents(inv.currency_amount);
 
-          return {
-            company_id:          companyId,
-            pennylane_id:        String(inv.id),
-            supplier_id:         supplierPid ? (pidToUuid.get(supplierPid) ?? null) : null,
-            date:                inv.date,
-            label:               inv.label ?? inv.invoice_number ?? `Facture Pennylane #${inv.id}`,
-            montant_ht_cts:      htCts,
-            tva_cts:             tvaCts,
-            montant_ttc_cts:     ttcCts,
-            tva_rate:            htCts > 0 ? parseFloat((tvaCts / htCts * 100).toFixed(2)) : null,
-            category:            null,
-            receipt_url:         inv.public_file_url ?? null,
-            pennylane_synced_at: new Date().toISOString(),
-          };
+        // Taux TVA : lu depuis les lignes de facture — JAMAIS recalculé depuis les montants.
+        let tvaRate: number | null = null;
+        if (inv.invoice_lines?.url) {
+          tvaRate = await fetchDominantVatRate(inv.invoice_lines.url, token);
+
+        }
+
+        chargeRows.push({
+          company_id:          companyId,
+          pennylane_id:        String(inv.id),
+          supplier_id:         supplierPid ? (pidToUuid.get(supplierPid) ?? null) : null,
+          date:                inv.date,
+          label:               inv.label ?? inv.invoice_number ?? `Facture Pennylane #${inv.id}`,
+          montant_ht_cts:      htCts,
+          tva_cts:             tvaCts,
+          montant_ttc_cts:     ttcCts,
+          tva_rate:            tvaRate,   // null si inconnu, jamais une approximation
+          category:            null,
+          receipt_url:         inv.public_file_url ?? null,
+          pennylane_synced_at: new Date().toISOString(),
         });
+      }
 
       if (chargeRows.length > 0) {
         const { data: upsertedCharges, error: chErr } = await supabase
