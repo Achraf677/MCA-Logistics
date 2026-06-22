@@ -27,17 +27,16 @@ interface PennylaneAddress {
 }
 
 interface PennylaneCustomer {
-  id:                number;
-  name:              string | null;
-  // SIRET — V2 peut exposer establishment_no (14 chiffres) ou siret
-  siret:             string | null;
-  establishment_no:  string | null;
+  id:              number;
+  name:            string | null;
+  // Pennylane V2 retourne reg_no = SIREN (9 chiffres), pas de SIRET complet
+  reg_no:          string | null;
   // TVA intracommunautaire
-  vat_number:        string | null;
-  billing_address:   PennylaneAddress | null;
-  // Emails : tableau d'objets OU tableau de strings (on prend le premier)
-  emails:            Array<{ address?: string } | string> | null;
-  phone:             string | null;
+  vat_number:      string | null;
+  billing_address: PennylaneAddress | null;
+  // emails = tableau de strings (payload réel confirmé)
+  emails:          string[] | null;
+  phone:           string | null;
 }
 
 interface CustomersPage {
@@ -47,20 +46,18 @@ interface CustomersPage {
 }
 
 // ── Helper : extrait le premier e-mail ───────────────────────────────────────
-function firstEmail(emails: PennylaneCustomer['emails']): string | null {
+function firstEmail(emails: string[] | null | undefined): string | null {
   if (!emails || emails.length === 0) return null;
-  const first = emails[0];
-  if (typeof first === 'string') return first || null;
-  return first.address ?? null;
+  return emails[0] || null;
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse();
 
-  const token = Deno.env.get('PENNYLANE_ACHATS_TOKEN');
+  const token = Deno.env.get('PENNYLANE_API_TOKEN');
   if (!token) {
-    return jsonResponse({ ok: false, error: 'missing PENNYLANE_ACHATS_TOKEN' }, 500);
+    return jsonResponse({ ok: false, error: 'missing PENNYLANE_API_TOKEN' }, 500);
   }
 
   const supabase = getServiceClient();
@@ -110,19 +107,17 @@ Deno.serve(async (req) => {
           company_id:   companyId,
           pennylane_id: String(c.id),
           name:         c.name ?? `Client Pennylane #${c.id}`,
-          // SIRET : establishment_no (14 ch) en priorité, siret en fallback
-          siret:        c.establishment_no ?? c.siret ?? null,
+          // reg_no = SIREN (9 chiffres) — seul identifiant dispo dans Pennylane V2
+          siret:        c.reg_no ?? null,
           tva_intra:    c.vat_number ?? null,
           address:      c.billing_address?.address ?? null,
           city:         c.billing_address?.city ?? null,
           postal_code:  c.billing_address?.postal_code ?? null,
           email:        firstEmail(c.emails),
           phone:        c.phone ?? null,
-          // `type` n'est PAS importé depuis Pennylane : contrainte DB
-          // ('medical','ecommerce','retail','particulier') incompatible.
+          // `type` non importé : contrainte DB ('medical','ecommerce','retail','particulier')
           // `tariff_mode`, `payment_terms`, `notes` préservés (non touchés).
-          active:              true,
-          pennylane_synced_at: new Date().toISOString(),
+          active: true,
         }));
 
       if (clientRows.length > 0) {
