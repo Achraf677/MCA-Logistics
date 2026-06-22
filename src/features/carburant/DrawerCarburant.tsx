@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { Link2 } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
+import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { useToast } from '../../shared/ui/useToast'
@@ -24,7 +25,6 @@ interface Props {
 type Lookup = { id: string; label: string }
 
 const FUEL_TYPES: FuelType[] = ['diesel', 'essence', 'electric', 'hybrid', 'lpg']
-const TVA_OPTIONS = ['0', '5.5', '20']
 const TODAY = new Date().toISOString().slice(0, 10)
 
 const EMPTY_FORM = {
@@ -293,9 +293,10 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
 
           <div className="grid grid-cols-2 gap-3">
             <Field label="TVA (%)">
-              <select value={form.tva_rate} onChange={e => set('tva_rate', e.target.value)} className={inputCls}>
-                {TVA_OPTIONS.map(v => <option key={v} value={v}>{v} %</option>)}
-              </select>
+              <TvaRateInput
+                value={parseFloat(form.tva_rate || '20')}
+                onChange={r => set('tva_rate', String(r))}
+              />
             </Field>
             <Field label="TVA déductible (%)">
               <select value={form.tva_deductible_pct} onChange={e => set('tva_deductible_pct', e.target.value)} className={inputCls}>

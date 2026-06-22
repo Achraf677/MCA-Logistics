@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { Drawer }     from '../../shared/ui/Drawer'
+import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import { Button }     from '../../shared/ui/Button'
 import { useToast }   from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
@@ -23,13 +24,6 @@ interface Props {
   onSaved: () => void
 }
 
-const TVA_RATES = [
-  { label: '20 %', value: 20 },
-  { label: '10 %', value: 10 },
-  { label: '5,5 %', value: 5.5 },
-  { label: '2,1 %', value: 2.1 },
-  { label: '0 %', value: 0 },
-]
 
 const EMPTY_FORM = {
   label:            '',
@@ -230,13 +224,10 @@ export function DrawerModele({ open, onClose, template, onSaved }: Props) {
               placeholder="0.00" className={inputCls} />
           </Field>
           <Field label="Taux TVA">
-            <select value={form.tva_rate}
-              onChange={e => set('tva_rate', parseFloat(e.target.value))}
-              className={inputCls}>
-              {TVA_RATES.map(r => (
-                <option key={r.value} value={r.value}>{r.label}</option>
-              ))}
-            </select>
+            <TvaRateInput
+              value={form.tva_rate}
+              onChange={r => set('tva_rate', r)}
+            />
           </Field>
         </div>
 

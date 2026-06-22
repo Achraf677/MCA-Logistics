@@ -170,8 +170,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
 
     const rawRate = (form.tva_override && parseFloat(form.manual_ht) > 0)
       ? parseFloat(form.tva_override) / parseFloat(form.manual_ht) * 100 : 20
-    const LEGAL = [0, 2.1, 5.5, 10, 20]
-    const tva_rate = LEGAL.reduce((b, r) => Math.abs(r - rawRate) < Math.abs(b - rawRate) ? r : b, 20)
+    const tva_rate = Math.round(rawRate * 100) / 100
 
     setSavingTpl(true)
     const { error } = await createDeliveryTemplate({
