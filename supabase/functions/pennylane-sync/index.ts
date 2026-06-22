@@ -241,7 +241,6 @@ Deno.serve(async (req) => {
           tva_cts:             tvaCts,
           montant_ttc_cts:     ttcCts,
           tva_rate:            tvaRate,   // null si inconnu, jamais une approximation
-          category:            null,
           receipt_url:         inv.public_file_url ?? null,
           pennylane_synced_at: new Date().toISOString(),
         });

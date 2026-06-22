@@ -18,7 +18,7 @@ export interface StatDelivery {
 export interface StatCharge {
   date: string | null
   montant_ht_cts: number | null
-  category: string | null
+  charge_categories: { name: string; slug: string } | null
 }
 export interface StatFuel { date: string | null; total_cts: number | null }
 export interface StatMaintenance { date: string | null; cost_cts: number | null }
@@ -82,12 +82,12 @@ export function topClients(deliveries: StatDelivery[], n = 5): ClientCa[] {
 
 // ── Charges par catégorie ─────────────────────────────────────────────────────────
 
-/** CA HT des charges regroupé par catégorie (absente → « autre »), trié décroissant : [[category, cts]]. */
+/** CA HT des charges regroupé par catégorie (absente → « Autres »), trié décroissant : [[name, cts]]. */
 export function chargesByCategory(charges: StatCharge[]): [string, number][] {
   const byCat: Record<string, number> = {}
   for (const d of charges) {
-    const cat = (d.category as string) ?? 'autre'
-    byCat[cat] = (byCat[cat] ?? 0) + (d.montant_ht_cts ?? 0)
+    const name = d.charge_categories?.name ?? 'Autres'
+    byCat[name] = (byCat[name] ?? 0) + (d.montant_ht_cts ?? 0)
   }
   return Object.entries(byCat).sort((a, b) => b[1] - a[1])
 }

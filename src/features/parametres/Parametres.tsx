@@ -12,6 +12,7 @@ import type { CompanyData } from './parametres.queries'
 import { DriveConnect } from './DriveConnect'
 import { DriveAccess } from './DriveAccess'
 import { ThemeSelector } from '../../shared/theme/ThemeSelector'
+import { GestionCategories } from './GestionCategories'
 
 const EMPTY: Omit<CompanyData, 'id'> = {
   name: '', siren: '', siret: '', tva_intra: '',
@@ -246,6 +247,11 @@ export function Parametres() {
                 <DriveAccess />
               </Section>
             )}
+
+            {/* Section Catégories de charges */}
+            <Section title="Catégories de charges">
+              <GestionCategories />
+            </Section>
 
             {/* Section Compte */}
             <Section title="Compte">

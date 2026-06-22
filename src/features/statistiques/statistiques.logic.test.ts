@@ -17,8 +17,13 @@ function deliv(p: Partial<StatDelivery>): StatDelivery {
     clients: 'clients' in p ? p.clients! : { name: 'Client 1' },
   }
 }
-function charge(p: Partial<StatCharge>): StatCharge {
-  return { date: p.date ?? day(0), montant_ht_cts: p.montant_ht_cts ?? 0, category: p.category ?? 'autre' }
+function charge(p: { date?: string; montant_ht_cts?: number | null; category?: string | null }): StatCharge {
+  const slug = p.category ?? null
+  return {
+    date: p.date ?? day(0),
+    montant_ht_cts: p.montant_ht_cts ?? 0,
+    charge_categories: slug ? { name: slug, slug } : null,
+  }
 }
 
 // ── caMensuel ────────────────────────────────────────────────────────────────────
@@ -137,9 +142,9 @@ describe('chargesByCategory — regroupement + tri', () => {
     ])
   })
 
-  it('catégorie absente → « autre »', () => {
+  it('catégorie absente → « Autres »', () => {
     const res = chargesByCategory([charge({ category: null, montant_ht_cts: 1_000 })])
-    expect(res).toEqual([['autre', 1_000]])
+    expect(res).toEqual([['Autres', 1_000]])
   })
 
   it('tableau vide → []', () => {

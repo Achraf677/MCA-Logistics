@@ -9,15 +9,16 @@ import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { createCharge, updateCharge, deleteCharge } from './charges.queries'
-import { CHARGE_CATEGORIES, CATEGORY_LABELS, CATEGORY_COLOR, formatCents, computeTtcCts } from './charges.logic'
+import { categoryColor, formatCents, computeTtcCts } from './charges.logic'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
-import type { ChargeRow, ChargeInsert, ChargeCategory } from './charges.types'
+import type { ChargeRow, ChargeInsert, ChargeCategoryRow } from './charges.types'
 
 interface Props {
   open: boolean
   onClose: () => void
   charge?: ChargeRow | null
   onSaved: () => void
+  categories: ChargeCategoryRow[]
 }
 
 type Lookup = { id: string; label: string }
@@ -27,14 +28,14 @@ const TVA_OPTIONS = ['0', '5.5', '10', '20']
 const EMPTY_FORM = {
   date: new Date().toISOString().slice(0, 10),
   label: '',
-  category: '',
+  category_id: '',
   supplier_id: '',
   montant_ht: '',
   tva_rate: '20',
   notes: '',
 }
 
-export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
+export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Props) {
   const { companyId } = useProfile()
   const { toast } = useToast()
   const isEdit = !!charge
@@ -58,7 +59,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
       setForm({
         date: charge.date,
         label: charge.label,
-        category: charge.category ?? '',
+        category_id: charge.category_id ?? '',
         supplier_id: charge.supplier_id ?? '',
         montant_ht: (charge.montant_ht_cts / 100).toFixed(2),
         tva_rate: String(charge.tva_rate ?? 20),
@@ -86,7 +87,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
       const payload: Omit<ChargeInsert, 'company_id'> = {
         date: form.date,
         label: form.label.trim(),
-        category: (form.category || null) as ChargeCategory | null,
+        category_id: form.category_id || null,
         supplier_id: form.supplier_id || null,
         montant_ht_cts: htCts,
         tva_rate: tvaRate,
@@ -127,6 +128,8 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
     onClose()
   }
 
+  const currentCat = charge?.charge_categories ?? null
+
   return (
     <Drawer
       open={open}
@@ -148,11 +151,11 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
           </div>
         )}
 
-        {isEdit && charge?.category && (
+        {isEdit && currentCat && (
           <div className="flex items-center gap-2 mb-1">
-            <Badge color={CATEGORY_COLOR[charge.category]}>{CATEGORY_LABELS[charge.category]}</Badge>
+            <Badge color={categoryColor(currentCat.slug)}>{currentCat.name}</Badge>
             <span className="ml-auto font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
-              {new Date(charge.date).toLocaleDateString('fr-FR')}
+              {new Date(charge!.date).toLocaleDateString('fr-FR')}
             </span>
           </div>
         )}
@@ -162,9 +165,9 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
             <Input type="date" value={form.date} onChange={v => set('date', v)} />
           </Field>
           <Field label="Catégorie">
-            <select value={form.category} onChange={e => set('category', e.target.value)} className={inputCls}>
+            <select value={form.category_id} onChange={e => set('category_id', e.target.value)} className={inputCls}>
               <option value="">— Aucune —</option>
-              {CHARGE_CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
         </div>
