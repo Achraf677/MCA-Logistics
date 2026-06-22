@@ -8,7 +8,10 @@ export const THEMES: Theme[] = [
     '--gold':'#f5b424','--grad':'linear-gradient(120deg,#ff2e3e,#f5b424)',
     '--success':'#21e0a0','--danger':'#ff5247','--warning':'#f5b424','--info':'#4ca8ff','--accent-violet':'#a98bff',
     '--text':'#f5efef','--text-muted':'#a99fa0','--text-disabled':'#6f6566',
-    '--glow-1':'rgba(255,46,62,.10)','--glow-2':'rgba(245,180,36,.08)' }},
+    '--glow-1':'rgba(255,46,62,.10)','--glow-2':'rgba(245,180,36,.08)',
+    '--profit':'#10b981','--profit-soft':'color-mix(in srgb,#10b981 15%,transparent)',
+    '--warn':'#f5b424','--warn-soft':'color-mix(in srgb,#f5b424 15%,transparent)',
+    '--loss':'#ff5a3c','--loss-soft':'color-mix(in srgb,#ff5a3c 15%,transparent)' }},
   { id:'cyber', name:'Cyber', swatch:'linear-gradient(120deg,#3b82f6,#22d3ee)', vars:{
     '--bg':'#070b14','--bg-elevated':'#0e1626','--bg-card':'#111c2e','--bg-card-hover':'#1a2940','--bg-deep':'#04070d',
     '--border':'#1e2c42','--border-soft':'rgba(232,238,247,.10)','--border-strong':'#2a3d59',
@@ -16,7 +19,10 @@ export const THEMES: Theme[] = [
     '--gold':'#22d3ee','--grad':'linear-gradient(120deg,#3b82f6,#22d3ee)',
     '--success':'#2dd4bf','--danger':'#fb7185','--warning':'#fbbf24','--info':'#38bdf8','--accent-violet':'#818cf8',
     '--text':'#e8eef7','--text-muted':'#94a3b8','--text-disabled':'#5b6b82',
-    '--glow-1':'rgba(59,130,246,.12)','--glow-2':'rgba(34,211,238,.08)' }},
+    '--glow-1':'rgba(59,130,246,.12)','--glow-2':'rgba(34,211,238,.08)',
+    '--profit':'#2dd4bf','--profit-soft':'color-mix(in srgb,#2dd4bf 15%,transparent)',
+    '--warn':'#fbbf24','--warn-soft':'color-mix(in srgb,#fbbf24 15%,transparent)',
+    '--loss':'#fb7185','--loss-soft':'color-mix(in srgb,#fb7185 15%,transparent)' }},
   { id:'emeraude', name:'Émeraude', swatch:'linear-gradient(120deg,#10d99a,#a3e635)', vars:{
     '--bg':'#06100c','--bg-elevated':'#0d1a14','--bg-card':'#11211a','--bg-card-hover':'#1a3024','--bg-deep':'#030a07',
     '--border':'#1d3328','--border-soft':'rgba(230,245,238,.10)','--border-strong':'#2a4a38',
@@ -24,7 +30,10 @@ export const THEMES: Theme[] = [
     '--gold':'#a3e635','--grad':'linear-gradient(120deg,#10d99a,#a3e635)',
     '--success':'#34d399','--danger':'#fb7185','--warning':'#fbbf24','--info':'#38bdf8','--accent-violet':'#818cf8',
     '--text':'#e6f5ee','--text-muted':'#92ad9f','--text-disabled':'#5b756a',
-    '--glow-1':'rgba(16,217,154,.12)','--glow-2':'rgba(163,230,53,.08)' }},
+    '--glow-1':'rgba(16,217,154,.12)','--glow-2':'rgba(163,230,53,.08)',
+    '--profit':'#34d399','--profit-soft':'color-mix(in srgb,#34d399 15%,transparent)',
+    '--warn':'#fbbf24','--warn-soft':'color-mix(in srgb,#fbbf24 15%,transparent)',
+    '--loss':'#fb7185','--loss-soft':'color-mix(in srgb,#fb7185 15%,transparent)' }},
   { id:'amethyste', name:'Améthyste', swatch:'linear-gradient(120deg,#a855f7,#f0abfc)', vars:{
     '--bg':'#0c0814','--bg-elevated':'#150f24','--bg-card':'#1a1230','--bg-card-hover':'#271a45','--bg-deep':'#070418',
     '--border':'#2a1f44','--border-soft':'rgba(241,234,247,.10)','--border-strong':'#3d2e63',
@@ -32,7 +41,10 @@ export const THEMES: Theme[] = [
     '--gold':'#f0abfc','--grad':'linear-gradient(120deg,#a855f7,#f0abfc)',
     '--success':'#34d399','--danger':'#fb7185','--warning':'#fbbf24','--info':'#38bdf8','--accent-violet':'#c084fc',
     '--text':'#f1eaf7','--text-muted':'#a99cb5','--text-disabled':'#6b5e7a',
-    '--glow-1':'rgba(168,85,247,.12)','--glow-2':'rgba(240,171,252,.08)' }},
+    '--glow-1':'rgba(168,85,247,.12)','--glow-2':'rgba(240,171,252,.08)',
+    '--profit':'#34d399','--profit-soft':'color-mix(in srgb,#34d399 15%,transparent)',
+    '--warn':'#fbbf24','--warn-soft':'color-mix(in srgb,#fbbf24 15%,transparent)',
+    '--loss':'#fb7185','--loss-soft':'color-mix(in srgb,#fb7185 15%,transparent)' }},
 ]
 
 const KEY = 'mca-theme'

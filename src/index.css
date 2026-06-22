@@ -28,6 +28,15 @@
   --text-disabled: #6f6566;
   --glow-1:        rgba(255,46,62,.10);
   --glow-2:        rgba(245,180,36,.08);
+
+  /* Rentabilité — sémantique profit/warn/loss */
+  --profit:        #10b981;
+  --profit-soft:   color-mix(in srgb, #10b981 15%, transparent);
+  --warn:          #f5b424;
+  --warn-soft:     color-mix(in srgb, #f5b424 15%, transparent);
+  --loss:          #ff5a3c;
+  --loss-soft:     color-mix(in srgb, #ff5a3c 15%, transparent);
+
   --shadow-card:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
   --r-pill:        999px;
 

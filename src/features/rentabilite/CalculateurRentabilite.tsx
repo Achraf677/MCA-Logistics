@@ -1,9 +1,15 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  ReferenceLine, ReferenceDot, BarChart, Bar, Cell,
+  LineChart as ReLineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, ReferenceLine, ReferenceDot,
 } from 'recharts'
-import { Plus, Trash2, RotateCcw, Fuel, ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, Clock, Wrench, CircleDollarSign, Save, FolderOpen, RefreshCw, X, MapPin, Navigation } from 'lucide-react'
+import {
+  Plus, Trash2, RotateCcw, Fuel, ChevronDown, ChevronUp,
+  Clock, Wrench, CircleDollarSign, Save, FolderOpen, RefreshCw,
+  X, MapPin, Navigation, Euro, TrendingDown, TrendingUp, Percent, Target, Gauge,
+} from 'lucide-react'
+import { KpiCard } from '../../shared/ui/KpiCard'
+import { Badge } from '../../shared/ui/Badge'
 import { deriveCoutsUnitaires, simulateCourse } from './rentabilite.logic'
 import { useProfile, supabase } from '../../app/providers'
 import type { CostProfil, ProfilData } from './rentabilite.profils.queries'
@@ -12,25 +18,7 @@ import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from 'react-
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
 
-/* Tokens couleur propres au calculateur */
-const C = {
-  ink:      '#f1f3f5',
-  navy:     '#e9ecf1',
-  steel:    '#cbd3df',
-  amber:    '#ffd60a',
-  profit:   '#06d6a0',
-  profitBg: 'rgba(6, 214, 160, 0.15)',
-  warn:     '#ffd60a',
-  warnBg:   'rgba(255, 214, 10, 0.15)',
-  loss:     '#ff6b35',
-  lossBg:   'rgba(255, 107, 53, 0.15)',
-  bg:       '#1a1d22',
-  card:     '#2a2f37',
-  border:   '#3a4150',
-  muted:    '#adb5bd',
-  faint:    '#6c757d',
-} as const
-
+/* ── Helpers ─────────────────────────────────────────────── */
 const eur0 = (n: number) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(isFinite(n) ? n : 0)
 const eur2 = (n: number) =>
@@ -90,7 +78,7 @@ const mkDepenses = (): LineItem[] => [
   { id: uid(), label: 'Entretien, pneus, vidanges',     freq: 'auKm',    montant: 0.04  },
 ]
 
-/* --- Sub-components --- */
+/* ── Sub-components ──────────────────────────────────────── */
 
 function Field({ label, suffix, value, onChange, step = 1, min = 0 }: {
   label: string; suffix?: string; value: number | string
@@ -98,85 +86,71 @@ function Field({ label, suffix, value, onChange, step = 1, min = 0 }: {
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[11px] uppercase tracking-wide" style={{ color: C.muted }}>{label}</span>
-      <div className="flex items-center rounded-lg overflow-hidden" style={{ border: `1px solid ${C.border}`, background: C.card }}>
+      <span className="text-[var(--fs-xs)] uppercase tracking-wide text-[var(--text-muted)]">{label}</span>
+      <div className="flex items-center rounded-[var(--r-md)] overflow-hidden border border-[var(--border)] bg-[var(--bg-card)]">
         <input
           type="number" step={step} min={min} value={value}
           onChange={(e) => onChange(e.target.value === '' ? '' : parseFloat(e.target.value))}
-          className="font-mono w-full px-3 py-2 text-sm outline-none bg-transparent"
-          style={{ color: C.ink }}
+          className="font-mono w-full px-3 py-2 text-[var(--fs-sm)] outline-none bg-transparent text-[var(--text)]"
         />
-        {suffix && <span className="font-mono text-xs px-2 select-none" style={{ color: C.faint }}>{suffix}</span>}
+        {suffix && <span className="font-mono text-[var(--fs-xs)] px-2 select-none text-[var(--text-disabled)]">{suffix}</span>}
       </div>
     </label>
   )
 }
 
-function Row({ item, onChange, onDelete, color }: {
-  item: LineItem; onChange: (item: LineItem) => void; onDelete: () => void; color: string
+function Row({ item, onChange, onDelete, isIncome }: {
+  item: LineItem; onChange: (item: LineItem) => void; onDelete: () => void; isIncome?: boolean
 }) {
   return (
     <div className="grid grid-cols-12 gap-2 items-center">
       <input
         value={item.label}
         onChange={(e) => onChange({ ...item, label: e.target.value })}
-        className="col-span-5 px-2 py-1.5 text-sm rounded-md outline-none"
-        style={{ border: `1px solid ${C.border}`, color: C.ink, background: C.card }}
+        className="col-span-5 px-2 py-1.5 text-[var(--fs-sm)] rounded-[var(--r-sm)] outline-none border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)]"
       />
       <select
         value={item.freq}
         onChange={(e) => onChange({ ...item, freq: e.target.value as Freq })}
-        className="col-span-3 px-1.5 py-1.5 text-xs rounded-md outline-none"
-        style={{ border: `1px solid ${C.border}`, color: C.muted, background: C.card }}
+        className="col-span-3 px-1.5 py-1.5 text-[var(--fs-xs)] rounded-[var(--r-sm)] outline-none border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-muted)]"
       >
         <option value="mensuel">/ mois</option>
         <option value="parJour">/ jour</option>
         <option value="auKm">/ km</option>
       </select>
-      <div className="col-span-3 flex items-center rounded-md overflow-hidden" style={{ border: `1px solid ${C.border}`, background: C.card }}>
+      <div className="col-span-3 flex items-center rounded-[var(--r-sm)] overflow-hidden border border-[var(--border)] bg-[var(--bg-card)]">
         <input
           type="number" step="0.01" value={item.montant}
           onChange={(e) => onChange({ ...item, montant: e.target.value === '' ? '' : parseFloat(e.target.value) })}
-          className="font-mono w-full px-2 py-1.5 text-sm outline-none text-right bg-transparent"
-          style={{ color }}
+          className={`font-mono w-full px-2 py-1.5 text-[var(--fs-sm)] outline-none text-right bg-transparent ${isIncome ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}
         />
-        <span className="text-[10px] px-1.5" style={{ color: C.faint }}>€</span>
+        <span className="text-[10px] px-1.5 text-[var(--text-disabled)]">€</span>
       </div>
       <button onClick={onDelete} className="col-span-1 flex justify-center opacity-50 hover:opacity-100 transition-opacity">
-        <Trash2 size={15} style={{ color: C.loss }} />
+        <Trash2 size={15} className="text-[var(--loss)]" />
       </button>
-    </div>
-  )
-}
-
-function Kpi({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
-  return (
-    <div className="rounded-xl p-3" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-      <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: C.muted }}>{label}</div>
-      <div className="font-mono font-semibold text-lg leading-tight" style={{ color: accent ?? C.ink }}>{value}</div>
-      {sub && <div className="text-[11px] mt-0.5" style={{ color: C.faint }}>{sub}</div>}
     </div>
   )
 }
 
 function RateChip({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs" style={{ background: C.bg, color: C.muted }}>
-      <Icon size={13} style={{ color: C.amber }} />
+    <div className="flex items-center gap-2 px-3 py-2 rounded-[var(--r-md)] text-[var(--fs-xs)] bg-[var(--bg-deep)] text-[var(--text-muted)]">
+      <Icon size={13} className="text-[var(--gold)] shrink-0" />
       <span>{label}</span>
-      <span className="font-mono font-semibold ml-auto" style={{ color: C.ink }}>{value}</span>
+      <span className="font-mono font-semibold ml-auto text-[var(--text)]">{value}</span>
     </div>
   )
 }
 
-/* --- Trajet types & map --- */
+/* ── Trajet & map ────────────────────────────────────────── */
 
 interface TrajetResult {
   distance_km:      number
   duree_min:        number
   peage_estime_eur: number
   geometry:         { type: string; coordinates: [number, number][] }
-  depart_coords:    [number, number]   // [lat, lon] pour Leaflet
+  depart_coords:    [number, number]
   arrivee_coords:   [number, number]
   depart_label:     string
   arrivee_label:    string
@@ -210,7 +184,7 @@ function TrajetMap({ geometry, departCoords, arriveeCoords }: {
     [geometry.coordinates],
   )
   return (
-    <div style={{ height: 280, borderRadius: 12, overflow: 'hidden', position: 'relative', zIndex: 0 }}>
+    <div style={{ height: 280, borderRadius: 'var(--r-xl)', overflow: 'hidden', position: 'relative', zIndex: 0 }}>
       <MapContainer
         center={departCoords}
         zoom={10}
@@ -222,7 +196,7 @@ function TrajetMap({ geometry, departCoords, arriveeCoords }: {
           attribution='© <a href="https://openstreetmap.org">OSM</a>'
           maxZoom={18}
         />
-        <Polyline positions={latlngs} pathOptions={{ color: '#13294B', weight: 4, opacity: 0.85 }} />
+        <Polyline positions={latlngs} pathOptions={{ color: 'var(--brand)', weight: 4, opacity: 0.85 }} />
         <Marker position={departCoords} icon={mkDotIcon('#15803D')}>
           <Popup>Départ</Popup>
         </Marker>
@@ -235,7 +209,7 @@ function TrajetMap({ geometry, departCoords, arriveeCoords }: {
   )
 }
 
-/* --- Main component --- */
+/* ── Main component ──────────────────────────────────────── */
 
 export function CalculateurRentabilite() {
   const [params, setParams]   = useState<Params>(DEF_PARAMS)
@@ -245,14 +219,12 @@ export function CalculateurRentabilite() {
   const [courseForm, setCourseForm] = useState<CourseForm>(DEF_COURSE)
   const [detailOpen, setDetailOpen] = useState(false)
 
-  // Trajet A→B
   const [trajetDepart,  setTrajetDepart]  = useState('')
   const [trajetArrivee, setTrajetArrivee] = useState('')
   const [trajetLoading, setTrajetLoading] = useState(false)
   const [trajetError,   setTrajetError]   = useState<string | null>(null)
   const [trajetResult,  setTrajetResult]  = useState<TrajetResult | null>(null)
 
-  // Profils Supabase
   const { companyId } = useProfile()
   const [profils, setProfils]               = useState<CostProfil[]>([])
   const [profilsLoading, setProfilsLoading] = useState(true)
@@ -302,7 +274,7 @@ export function CalculateurRentabilite() {
     return () => clearTimeout(t)
   }, [opMsg])
 
-  // ── Gestion des profils ────────────────────────────────────────────────
+  /* ── Gestion des profils ─────────────────────────────── */
   const hasData = recettes.length > 0 || depenses.length > 0 ||
     Object.values(params).some((v) => Number(v) !== 0)
 
@@ -310,7 +282,6 @@ export function CalculateurRentabilite() {
     listProfils().then(({ data }) => setProfils((data ?? []) as CostProfil[]))
 
   function doLoadProfil(p: CostProfil) {
-    // Guard against rapid double-clicks causing multiple simultaneous state updates (freeze).
     if (loadLockRef.current || opBusy) return
     if (hasData && !window.confirm(`Charger "${p.name}" remplacera votre saisie en cours. Continuer ?`)) return
     loadLockRef.current = true
@@ -357,7 +328,6 @@ export function CalculateurRentabilite() {
   }
 
   async function doDeleteProfil() {
-    // Use selectedId (not loadedId) so the button works after a page reload.
     const p = profils.find((x) => x.id === selectedId)
     if (!p || !window.confirm(`Supprimer le profil "${p.name}" ? Cette action est irréversible.`)) return
     setOpBusy(true)
@@ -374,6 +344,7 @@ export function CalculateurRentabilite() {
     setOpMsg({ ok: true, text: `Profil "${nom}" supprimé.` })
   }
 
+  /* ── Calculs ─────────────────────────────────────────── */
   const r = useMemo(() => {
     const p  = (k: keyof Params): number => { const v = params[k]; return v === '' || v == null ? 0 : Number(v) }
     const mt = (x: number | string): number => (x === '' || x == null ? 0 : Number(x))
@@ -434,11 +405,24 @@ export function CalculateurRentabilite() {
       })),
     ].filter((x) => x.value > 0).sort((a, b) => b.value - a.value)
 
+    /* Nouvelles métriques enrichies */
+    const margeNettePct = CA > 0 ? resultat / CA : 0
+    const topPoste      = breakdown.length > 0 ? breakdown[0].name : '—'
+
+    /* Sensibilité */
+    const tvaR       = p('tvaRecup') / 100
+    const deltaLitre = (0.10 / 1.2) + (0.10 / 6) * (1 - tvaR)
+    const sensiJour1      = margeJour
+    const sensiGazole     = -(litresMois * deltaLitre)
+    const sensiRecette1   = -rJour
+
     return {
       jours, kmTotal, litresMois, coutLitre, carbMois, CA, F, vJour, chargesVar, chargesTot,
       resultat, margeJour, tauxMCV, seuilJours, recJourNec, prixForfaitMin, rJour, Rfix,
       coutKm, recKm, margeKm, resAnnuel, is, netAnnuel, cvp, breakdown, maxJours,
       partCarb: CA > 0 ? carbMois / CA : 0,
+      margeNettePct, topPoste,
+      sensiJour1, sensiGazole, sensiRecette1,
       couts,
     }
   }, [params, recettes, depenses])
@@ -464,20 +448,19 @@ export function CalculateurRentabilite() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [courseForm, r.couts])
 
-  const courseVerdictStyle = courseResult
-    ? courseResult.verdict === 'rentable'
-      ? { bg: C.profitBg, color: C.profit, emoji: '✅', label: 'RENTABLE' }
-      : courseResult.verdict === 'limite'
-      ? { bg: C.warnBg,   color: C.warn,   emoji: '⚠️', label: 'LIMITE' }
-      : { bg: C.lossBg,   color: C.loss,   emoji: '❌', label: 'À REFUSER' }
-    : null
+  /* ── Dérivées présentation ───────────────────────────── */
+  const positive   = r.resultat >= 0
+  const seuilTxt   = isFinite(r.seuilJours) ? `${num(r.seuilJours, 1)} j` : '∞'
+  const seuilPct   = isFinite(r.seuilJours) && r.seuilJours > 0
+    ? Math.min(100, (r.jours / r.seuilJours) * 100) : (r.jours > 0 ? 100 : 0)
 
-  const positive    = r.resultat >= 0
-  const verdictColor = positive ? C.profit : C.loss
-  const verdictBg   = positive ? C.profitBg : C.lossBg
-  const seuilTxt    = isFinite(r.seuilJours) ? `${num(r.seuilJours, 1)} j` : 'jamais'
-  const seuilPct    = isFinite(r.seuilJours) && r.seuilJours > 0
-    ? Math.min(100, (r.jours / r.seuilJours) * 100) : 0
+  const courseVerdictInfo = courseResult
+    ? courseResult.verdict === 'rentable'
+      ? { textCls: 'text-[var(--profit)]', badge: 'success' as const, emoji: '✅', label: 'RENTABLE' }
+      : courseResult.verdict === 'limite'
+      ? { textCls: 'text-[var(--warn)]',   badge: 'warning' as const, emoji: '⚠️', label: 'LIMITE'   }
+      : { textCls: 'text-[var(--loss)]',   badge: 'danger'  as const, emoji: '❌', label: 'À REFUSER'}
+    : null
 
   const reset = () => {
     setParams({ jours: 0, gazoleTTC: 0, tvaRecup: 0, conso: 0, kmJour: 0 })
@@ -520,102 +503,117 @@ export function CalculateurRentabilite() {
     }))
   }
 
+  /* ── Rendu ───────────────────────────────────────────── */
   return (
-    <div className="space-y-3">
+    <div className="space-y-5 min-w-0">
 
-      {/* ── Barre Profils ─────────────────────────────────────────────────────── */}
-      <div className="rounded-xl px-4 py-3 flex items-center gap-3 flex-wrap"
-        style={{ background: C.card, border: `1px solid ${C.border}` }}>
+      {/* ── 1. Bandeau profils + verdict ───────────────────── */}
+      <div className="glass rounded-[var(--r-xl)] px-4 py-3 flex flex-col gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-[var(--fs-xs)] font-semibold uppercase tracking-widest text-[var(--text-muted)] shrink-0">Profil</span>
 
-        <span className="text-xs font-semibold uppercase tracking-wide shrink-0" style={{ color: C.muted }}>Profil</span>
+          {profilsLoading ? (
+            <span className="text-[var(--fs-xs)] text-[var(--text-disabled)]">Chargement…</span>
+          ) : (
+            <>
+              <select
+                value={selectedId}
+                onChange={(e) => setSelectedId(e.target.value)}
+                disabled={opBusy}
+                className="text-[var(--fs-sm)] rounded-[var(--r-md)] px-2 py-1.5 outline-none border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)]"
+                style={{ minWidth: 120, maxWidth: 220 }}
+              >
+                <option value="">— aucun —</option>
+                {profils.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}{p.id === loadedId ? ' ✓' : ''}
+                  </option>
+                ))}
+              </select>
 
-        {profilsLoading ? (
-          <span className="text-xs" style={{ color: C.faint }}>Chargement…</span>
-        ) : (
-          <>
-            <select
-              value={selectedId}
-              onChange={(e) => setSelectedId(e.target.value)}
+              {selectedId && selectedId !== loadedId && (
+                <button
+                  onClick={() => { const p = profils.find((x) => x.id === selectedId); if (p) doLoadProfil(p) }}
+                  disabled={opBusy}
+                  className="flex items-center gap-1 text-[var(--fs-xs)] px-2.5 py-1.5 rounded-[var(--r-md)] transition-colors text-[var(--profit)] border border-[var(--border)]"
+                  style={{ background: 'var(--profit-soft)' }}
+                >
+                  <FolderOpen size={13} /> Charger
+                </button>
+              )}
+
+              {loadedId && (
+                <button
+                  onClick={doUpdateProfil}
+                  disabled={opBusy}
+                  className="flex items-center gap-1 text-[var(--fs-xs)] px-2.5 py-1.5 rounded-[var(--r-md)] transition-colors text-[var(--text-muted)] border border-[var(--border)] bg-[var(--bg-deep)]"
+                >
+                  <RefreshCw size={13} /> Mettre à jour
+                </button>
+              )}
+
+              {selectedId && (
+                <button
+                  onClick={doDeleteProfil}
+                  disabled={opBusy}
+                  className="flex items-center gap-1 text-[var(--fs-xs)] px-2.5 py-1.5 rounded-[var(--r-md)] transition-colors text-[var(--loss)] border border-[var(--border)]"
+                  style={{ background: 'var(--loss-soft)' }}
+                >
+                  <Trash2 size={13} /> Supprimer
+                </button>
+              )}
+            </>
+          )}
+
+          {newName === null && (
+            <button
+              onClick={() => setNewName('')}
               disabled={opBusy}
-              className="text-sm rounded-lg px-2 py-1.5 outline-none"
-              style={{ border: `1px solid ${C.border}`, color: C.ink, background: C.card, minWidth: 120, maxWidth: 220 }}
+              className="flex items-center gap-1 text-[var(--fs-xs)] px-2.5 py-1.5 rounded-[var(--r-md)] transition-colors text-[var(--text-muted)] border border-[var(--border)] bg-[var(--bg-deep)]"
             >
-              <option value="">— aucun —</option>
-              {profils.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}{p.id === loadedId ? ' ✓' : ''}
-                </option>
-              ))}
-            </select>
+              <Save size={13} /> Enregistrer…
+            </button>
+          )}
 
-            {selectedId && selectedId !== loadedId && (
-              <button
-                onClick={() => { const p = profils.find((x) => x.id === selectedId); if (p) doLoadProfil(p) }}
-                disabled={opBusy}
-                className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
-                style={{ color: C.profit, background: C.profitBg, border: `1px solid ${C.border}` }}
-              >
-                <FolderOpen size={13} /> Charger
-              </button>
-            )}
+          {/* Verdict badge + reset — alignés à droite */}
+          <div className="ml-auto flex items-center gap-3 shrink-0 flex-wrap">
+            <Badge color={positive ? 'success' : 'danger'}>
+              {positive
+                ? `Bénéficiaire · +${eur0(r.resultat)}/mois`
+                : `Déficitaire · ${eur0(r.resultat)}/mois`}
+            </Badge>
+            <button
+              onClick={reset}
+              className="flex items-center gap-1.5 text-[var(--fs-xs)] px-3 py-1.5 rounded-[var(--r-md)] transition-colors text-[var(--text-muted)] border border-[var(--border)] hover:border-[var(--border-strong)]"
+            >
+              <RotateCcw size={12} /> Réinitialiser
+            </button>
+          </div>
+        </div>
 
-            {loadedId && (
-              <button
-                onClick={doUpdateProfil}
-                disabled={opBusy}
-                className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
-                style={{ color: C.navy, background: C.bg, border: `1px solid ${C.border}` }}
-              >
-                <RefreshCw size={13} /> Mettre à jour
-              </button>
-            )}
-
-            {selectedId && (
-              <button
-                onClick={doDeleteProfil}
-                disabled={opBusy}
-                className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg transition-colors"
-                style={{ color: C.loss, background: C.lossBg, border: `1px solid ${C.border}` }}
-              >
-                <Trash2 size={13} /> Supprimer
-              </button>
-            )}
-          </>
-        )}
-
-        {/* Enregistrer comme nouveau profil */}
-        {newName === null ? (
-          <button
-            onClick={() => setNewName('')}
-            disabled={opBusy}
-            className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg ml-auto transition-colors"
-            style={{ color: C.ink, background: C.bg, border: `1px solid ${C.border}` }}
-          >
-            <Save size={13} /> Enregistrer…
-          </button>
-        ) : (
-          <div className="flex items-center gap-2 ml-auto flex-wrap">
+        {/* Champ nom nouveau profil */}
+        {newName !== null && (
+          <div className="flex items-center gap-2 flex-wrap">
             <input
               autoFocus
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') doSaveProfil(); if (e.key === 'Escape') setNewName(null) }}
               placeholder="Nom du profil"
-              className="text-sm px-2 py-1.5 rounded-lg outline-none"
-              style={{ border: `1px solid ${C.border}`, color: C.ink, background: C.card, minWidth: 160 }}
+              className="text-[var(--fs-sm)] px-3 py-1.5 rounded-[var(--r-md)] outline-none border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)]"
+              style={{ minWidth: 180 }}
             />
             <button
               onClick={doSaveProfil}
               disabled={opBusy || !newName.trim()}
-              className="text-xs px-2.5 py-1.5 rounded-lg"
-              style={{ color: C.profit, background: C.profitBg, border: `1px solid ${C.border}` }}
+              className="text-[var(--fs-xs)] px-2.5 py-1.5 rounded-[var(--r-md)] text-[var(--profit)] border border-[var(--border)] disabled:opacity-40"
+              style={{ background: 'var(--profit-soft)' }}
             >
               Créer
             </button>
             <button
               onClick={() => setNewName(null)}
-              className="p-1.5 rounded-lg"
-              style={{ color: C.muted, background: C.bg, border: `1px solid ${C.border}` }}
+              className="p-1.5 rounded-[var(--r-md)] text-[var(--text-muted)] border border-[var(--border)] bg-[var(--bg-deep)]"
             >
               <X size={13} />
             </button>
@@ -623,63 +621,43 @@ export function CalculateurRentabilite() {
         )}
 
         {opMsg && (
-          <p className="w-full text-xs mt-1" style={{ color: opMsg.ok ? C.profit : C.loss }}>
+          <p className={`text-[var(--fs-xs)] ${opMsg.ok ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
             {opMsg.text}
           </p>
         )}
       </div>
 
-      {/* Verdict bar */}
-      <div className="rounded-xl px-4 py-3" style={{ background: verdictBg, border: `1px solid ${C.border}` }}>
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
-            {positive
-              ? <ArrowUpRight size={18} color={verdictColor} />
-              : <ArrowDownRight size={18} color={verdictColor} />}
-            <span className="font-semibold" style={{ color: verdictColor }}>
-              {positive ? 'Bénéficiaire' : 'Déficitaire'} · {eur0(r.resultat)}/mois
-            </span>
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="text-sm" style={{ color: C.navy }}>
-              Seuil atteint à <b className="font-mono">{seuilTxt}</b> travaillés
-              {isFinite(r.seuilJours) && r.seuilJours > 26 && " (> capacité d'un mois)"}
-              {!positive && isFinite(r.recJourNec) && (
-                <> · objectif <b className="font-mono">{eur0(r.recJourNec)}/jour</b></>
-              )}
-            </div>
-            <button
-              onClick={reset}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap"
-              style={{ color: C.muted, border: `1px solid ${C.border}`, background: C.card }}
-            >
-              <RotateCcw size={13} /> Réinitialiser
-            </button>
-          </div>
-        </div>
+      {/* ── 2. 6 KpiCards ──────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 [&>*]:min-w-0">
+        <KpiCard label="CA mensuel"     value={eur0(r.CA)}        sub={`${eur0(r.rJour)}/jour`}          tone="success" icon={<Euro size={18}/>} />
+        <KpiCard label="Charges"        value={eur0(r.chargesTot)} sub={`fixes ${eur0(r.F)}`}            tone="danger"  icon={<TrendingDown size={18}/>} />
+        <KpiCard label="Résultat/mois"  value={eur0(r.resultat)}  sub={pct1(r.margeNettePct)}            tone={positive ? 'success' : 'danger'} icon={<TrendingUp size={18}/>} />
+        <KpiCard label="Marge/jour"     value={eur0(r.margeJour)} sub={`MCV ${pct1(r.tauxMCV)}`}        tone={r.margeJour >= 0 ? 'success' : 'danger'} icon={<Percent size={18}/>} />
+        <KpiCard label="Point mort"     value={seuilTxt}           sub={`/ ${num(r.jours)} jours`}       tone="warning" icon={<Target size={18}/>} />
+        <KpiCard label="Coût / km"      value={eur2(r.coutKm)}    sub={`rec. ${eur2(r.recKm)}/km`}      tone="info"    icon={<Gauge size={18}/>} />
       </div>
 
-      {/* Grille principale */}
-      <div className="grid lg:grid-cols-[1fr_380px] gap-4 items-start">
+      {/* ── 3. Deux colonnes ───────────────────────────────── */}
+      <div className="grid lg:grid-cols-[1.6fr_1fr] gap-5 items-start [&>*]:min-w-0">
 
-        {/* COLONNE GAUCHE : saisies */}
-        <div className="flex flex-col gap-4">
+        {/* ── Colonne gauche : saisie ─────────────────────── */}
+        <div className="flex flex-col gap-5">
 
           {/* 01 Paramètres */}
-          <section className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <div className="flex items-center gap-2 mb-3">
-              <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: C.bg, color: C.muted }}>01</span>
-              <h2 className="font-semibold" style={{ color: C.ink }}>Paramètres d'exploitation</h2>
+          <section className="glass rounded-[var(--r-xl)] p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="font-mono text-[var(--fs-xs)] px-1.5 py-0.5 rounded-[var(--r-sm)] bg-[var(--bg-deep)] text-[var(--text-disabled)]">01</span>
+              <h2 className="font-semibold text-[var(--text)]">Paramètres d'exploitation</h2>
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <Field label="Jours travaillés / mois" value={params.jours}     onChange={(v) => setParams({ ...params, jours: v })} />
-              <Field label="Km / jour"   suffix="km"     value={params.kmJour}    onChange={(v) => setParams({ ...params, kmJour: v })}    step={10} />
-              <Field label="Consommation" suffix="L/100" value={params.conso}     onChange={(v) => setParams({ ...params, conso: v })}     step={0.5} />
-              <Field label="Prix gazole" suffix="€/L TTC" value={params.gazoleTTC} onChange={(v) => setParams({ ...params, gazoleTTC: v })} step={0.01} />
-              <Field label="TVA récupérable" suffix="%" value={params.tvaRecup}  onChange={(v) => setParams({ ...params, tvaRecup: v })}  step={10} />
+              <Field label="Jours travaillés / mois" value={params.jours}      onChange={(v) => setParams({ ...params, jours: v })} />
+              <Field label="Km / jour"   suffix="km"      value={params.kmJour}     onChange={(v) => setParams({ ...params, kmJour: v })}    step={10} />
+              <Field label="Consommation" suffix="L/100"  value={params.conso}      onChange={(v) => setParams({ ...params, conso: v })}     step={0.5} />
+              <Field label="Prix gazole" suffix="€/L TTC" value={params.gazoleTTC}  onChange={(v) => setParams({ ...params, gazoleTTC: v })} step={0.01} />
+              <Field label="TVA récupérable" suffix="%"   value={params.tvaRecup}   onChange={(v) => setParams({ ...params, tvaRecup: v })}  step={10} />
             </div>
-            <div className="mt-4 flex items-center gap-2 text-xs rounded-lg px-3 py-2" style={{ background: C.bg, color: C.muted }}>
-              <Fuel size={14} style={{ color: C.amber }} />
+            <div className="mt-4 flex items-center gap-2 text-[var(--fs-xs)] rounded-[var(--r-md)] px-3 py-2 bg-[var(--bg-deep)] text-[var(--text-muted)]">
+              <Fuel size={14} className="text-[var(--gold)] shrink-0" />
               <span>
                 {num(r.litresMois, 0)} L/mois · coût réel{' '}
                 <b className="font-mono">{eur2(r.coutLitre)}/L HT</b> · carburant{' '}
@@ -689,266 +667,284 @@ export function CalculateurRentabilite() {
           </section>
 
           {/* 02 Recettes */}
-          <section className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <div className="flex items-center justify-between mb-3">
+          <section className="glass rounded-[var(--r-xl)] p-5">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: C.bg, color: C.muted }}>02</span>
-                <h2 className="font-semibold" style={{ color: C.ink }}>Recettes</h2>
+                <span className="font-mono text-[var(--fs-xs)] px-1.5 py-0.5 rounded-[var(--r-sm)] bg-[var(--bg-deep)] text-[var(--text-disabled)]">02</span>
+                <h2 className="font-semibold text-[var(--text)]">Recettes</h2>
               </div>
               <button
                 onClick={() => setRecettes([...recettes, { id: uid(), label: 'Nouvelle recette', freq: 'parJour', montant: 0 }])}
-                className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg"
-                style={{ color: C.profit, background: C.profitBg }}
+                className="flex items-center gap-1 text-[var(--fs-xs)] font-medium px-2.5 py-1.5 rounded-[var(--r-md)] text-[var(--profit)] border border-[var(--border)]"
+                style={{ background: 'var(--profit-soft)' }}
               >
                 <Plus size={13} /> Ajouter
               </button>
             </div>
             <div className="flex flex-col gap-2">
-              <div className="grid grid-cols-12 gap-2 text-[10px] uppercase tracking-wide px-1" style={{ color: C.faint }}>
+              <div className="grid grid-cols-12 gap-2 text-[10px] uppercase tracking-wide px-1 text-[var(--text-disabled)]">
                 <span className="col-span-5">Libellé</span>
                 <span className="col-span-3">Fréquence</span>
                 <span className="col-span-3 text-right">Montant HT</span>
                 <span className="col-span-1" />
               </div>
               {recettes.map((it) => (
-                <Row key={it.id} item={it} color={C.profit}
+                <Row key={it.id} item={it} isIncome
                   onChange={(n) => setRecettes(recettes.map((x) => (x.id === it.id ? n : x)))}
                   onDelete={() => setRecettes(recettes.filter((x) => x.id !== it.id))}
                 />
               ))}
               {recettes.length === 0 && (
-                <p className="text-xs py-2" style={{ color: C.faint }}>Ajoute une recette pour démarrer.</p>
+                <p className="text-[var(--fs-xs)] py-2 text-[var(--text-disabled)]">Ajoute une recette pour démarrer.</p>
               )}
             </div>
           </section>
 
           {/* 03 Dépenses */}
-          <section className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <div className="flex items-center justify-between mb-3">
+          <section className="glass rounded-[var(--r-xl)] p-5">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
-                <span className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: C.bg, color: C.muted }}>03</span>
-                <h2 className="font-semibold" style={{ color: C.ink }}>Dépenses</h2>
+                <span className="font-mono text-[var(--fs-xs)] px-1.5 py-0.5 rounded-[var(--r-sm)] bg-[var(--bg-deep)] text-[var(--text-disabled)]">03</span>
+                <h2 className="font-semibold text-[var(--text)]">Dépenses</h2>
               </div>
               <button
                 onClick={() => setDepenses([...depenses, { id: uid(), label: 'Nouvelle dépense', freq: 'mensuel', montant: 0 }])}
-                className="flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg"
-                style={{ color: C.loss, background: C.lossBg }}
+                className="flex items-center gap-1 text-[var(--fs-xs)] font-medium px-2.5 py-1.5 rounded-[var(--r-md)] text-[var(--loss)] border border-[var(--border)]"
+                style={{ background: 'var(--loss-soft)' }}
               >
                 <Plus size={13} /> Ajouter
               </button>
             </div>
             <div className="flex flex-col gap-2">
-              <div className="grid grid-cols-12 gap-2 text-[10px] uppercase tracking-wide px-1" style={{ color: C.faint }}>
+              <div className="grid grid-cols-12 gap-2 text-[10px] uppercase tracking-wide px-1 text-[var(--text-disabled)]">
                 <span className="col-span-5">Libellé</span>
                 <span className="col-span-3">Fréquence</span>
                 <span className="col-span-3 text-right">Montant HT</span>
                 <span className="col-span-1" />
               </div>
-              {/* Carburant — ligne calculée automatiquement */}
-              <div className="grid grid-cols-12 gap-2 items-center py-1 rounded-md px-1" style={{ background: C.bg }}>
-                <span className="col-span-8 text-sm flex items-center gap-1.5" style={{ color: C.muted }}>
-                  <Fuel size={13} style={{ color: C.amber }} /> Carburant (calculé auto)
+              <div className="grid grid-cols-12 gap-2 items-center py-1.5 rounded-[var(--r-md)] px-1 bg-[var(--bg-deep)]">
+                <span className="col-span-8 text-[var(--fs-sm)] flex items-center gap-1.5 text-[var(--text-muted)]">
+                  <Fuel size={13} className="text-[var(--gold)]" /> Carburant (calculé auto)
                 </span>
-                <span className="col-span-3 font-mono text-sm text-right" style={{ color: C.loss }}>{eur2(r.carbMois)}</span>
+                <span className="col-span-3 font-mono text-[var(--fs-sm)] text-right text-[var(--loss)]">{eur2(r.carbMois)}</span>
                 <span className="col-span-1" />
               </div>
               {depenses.map((it) => (
-                <Row key={it.id} item={it} color={C.loss}
+                <Row key={it.id} item={it}
                   onChange={(n) => setDepenses(depenses.map((x) => (x.id === it.id ? n : x)))}
                   onDelete={() => setDepenses(depenses.filter((x) => x.id !== it.id))}
                 />
               ))}
             </div>
           </section>
+
+          {/* Sensibilité */}
+          <div className="glass rounded-[var(--r-xl)] p-5">
+            <h3 className="text-[var(--fs-xs)] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1">Sensibilité</h3>
+            <p className="text-[var(--fs-xs)] text-[var(--text-disabled)] mb-3">Impact d'une variation unitaire sur le résultat mensuel</p>
+            {[
+              { label: '+1 jour travaillé',  delta: r.sensiJour1    },
+              { label: 'Gazole +0,10 €/L',   delta: r.sensiGazole   },
+              { label: '−1 jour facturé',    delta: r.sensiRecette1 },
+            ].map(({ label, delta }) => (
+              <div key={label} className="flex items-center justify-between py-2.5 border-b border-[var(--border)] last:border-0">
+                <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">{label}</span>
+                <span className={`font-mono text-[var(--fs-sm)] font-semibold ${delta >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                  {delta >= 0 ? '+' : ''}{eur0(delta)}/mois
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* COLONNE DROITE : résultats (sticky) */}
-        <div className="flex flex-col gap-4 lg:sticky lg:top-4">
-
-          {/* KPIs */}
-          <div className="grid grid-cols-2 gap-3">
-            <Kpi label="CA mensuel"      value={eur0(r.CA)}        sub={`${eur0(r.rJour)}/jour`} />
-            <Kpi label="Charges totales" value={eur0(r.chargesTot)} sub={`fixes ${eur0(r.F)}`} />
-            <Kpi label="Résultat avant IS" value={eur0(r.resultat)} accent={verdictColor}
-              sub={`marge ${num(r.CA > 0 ? (r.resultat / r.CA) * 100 : 0, 1)} %`} />
-            <Kpi label="Marge / jour" value={eur0(r.margeJour)} accent={r.margeJour >= 0 ? C.profit : C.loss}
-              sub={`MCV ${num(r.tauxMCV * 100, 0)} %`} />
-          </div>
+        {/* ── Colonne droite : analyse (sticky) ──────────── */}
+        <div className="flex flex-col gap-5 lg:sticky lg:top-4">
 
           {/* Seuil de rentabilité */}
-          <div className="rounded-2xl p-4" style={{ background: C.bg }}>
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="font-semibold text-white text-sm">Seuil de rentabilité</h3>
-              <span className="font-mono text-xs" style={{ color: C.amber }}>point mort</span>
+          <div className="glass rounded-[var(--r-xl)] p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-[var(--text)]">Seuil de rentabilité</h3>
+              <span className="text-[var(--fs-xs)] font-mono text-[var(--gold)]">point mort</span>
             </div>
             <div className="flex items-baseline gap-2 mb-3">
-              <span className="font-mono font-bold text-3xl text-white">{seuilTxt}</span>
-              <span className="text-xs" style={{ color: '#9DB2CE' }}>/ {num(r.jours)} travaillés</span>
+              <span className="font-mono font-bold text-4xl text-[var(--text)]">{seuilTxt}</span>
+              <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">/ {num(r.jours)} jours</span>
             </div>
-            <div className="h-2.5 rounded-full overflow-hidden mb-1" style={{ background: '#21364F' }}>
+            <div className="h-2 rounded-full overflow-hidden mb-2" style={{ background: 'var(--bg-deep)' }}>
               <div className="h-full rounded-full transition-all"
-                style={{ width: `${Math.min(100, seuilPct)}%`, background: positive ? C.amber : C.loss }} />
+                style={{
+                  width: `${Math.min(100, seuilPct)}%`,
+                  background: positive ? 'var(--profit)' : 'var(--loss)',
+                }}
+              />
             </div>
-            <p className="text-[11px]" style={{ color: '#9DB2CE' }}>
+            <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
               {positive
-                ? `Tu couvres tes charges et dégages ${eur0(r.resultat)}/mois.`
+                ? `Seuil atteint — tu dégages ${eur0(r.resultat)}/mois.`
                 : isFinite(r.seuilJours)
-                  ? `Il faudrait ${num(r.seuilJours, 1)} jours pour être à l'équilibre — soit ${eur0(r.recJourNec)}/jour à ${num(r.jours)} jours.`
-                  : `Chaque jour travaillé perd de l'argent : la recette/jour ne couvre pas le coût variable.`}
+                  ? `${num(r.seuilJours, 1)} j pour équilibrer — soit ${eur0(r.recJourNec)}/jour à ${num(r.jours)} j.`
+                  : `La recette/jour ne couvre pas le coût variable.`}
             </p>
-            <div className="grid grid-cols-2 gap-2 mt-4">
-              <div className="rounded-lg p-2.5" style={{ background: '#152940' }}>
-                <div className="text-[10px] uppercase" style={{ color: '#7E93B0' }}>Recette/jour mini</div>
-                <div className="font-mono text-sm text-white">{eur0(r.recJourNec)}</div>
+            <div className="grid grid-cols-2 gap-3 mt-4">
+              <div className="rounded-[var(--r-md)] p-2.5 bg-[var(--bg-deep)]">
+                <div className="text-[10px] uppercase text-[var(--text-disabled)] mb-0.5">Recette/jour mini</div>
+                <div className="font-mono text-[var(--fs-sm)] text-[var(--text)]">{eur0(r.recJourNec)}</div>
               </div>
-              <div className="rounded-lg p-2.5" style={{ background: '#152940' }}>
-                <div className="text-[10px] uppercase" style={{ color: '#7E93B0' }}>Forfait/jour mini</div>
-                <div className="font-mono text-sm text-white">{eur0(r.prixForfaitMin)}</div>
+              <div className="rounded-[var(--r-md)] p-2.5 bg-[var(--bg-deep)]">
+                <div className="text-[10px] uppercase text-[var(--text-disabled)] mb-0.5">Forfait/jour mini</div>
+                <div className="font-mono text-[var(--fs-sm)] text-[var(--text)]">{eur0(r.prixForfaitMin)}</div>
               </div>
             </div>
           </div>
 
-          {/* Graphique CVP */}
-          <div className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <h3 className="font-semibold text-sm mb-2" style={{ color: C.ink }}>CA vs charges selon le nombre de jours</h3>
+          {/* CA vs charges (CVP) */}
+          <div className="glass rounded-[var(--r-xl)] p-5">
+            <h3 className="font-semibold text-[var(--fs-sm)] text-[var(--text)] mb-3">CA vs charges selon les jours travaillés</h3>
             <ResponsiveContainer width="100%" height={180}>
-              <LineChart data={r.cvp} margin={{ top: 5, right: 8, left: -8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-                <XAxis dataKey="d" tick={{ fontSize: 10, fill: C.faint }} tickLine={false} />
+              <ReLineChart data={r.cvp} margin={{ top: 5, right: 8, left: -8, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                <XAxis dataKey="d" tick={{ fontSize: 10, fill: 'var(--text-disabled)' }} tickLine={false} />
                 <YAxis
-                  tick={{ fontSize: 10, fill: C.faint }}
+                  tick={{ fontSize: 10, fill: 'var(--text-disabled)' }}
                   tickFormatter={(v: number) => `${Math.round(v / 1000)}k`}
                   tickLine={false} axisLine={false} width={36}
                 />
                 <Tooltip
                   formatter={(v: unknown) => eur0(Number(v))}
                   labelFormatter={(l: unknown) => `${l} jours`}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.ink }}
+                  contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)' }}
                 />
-                <Line type="monotone" dataKey="CA"      stroke={C.profit} strokeWidth={2} dot={false} />
-                <Line type="monotone" dataKey="Charges" stroke={C.loss}   strokeWidth={2} dot={false} />
-                <ReferenceLine x={r.jours} stroke={C.navy} strokeDasharray="4 4" />
+                <Line type="monotone" dataKey="CA"      stroke="var(--profit)" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="Charges" stroke="var(--loss)"   strokeWidth={2} dot={false} />
+                <ReferenceLine x={r.jours} stroke="var(--text-muted)" strokeDasharray="4 4" />
                 {isFinite(r.seuilJours) && r.seuilJours <= r.maxJours && (
                   <ReferenceDot
                     x={Math.round(r.seuilJours)}
                     y={r.rJour * r.seuilJours + r.Rfix}
-                    r={5} fill={C.amber} stroke="#fff" strokeWidth={2}
+                    r={5} fill="var(--gold)" stroke="var(--bg)" strokeWidth={2}
                   />
                 )}
-              </LineChart>
+              </ReLineChart>
             </ResponsiveContainer>
-            <div className="flex items-center gap-4 text-[11px] mt-1" style={{ color: C.muted }}>
-              <span className="flex items-center gap-1">
-                <i className="w-3 h-0.5 inline-block" style={{ background: C.profit }} /> Recettes
+            <div className="flex items-center gap-4 text-[var(--fs-xs)] mt-2 text-[var(--text-muted)]">
+              <span className="flex items-center gap-1.5">
+                <i className="w-3 h-0.5 inline-block rounded-full" style={{ background: 'var(--profit)' }} /> Recettes
               </span>
-              <span className="flex items-center gap-1">
-                <i className="w-3 h-0.5 inline-block" style={{ background: C.loss }} /> Charges
+              <span className="flex items-center gap-1.5">
+                <i className="w-3 h-0.5 inline-block rounded-full" style={{ background: 'var(--loss)' }} /> Charges
               </span>
-              <span className="flex items-center gap-1">
-                <i className="w-2 h-2 rounded-full inline-block" style={{ background: C.amber }} /> Point mort
+              <span className="flex items-center gap-1.5">
+                <i className="w-2 h-2 rounded-full inline-block" style={{ background: 'var(--gold)' }} /> Point mort
               </span>
             </div>
           </div>
 
-          {/* Au km */}
-          <div className="grid grid-cols-3 gap-3">
-            <Kpi label="Recette / km" value={eur2(r.recKm)} />
-            <Kpi label="Coût / km"    value={eur2(r.coutKm)} />
-            <Kpi label="Marge / km"   value={eur2(r.margeKm)} accent={r.margeKm >= 0 ? C.profit : C.loss} />
-          </div>
-
           {/* Répartition des charges */}
-          <div className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <h3 className="font-semibold text-sm mb-2" style={{ color: C.ink }}>Répartition des charges / mois</h3>
-            <ResponsiveContainer width="100%" height={Math.max(120, r.breakdown.length * 26)}>
-              <BarChart data={r.breakdown} layout="vertical" margin={{ top: 0, right: 12, left: 0, bottom: 0 }}>
-                <XAxis type="number" hide />
-                <YAxis type="category" dataKey="name"
-                  tick={{ fontSize: 10, fill: C.muted }} width={120} tickLine={false} axisLine={false} />
-                <Tooltip
-                  formatter={(v: unknown) => eur0(Number(v))}
-                  contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${C.border}`, background: C.card, color: C.ink }}
-                  cursor={{ fill: C.bg }}
-                />
-                <Bar dataKey="value" radius={[0, 4, 4, 0] as [number, number, number, number]}>
-                  {r.breakdown.map((e, i) => (
-                    <Cell key={i} fill={e.name === 'Carburant' ? C.amber : C.steel} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="glass rounded-[var(--r-xl)] p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-[var(--fs-sm)] text-[var(--text)]">Répartition des charges / mois</h3>
+              {r.topPoste && (
+                <span className="text-[var(--fs-xs)] text-[var(--warning)] font-medium">↑ {r.topPoste}</span>
+              )}
+            </div>
+            <div className="flex flex-col gap-3">
+              {r.breakdown.slice(0, 9).map((item, i) => {
+                const pct = r.chargesTot > 0 ? Math.min(100, (item.value / r.chargesTot) * 100) : 0
+                const isTop = i === 0
+                return (
+                  <div key={i}>
+                    <div className="flex justify-between text-[var(--fs-xs)] mb-1">
+                      <span className={isTop ? 'font-semibold text-[var(--warning)]' : 'text-[var(--text-muted)]'}>
+                        {item.name}
+                      </span>
+                      <span className="font-mono text-[var(--text)]">{eur0(item.value)}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-deep)' }}>
+                      <div className="h-full rounded-full transition-[width] duration-500"
+                        style={{
+                          width: `${pct}%`,
+                          background: isTop ? 'var(--warning)' : 'var(--text-disabled)',
+                        }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
-          {/* Projection annuelle + IS */}
-          <div className="rounded-2xl p-4" style={{ background: C.card, border: `1px solid ${C.border}` }}>
-            <h3 className="font-semibold text-sm mb-3" style={{ color: C.ink }}>Projection annuelle</h3>
-            <div className="flex flex-col gap-2 text-sm">
+          {/* Projection annuelle */}
+          <div className="glass rounded-[var(--r-xl)] p-5">
+            <h3 className="font-semibold text-[var(--fs-sm)] text-[var(--text)] mb-3">Projection annuelle</h3>
+            <div className="flex flex-col gap-2 text-[var(--fs-sm)]">
               <div className="flex justify-between">
-                <span style={{ color: C.muted }}>Résultat avant IS</span>
-                <span className="font-mono" style={{ color: verdictColor }}>{eur0(r.resAnnuel)}</span>
+                <span className="text-[var(--text-muted)]">Résultat avant IS</span>
+                <span className="font-mono" style={{ color: positive ? 'var(--profit)' : 'var(--loss)' }}>{eur0(r.resAnnuel)}</span>
               </div>
               <div className="flex justify-between">
-                <span style={{ color: C.muted }}>IS estimé (15 % / 25 %)</span>
-                <span className="font-mono">{eur0(r.is)}</span>
+                <span className="text-[var(--text-muted)]">IS estimé (15 % / 25 %)</span>
+                <span className="font-mono text-[var(--text-muted)]">{eur0(r.is)}</span>
               </div>
-              <div className="flex justify-between pt-2" style={{ borderTop: `1px solid ${C.border}` }}>
-                <span className="font-semibold" style={{ color: C.ink }}>Résultat net</span>
-                <span className="font-mono font-semibold" style={{ color: r.netAnnuel >= 0 ? C.profit : C.loss }}>
+              <div className="flex justify-between pt-2 border-t border-[var(--border)]">
+                <span className="font-semibold text-[var(--text)]">Résultat net annuel</span>
+                <span className="font-mono font-semibold" style={{ color: r.netAnnuel >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
                   {eur0(r.netAnnuel)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-muted)]">Reste réel / mois après IS</span>
+                <span className="font-mono font-semibold" style={{ color: r.netAnnuel >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
+                  {eur0(r.netAnnuel / 12)}
                 </span>
               </div>
             </div>
           </div>
 
-          <p className="text-[10px] leading-relaxed px-1" style={{ color: C.faint }}>
-            Montants en HT (la TVA est récupérable sur la majorité des postes). TVA gazole récupérable à 100 % pour un VUL.
-            Estimation indicative — ne remplace pas ta compta Pennylane. Tes scénarios sont sauvegardés automatiquement.
+          <p className="text-[10px] leading-relaxed text-[var(--text-disabled)] px-1">
+            Montants en HT. TVA récupérable à 100 % sur le gazole (VUL). Estimation indicative — ne remplace pas ta compta Pennylane.
+            Scénarios sauvegardés automatiquement.
           </p>
         </div>
       </div>
 
-      {/* ── Simulateur de course ───────────────────────────────────────────────── */}
-      <div className="rounded-2xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
-        <div className="px-5 py-4" style={{ background: C.bg }}>
-          <h2 className="font-semibold text-white">Simulateur de course (go / no-go)</h2>
-          <p className="text-xs mt-0.5" style={{ color: '#9DB2CE' }}>
+      {/* ── 4. Simulateur de course ─────────────────────────── */}
+      <div className="glass rounded-[var(--r-xl)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-[var(--border)]">
+          <h2 className="font-semibold text-[var(--text)]">Simulateur de course (go / no-go)</h2>
+          <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mt-0.5">
             Calcule si une course est rentable · coûts issus des hypothèses ci-dessus, mis à jour en direct
           </p>
         </div>
 
-        <div className="p-5 space-y-3" style={{ background: C.card }}>
+        <div className="p-5 space-y-4">
 
-          {/* ── Trajet A→B ───────────────────────────────────────── */}
-          <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
-            <div className="px-4 py-3 flex items-center gap-2" style={{ background: C.bg }}>
-              <MapPin size={13} style={{ color: C.navy }} />
-              <span className="text-sm font-medium" style={{ color: C.ink }}>Calcul de trajet A → B</span>
-              <span className="text-[10px] ml-auto" style={{ color: C.faint }}>IGN Géoplateforme · auto-injecté</span>
+          {/* Trajet A→B */}
+          <div className="rounded-[var(--r-xl)] overflow-hidden border border-[var(--border)]">
+            <div className="px-4 py-3 flex items-center gap-2 bg-[var(--bg-deep)] border-b border-[var(--border)]">
+              <MapPin size={13} className="text-[var(--text-muted)]" />
+              <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">Calcul de trajet A → B</span>
+              <span className="text-[10px] ml-auto text-[var(--text-disabled)]">IGN Géoplateforme · auto-injecté</span>
             </div>
-            <div className="px-4 py-3 space-y-3" style={{ background: C.card }}>
+            <div className="px-4 py-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <label className="flex flex-col gap-1">
-                  <span className="text-[11px] uppercase tracking-wide" style={{ color: C.muted }}>Départ</span>
+                  <span className="text-[var(--fs-xs)] uppercase tracking-wide text-[var(--text-muted)]">Départ</span>
                   <input
-                    type="text"
-                    value={trajetDepart}
+                    type="text" value={trajetDepart}
                     onChange={(e) => setTrajetDepart(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && calculerTrajet()}
                     placeholder="Ex. Strasbourg"
-                    className="px-3 py-2 text-sm rounded-lg outline-none"
-                    style={{ border: `1px solid ${C.border}`, color: C.ink, background: C.card }}
+                    className="px-3 py-2 text-[var(--fs-sm)] rounded-[var(--r-md)] outline-none border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)] placeholder:text-[var(--text-disabled)]"
                   />
                 </label>
                 <label className="flex flex-col gap-1">
-                  <span className="text-[11px] uppercase tracking-wide" style={{ color: C.muted }}>Arrivée</span>
+                  <span className="text-[var(--fs-xs)] uppercase tracking-wide text-[var(--text-muted)]">Arrivée</span>
                   <input
-                    type="text"
-                    value={trajetArrivee}
+                    type="text" value={trajetArrivee}
                     onChange={(e) => setTrajetArrivee(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && calculerTrajet()}
                     placeholder="Ex. Colmar"
-                    className="px-3 py-2 text-sm rounded-lg outline-none"
-                    style={{ border: `1px solid ${C.border}`, color: C.ink, background: C.card }}
+                    className="px-3 py-2 text-[var(--fs-sm)] rounded-[var(--r-md)] outline-none border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)] placeholder:text-[var(--text-disabled)]"
                   />
                 </label>
               </div>
@@ -956,35 +952,29 @@ export function CalculateurRentabilite() {
               <button
                 onClick={calculerTrajet}
                 disabled={trajetLoading || !trajetDepart.trim() || !trajetArrivee.trim()}
-                className="flex items-center gap-2 text-sm px-4 py-2 rounded-lg font-medium"
-                style={{
-                  background: trajetLoading || !trajetDepart.trim() || !trajetArrivee.trim() ? C.bg : C.navy,
-                  color:      trajetLoading || !trajetDepart.trim() || !trajetArrivee.trim() ? C.muted : '#fff',
-                  border:     `1px solid ${C.border}`,
-                  cursor:     trajetLoading || !trajetDepart.trim() || !trajetArrivee.trim() ? 'not-allowed' : 'pointer',
-                }}
+                className="flex items-center gap-2 text-[var(--fs-sm)] px-4 py-2 rounded-[var(--r-md)] font-medium border border-[var(--border)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed bg-[var(--brand-soft)] text-[var(--brand)] hover:bg-[var(--brand)] hover:text-white"
               >
-                {trajetLoading ? <RefreshCw size={14} /> : <Navigation size={14} />}
+                {trajetLoading ? <RefreshCw size={14} className="animate-spin" /> : <Navigation size={14} />}
                 {trajetLoading ? 'Calcul en cours…' : 'Calculer le trajet'}
               </button>
 
               {trajetError && (
-                <p className="text-xs px-3 py-2 rounded-lg" style={{ color: C.loss, background: C.lossBg }}>
+                <p className="text-[var(--fs-xs)] px-3 py-2 rounded-[var(--r-md)] text-[var(--loss)]" style={{ background: 'var(--loss-soft)' }}>
                   {trajetError}
                 </p>
               )}
 
               {trajetResult && (
                 <>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm py-1">
-                    <span style={{ color: C.muted }}>
-                      Distance : <b className="font-mono" style={{ color: C.ink }}>{trajetResult.distance_km} km</b>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[var(--fs-sm)] py-1">
+                    <span className="text-[var(--text-muted)]">
+                      Distance : <b className="font-mono text-[var(--text)]">{trajetResult.distance_km} km</b>
                     </span>
-                    <span style={{ color: C.muted }}>
-                      Durée : <b className="font-mono" style={{ color: C.ink }}>{trajetResult.duree_min} min</b>
+                    <span className="text-[var(--text-muted)]">
+                      Durée : <b className="font-mono text-[var(--text)]">{trajetResult.duree_min} min</b>
                     </span>
                   </div>
-                  <p className="text-[10px]" style={{ color: C.faint }}>
+                  <p className="text-[10px] text-[var(--text-disabled)]">
                     Résultats injectés dans le simulateur — modifiables manuellement
                   </p>
                   <TrajetMap
@@ -1019,7 +1009,7 @@ export function CalculateurRentabilite() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Field label="Trajet à vide" suffix="km" value={courseForm.kilometresVide}
               onChange={(v) => setCourseForm((f) => ({ ...f, kilometresVide: v as number | '' }))} step={5} />
-            <Field label="Péages (si autoroute à péage)" suffix="€" value={courseForm.peages}
+            <Field label="Péages" suffix="€" value={courseForm.peages}
               onChange={(v) => setCourseForm((f) => ({ ...f, peages: v as number | '' }))} step={1} />
             <Field label="Attente" suffix="h" value={courseForm.attenteH}
               onChange={(v) => setCourseForm((f) => ({ ...f, attenteH: v as number | '' }))} step={0.25} />
@@ -1029,32 +1019,33 @@ export function CalculateurRentabilite() {
 
           {/* Verdict */}
           {!courseReady ? (
-            <div className="rounded-xl p-4 text-center" style={{ background: C.bg }}>
-              <p className="text-sm" style={{ color: C.muted }}>
-                Remplissez le prix proposé, la distance et la durée <span style={{ color: C.loss }}>*</span> pour obtenir le verdict.
+            <div className="rounded-[var(--r-xl)] p-4 text-center bg-[var(--bg-deep)]">
+              <p className="text-[var(--fs-sm)] text-[var(--text-muted)]">
+                Remplissez le prix proposé, la distance et la durée <span className="text-[var(--loss)]">*</span> pour obtenir le verdict.
               </p>
             </div>
-          ) : courseResult && courseVerdictStyle && (
+          ) : courseResult && courseVerdictInfo && (
             <div className="flex flex-col gap-3">
 
               {/* Verdict principal */}
-              <div className="rounded-xl p-4" style={{ background: courseVerdictStyle.bg, border: `1px solid ${C.border}` }}>
+              <div className="rounded-[var(--r-xl)] p-4 border border-[var(--border)]"
+                style={{ background: `var(--${courseVerdictInfo.badge === 'success' ? 'profit' : courseVerdictInfo.badge === 'warning' ? 'warn' : 'loss'}-soft)` }}>
                 <div className="flex items-center gap-3 mb-2">
-                  <span className="text-xl">{courseVerdictStyle.emoji}</span>
-                  <span className="font-bold text-lg" style={{ color: courseVerdictStyle.color }}>{courseVerdictStyle.label}</span>
-                  <span className="ml-auto font-mono font-semibold text-lg" style={{ color: courseVerdictStyle.color }}>
+                  <span className="text-xl">{courseVerdictInfo.emoji}</span>
+                  <span className={`font-bold text-lg ${courseVerdictInfo.textCls}`}>{courseVerdictInfo.label}</span>
+                  <span className={`ml-auto font-mono font-semibold text-lg ${courseVerdictInfo.textCls}`}>
                     {eur0(courseResult.margeNette)}
                   </span>
                 </div>
-                <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
-                  <span style={{ color: C.muted }}>
-                    Marge : <b className="font-mono" style={{ color: courseVerdictStyle.color }}>{pct1(courseResult.margePct)}</b>
+                <div className="flex flex-wrap gap-x-6 gap-y-1 text-[var(--fs-sm)]">
+                  <span className="text-[var(--text-muted)]">
+                    Marge : <b className={`font-mono ${courseVerdictInfo.textCls}`}>{pct1(courseResult.margePct)}</b>
                   </span>
-                  <span style={{ color: C.muted }}>
-                    Prix plancher : <b className="font-mono" style={{ color: C.ink }}>{eur0(courseResult.prixPlancher)}</b>
+                  <span className="text-[var(--text-muted)]">
+                    Prix plancher : <b className="font-mono text-[var(--text)]">{eur0(courseResult.prixPlancher)}</b>
                   </span>
-                  <span style={{ color: C.muted }}>
-                    Prix cible ({nv(courseForm.margeCible)} %) : <b className="font-mono" style={{ color: C.profit }}>{eur0(courseResult.prixCible)}</b>
+                  <span className="text-[var(--text-muted)]">
+                    Prix cible ({nv(courseForm.margeCible)} %) : <b className="font-mono text-[var(--profit)]">{eur0(courseResult.prixCible)}</b>
                   </span>
                 </div>
               </div>
@@ -1062,30 +1053,32 @@ export function CalculateurRentabilite() {
               {/* KPIs secondaires */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
-                  { label: 'Prix / h',   value: eur0(courseResult.prixH) },
-                  { label: 'Marge / h',  value: eur0(courseResult.margeH),  accent: courseResult.margeH  >= 0 ? C.profit : C.loss },
-                  { label: 'Prix / km',  value: eur2(courseResult.prixKm) },
-                  { label: 'Marge / km', value: eur2(courseResult.margeKm), accent: courseResult.margeKm >= 0 ? C.profit : C.loss },
+                  { label: 'Prix / h',   value: eur0(courseResult.prixH),   positive: null },
+                  { label: 'Marge / h',  value: eur0(courseResult.margeH),  positive: courseResult.margeH  >= 0 },
+                  { label: 'Prix / km',  value: eur2(courseResult.prixKm),  positive: null },
+                  { label: 'Marge / km', value: eur2(courseResult.margeKm), positive: courseResult.margeKm >= 0 },
                 ].map((k) => (
-                  <div key={k.label} className="rounded-xl p-3" style={{ background: C.bg, border: `1px solid ${C.border}` }}>
-                    <div className="text-[10px] uppercase tracking-wide mb-1" style={{ color: C.muted }}>{k.label}</div>
-                    <div className="font-mono font-semibold text-base leading-tight" style={{ color: k.accent ?? C.ink }}>{k.value}</div>
+                  <div key={k.label} className="rounded-[var(--r-xl)] p-3 bg-[var(--bg-deep)] border border-[var(--border)]">
+                    <div className="text-[10px] uppercase tracking-wide mb-1 text-[var(--text-muted)]">{k.label}</div>
+                    <div className="font-mono font-semibold text-base leading-tight"
+                      style={{ color: k.positive === null ? 'var(--text)' : k.positive ? 'var(--profit)' : 'var(--loss)' }}>
+                      {k.value}
+                    </div>
                   </div>
                 ))}
               </div>
 
               {/* Détail des coûts — repliable */}
-              <div className="rounded-xl overflow-hidden" style={{ border: `1px solid ${C.border}` }}>
+              <div className="rounded-[var(--r-xl)] overflow-hidden border border-[var(--border)]">
                 <button
                   onClick={() => setDetailOpen((o) => !o)}
-                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors"
-                  style={{ background: C.bg, color: C.muted }}
+                  className="w-full flex items-center justify-between px-4 py-3 text-[var(--fs-sm)] font-medium transition-colors bg-[var(--bg-deep)] text-[var(--text-muted)] hover:text-[var(--text)]"
                 >
                   <span>Détail des coûts</span>
                   {detailOpen ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                 </button>
                 {detailOpen && (
-                  <div className="px-4 py-3 flex flex-col gap-2 text-sm" style={{ background: C.card }}>
+                  <div className="px-4 py-3 flex flex-col gap-2 text-[var(--fs-sm)]">
                     {[
                       { label: 'Carburant',  v: courseResult.coutCarburant, note: `${courseResult.kmTotal} km × ${eur2(r.couts.coutCarburantKm)}/km` },
                       { label: 'Usure / km', v: courseResult.coutUsure,     note: `${courseResult.kmTotal} km × ${eur2(r.couts.coutUsureKm)}/km` },
@@ -1094,21 +1087,21 @@ export function CalculateurRentabilite() {
                     ].map((row) => (
                       <div key={row.label} className="flex items-center justify-between gap-4">
                         <div>
-                          <span style={{ color: C.ink }}>{row.label}</span>
-                          {row.note && <span className="ml-2 text-[11px]" style={{ color: C.faint }}>{row.note}</span>}
+                          <span className="text-[var(--text)]">{row.label}</span>
+                          {row.note && <span className="ml-2 text-[10px] text-[var(--text-disabled)]">{row.note}</span>}
                         </div>
-                        <span className="font-mono" style={{ color: C.muted }}>{eur0(row.v)}</span>
+                        <span className="font-mono text-[var(--text-muted)]">{eur0(row.v)}</span>
                       </div>
                     ))}
-                    <div className="flex items-center justify-between pt-2 font-semibold" style={{ borderTop: `1px solid ${C.border}` }}>
-                      <span style={{ color: C.ink }}>Coût total</span>
-                      <span className="font-mono" style={{ color: C.ink }}>{eur0(courseResult.coutTotal)}</span>
+                    <div className="flex items-center justify-between pt-2 font-semibold border-t border-[var(--border)]">
+                      <span className="text-[var(--text)]">Coût total</span>
+                      <span className="font-mono text-[var(--text)]">{eur0(courseResult.coutTotal)}</span>
                     </div>
                   </div>
                 )}
               </div>
 
-              <p className="text-[10px]" style={{ color: C.faint }}>
+              <p className="text-[10px] text-[var(--text-disabled)]">
                 km total : {courseResult.kmTotal} · durée totale : {courseResult.heuresTotales.toFixed(1)} h · {nv(courseForm.nbPoints)} point(s)
               </p>
             </div>
