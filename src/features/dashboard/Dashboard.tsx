@@ -20,7 +20,7 @@ export function Dashboard() {
   const navigate = useNavigate()
   const [kpis, setKpis] = useState<DashboardKpis | null>(null)
   const [recent, setRecent] = useState<DeliveryRow[]>([])
-  const [trend, setTrend] = useState<{ month: string; caHtCts: number; nb: number }[]>([])
+  const [trend, setTrend] = useState<{ month: string; caHtCts: number; nb: number; nbFacturee: number; nbPayee: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
@@ -49,6 +49,12 @@ export function Dashboard() {
     : undefined
   const deltaLiv = (last && prev)
     ? { value: String(Math.abs(last.nb - prev.nb)), dir: (last.nb >= prev.nb ? 'up' : 'down') as 'up' | 'down' }
+    : undefined
+  const deltaFacturee = (last && prev)
+    ? { value: String(Math.abs(last.nbFacturee - prev.nbFacturee)), dir: (last.nbFacturee >= prev.nbFacturee ? 'up' : 'down') as 'up' | 'down' }
+    : undefined
+  const deltaPayee = (last && prev)
+    ? { value: String(Math.abs(last.nbPayee - prev.nbPayee)), dir: (last.nbPayee >= prev.nbPayee ? 'up' : 'down') as 'up' | 'down' }
     : undefined
 
   return (
@@ -81,10 +87,18 @@ export function Dashboard() {
                 icon={<Euro size={18} />} delta={deltaCA} spark={trend.map(t => t.caHtCts)} />
               <KpiCard label="Livraisons" value={kpis!.nbLivraisons} tone="info"
                 icon={<Package size={18} />} delta={deltaLiv} spark={trend.map(t => t.nb)} />
-              <KpiCard label="% Facturé" value={`${kpis!.factureePct} %`} tone="violet"
-                icon={<FileCheck2 size={18} />} progress={kpis!.factureePct} />
-              <KpiCard label="% Payé" value={`${kpis!.payeePct} %`} tone="warning"
-                icon={<CheckCircle2 size={18} />} progress={kpis!.payeePct} />
+              <KpiCard label="Facturées" value={kpis!.nbFacturee} tone="violet"
+                icon={<FileCheck2 size={18} />}
+                sub={`/ ${kpis!.nbLivraisons}`}
+                delta={deltaFacturee}
+                progress={kpis!.nbLivraisons ? Math.round((kpis!.nbFacturee / kpis!.nbLivraisons) * 100) : 0}
+                spark={trend.map(t => t.nbFacturee)} />
+              <KpiCard label="Payées" value={kpis!.nbPayee} tone="warning"
+                icon={<CheckCircle2 size={18} />}
+                sub={`/ ${kpis!.nbLivraisons}`}
+                delta={deltaPayee}
+                progress={kpis!.nbLivraisons ? Math.round((kpis!.nbPayee / kpis!.nbLivraisons) * 100) : 0}
+                spark={trend.map(t => t.nbPayee)} />
             </>
           )}
         </div>
