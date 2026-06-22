@@ -209,7 +209,6 @@ export function Charges() {
                       <td className="px-4 py-3 max-w-[200px]">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-[var(--text)] truncate">{row.label}</span>
-                          {isPennylane && <Badge color="muted">Pennylane</Badge>}
                         </div>
                       </td>
                       <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
@@ -265,7 +264,6 @@ export function Charges() {
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <span className="font-medium text-[var(--text)] truncate">{row.label}</span>
                     <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
-                      {isPennylane && <Badge color="muted">Pennylane</Badge>}
                       {cat && <Badge color={categoryColor(cat.slug)}>{cat.name}</Badge>}
                       <select
                         value={row.category_id ?? ''}
