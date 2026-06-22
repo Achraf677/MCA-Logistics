@@ -16,12 +16,7 @@ export const METHOD_COLOR: Record<PaymentMethod, 'success' | 'info' | 'warning' 
   autre:    'muted',
 }
 
-export function formatCents(cts: number): string {
-  return (cts / 100).toLocaleString('fr-FR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }) + ' €'
-}
+export { formatCents } from '../../shared/lib/money'
 
 export function kpiSummary(rows: PaymentRow[]) {
   const totalCts = rows.reduce((s, r) => s + r.amount_cts, 0)

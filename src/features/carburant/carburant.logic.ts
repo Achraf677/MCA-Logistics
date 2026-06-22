@@ -16,12 +16,7 @@ export const FUEL_TYPE_COLOR: Record<FuelType, 'muted' | 'info' | 'success' | 'w
   lpg:      'warning',
 }
 
-export function formatCents(cts: number): string {
-  return (cts / 100).toLocaleString('fr-FR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }) + ' €'
-}
+export { formatCents } from '../../shared/lib/money'
 
 export function formatLiters(liters: number): string {
   return liters.toLocaleString('fr-FR', {
