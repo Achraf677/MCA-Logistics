@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Lock, ExternalLink } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -42,6 +42,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
   const { companyId } = useProfile()
   const { toast } = useToast()
   const isEdit = !!charge
+  const isPennylane = !!charge?.pennylane_id
   const { can } = usePermissions()
 
   const [form, setForm] = useState(EMPTY_FORM)
@@ -137,6 +138,25 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
       title={isEdit ? `Charge — ${charge!.label}` : 'Nouvelle charge'}
     >
       <div className="flex flex-col gap-4">
+        {/* Bandeau verrouillage Pennylane */}
+        {isPennylane && (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text-muted)]">
+            <Lock size={14} className="shrink-0" />
+            <span>Géré dans Pennylane — lecture seule</span>
+            {charge?.receipt_url && (
+              <a
+                href={charge.receipt_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-auto inline-flex items-center gap-1 text-[var(--info)] hover:underline text-[var(--fs-xs)]"
+              >
+                <ExternalLink size={11} />
+                Voir la facture
+              </a>
+            )}
+          </div>
+        )}
+
         {isEdit && charge?.category && (
           <div className="flex items-center gap-2 mb-1">
             <Badge color={CATEGORY_COLOR[charge.category]}>{CATEGORY_LABELS[charge.category]}</Badge>
@@ -204,13 +224,13 @@ export function DrawerCharge({ open, onClose, charge, onSaved }: Props) {
         </Field>
 
         <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
-          {can('finance.charges', isEdit ? 'update' : 'create') && (
+          {!isPennylane && can('finance.charges', isEdit ? 'update' : 'create') && (
             <Button variant="primary" onClick={handleSave} disabled={saving}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>
           )}
-          <Button variant="secondary" onClick={onClose}>Annuler</Button>
-          {isEdit && can('finance.charges', 'delete') && (
+          <Button variant="secondary" onClick={onClose}>Fermer</Button>
+          {isEdit && !isPennylane && can('finance.charges', 'delete') && (
             <Button variant="ghost" onClick={() => setConfirmDelete(true)} className="ml-auto text-[var(--danger)]">
               <Trash2 size={14} />
               Supprimer
