@@ -144,9 +144,9 @@ async function fetchSupplierDetail(
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse();
 
-  const token = Deno.env.get('PENNYLANE_ACHATS_TOKEN');
+  const token = Deno.env.get('PENNYLANE_API_TOKEN');
   if (!token) {
-    return jsonResponse({ ok: false, error: 'missing PENNYLANE_ACHATS_TOKEN' }, 500);
+    return jsonResponse({ ok: false, error: 'missing PENNYLANE_API_TOKEN' }, 500);
   }
 
   const supabase = getServiceClient();
