@@ -11,6 +11,7 @@ import { LineChart } from '../../shared/ui/LineChart'
 import { TabActions } from '../../shared/ui/TabbedSection'
 import { DrawerLivraison } from '../livraisons/DrawerLivraison'
 import { getDashboardKpis, getRecentDeliveries, getMonthlyTrend } from './dashboard.queries'
+import type { TrendPeriod } from './dashboard.queries'
 import { formatCents, STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
 import { effectiveHtCts } from '../../shared/lib/money'
 import type { DashboardKpis } from './dashboard.queries'
@@ -24,19 +25,27 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
+  const [period, setPeriod] = useState<TrendPeriod>('6m')
+  const [metric, setMetric] = useState<'ca' | 'livraisons'>('ca')
 
   const load = useCallback(async () => {
     setLoading(true)
     const [k, r, t] = await Promise.all([
       getDashboardKpis(),
       getRecentDeliveries(),
-      getMonthlyTrend(),
+      getMonthlyTrend('6m'),
     ])
     setKpis(k)
     setRecent(r.data ?? [])
     setTrend(t)
     setLoading(false)
   }, [])
+
+  const handlePeriodChange = async (p: TrendPeriod) => {
+    setPeriod(p)
+    const t = await getMonthlyTrend(p)
+    setTrend(t)
+  }
 
   useEffect(() => { load() }, [load])
 
@@ -108,15 +117,43 @@ export function Dashboard() {
 
           {/* Courbe CA */}
           <div className="glass rounded-[var(--r-xl)] p-6">
-            <div className="flex items-baseline gap-3 mb-1">
-              <span className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">
-                Chiffre d'affaires HT
-              </span>
-              <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">6 derniers mois</span>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div className="flex items-baseline gap-3">
+                <span className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">
+                  {metric === 'ca' ? "Chiffre d'affaires HT" : 'Livraisons'}
+                </span>
+              </div>
+              {/* Contrôles période + métrique */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden text-[var(--fs-xs)]">
+                  {(['6m', '12m', 'ytd'] as TrendPeriod[]).map(p => (
+                    <button key={p} type="button" onClick={() => handlePeriodChange(p)}
+                      className={`px-3 py-1.5 transition-colors ${period === p
+                        ? 'bg-[var(--brand)] text-white font-semibold'
+                        : 'bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]'}`}>
+                      {p === '6m' ? '6 mois' : p === '12m' ? '12 mois' : 'Année'}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden text-[var(--fs-xs)]">
+                  {(['ca', 'livraisons'] as const).map(m => (
+                    <button key={m} type="button" onClick={() => setMetric(m)}
+                      className={`px-3 py-1.5 transition-colors ${metric === m
+                        ? 'bg-[var(--brand)] text-white font-semibold'
+                        : 'bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]'}`}>
+                      {m === 'ca' ? 'CA HT' : 'Livraisons'}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             {loading
               ? <Skeleton className="h-[220px]" />
-              : <LineChart points={trend.map(t => ({ label: t.month, value: t.caHtCts }))} />
+              : <LineChart
+                  key={`${period}-${metric}`}
+                  points={trend.map(t => ({ label: t.month, value: metric === 'ca' ? t.caHtCts : t.nb }))}
+                  formatValue={metric === 'ca' ? formatCents : v => `${v} liv.`}
+                />
             }
           </div>
 

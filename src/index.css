@@ -111,8 +111,9 @@ html, body, #root {
 .glass{ background:color-mix(in srgb, var(--bg-card) 72%, transparent); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border:1px solid var(--border); box-shadow:0 24px 50px -28px rgba(0,0,0,.85); }
 
 /* ── Line chart animations ──────────────────────────────── */
-.lc-line{ stroke-dasharray:2200; stroke-dashoffset:2200; animation:lcDraw 1.6s var(--ease) .3s forwards }
-.lc-area{ opacity:0; animation:lcFade 1.2s ease 1s forwards }
+/* pathLength="1" sur le path SVG normalise l'offset : dasharray/dashoffset en fraction de 1 */
+.lc-line{ stroke-dasharray:1; stroke-dashoffset:1; animation:lcDraw 1.2s var(--ease) .1s forwards }
+.lc-area{ opacity:0; animation:lcFade 0.8s ease 0.5s forwards }
 @keyframes lcDraw{ to{ stroke-dashoffset:0 } }
 @keyframes lcFade{ to{ opacity:1 } }
 @media (prefers-reduced-motion:reduce){ .lc-line{animation:none;stroke-dashoffset:0} .lc-area{animation:none;opacity:1} }
