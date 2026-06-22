@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Link2, Unlink } from 'lucide-react'
+import { Link2 } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import { createFuelLog, updateFuelLog } from './carburant.queries'
-import { SelecteurCharge } from './SelecteurCharge'
-import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
+import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
+import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
+import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, formatCents } from './carburant.logic'
 import type { FuelLogRow, FuelLogInsert, FuelType, ChargePick } from './carburant.types'
 
@@ -206,34 +207,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
 
           {/* ── Rapprochement charge ────────────────────────────────────────── */}
           {linkedCharge ? (
-            <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] px-4 py-3 flex flex-col gap-1.5">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-                  Facture liée
-                </span>
-                <button
-                  onClick={handleDetach}
-                  className="flex items-center gap-1 text-[var(--fs-xs)] text-[var(--text-muted)] hover:text-[var(--danger)] transition-colors"
-                >
-                  <Unlink size={12} />
-                  Détacher
-                </button>
-              </div>
-              <p className="text-[var(--fs-sm)] font-medium text-[var(--text)] truncate">{linkedCharge.label}</p>
-              <div className="flex items-center gap-3">
-                {linkedCharge.montant_ttc_cts != null && (
-                  <span className="font-mono text-[var(--fs-sm)] text-[var(--text)]">
-                    {formatCents(linkedCharge.montant_ttc_cts)}
-                  </span>
-                )}
-                <FacturePdfLink
-                  pennylane_id={linkedCharge.pennylane_id}
-                  receipt_url={linkedCharge.receipt_url}
-                  label="Facture PDF"
-                  className="inline-flex items-center gap-1 text-[var(--fs-xs)] text-[var(--brand)] hover:underline disabled:opacity-50"
-                />
-              </div>
-            </div>
+            <LinkedChargeCard charge={linkedCharge} onDetach={handleDetach} />
           ) : (
             <button
               type="button"
@@ -335,6 +309,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
         open={selectorOpen}
         onClose={() => setSelectorOpen(false)}
         onSelect={handleChargeSelect}
+        fetchCharges={() => getUnlinkedChargesFor('fuel_logs')}
       />
     </>
   )

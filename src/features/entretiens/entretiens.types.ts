@@ -16,6 +16,7 @@ export interface Maintenance {
   next_due_km: number | null
   receipt_url: string | null
   notes: string | null
+  charge_id: string | null
   created_at: string
   updated_at: string
 }
@@ -23,6 +24,7 @@ export interface Maintenance {
 export interface MaintenanceRow extends Maintenance {
   vehicles: { label: string; plate: string } | null
   suppliers: { name: string } | null
+  charges: { id: string; label: string; montant_ttc_cts: number | null; receipt_url: string | null; pennylane_id: string | null } | null
 }
 
 export type MaintenanceInsert = Omit<Maintenance, 'id' | 'created_at' | 'updated_at'>

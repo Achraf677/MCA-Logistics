@@ -1,7 +1,12 @@
 import { supabase } from '../../app/providers'
 import type { MaintenanceFilters, MaintenanceInsert, MaintenanceUpdate } from './entretiens.types'
 
-const WITH_JOINS = '*, vehicles!vehicle_id(label, plate), suppliers!supplier_id(name)'
+const WITH_JOINS = [
+  '*',
+  'vehicles!vehicle_id(label, plate)',
+  'suppliers!supplier_id(name)',
+  'charges!charge_id(id, label, montant_ttc_cts, receipt_url, pennylane_id)',
+].join(', ')
 
 export async function getMaintenances(filters: MaintenanceFilters = {}) {
   let q = supabase

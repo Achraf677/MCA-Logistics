@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react'
 import { Search, X, FileText } from 'lucide-react'
-import { getUnlinkedCharges } from './carburant.queries'
-import type { ChargePick } from './carburant.types'
+import type { ChargePick } from '../types/charges'
 
 interface Props {
   open: boolean
   onClose: () => void
   onSelect: (charge: ChargePick) => void
+  /** Fonction appelée à l'ouverture pour charger les charges disponibles. */
+  fetchCharges: () => Promise<ChargePick[]>
 }
 
-export function SelecteurCharge({ open, onClose, onSelect }: Props) {
+export function SelecteurCharge({ open, onClose, onSelect, fetchCharges }: Props) {
   const [charges, setCharges] = useState<ChargePick[]>([])
   const [search, setSearch]   = useState('')
   const [loading, setLoading] = useState(false)
@@ -19,12 +20,12 @@ export function SelecteurCharge({ open, onClose, onSelect }: Props) {
     if (!open) return
     setSearch('')
     setLoading(true)
-    getUnlinkedCharges().then(({ data }) => {
-      setCharges((data ?? []) as unknown as ChargePick[])
+    fetchCharges().then(data => {
+      setCharges(data)
       setLoading(false)
     })
     setTimeout(() => inputRef.current?.focus(), 80)
-  }, [open])
+  }, [open]) // fetchCharges intentionnellement exclu : stable par construction (arrow fn inline)
 
   if (!open) return null
 
@@ -42,7 +43,6 @@ export function SelecteurCharge({ open, onClose, onSelect }: Props) {
       />
       <div className="relative z-10 w-full max-w-lg bg-[var(--bg-card)] border border-[var(--border)] rounded-[var(--r-xl)] shadow-2xl flex flex-col max-h-[78vh]">
 
-        {/* Barre de recherche */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)] shrink-0">
           <Search size={15} className="text-[var(--text-muted)] shrink-0" />
           <input
@@ -60,7 +60,6 @@ export function SelecteurCharge({ open, onClose, onSelect }: Props) {
           </button>
         </div>
 
-        {/* Liste */}
         <div className="overflow-y-auto flex-1">
           {loading ? (
             <div className="px-4 py-10 text-center text-[var(--text-muted)] text-[var(--fs-sm)]">

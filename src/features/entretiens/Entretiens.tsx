@@ -6,6 +6,7 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
+import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { DrawerEntretien } from './DrawerEntretien'
 import { supabase } from '../../app/providers'
 import { getMaintenances } from './entretiens.queries'
@@ -35,7 +36,7 @@ export function Entretiens() {
     setLoading(true); setError(null)
     const { data, error } = await getMaintenances(filters)
     if (error) setError(error.message)
-    else setRows(data ?? [])
+    else setRows((data ?? []) as unknown as MaintenanceRow[])
     setLoading(false)
   }, [filters])
 
@@ -121,7 +122,7 @@ export function Entretiens() {
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['Date', 'Véhicule', 'Type', 'Description', 'Coût', 'km', 'Prochaine éch.', ''].map(h => (
+                  {['Date', 'Véhicule', 'Type', 'Description', 'Coût', 'km', 'Prochaine éch.', 'Facture', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -170,6 +171,20 @@ export function Entretiens() {
                           </span>
                         ) : '—'}
                       </td>
+                      <td className="px-4 py-3">
+                        {row.charges ? (
+                          <div className="flex items-center gap-2">
+                            <Badge color="success">Facturé</Badge>
+                            <FacturePdfLink
+                              pennylane_id={row.charges.pennylane_id}
+                              receipt_url={row.charges.receipt_url}
+                              label=""
+                              iconSize={13}
+                              className="inline-flex items-center text-[var(--brand)] hover:opacity-80 disabled:opacity-50"
+                            />
+                          </div>
+                        ) : <span className="text-[var(--text-disabled)]">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <Button variant="ghost" size="compact" onClick={e => { e.stopPropagation(); openRow(row) }}>Voir</Button>
                       </td>
@@ -192,7 +207,10 @@ export function Entretiens() {
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <span className="font-medium text-[var(--text)]">{row.vehicles?.label ?? '—'}</span>
-                    {row.type && <Badge color={MAINTENANCE_TYPE_COLOR[row.type]}>{MAINTENANCE_TYPE_LABELS[row.type]}</Badge>}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {row.charges && <Badge color="success">Facturé</Badge>}
+                      {row.type && <Badge color={MAINTENANCE_TYPE_COLOR[row.type]}>{MAINTENANCE_TYPE_LABELS[row.type]}</Badge>}
+                    </div>
                   </div>
                   <div className="flex items-end justify-between gap-2">
                     <div className="flex flex-col gap-0.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
@@ -204,9 +222,18 @@ export function Entretiens() {
                         </span>
                       )}
                     </div>
-                    <span className="font-mono font-semibold text-[var(--text)]">
-                      {row.cost_cts != null ? formatCents(row.cost_cts) : '—'}
-                    </span>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="font-mono font-semibold text-[var(--text)]">
+                        {row.cost_cts != null ? formatCents(row.cost_cts) : '—'}
+                      </span>
+                      <FacturePdfLink
+                        pennylane_id={row.charges?.pennylane_id}
+                        receipt_url={row.charges?.receipt_url}
+                        label=""
+                        iconSize={12}
+                        className="inline-flex items-center text-[var(--brand)] hover:opacity-80 disabled:opacity-50"
+                      />
+                    </div>
                   </div>
                 </button>
               )
