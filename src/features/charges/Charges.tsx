@@ -7,41 +7,49 @@ import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { TabActions } from '../../shared/ui/TabbedSection'
+import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { DrawerCharge } from './DrawerCharge'
 import { useToast } from '../../shared/ui/useToast'
+import { useProfile } from '../../app/providers'
 import { getCharges, exportChargesCSV, syncPennylane, updateCharge } from './charges.queries'
 import { usePermissions } from '../../shared/permissions/usePermissions'
-import {
-  CHARGE_CATEGORIES, CATEGORY_LABELS, formatCents, kpiSummary,
-} from './charges.logic'
-import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
+import { formatCents, categoryColor, kpiSummary } from './charges.logic'
+import { getCategories } from '../../shared/lib/categories.queries'
 import { downloadCSV } from '../../shared/lib/download'
-import type { ChargeRow, ChargeFilters, ChargeCategory } from './charges.types'
+import type { ChargeRow, ChargeFilters } from './charges.types'
+import type { ChargeCategoryRow } from '../../shared/types/categories'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
 export function Charges() {
   const { toast } = useToast()
   const { can } = usePermissions()
+  const { companyId } = useProfile()
   const canCreate = can('finance.charges', 'create')
-  const [rows, setRows]           = useState<ChargeRow[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState<string | null>(null)
-  const [filters, setFilters]     = useState<ChargeFilters>({})
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [selected, setSelected]   = useState<ChargeRow | null>(null)
+  const [rows, setRows]               = useState<ChargeRow[]>([])
+  const [categories, setCategories]   = useState<ChargeCategoryRow[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState<string | null>(null)
+  const [filters, setFilters]         = useState<ChargeFilters>({})
+  const [drawerOpen, setDrawerOpen]   = useState(false)
+  const [selected, setSelected]       = useState<ChargeRow | null>(null)
   const [syncPending, setSyncPending] = useState(false)
+
+  // Chargement des catégories (une fois par companyId)
+  useEffect(() => {
+    if (!companyId) return
+    getCategories(companyId).then(setCategories)
+  }, [companyId])
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     const { data, error } = await getCharges(filters)
     if (error) setError(error.message)
-    else setRows(data ?? [])
+    else setRows((data ?? []) as unknown as ChargeRow[])
     setLoading(false)
   }, [filters])
 
   useEffect(() => { load() }, [load])
 
-  // Dernière synchro Pennylane = max(pennylane_synced_at) des lignes chargées
   const lastSync = useMemo(() => {
     return rows.reduce((max, r) => {
       if (!r.pennylane_synced_at) return max
@@ -71,9 +79,12 @@ export function Charges() {
     toast(n > 0 ? `${n} facture(s) synchronisée(s)` : 'Aucune nouvelle facture')
   }
 
-  const handleCategoryChange = async (rowId: string, category: ChargeCategory | null) => {
-    setRows(prev => prev.map(r => r.id === rowId ? { ...r, category } : r))
-    const { error } = await updateCharge(rowId, { category })
+  const handleCategoryChange = async (rowId: string, categoryId: string | null) => {
+    const cat = categories.find(c => c.id === categoryId) ?? null
+    setRows(prev => prev.map(r =>
+      r.id === rowId ? { ...r, category_id: categoryId, charge_categories: cat } : r
+    ))
+    const { error } = await updateCharge(rowId, { category_id: categoryId })
     if (error) { toast(error.message, 'error'); load() }
   }
 
@@ -85,13 +96,12 @@ export function Charges() {
 
   const kpis = kpiSummary(rows)
   const hasFilters = !!(
-    (filters.category && filters.category !== 'all') ||
+    (filters.category_id && filters.category_id !== 'all') ||
     filters.date_from || filters.date_to
   )
 
   return (
     <Shell pageTitle="Charges" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
-      {/* Bouton sync Pennylane dans le slot TabActions */}
       <TabActions>
         <div className="flex items-center gap-3">
           {lastSync && (
@@ -132,13 +142,13 @@ export function Charges() {
           title="Date fin" className={filterCls}
         />
         <select
-          value={filters.category ?? 'all'}
-          onChange={e => setFilters(f => ({ ...f, category: (e.target.value || 'all') as ChargeFilters['category'] }))}
+          value={filters.category_id ?? 'all'}
+          onChange={e => setFilters(f => ({ ...f, category_id: (e.target.value || 'all') as ChargeFilters['category_id'] }))}
           className={filterCls}
         >
           <option value="all">Toutes catégories</option>
-          {(Object.entries(CATEGORY_LABELS) as [ChargeCategory, string][]).map(([k, l]) => (
-            <option key={k} value={k}>{l}</option>
+          {categories.map(c => (
+            <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
         {hasFilters && (
@@ -199,20 +209,18 @@ export function Charges() {
                       <td className="px-4 py-3 max-w-[200px]">
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-[var(--text)] truncate">{row.label}</span>
-                          {isPennylane && (
-                            <Badge color="muted">Pennylane</Badge>
-                          )}
+                          {isPennylane && <Badge color="muted">Pennylane</Badge>}
                         </div>
                       </td>
                       <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                         <select
-                          value={row.category ?? ''}
-                          onChange={e => handleCategoryChange(row.id, (e.target.value as ChargeCategory) || null)}
+                          value={row.category_id ?? ''}
+                          onChange={e => handleCategoryChange(row.id, e.target.value || null)}
                           className={categoryCls}
                         >
                           <option value="">Non catégorisé</option>
-                          {CHARGE_CATEGORIES.map(c => (
-                            <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                          {categories.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
                           ))}
                         </select>
                       </td>
@@ -227,10 +235,8 @@ export function Charges() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         {isPennylane ? (
-                          <span
-                            title="Géré dans Pennylane"
-                            className="inline-flex items-center justify-center w-7 h-7 rounded-[var(--r-sm)] text-[var(--text-disabled)]"
-                          >
+                          <span title="Géré dans Pennylane"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-[var(--r-sm)] text-[var(--text-disabled)]">
                             <Lock size={13} />
                           </span>
                         ) : (
@@ -248,6 +254,7 @@ export function Charges() {
           <div className="md:hidden flex flex-col gap-3">
             {rows.map(row => {
               const isPennylane = !!row.pennylane_id
+              const cat = row.charge_categories
               return (
                 <div
                   key={row.id}
@@ -259,14 +266,15 @@ export function Charges() {
                     <span className="font-medium text-[var(--text)] truncate">{row.label}</span>
                     <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
                       {isPennylane && <Badge color="muted">Pennylane</Badge>}
+                      {cat && <Badge color={categoryColor(cat.slug)}>{cat.name}</Badge>}
                       <select
-                        value={row.category ?? ''}
-                        onChange={e => handleCategoryChange(row.id, (e.target.value as ChargeCategory) || null)}
+                        value={row.category_id ?? ''}
+                        onChange={e => handleCategoryChange(row.id, e.target.value || null)}
                         className={categoryCls}
                       >
-                        <option value="">Non catégorisé</option>
-                        {CHARGE_CATEGORIES.map(c => (
-                          <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                        <option value="">—</option>
+                        {categories.map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
                       </select>
                     </div>
@@ -304,6 +312,7 @@ export function Charges() {
         onClose={() => setDrawerOpen(false)}
         charge={selected}
         onSaved={load}
+        categories={categories}
       />
     </Shell>
   )

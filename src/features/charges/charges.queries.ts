@@ -1,7 +1,11 @@
 import { supabase } from '../../app/providers'
 import type { ChargeFilters, ChargeInsert, ChargeRow, ChargeUpdate } from './charges.types'
 
-const WITH_JOINS = '*, suppliers!supplier_id(name)'
+const WITH_JOINS = [
+  '*',
+  'suppliers!supplier_id(name)',
+  'charge_categories!category_id(id, name, slug, type, is_system)',
+].join(', ')
 
 export async function getCharges(filters: ChargeFilters = {}) {
   let q = supabase
@@ -10,7 +14,7 @@ export async function getCharges(filters: ChargeFilters = {}) {
     .order('date', { ascending: false })
     .order('created_at', { ascending: false })
 
-  if (filters.category && filters.category !== 'all') q = q.eq('category', filters.category)
+  if (filters.category_id && filters.category_id !== 'all') q = q.eq('category_id', filters.category_id)
   if (filters.date_from) q = q.gte('date', filters.date_from)
   if (filters.date_to)   q = q.lte('date', filters.date_to)
 
@@ -41,7 +45,7 @@ export async function exportChargesCSV(filters: ChargeFilters = {}) {
   const lines = rows.map(d => [
     d.date,
     d.label,
-    d.category ?? '',
+    d.charge_categories?.name ?? '',
     (d.montant_ht_cts / 100).toFixed(2),
     d.tva_rate,
     d.montant_ttc_cts ? (d.montant_ttc_cts / 100).toFixed(2) : '',

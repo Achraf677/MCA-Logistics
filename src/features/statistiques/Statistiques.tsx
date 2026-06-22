@@ -5,8 +5,6 @@ import { KpiCard } from '../../shared/ui/KpiCard'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { getStatistiquesData } from './statistiques.queries'
 import { caMensuel, annualTotals, topClients, chargesByCategory, type StatistiquesData } from './statistiques.logic'
-import { CATEGORY_LABELS } from '../charges/charges.logic'
-import type { ChargeCategory } from '../charges/charges.types'
 
 function formatCents(cts: number): string {
   return (cts / 100).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' €'
@@ -157,7 +155,7 @@ export function Statistiques() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <span className="text-[var(--fs-sm)] text-[var(--text)] truncate">
-                        {CATEGORY_LABELS[cat as ChargeCategory] ?? cat}
+                        {cat}
                       </span>
                       <span className="text-[var(--fs-xs)] font-mono text-[var(--text)] shrink-0">{formatCents(cts)}</span>
                     </div>

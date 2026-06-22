@@ -24,8 +24,8 @@ import type { SupplierInsert } from '../fournisseurs/fournisseurs.types'
 import { getLatestSnapshot, getTransactions } from '../tresorerie/tresorerie.queries'
 
 import { getCharges, createCharge } from '../charges/charges.queries'
-import { kpiSummary as chargesKpiSummary, CATEGORY_LABELS as CHARGE_CATEGORY_LABELS } from '../charges/charges.logic'
-import type { ChargeInsert, ChargeCategory } from '../charges/charges.types'
+import { kpiSummary as chargesKpiSummary } from '../charges/charges.logic'
+import type { ChargeInsert, ChargeRow } from '../charges/charges.types'
 
 import { getTvaData } from '../tva/tva.queries'
 import { computeTva } from '../tva/tva.logic'
@@ -252,12 +252,12 @@ export async function getTresorerie() {
 export async function getChargesMois(mois?: string) {
   const { label, start, end } = monthBounds(mois)
   const { data } = await getCharges({ date_from: start, date_to: end })
-  const rows = data ?? []
+  const rows = (data ?? []) as unknown as ChargeRow[]
   const k = chargesKpiSummary(rows)
 
   const byCat: Record<string, number> = {}
   for (const r of rows) {
-    const cat = r.category ?? 'autre'
+    const cat = r.charge_categories?.name ?? 'Autres'
     byCat[cat] = (byCat[cat] ?? 0) + (r.montant_ttc_cts ?? r.montant_ht_cts ?? 0)
   }
 
@@ -266,7 +266,7 @@ export async function getChargesMois(mois?: string) {
     total_ht_eur: centimesToEuros(k.totalHtCts),
     total_ttc_eur: centimesToEuros(k.totalTtcCts),
     par_categorie: Object.entries(byCat).map(([cat, cts]) => ({
-      categorie: CHARGE_CATEGORY_LABELS[cat as keyof typeof CHARGE_CATEGORY_LABELS] ?? cat,
+      categorie: cat,
       total_ttc_eur: centimesToEuros(cts),
     })),
   }
@@ -825,11 +825,6 @@ export interface CreateChargeArgs {
   fournisseur?: string
 }
 
-const CHARGE_CATEGORIES = [
-  'carburant', 'assurance', 'entretien', 'salaire', 'logiciel', 'telecom',
-  'loyer', 'frais_bancaires', 'comptabilite', 'publicite', 'autre',
-]
-
 export async function prepareCreateCharge(args: CreateChargeArgs): Promise<PrepareResult> {
   const libelle = (args.libelle ?? '').trim()
   if (!libelle) return { ok: false, message: 'Précise le libellé de la charge.' }
@@ -841,8 +836,9 @@ export async function prepareCreateCharge(args: CreateChargeArgs): Promise<Prepa
   const companyId = await getCompanyId()
   if (!companyId) return { ok: false, message: 'Profil non chargé : impossible de créer la charge.' }
 
-  const category = (args.categorie && CHARGE_CATEGORIES.includes(args.categorie)
-    ? args.categorie : 'autre') as ChargeCategory
+  // Les catégories sont désormais en DB (charge_categories). L'assistant ne peut pas
+  // résoudre un UUID ici sans requête supplémentaire — on crée la charge sans catégorie.
+  const _categorie = args.categorie  // conservé pour affichage dans la confirmation
 
   // Fournisseur optionnel : résolu par nom (1 seul match actif). Introuvable →
   // on crée QUAND MÊME la charge (supplier_id null) et on le signale.
@@ -863,11 +859,11 @@ export async function prepareCreateCharge(args: CreateChargeArgs): Promise<Prepa
   const tvaCts = ttcCts - htCts
 
   // Objet construit avec UNIQUEMENT des colonnes réelles de `charges`.
-  const payload = {
+  const payload: ChargeInsert = {
     company_id: companyId,
     date,
     label: libelle,
-    category,
+    category_id: null,
     supplier_id,
     montant_ht_cts: htCts,
     tva_rate: tvaRate,
@@ -875,7 +871,7 @@ export async function prepareCreateCharge(args: CreateChargeArgs): Promise<Prepa
     montant_ttc_cts: ttcCts,
     receipt_url: null,
     notes: null,
-  } as ChargeInsert
+  }
 
   return {
     ok: true,
@@ -883,7 +879,7 @@ export async function prepareCreateCharge(args: CreateChargeArgs): Promise<Prepa
       title: 'Créer une charge',
       lines: [
         { label: 'Libellé', value: libelle },
-        { label: 'Catégorie', value: CHARGE_CATEGORY_LABELS[category] ?? category },
+        { label: 'Catégorie', value: _categorie ?? 'non catégorisé' },
         { label: 'Montant TTC', value: `${centimesToEuros(ttcCts)} €` },
         { label: 'Date', value: date },
         ...(fourn ? [{ label: 'Fournisseur', value: supplier_id ? fourn : `${fourn} (non lié)` }] : []),
