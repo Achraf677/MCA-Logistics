@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { useToast } from '../../shared/ui/useToast'
-import { createVehicle, updateVehicle } from './vehicules.queries'
+import { createVehicle, updateVehicle, deleteVehicle } from './vehicules.queries'
 import { validatePtac, STATUS_LABELS, FUEL_LABELS, vehicleEcheances } from './vehicules.logic'
 import type { Vehicle, VehicleInsert } from './vehicules.types'
-import { useProfile } from '../../app/providers'
+import { useProfile, supabase } from '../../app/providers'
 import { DocumentsPanel } from '../documents/DocumentsPanel'
+import { DeleteButton } from '../../shared/ui/DeleteButton'
 
 interface DrawerVehiculeProps {
   open: boolean
@@ -127,6 +128,27 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
     }
   }
 
+  const handleDelete = async () => {
+    if (!vehicle) return
+    const [fuel, maint] = await Promise.all([
+      supabase.from('fuel_logs').select('*', { count: 'exact', head: true }).eq('vehicle_id', vehicle.id),
+      supabase.from('vehicle_maintenances').select('*', { count: 'exact', head: true }).eq('vehicle_id', vehicle.id),
+    ])
+    const fuelCount = fuel.count ?? 0
+    const maintCount = maint.count ?? 0
+    if (fuelCount > 0 || maintCount > 0) {
+      const parts: string[] = []
+      if (fuelCount > 0) parts.push(`${fuelCount} plein${fuelCount > 1 ? 's' : ''}`)
+      if (maintCount > 0) parts.push(`${maintCount} entretien${maintCount > 1 ? 's' : ''}`)
+      throw new Error(`Ce véhicule a ${parts.join(' et ')} — impossible de le supprimer tant qu'il a un historique.`)
+    }
+    const { error } = await deleteVehicle(vehicle.id)
+    if (error) throw error
+    toast('Véhicule supprimé')
+    onSaved()
+    onClose()
+  }
+
   const handleStatusChange = async (status: Vehicle['status']) => {
     if (!vehicle) return
     const { error } = await updateVehicle(vehicle.id, { status })
@@ -228,9 +250,17 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
           <textarea value={form.notes ?? ''} onChange={e => set('notes', e.target.value)} rows={2} className={`${inputClass} h-auto resize-none`} />
         </FieldGroup>
 
-        <div className="flex gap-2 pt-2 border-t border-[var(--border)]">
+        <div className="flex items-center gap-2 pt-2 border-t border-[var(--border)]">
           <Button variant="primary" onClick={handleSave} disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</Button>
           <Button variant="secondary" onClick={onClose}>Annuler</Button>
+          {isEdit && (
+            <DeleteButton
+              onDelete={handleDelete}
+              confirmTitle="Supprimer ce véhicule ?"
+              confirmMessage="Action irréversible. Le véhicule sera définitivement supprimé."
+              className="ml-auto"
+            />
+          )}
         </div>
 
         {/* Documents rattachés — visible uniquement après sauvegarde */}

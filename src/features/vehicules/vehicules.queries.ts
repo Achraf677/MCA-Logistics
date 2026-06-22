@@ -18,6 +18,10 @@ export async function updateVehicle(id: string, data: VehicleUpdate) {
   return supabase.from('vehicles').update(data).eq('id', id).select().single()
 }
 
+export async function deleteVehicle(id: string) {
+  return supabase.from('vehicles').delete().eq('id', id)
+}
+
 export async function getNextMaintenance(vehicleId: string) {
   return supabase
     .from('vehicle_maintenances')
