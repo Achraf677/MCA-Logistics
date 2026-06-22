@@ -223,9 +223,11 @@ export function Charges() {
                           ))}
                         </select>
                       </td>
-                      <td className="px-4 py-3 font-mono">{formatCents(row.montant_ht_cts)}</td>
+                      <td className={`px-4 py-3 font-mono ${row.montant_ht_cts < 0 ? 'text-[var(--loss)]' : ''}`}>
+                        {formatCents(row.montant_ht_cts)}
+                      </td>
                       <td className="px-4 py-3 font-mono">{row.tva_cts != null ? formatCents(row.tva_cts) : '—'}</td>
-                      <td className="px-4 py-3 font-mono font-semibold text-[var(--text)]">
+                      <td className={`px-4 py-3 font-mono font-semibold ${row.montant_ttc_cts != null && row.montant_ttc_cts < 0 ? 'text-[var(--loss)]' : 'text-[var(--text)]'}`}>
                         {row.montant_ttc_cts ? formatCents(row.montant_ttc_cts) : '—'}
                       </td>
                       <td className="px-4 py-3">
@@ -288,7 +290,7 @@ export function Charges() {
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <span className="font-mono font-semibold text-[var(--text)]">
+                      <span className={`font-mono font-semibold ${row.montant_ht_cts < 0 ? 'text-[var(--loss)]' : 'text-[var(--text)]'}`}>
                         {formatCents(row.montant_ht_cts)} HT
                       </span>
                       <FacturePdfLink

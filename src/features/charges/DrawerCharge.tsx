@@ -43,6 +43,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
   const { can } = usePermissions()
 
   const [form, setForm] = useState(EMPTY_FORM)
+  const [isAvoir, setIsAvoir] = useState(false)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -56,31 +57,37 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
 
   useEffect(() => {
     if (charge) {
+      const negative = charge.montant_ht_cts < 0
+      setIsAvoir(negative)
       setForm({
         date: charge.date,
         label: charge.label,
         category_id: charge.category_id ?? '',
         supplier_id: charge.supplier_id ?? '',
-        montant_ht: (charge.montant_ht_cts / 100).toFixed(2),
+        montant_ht: (Math.abs(charge.montant_ht_cts) / 100).toFixed(2),
         tva_rate: String(charge.tva_rate ?? 20),
         notes: charge.notes ?? '',
       })
     } else {
+      setIsAvoir(false)
       setForm({ ...EMPTY_FORM, date: new Date().toISOString().slice(0, 10) })
     }
   }, [charge, open])
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
 
-  const htCts = Math.round(parseFloat(form.montant_ht || '0') * 100)
+  // L'utilisateur saisit toujours positif ; le signe est appliqué à l'enregistrement
+  const absHtCts = Math.round(parseFloat(form.montant_ht || '0') * 100)
   const tvaRate = parseFloat(form.tva_rate || '20')
-  const ttcCts = computeTtcCts(htCts, tvaRate)
+  const sign = isAvoir ? -1 : 1
+  const htCts = sign * absHtCts
+  const ttcCts = sign * computeTtcCts(absHtCts, tvaRate)
   const tvaCts = ttcCts - htCts
 
   const handleSave = async () => {
     if (!form.label.trim()) { toast('Le libellé est requis', 'error'); return }
     if (!form.date) { toast('La date est requise', 'error'); return }
-    if (htCts <= 0) { toast('Le montant HT doit être supérieur à 0', 'error'); return }
+    if (absHtCts <= 0) { toast('Le montant HT doit être supérieur à 0', 'error'); return }
 
     setSaving(true)
     try {
@@ -160,6 +167,30 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
           </div>
         )}
 
+        {/* Toggle Charge / Avoir — masqué pour les charges Pennylane */}
+        {!isPennylane && (
+          <div className="flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden text-[var(--fs-sm)] self-start">
+            <button
+              type="button"
+              onClick={() => setIsAvoir(false)}
+              className={`px-4 py-1.5 transition-colors ${!isAvoir
+                ? 'bg-[var(--brand)] text-white font-medium'
+                : 'bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]'}`}
+            >
+              Charge
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsAvoir(true)}
+              className={`px-4 py-1.5 transition-colors ${isAvoir
+                ? 'bg-[var(--loss)] text-white font-medium'
+                : 'bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]'}`}
+            >
+              Avoir
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-3">
           <Field label="Date *">
             <Input type="date" value={form.date} onChange={v => set('date', v)} />
@@ -194,7 +225,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
           </Field>
         </div>
 
-        {htCts > 0 && (
+        {absHtCts > 0 && (
           <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] divide-y divide-[var(--border)] overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2">
               <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">TVA ({tvaRate} %)</span>
