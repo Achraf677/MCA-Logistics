@@ -56,32 +56,52 @@ export async function getRecentDeliveries() {
     .returns<DeliveryRow[]>()
 }
 
-export async function getMonthlyTrend() {
-  const results: { month: string; caHtCts: number; nb: number; nbFacturee: number; nbPayee: number }[] = []
+export type TrendPeriod = '6m' | '12m' | 'ytd'
+
+export async function getMonthlyTrend(period: TrendPeriod = '6m') {
   const now = new Date()
 
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const start = d.toISOString().slice(0, 10)
-    const end = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10)
-    const label = d.toLocaleDateString('fr-FR', { month: 'short' })
+  // Construire la liste des mois à interroger
+  let slots: { start: string; end: string; label: string }[]
 
+  if (period === 'ytd') {
+    const currentMonth = now.getMonth() // 0-based
+    slots = Array.from({ length: currentMonth + 1 }, (_, i) => {
+      const d = new Date(now.getFullYear(), i, 1)
+      return {
+        start: d.toISOString().slice(0, 10),
+        end: new Date(now.getFullYear(), i + 1, 0).toISOString().slice(0, 10),
+        label: d.toLocaleDateString('fr-FR', { month: 'short' }),
+      }
+    })
+  } else {
+    const count = period === '12m' ? 12 : 6
+    slots = Array.from({ length: count }, (_, i) => {
+      const offset = count - 1 - i
+      const d = new Date(now.getFullYear(), now.getMonth() - offset, 1)
+      return {
+        start: d.toISOString().slice(0, 10),
+        end: new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10),
+        label: d.toLocaleDateString('fr-FR', { month: 'short' }),
+      }
+    })
+  }
+
+  // Requêtes parallèles (vs séquentielles avant)
+  return Promise.all(slots.map(async ({ start, end, label }) => {
     const { data } = await supabase
       .from('deliveries')
       .select('amount_ht_cts, statut')
       .gte('date', start)
       .lte('date', end)
       .neq('statut', 'annulee')
-
     const rows = data ?? []
-    results.push({
+    return {
       month: label,
       caHtCts: rows.reduce((s, d) => s + effectiveHtCts(d), 0),
       nb: rows.length,
       nbFacturee: rows.filter(d => d.statut === 'facturee' || d.statut === 'payee').length,
       nbPayee: rows.filter(d => d.statut === 'payee').length,
-    })
-  }
-
-  return results
+    }
+  }))
 }
