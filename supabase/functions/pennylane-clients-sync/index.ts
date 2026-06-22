@@ -6,15 +6,7 @@
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
-
-const BASE = 'https://app.pennylane.com/api/external/v2';
-
-function pennylaneHeaders(token: string): Record<string, string> {
-  return {
-    'Authorization': `Bearer ${token}`,
-    'X-Use-2026-API-Changes': 'true',
-  };
-}
+import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
 
 // ── Types Pennylane V2 — GET /customers ───────────────────────────────────────
 // L'adresse de facturation est un objet imbriqué { address, postal_code, city, country_alpha2 }.
@@ -55,10 +47,9 @@ function firstEmail(emails: string[] | null | undefined): string | null {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse();
 
-  const token = Deno.env.get('PENNYLANE_API_TOKEN');
-  if (!token) {
-    return jsonResponse({ ok: false, error: 'missing PENNYLANE_API_TOKEN' }, 500);
-  }
+  let token: string;
+  try { token = pennylaneToken(); }
+  catch { return jsonResponse({ ok: false, error: 'PENNYLANE_API_TOKEN manquant' }, 500); }
 
   const supabase = getServiceClient();
 
@@ -81,7 +72,7 @@ Deno.serve(async (req) => {
       if (cursor) qs.set('cursor', cursor);
 
       const page = await fetchJson<CustomersPage>(
-        `${BASE}/customers?${qs}`,
+        `${PENNYLANE_BASE}/customers?${qs}`,
         { headers: pennylaneHeaders(token), timeoutMs: 30_000 },
       );
 

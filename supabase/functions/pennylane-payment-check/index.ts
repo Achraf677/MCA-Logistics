@@ -5,21 +5,13 @@
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
-
-const PL_BASE = 'https://app.pennylane.com/api/external/v2';
-
-function plHeaders(token: string): Record<string, string> {
-  return {
-    Authorization: `Bearer ${token}`,
-    'X-Use-2026-API-Changes': 'true',
-  };
-}
+import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
 
 /** Règle v1 : liste de transactions rapprochées non vide ⇒ facture payée. */
 async function isInvoicePaid(token: string, invoiceId: string): Promise<boolean> {
   const data = await fetchJson<Record<string, unknown>>(
-    `${PL_BASE}/customer_invoices/${invoiceId}/matched_transactions`,
-    { headers: plHeaders(token) },
+    `${PENNYLANE_BASE}/customer_invoices/${invoiceId}/matched_transactions`,
+    { headers: pennylaneHeaders(token) },
   );
   const items = (
     data.matched_transactions ?? data.items ?? (Array.isArray(data) ? data : [])
@@ -30,8 +22,9 @@ async function isInvoicePaid(token: string, invoiceId: string): Promise<boolean>
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse();
 
-  const token = Deno.env.get('PENNYLANE_API_TOKEN');
-  if (!token) return jsonResponse({ ok: false, error: 'missing PENNYLANE_API_TOKEN' }, 500);
+  let token: string;
+  try { token = pennylaneToken(); }
+  catch { return jsonResponse({ ok: false, error: 'PENNYLANE_API_TOKEN manquant' }, 500); }
 
   const supabase = getServiceClient();
 

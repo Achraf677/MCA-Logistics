@@ -3,9 +3,19 @@
 // (status + responseBody) pour que l'appelant renvoie { ok:false, error, status, body }.
 import { fetchJson } from './http.ts';
 
-const BASE_URL = 'https://app.pennylane.com/api/external/v2';
+/** URL de base Pennylane V2 — source unique dans tout le repo. */
+export const PENNYLANE_BASE = 'https://app.pennylane.com/api/external/v2';
 
-function headers(token: string): Record<string, string> {
+/** Lit PENNYLANE_API_TOKEN depuis Deno.env. Lève une erreur si absent.
+ *  Point d'entrée unique — aucune autre Edge Function ne lit Deno.env('PENNYLANE…'). */
+export function pennylaneToken(): string {
+  const t = Deno.env.get('PENNYLANE_API_TOKEN');
+  if (!t) throw new Error('PENNYLANE_API_TOKEN manquant');
+  return t;
+}
+
+/** Headers Bearer + flag API 2026, à passer à chaque appel Pennylane. */
+export function pennylaneHeaders(token: string): Record<string, string> {
   return {
     'Authorization': `Bearer ${token}`,
     // Migration API 2026 : phase cleanup à partir du 01/07/2026.
@@ -57,8 +67,8 @@ export function vatRateCode(ratePct: number): string | null {
 /** Cherche un client Pennylane par external_reference (= clients.id). Renvoie l'id ou null. */
 export async function findCustomerByRef(token: string, ref: string): Promise<number | null> {
   const filter = JSON.stringify([{ field: 'external_reference', operator: 'eq', value: ref }]);
-  const url = `${BASE_URL}/customers?filter=${encodeURIComponent(filter)}`;
-  const data = await fetchJson<Record<string, unknown>>(url, { headers: headers(token) });
+  const url = `${PENNYLANE_BASE}/customers?filter=${encodeURIComponent(filter)}`;
+  const data = await fetchJson<Record<string, unknown>>(url, { headers: pennylaneHeaders(token) });
   const items = (data.items ?? data.customers ?? (Array.isArray(data) ? data : [])) as PennylaneCustomer[];
   return items.length > 0 ? items[0].id : null;
 }
@@ -81,9 +91,9 @@ export async function createCompanyCustomer(
     billing_address: BillingAddress;
   },
 ): Promise<number> {
-  const data = await fetchJson<Record<string, unknown>>(`${BASE_URL}/company_customers`, {
+  const data = await fetchJson<Record<string, unknown>>(`${PENNYLANE_BASE}/company_customers`, {
     method: 'POST',
-    headers: headers(token),
+    headers: pennylaneHeaders(token),
     body,
   });
   const customer = (data.customer ?? data.company_customer ?? data) as PennylaneCustomer;
@@ -100,9 +110,9 @@ export async function createDraftInvoice(
     invoice_lines: InvoiceLine[];
   },
 ): Promise<number> {
-  const data = await fetchJson<Record<string, unknown>>(`${BASE_URL}/customer_invoices`, {
+  const data = await fetchJson<Record<string, unknown>>(`${PENNYLANE_BASE}/customer_invoices`, {
     method: 'POST',
-    headers: headers(token),
+    headers: pennylaneHeaders(token),
     body: { ...body, draft: true },
   });
   const invoice = (data.invoice ?? data.customer_invoice ?? data) as PennylaneInvoice;
@@ -111,9 +121,9 @@ export async function createDraftInvoice(
 
 /** Finalise une facture brouillon (draft → finalisée, non modifiable ensuite). Méthode PUT. */
 export async function finalizeInvoice(token: string, invoiceId: number): Promise<void> {
-  await fetchJson<unknown>(`${BASE_URL}/customer_invoices/${invoiceId}/finalize`, {
+  await fetchJson<unknown>(`${PENNYLANE_BASE}/customer_invoices/${invoiceId}/finalize`, {
     method: 'PUT',
-    headers: headers(token),
+    headers: pennylaneHeaders(token),
   });
 }
 
@@ -122,9 +132,9 @@ export async function createQuote(
   token: string,
   body: { customer_id: number; date: string; deadline: string; invoice_lines: InvoiceLine[] },
 ): Promise<number> {
-  const data = await fetchJson<Record<string, unknown>>(`${BASE_URL}/quotes`, {
+  const data = await fetchJson<Record<string, unknown>>(`${PENNYLANE_BASE}/quotes`, {
     method: 'POST',
-    headers: headers(token),
+    headers: pennylaneHeaders(token),
     body: { ...body, currency: 'EUR', language: 'fr_FR' },
   });
   const quote = (data.quote ?? data) as { id: number };
@@ -135,8 +145,8 @@ export async function createQuote(
  *  Scope requis : customer_invoices:all. */
 export async function createInvoiceFromQuote(token: string, quoteId: number): Promise<number> {
   const data = await fetchJson<Record<string, unknown>>(
-    `${BASE_URL}/customer_invoices/create_from_quote`,
-    { method: 'POST', headers: headers(token), body: { quote_id: quoteId, draft: false } },
+    `${PENNYLANE_BASE}/customer_invoices/create_from_quote`,
+    { method: 'POST', headers: pennylaneHeaders(token), body: { quote_id: quoteId, draft: false } },
   );
   const invoice = (data.invoice ?? data.customer_invoice ?? data) as { id: number };
   return invoice.id;

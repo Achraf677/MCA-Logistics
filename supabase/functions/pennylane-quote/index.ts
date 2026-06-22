@@ -12,6 +12,7 @@ import {
   createInvoiceFromQuote,
   createQuote,
   findCustomerByRef,
+  pennylaneToken,
   vatRateCode,
 } from '../_shared/pennylane.ts';
 
@@ -34,8 +35,9 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: "action doit être 'create' ou 'convert'" }, 400);
   }
 
-  const token = Deno.env.get('PENNYLANE_API_TOKEN');
-  if (!token) return jsonResponse({ ok: false, error: 'missing PENNYLANE_API_TOKEN' }, 500);
+  let token: string;
+  try { token = pennylaneToken(); }
+  catch { return jsonResponse({ ok: false, error: 'PENNYLANE_API_TOKEN manquant' }, 500); }
 
   const supabase = getServiceClient();
 
