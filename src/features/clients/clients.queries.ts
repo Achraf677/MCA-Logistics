@@ -79,6 +79,10 @@ export async function getClientDeliveries(clientId: string): Promise<{ data: (De
   return { data: data as (DeliveryForEncours & { date: string; description: string | null })[] | null, error }
 }
 
+export async function syncPennylaneClients() {
+  return supabase.functions.invoke('pennylane-clients-sync', { body: {} })
+}
+
 export async function exportClientsCSV(filters: ClientFilters = {}) {
   const { data } = await getClients(filters)
   if (!data) return ''

@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Wallet, RefreshCw, CheckCheck } from 'lucide-react'
+import { Wallet, CheckCheck } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
+import { SyncButton } from '../../shared/ui/SyncButton'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
-import { useToast } from '../../shared/ui/useToast'
 import { formatMoney } from '../../shared/lib/money'
 import { getLatestSnapshot, getTransactions, syncQonto, checkPayments } from './tresorerie.queries'
 import {
@@ -16,12 +16,10 @@ import {
 import type { TreasurySnapshot, QontoTx } from './tresorerie.types'
 
 export function Tresorerie() {
-  const { toast } = useToast()
   const [snapshot, setSnapshot] = useState<TreasurySnapshot | null>(null)
   const [txs, setTxs]           = useState<QontoTx[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
-  const [pending, setPending]   = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -35,61 +33,49 @@ export function Tresorerie() {
 
   useEffect(() => { load() }, [load])
 
-  const handleSync = async () => {
-    setPending(true)
-    const { data, error } = await syncQonto()
-    if (error || data?.ok === false) {
-      toast(error?.message ?? data?.error ?? 'Échec de la synchronisation Qonto', 'error')
-      setPending(false)
-      return
-    }
-    await load()
-    setPending(false)
-    toast('Solde mis à jour')
-  }
-
-  const handleCheckPayments = async () => {
-    setPending(true)
-    const { data, error } = await checkPayments()
-    if (error || data?.ok === false) {
-      toast(error?.message ?? data?.error ?? 'Échec de la vérification des paiements', 'error')
-      setPending(false)
-      return
-    }
-    const marked = data?.data?.marked_payee ?? 0
-    await load()
-    setPending(false)
-    toast(marked > 0
-      ? `${marked} livraison(s) marquée(s) payée(s)`
-      : 'Aucun nouveau paiement détecté')
-  }
-
   return (
     <Shell pageTitle="Trésorerie">
       {/* KPIs */}
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
-          {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">
+          {[0, 1, 2].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
-          <KpiCard label="Solde actuel"     value={snapshot ? formatMoney(snapshot.balance_cts) : '—'} accent />
-          <KpiCard label="Solde autorisé"   value={snapshot ? formatMoney(snapshot.authorized_balance_cts) : '—'} />
-          <KpiCard label="Dernière synchro" value={formatSnapshotDate(snapshot?.fetched_at ?? null)} />
-          <KpiCard label="Transactions"     value={txs.length} />
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">
+          <KpiCard label="Solde actuel"   value={snapshot ? formatMoney(snapshot.balance_cts) : '—'} accent />
+          <KpiCard label="Solde autorisé" value={snapshot ? formatMoney(snapshot.authorized_balance_cts) : '—'} />
+          <KpiCard label="Transactions"   value={txs.length} />
         </div>
       )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2 mb-4">
-        <Button variant="primary" onClick={handleSync} disabled={pending}>
-          <RefreshCw size={14} className={pending ? 'animate-spin' : ''} />
-          Synchroniser Qonto
-        </Button>
-        <Button variant="secondary" onClick={handleCheckPayments} disabled={pending}>
-          <CheckCheck size={14} />
-          Vérifier les paiements
-        </Button>
+        <SyncButton
+          label="Synchroniser Qonto"
+          variant="primary"
+          lastSyncAt={snapshot?.fetched_at ?? null}
+          onSync={async () => {
+            const { data, error } = await syncQonto()
+            if (error || data?.ok === false) {
+              return { ok: false, message: error?.message ?? data?.error ?? 'Échec de la synchronisation Qonto' }
+            }
+            await load()
+            return { ok: true, message: 'Solde mis à jour' }
+          }}
+        />
+        <SyncButton
+          label="Vérifier les paiements"
+          icon={<CheckCheck size={13} />}
+          onSync={async () => {
+            const { data, error } = await checkPayments()
+            if (error || data?.ok === false) {
+              return { ok: false, message: error?.message ?? data?.error ?? 'Échec de la vérification des paiements' }
+            }
+            const marked = data?.data?.marked_payee ?? 0
+            await load()
+            return { ok: true, message: marked > 0 ? `${marked} livraison(s) marquée(s) payée(s)` : 'Aucun nouveau paiement détecté' }
+          }}
+        />
       </div>
 
       {/* Contenu */}
