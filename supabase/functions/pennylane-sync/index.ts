@@ -17,18 +17,23 @@ function pennylaneHeaders(token: string): Record<string, string> {
   };
 }
 
-// ── Types Pennylane V2 — champs confirmés par la doc officielle ────────────────
+// ── Types Pennylane V2 confirmés par inspection du payload réel ───────────────
+// Le fournisseur est un objet imbriqué { id, url } — PAS de champs plats supplier_id/supplier_name.
+interface PennylaneSupplierRef {
+  id:  number;
+  url: string;   // URL directe vers GET /suppliers/{id}
+}
+
 interface PennylaneSupplierInvoice {
   id:                           number;
   invoice_number:               string | null;
-  date:                         string | null;    // ISO 8601 YYYY-MM-DD
+  date:                         string | null;   // ISO 8601 YYYY-MM-DD
   label:                        string | null;
-  currency_amount_before_tax:   string | null;    // HT en euros, string décimal
-  currency_tax:                 string | null;    // TVA en euros, string décimal
-  currency_amount:              string | null;    // TTC en euros, string décimal
-  supplier_id:                  number;
-  supplier_name:                string | null;
-  public_file_url:              string | null;    // URL PDF (expirable)
+  currency_amount_before_tax:   string | null;   // HT en euros, string décimal
+  currency_tax:                 string | null;   // TVA en euros, string décimal
+  currency_amount:              string | null;   // TTC en euros, string décimal
+  supplier:                     PennylaneSupplierRef | null;
+  public_file_url:              string | null;   // URL PDF (peut expirer)
 }
 
 interface InvoicesPage {
@@ -37,17 +42,49 @@ interface InvoicesPage {
   next_cursor: string | null;
 }
 
+// Détail fournisseur — GET /suppliers/{id} (ou via supplier.url)
+interface PennylaneSupplierDetail {
+  id:               number;
+  name:             string | null;
+  reg_no:           string | null;           // SIREN (9 chiffres)
+  establishment_no: string | null;           // SIRET (14 chiffres)
+  vat_number:       string | null;
+}
+
+// L'API V2 enveloppe le détail dans { supplier: {...} }
+interface PennylaneSupplierDetailResponse {
+  supplier?: PennylaneSupplierDetail;
+  // fallback : certaines réponses retournent l'objet directement
+  id?:  number;
+  name?: string;
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function toCents(euroStr: string | null | undefined): number {
   if (!euroStr) return 0;
   return Math.round(parseFloat(euroStr) * 100);
 }
 
+async function fetchSupplierDetail(
+  supplierUrl: string,
+  token: string,
+): Promise<PennylaneSupplierDetail | null> {
+  try {
+    const raw = await fetchJson<PennylaneSupplierDetailResponse>(
+      supplierUrl,
+      { headers: pennylaneHeaders(token) },
+    );
+    // Gère wrapper { supplier: {...} } ET réponse directe
+    return raw.supplier ?? (raw as unknown as PennylaneSupplierDetail) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Main ───────────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse();
 
-  // ── Garde : secret obligatoire (jamais loggué) ─────────────────────────────
   const token = Deno.env.get('PENNYLANE_ACHATS_TOKEN');
   if (!token) {
     return jsonResponse({ ok: false, error: 'missing PENNYLANE_ACHATS_TOKEN' }, 500);
@@ -55,7 +92,6 @@ Deno.serve(async (req) => {
 
   const supabase = getServiceClient();
 
-  // ── Mono-société : même pattern que qonto-sync ─────────────────────────────
   const { data: company, error: cErr } = await supabase
     .from('companies').select('id').limit(1).single();
   if (cErr || !company) {
@@ -71,7 +107,6 @@ Deno.serve(async (req) => {
     const errors: string[] = [];
 
     do {
-      // ── Pagination curseur (limit max 100, re-envoyer params à chaque page) ─
       const qs = new URLSearchParams({ limit: '100' });
       if (cursor) qs.set('cursor', cursor);
 
@@ -84,24 +119,33 @@ Deno.serve(async (req) => {
       const invoices = page.items ?? [];
       if (invoices.length === 0) break;
 
-      // ── Batch fournisseurs : 1 upsert + 1 select par page ─────────────────
-      // Déduplique les supplier_id de la page courante.
-      const seenPid = new Map<string, string>(); // pennylane_id → name
+      // ── 1. Collecte les références fournisseurs uniques de la page ─────────
+      // Clé = String(supplier.id), valeur = supplier.url pour le fetch détail.
+      const supplierRefs = new Map<string, string>(); // pid → url
       for (const inv of invoices) {
-        const pid = String(inv.supplier_id);
-        if (!seenPid.has(pid)) {
-          seenPid.set(pid, inv.supplier_name ?? `Fournisseur Pennylane #${inv.supplier_id}`);
+        if (inv.supplier?.id != null) {
+          const pid = String(inv.supplier.id);
+          if (!supplierRefs.has(pid)) supplierRefs.set(pid, inv.supplier.url);
         }
       }
 
-      const supplierRows = Array.from(seenPid.entries()).map(([pid, name]) => ({
-        company_id:    companyId,
-        pennylane_id:  pid,
-        name,
+      // ── 2. Fetch détail de chaque fournisseur unique (séquentiel, ~5-15/page) ─
+      const supplierDetailMap = new Map<string, PennylaneSupplierDetail>(); // pid → détail
+      for (const [pid, url] of supplierRefs.entries()) {
+        const detail = await fetchSupplierDetail(url, token);
+        if (detail) supplierDetailMap.set(pid, detail);
+      }
+
+      // ── 3. Batch upsert fournisseurs ───────────────────────────────────────
+      // N'inclut que name/siret/tva_intra dans la row → les champs manuels sont préservés.
+      const supplierRows = Array.from(supplierDetailMap.entries()).map(([pid, d]) => ({
+        company_id:   companyId,
+        pennylane_id: pid,
+        name:         d.name ?? `Fournisseur Pennylane #${pid}`,
+        siret:        d.establishment_no ?? null,
+        tva_intra:    d.vat_number ?? null,
       }));
 
-      // onConflict : index partiel suppliers_company_pennylane_uniq.
-      // N'écrase que le champ `name` ; siret/tva_intra manuels sont préservés.
       const { data: upsertedSuppliers, error: sErr } = await supabase
         .from('suppliers')
         .upsert(supplierRows, { onConflict: 'company_id,pennylane_id' })
@@ -113,35 +157,38 @@ Deno.serve(async (req) => {
         suppliersUpserts += (upsertedSuppliers?.length ?? 0);
       }
 
-      // Map pennylane_id fournisseur → UUID local (pour la FK charges.supplier_id).
+      // pid → UUID local (FK pour charges.supplier_id)
       const pidToUuid = new Map<string, string>();
       for (const s of (upsertedSuppliers ?? [])) {
         pidToUuid.set(s.pennylane_id, s.id);
       }
 
-      // ── Batch charges ──────────────────────────────────────────────────────
+      // ── 4. Batch upsert charges ────────────────────────────────────────────
       const chargeRows = invoices
-        .filter((inv) => inv.date != null)  // date NOT NULL dans la table
+        .filter((inv) => inv.date != null)
         .map((inv) => {
+          const supplierPid = inv.supplier?.id != null ? String(inv.supplier.id) : null;
+
+          // GARDE-FOU : id fournisseur manquant → supplier_id null, jamais de placeholder
+          if (!supplierPid) {
+            errors.push(`warn: invoice ${inv.id} — supplier absent, supplier_id laissé null`);
+          }
+
           const htCts  = toCents(inv.currency_amount_before_tax);
           const tvaCts = toCents(inv.currency_tax);
           const ttcCts = toCents(inv.currency_amount);
-          // Taux TVA calculé depuis les montants centimes (arrondi 2 déc.).
-          const tvaRate = htCts > 0
-            ? parseFloat((tvaCts / htCts * 100).toFixed(2))
-            : null;
 
           return {
             company_id:          companyId,
             pennylane_id:        String(inv.id),
-            supplier_id:         pidToUuid.get(String(inv.supplier_id)) ?? null,
+            supplier_id:         supplierPid ? (pidToUuid.get(supplierPid) ?? null) : null,
             date:                inv.date,
             label:               inv.label ?? inv.invoice_number ?? `Facture Pennylane #${inv.id}`,
             montant_ht_cts:      htCts,
             tva_cts:             tvaCts,
             montant_ttc_cts:     ttcCts,
-            tva_rate:            tvaRate,
-            category:            null,          // mapping catégorie = étape ultérieure
+            tva_rate:            htCts > 0 ? parseFloat((tvaCts / htCts * 100).toFixed(2)) : null,
+            category:            null,
             receipt_url:         inv.public_file_url ?? null,
             pennylane_synced_at: new Date().toISOString(),
           };
@@ -160,7 +207,6 @@ Deno.serve(async (req) => {
         }
       }
 
-      // ── Prochaine page ────────────────────────────────────────────────────
       cursor = page.has_more ? (page.next_cursor ?? null) : null;
     } while (cursor !== null);
 
