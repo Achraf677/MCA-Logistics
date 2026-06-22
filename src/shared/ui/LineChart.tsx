@@ -7,6 +7,25 @@ interface LineChartProps {
   formatValue?: (v: number) => string
 }
 
+/** Catmull-Rom → cubic Bezier pour une courbe lissée passant par chaque point. */
+function smoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return ''
+  if (pts.length === 2) return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} L${pts[1].x.toFixed(1)},${pts[1].y.toFixed(1)}`
+  const d: string[] = [`M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`]
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(i - 1, 0)]
+    const p1 = pts[i]
+    const p2 = pts[i + 1]
+    const p3 = pts[Math.min(i + 2, pts.length - 1)]
+    const cp1x = (p1.x + (p2.x - p0.x) / 6).toFixed(1)
+    const cp1y = (p1.y + (p2.y - p0.y) / 6).toFixed(1)
+    const cp2x = (p2.x - (p3.x - p1.x) / 6).toFixed(1)
+    const cp2y = (p2.y - (p3.y - p1.y) / 6).toFixed(1)
+    d.push(`C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`)
+  }
+  return d.join(' ')
+}
+
 export function LineChart({ points, formatValue }: LineChartProps) {
   const W = 620, H = 220, pad = 18
   const chartTop = 8, chartBot = H - 34
@@ -24,14 +43,12 @@ export function LineChart({ points, formatValue }: LineChartProps) {
   const x = (i: number) => pad + (i * (W - pad * 2)) / Math.max(points.length - 1, 1)
   const y = (v: number) => chartBot - ((v - min) / span) * (chartBot - chartTop)
 
-  const lineD = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ')
-  const areaD = `${lineD} L${x(points.length - 1).toFixed(1)},${chartBot} L${x(0).toFixed(1)},${chartBot} Z`
-  const peak = vals.reduce((a, v, i) => (v > vals[a] ? i : a), 0)
+  const pts = points.map((p, i) => ({ x: x(i), y: y(p.value) }))
+  const lineD = smoothPath(pts)
+  const areaD = `${lineD} L${pts[pts.length - 1].x.toFixed(1)},${chartBot} L${pts[0].x.toFixed(1)},${chartBot} Z`
 
   const fmt = formatValue ?? (v => String(v))
   const hpt = hovered !== null ? points[hovered] : null
-
-  // Key changes when data changes → CSS animation re-triggers via DOM replacement
   const animKey = vals.join(',')
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -47,7 +64,7 @@ export function LineChart({ points, formatValue }: LineChartProps) {
   }
 
   const tipOnRight = tipPos.pctX > 0.65
-  const tipAbove = tipPos.pctY > 0.55
+  const tipAbove  = tipPos.pctY > 0.55
 
   return (
     <div style={{ position: 'relative' }}>
@@ -61,29 +78,36 @@ export function LineChart({ points, formatValue }: LineChartProps) {
         onMouseLeave={() => setHovered(null)}
       >
         <defs>
+          {/* Dégradé horizontal de la courbe : brand → gold */}
           <linearGradient id="lc-line" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0" stopColor="var(--brand)" />
             <stop offset="1" stopColor="var(--gold)" />
           </linearGradient>
+          {/* Dégradé vertical de l'aire : brand léger → transparent */}
           <linearGradient id="lc-area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="var(--brand)" stopOpacity="0.28" />
-            <stop offset="1" stopColor="var(--gold)" stopOpacity="0" />
+            <stop offset="0" stopColor="var(--brand)" stopOpacity="0.12" />
+            <stop offset="1" stopColor="var(--brand)" stopOpacity="0" />
           </linearGradient>
-          <filter id="lc-glow">
-            <feGaussianBlur stdDeviation="3.5" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
         </defs>
 
-        {/* Aire dégradée */}
+        {/* Aire dégradée douce */}
         <path key={`area-${animKey}`} d={areaD} fill="url(#lc-area)" className="lc-area" />
 
-        {/* Courbe draw-in — pathLength="1" normalise l'offset pour le CSS */}
-        <path key={`line-${animKey}`} d={lineD} fill="none" stroke="url(#lc-line)"
-          strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"
-          filter="url(#lc-glow)" pathLength="1" className="lc-line" />
+        {/* Courbe nette — un seul trait, pas de glow/blur */}
+        <path
+          key={`line-${animKey}`}
+          d={lineD}
+          fill="none"
+          stroke="url(#lc-line)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          shapeRendering="geometricPrecision"
+          pathLength="1"
+          className="lc-line"
+        />
 
-        {/* Crosshair */}
+        {/* Crosshair au survol */}
         {hovered !== null && (
           <line
             x1={x(hovered)} y1={chartTop} x2={x(hovered)} y2={chartBot}
@@ -94,23 +118,29 @@ export function LineChart({ points, formatValue }: LineChartProps) {
         {/* Points + labels */}
         {points.map((p, i) => {
           const isHov = i === hovered
-          const isPeak = i === peak
           return (
             <g key={i}>
+              {/* Halo léger uniquement au survol */}
               {isHov && (
-                <circle cx={x(i)} cy={y(p.value)} r={16}
-                  fill="var(--brand)" opacity="0.12" />
+                <circle cx={x(i)} cy={y(p.value)} r={14}
+                  fill="var(--brand)" opacity="0.15" />
               )}
               <circle
                 cx={x(i)} cy={y(p.value)}
-                r={isHov ? 6 : isPeak ? 5.5 : 4}
-                fill={isHov || isPeak ? 'var(--brand)' : 'var(--bg)'}
-                stroke="url(#lc-line)" strokeWidth="2.5"
+                r={isHov ? 5.5 : 3.5}
+                fill="var(--brand)"
+                stroke="var(--bg-card)"
+                strokeWidth="2"
+                shapeRendering="geometricPrecision"
               />
-              <text x={x(i)} y={H - 3} textAnchor="middle" fontSize="11"
+              <text
+                x={x(i)} y={H - 3}
+                textAnchor="middle"
+                fontSize="11"
                 fill={isHov ? 'var(--text)' : 'var(--text-muted)'}
                 fontWeight={isHov ? '600' : 'normal'}
-                style={{ fontFamily: 'var(--font-mono)' }}>
+                style={{ fontFamily: 'var(--font-mono)' }}
+              >
                 {p.label}
               </text>
             </g>
@@ -118,23 +148,23 @@ export function LineChart({ points, formatValue }: LineChartProps) {
         })}
       </svg>
 
-      {/* Tooltip HTML overlay — positionné en % du container, pas de distorsion SVG */}
+      {/* Tooltip HTML — rendu hors SVG pour éviter la distorsion preserveAspectRatio */}
       {hpt && hovered !== null && (
         <div style={{
           position: 'absolute',
-          left: tipOnRight ? undefined : `calc(${tipPos.pctX * 100}% + 12px)`,
-          right: tipOnRight ? `calc(${(1 - tipPos.pctX) * 100}% + 12px)` : undefined,
-          top: tipAbove ? undefined : `calc(${tipPos.pctY * 100}% - 8px)`,
-          bottom: tipAbove ? `calc(${(1 - tipPos.pctY) * 100}% + 8px)` : undefined,
+          left:   tipOnRight ? undefined : `calc(${tipPos.pctX * 100}% + 12px)`,
+          right:  tipOnRight ? `calc(${(1 - tipPos.pctX) * 100}% + 12px)` : undefined,
+          top:    tipAbove   ? undefined : `calc(${tipPos.pctY * 100}% - 8px)`,
+          bottom: tipAbove   ? `calc(${(1 - tipPos.pctY) * 100}% + 8px)` : undefined,
           pointerEvents: 'none',
           zIndex: 10,
-          background: 'var(--bg-elevated)',
-          border: '1px solid var(--border)',
+          background:   'var(--bg-elevated)',
+          border:       '1px solid var(--border)',
           borderRadius: 'var(--r-md)',
-          padding: '6px 10px',
-          minWidth: '88px',
-          boxShadow: 'var(--shadow-card)',
-          whiteSpace: 'nowrap',
+          padding:      '6px 10px',
+          minWidth:     '88px',
+          boxShadow:    'var(--shadow-card)',
+          whiteSpace:   'nowrap',
         }}>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>
             {hpt.label}
