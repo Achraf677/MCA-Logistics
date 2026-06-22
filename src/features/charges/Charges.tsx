@@ -1,14 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
-import { CreditCard, Receipt, Euro, Wallet } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { CreditCard, Receipt, Euro, Wallet, RefreshCw, Lock, ExternalLink } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
+import { TabActions } from '../../shared/ui/TabbedSection'
 import { DrawerCharge } from './DrawerCharge'
 import { useToast } from '../../shared/ui/useToast'
-import { getCharges, exportChargesCSV } from './charges.queries'
+import { getCharges, exportChargesCSV, syncPennylane } from './charges.queries'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import {
   CATEGORY_LABELS, CATEGORY_COLOR, formatCents, kpiSummary,
@@ -21,12 +22,13 @@ export function Charges() {
   const { toast } = useToast()
   const { can } = usePermissions()
   const canCreate = can('finance.charges', 'create')
-  const [rows, setRows]       = useState<ChargeRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState<string | null>(null)
-  const [filters, setFilters] = useState<ChargeFilters>({})
+  const [rows, setRows]           = useState<ChargeRow[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [error, setError]         = useState<string | null>(null)
+  const [filters, setFilters]     = useState<ChargeFilters>({})
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [selected, setSelected] = useState<ChargeRow | null>(null)
+  const [selected, setSelected]   = useState<ChargeRow | null>(null)
+  const [syncPending, setSyncPending] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -38,6 +40,14 @@ export function Charges() {
 
   useEffect(() => { load() }, [load])
 
+  // Dernière synchro Pennylane = max(pennylane_synced_at) des lignes chargées
+  const lastSync = useMemo(() => {
+    return rows.reduce((max, r) => {
+      if (!r.pennylane_synced_at) return max
+      return (!max || r.pennylane_synced_at > max) ? r.pennylane_synced_at : max
+    }, null as string | null)
+  }, [rows])
+
   const handleAction = async (key: ActionKey) => {
     if (key === 'nouveau') { setSelected(null); setDrawerOpen(true) }
     if (key === 'export') {
@@ -47,7 +57,24 @@ export function Charges() {
     }
   }
 
-  const openRow = (row: ChargeRow) => { setSelected(row); setDrawerOpen(true) }
+  const handleSync = async () => {
+    setSyncPending(true)
+    const { data, error } = await syncPennylane()
+    setSyncPending(false)
+    if (error || data?.ok === false) {
+      toast(error?.message ?? data?.error ?? 'Échec de la synchronisation Pennylane', 'error')
+      return
+    }
+    const n = data?.data?.charges_upserts ?? 0
+    await load()
+    toast(n > 0 ? `${n} facture(s) synchronisée(s)` : 'Aucune nouvelle facture')
+  }
+
+  // Seules les charges manuelles (sans pennylane_id) ouvrent le drawer d'édition
+  const openRow = (row: ChargeRow) => {
+    if (row.pennylane_id) return
+    setSelected(row); setDrawerOpen(true)
+  }
 
   const kpis = kpiSummary(rows)
   const hasFilters = !!(
@@ -57,6 +84,21 @@ export function Charges() {
 
   return (
     <Shell pageTitle="Charges" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
+      {/* Bouton sync Pennylane dans le slot TabActions */}
+      <TabActions>
+        <div className="flex items-center gap-3">
+          {lastSync && (
+            <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] hidden sm:inline">
+              Synchro : {new Date(lastSync).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+          <Button variant="secondary" size="compact" onClick={handleSync} disabled={syncPending}>
+            <RefreshCw size={13} className={syncPending ? 'animate-spin' : ''} />
+            <span className="hidden sm:inline">Synchroniser Pennylane</span>
+          </Button>
+        </div>
+      </TabActions>
+
       {/* KPIs */}
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">
@@ -125,66 +167,130 @@ export function Charges() {
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['Date', 'Libellé', 'Catégorie', 'Fournisseur', 'Montant HT', 'TVA%', 'Total TTC', ''].map(h => (
+                  {['Date', 'Fournisseur', 'Libellé', 'Catégorie', 'Montant HT', 'TVA', 'Total TTC', 'Facture', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => (
-                  <tr
-                    key={row.id}
-                    onClick={() => openRow(row)}
-                    className={`border-t border-[var(--border)] cursor-pointer transition-colors hover:bg-[var(--bg-card-hover)]
-                      ${i % 2 === 0 ? '' : 'bg-[var(--bg-card)]/40'}`}
-                  >
-                    <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
-                      {new Date(row.date).toLocaleDateString('fr-FR')}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-[var(--text)] max-w-[200px] truncate">{row.label}</td>
-                    <td className="px-4 py-3">
-                      {row.category
-                        ? <Badge color={CATEGORY_COLOR[row.category]}>{CATEGORY_LABELS[row.category]}</Badge>
-                        : <span className="text-[var(--text-disabled)]">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-[var(--text-muted)]">{row.suppliers?.name ?? '—'}</td>
-                    <td className="px-4 py-3 font-mono">{formatCents(row.montant_ht_cts)}</td>
-                    <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">{row.tva_rate} %</td>
-                    <td className="px-4 py-3 font-mono font-semibold text-[var(--text)]">
-                      {row.montant_ttc_cts ? formatCents(row.montant_ttc_cts) : '—'}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Button variant="ghost" size="compact" onClick={e => { e.stopPropagation(); openRow(row) }}>Voir</Button>
-                    </td>
-                  </tr>
-                ))}
+                {rows.map((row, i) => {
+                  const isPennylane = !!row.pennylane_id
+                  return (
+                    <tr
+                      key={row.id}
+                      onClick={() => openRow(row)}
+                      className={`border-t border-[var(--border)] transition-colors
+                        ${isPennylane ? 'cursor-default' : 'cursor-pointer hover:bg-[var(--bg-card-hover)]'}
+                        ${i % 2 === 0 ? '' : 'bg-[var(--bg-card)]/40'}`}
+                    >
+                      <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
+                        {new Date(row.date).toLocaleDateString('fr-FR')}
+                      </td>
+                      <td className="px-4 py-3 text-[var(--text-muted)] max-w-[140px] truncate">
+                        {row.suppliers?.name ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 max-w-[200px]">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-[var(--text)] truncate">{row.label}</span>
+                          {isPennylane && (
+                            <Badge color="muted">Pennylane</Badge>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {row.category
+                          ? <Badge color={CATEGORY_COLOR[row.category]}>{CATEGORY_LABELS[row.category]}</Badge>
+                          : <span className="text-[var(--text-disabled)]">—</span>}
+                      </td>
+                      <td className="px-4 py-3 font-mono">{formatCents(row.montant_ht_cts)}</td>
+                      <td className="px-4 py-3 font-mono">{row.tva_cts != null ? formatCents(row.tva_cts) : '—'}</td>
+                      <td className="px-4 py-3 font-mono font-semibold text-[var(--text)]">
+                        {row.montant_ttc_cts ? formatCents(row.montant_ttc_cts) : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {row.receipt_url ? (
+                          <a
+                            href={row.receipt_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            className="inline-flex items-center gap-1 text-[var(--info)] hover:underline text-[var(--fs-xs)]"
+                          >
+                            <ExternalLink size={11} />
+                            Facture
+                          </a>
+                        ) : (
+                          <span className="text-[var(--text-disabled)]">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        {isPennylane ? (
+                          <span
+                            title="Géré dans Pennylane"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded-[var(--r-sm)] text-[var(--text-disabled)]"
+                          >
+                            <Lock size={13} />
+                          </span>
+                        ) : (
+                          <Button variant="ghost" size="compact" onClick={e => { e.stopPropagation(); openRow(row) }}>Voir</Button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
 
           {/* Mobile */}
           <div className="md:hidden flex flex-col gap-3">
-            {rows.map(row => (
-              <button
-                key={row.id}
-                onClick={() => openRow(row)}
-                className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 hover:bg-[var(--bg-card-hover)] transition-colors"
-              >
-                <div className="flex items-start justify-between gap-2 mb-2">
-                  <span className="font-medium text-[var(--text)] truncate">{row.label}</span>
-                  {row.category && <Badge color={CATEGORY_COLOR[row.category]}>{CATEGORY_LABELS[row.category]}</Badge>}
-                </div>
-                <div className="flex items-end justify-between gap-2">
-                  <div className="flex flex-col gap-0.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
-                    <span>{new Date(row.date).toLocaleDateString('fr-FR')}</span>
-                    {row.suppliers?.name && <span>{row.suppliers.name}</span>}
+            {rows.map(row => {
+              const isPennylane = !!row.pennylane_id
+              return (
+                <div
+                  key={row.id}
+                  onClick={() => openRow(row)}
+                  className={`w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 transition-colors
+                    ${isPennylane ? 'cursor-default' : 'cursor-pointer hover:bg-[var(--bg-card-hover)]'}`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <span className="font-medium text-[var(--text)] truncate">{row.label}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {isPennylane && <Badge color="muted">Pennylane</Badge>}
+                      {row.category && <Badge color={CATEGORY_COLOR[row.category]}>{CATEGORY_LABELS[row.category]}</Badge>}
+                    </div>
                   </div>
-                  <span className="font-mono font-semibold text-[var(--text)]">
-                    {formatCents(row.montant_ht_cts)} HT
-                  </span>
+                  <div className="flex items-end justify-between gap-2">
+                    <div className="flex flex-col gap-0.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
+                      <span>{new Date(row.date).toLocaleDateString('fr-FR')}</span>
+                      {row.suppliers?.name && <span>{row.suppliers.name}</span>}
+                      {isPennylane && (
+                        <span className="inline-flex items-center gap-1 text-[var(--text-disabled)]">
+                          <Lock size={10} /> Géré dans Pennylane
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="font-mono font-semibold text-[var(--text)]">
+                        {formatCents(row.montant_ht_cts)} HT
+                      </span>
+                      {row.receipt_url && (
+                        <a
+                          href={row.receipt_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 text-[var(--info)] text-[var(--fs-xs)]"
+                        >
+                          <ExternalLink size={10} />
+                          Facture
+                        </a>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </button>
-            ))}
+              )
+            })}
           </div>
         </>
       )}
