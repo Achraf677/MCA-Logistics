@@ -11,7 +11,7 @@ import { formatMoney } from '../../shared/lib/money'
 import { getLatestSnapshot, getTransactions, syncQonto, checkPayments } from './tresorerie.queries'
 import {
   amountColorClass, formatSignedAmount, operationTypeLabel,
-  formatSnapshotDate, formatTxDate,
+  formatTxDate,
 } from './tresorerie.logic'
 import type { TreasurySnapshot, QontoTx } from './tresorerie.types'
 
