@@ -253,10 +253,13 @@ Deno.serve(async (req) => {
           .select('id');
 
         if (chErr) {
-          errors.push(`charges upsert p${pages}: ${chErr.message}`);
-        } else {
-          chargesUpserts += (upsertedCharges?.length ?? 0);
+          return jsonResponse({
+            ok:    false,
+            error: `charges upsert p${pages}: ${chErr.message}`,
+            data:  { suppliers_upserts: suppliersUpserts, charges_upserts: chargesUpserts, pages, errors },
+          }, 500);
         }
+        chargesUpserts += (upsertedCharges?.length ?? 0);
       }
 
       cursor = page.has_more ? (page.next_cursor ?? null) : null;
