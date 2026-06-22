@@ -37,9 +37,7 @@ export async function getUnlinkedChargesFor(target: RapprochementTarget): Promis
   const { data } = await q
   const rows = (data ?? []) as unknown as ChargePick[]
 
-  // Filtre : garder les charges dont le type correspond à la cible OU sans catégorie
+  // Filtre strict : uniquement les charges du type correspondant à la cible
   const targetType = TARGET_TYPE[target]
-  return rows.filter(r =>
-    r.category_id === null || r.charge_categories?.type === targetType
-  )
+  return rows.filter(r => r.charge_categories?.type === targetType)
 }
