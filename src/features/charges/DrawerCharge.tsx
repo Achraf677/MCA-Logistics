@@ -10,6 +10,7 @@ import { supabase, useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { createCharge, updateCharge, deleteCharge } from './charges.queries'
 import { categoryColor, formatCents, computeTtcCts } from './charges.logic'
+import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import type { ChargeRow, ChargeInsert, ChargeCategoryRow } from './charges.types'
 
@@ -23,7 +24,6 @@ interface Props {
 
 type Lookup = { id: string; label: string }
 
-const TVA_OPTIONS = ['0', '5.5', '10', '20']
 
 const EMPTY_FORM = {
   date: new Date().toISOString().slice(0, 10),
@@ -219,9 +219,10 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
             <Input type="number" value={form.montant_ht} onChange={v => set('montant_ht', v)} placeholder="0.00" />
           </Field>
           <Field label="TVA (%)">
-            <select value={form.tva_rate} onChange={e => set('tva_rate', e.target.value)} className={inputCls}>
-              {TVA_OPTIONS.map(v => <option key={v} value={v}>{v} %</option>)}
-            </select>
+            <TvaRateInput
+              value={parseFloat(form.tva_rate || '20')}
+              onChange={r => set('tva_rate', String(r))}
+            />
           </Field>
         </div>
 
