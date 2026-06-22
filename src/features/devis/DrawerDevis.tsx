@@ -8,6 +8,7 @@ import { useToast }   from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { eurosToCentimes, centimesToEuros, formatMoney } from '../../shared/lib/money'
+import { fromHtAndRate, fromHtAndManualTva } from '../../shared/lib/montants'
 import {
   STATUS_LABELS, STATUS_COLORS, isExpiredDisplay, addDays,
 } from './devis.logic'
@@ -43,6 +44,7 @@ const EMPTY_FORM = {
   description: '',
   amount_ht:   '',
   tva_rate:    20,
+  tva_amount:  '',
   notes:       '',
 }
 
@@ -55,6 +57,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
   const isEdit = !!quote
 
   const [form, setForm] = useState(EMPTY_FORM)
+  const [tvaTouched, setTvaTouched] = useState(false)
   const [clients, setClients] = useState<{ id: string; name: string }[]>([])
   const [saving, setSaving] = useState(false)
   const [actioning, setActioning] = useState(false)
@@ -72,6 +75,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
 
   useEffect(() => {
     if (quote) {
+      setTvaTouched(quote.tva_cts != null)
       setForm({
         client_id:   quote.client_id,
         date:        quote.date,
@@ -80,9 +84,11 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
         amount_ht:   quote.amount_ht_cts != null
           ? centimesToEuros(quote.amount_ht_cts).toFixed(2) : '',
         tva_rate:    quote.tva_rate ?? 20,
+        tva_amount:  quote.tva_cts != null ? (quote.tva_cts / 100).toFixed(2) : '',
         notes:       quote.notes ?? '',
       })
     } else {
+      setTvaTouched(false)
       setForm({ ...EMPTY_FORM, date: TODAY, valid_until: todayPlus30() })
     }
   }, [quote, open])
@@ -92,13 +98,28 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
 
   // ── Calcul TTC ────────────────────────────────────────────────────────────
 
-  const htCts  = useMemo(() => {
+  const htCts = useMemo(() => {
     const v = parseFloat(form.amount_ht)
     return isNaN(v) ? 0 : eurosToCentimes(v)
   }, [form.amount_ht])
 
-  const tvaCts = useMemo(() => Math.round(htCts * form.tva_rate / 100), [htCts, form.tva_rate])
+  const tvaCts = useMemo(() => {
+    if (tvaTouched && form.tva_amount) {
+      const manual = Math.round(parseFloat(form.tva_amount) * 100)
+      if (!isNaN(manual) && manual >= 0) return fromHtAndManualTva(htCts, manual).tva_cts
+    }
+    return fromHtAndRate(htCts, form.tva_rate).tva_cts
+  }, [htCts, form.tva_rate, form.tva_amount, tvaTouched])
+
   const ttcCts = useMemo(() => htCts + tvaCts, [htCts, tvaCts])
+
+  // Auto-suggère le montant TVA quand HT ou taux changent
+  useEffect(() => {
+    if (tvaTouched) return
+    if (htCts <= 0) { setForm(p => ({ ...p, tva_amount: '' })); return }
+    const suggested = fromHtAndRate(htCts, form.tva_rate).tva_cts
+    setForm(p => ({ ...p, tva_amount: (suggested / 100).toFixed(2) }))
+  }, [htCts, form.tva_rate, tvaTouched])
 
   // ── Statut courant ─────────────────────────────────────────────────────────
 
@@ -322,11 +343,24 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
           <Field label="Taux TVA">
             <TvaRateInput
               value={form.tva_rate}
-              onChange={r => set('tva_rate', r)}
+              onChange={r => { set('tva_rate', r); setTvaTouched(false) }}
               disabled={isReadOnly}
             />
           </Field>
         </div>
+
+        <Field label={`Montant TVA (€)${tvaTouched ? ' ✎' : ' — auto'}`}>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.tva_amount}
+            onChange={e => { set('tva_amount', e.target.value); setTvaTouched(true) }}
+            placeholder="0.00"
+            disabled={isReadOnly}
+            className={inputCls}
+          />
+        </Field>
 
         {/* Récap TTC */}
         {htCts > 0 && (

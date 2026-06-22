@@ -9,7 +9,8 @@ import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { createCharge, updateCharge, deleteCharge } from './charges.queries'
-import { categoryColor, formatCents, computeTtcCts } from './charges.logic'
+import { categoryColor, formatCents } from './charges.logic'
+import { fromHtAndRate, fromHtAndManualTva } from '../../shared/lib/montants'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import type { ChargeRow, ChargeInsert, ChargeCategoryRow } from './charges.types'
@@ -32,6 +33,7 @@ const EMPTY_FORM = {
   supplier_id: '',
   montant_ht: '',
   tva_rate: '20',
+  tva_amount: '',
   notes: '',
 }
 
@@ -44,6 +46,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [isAvoir, setIsAvoir] = useState(false)
+  const [tvaTouched, setTvaTouched] = useState(false)
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -59,6 +62,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
     if (charge) {
       const negative = charge.montant_ht_cts < 0
       setIsAvoir(negative)
+      setTvaTouched(charge.tva_cts != null)
       setForm({
         date: charge.date,
         label: charge.label,
@@ -66,10 +70,13 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
         supplier_id: charge.supplier_id ?? '',
         montant_ht: (Math.abs(charge.montant_ht_cts) / 100).toFixed(2),
         tva_rate: String(charge.tva_rate ?? 20),
+        tva_amount: charge.tva_cts != null
+          ? (Math.abs(charge.tva_cts) / 100).toFixed(2) : '',
         notes: charge.notes ?? '',
       })
     } else {
       setIsAvoir(false)
+      setTvaTouched(false)
       setForm({ ...EMPTY_FORM, date: new Date().toISOString().slice(0, 10) })
     }
   }, [charge, open])
@@ -79,10 +86,26 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
   // L'utilisateur saisit toujours positif ; le signe est appliqué à l'enregistrement
   const absHtCts = Math.round(parseFloat(form.montant_ht || '0') * 100)
   const tvaRate = parseFloat(form.tva_rate || '20')
+  const tvaAmtCts = Math.round(parseFloat(form.tva_amount || '0') * 100)
   const sign = isAvoir ? -1 : 1
-  const htCts = sign * absHtCts
-  const ttcCts = sign * computeTtcCts(absHtCts, tvaRate)
-  const tvaCts = ttcCts - htCts
+
+  const montants = tvaTouched && tvaAmtCts > 0
+    ? fromHtAndManualTva(absHtCts, tvaAmtCts)
+    : fromHtAndRate(absHtCts, tvaRate)
+
+  const htCts = sign * montants.ht_cts
+  const tvaCts = sign * montants.tva_cts
+  const ttcCts = sign * montants.ttc_cts
+
+  // Auto-suggère la TVA quand HT ou taux changent et que l'utilisateur n'a pas surchargé la TVA
+  useEffect(() => {
+    if (tvaTouched) return
+    const ht = Math.round(parseFloat(form.montant_ht || '0') * 100)
+    const rate = parseFloat(form.tva_rate || '20')
+    if (ht <= 0) { setForm(p => ({ ...p, tva_amount: '' })); return }
+    const suggested = fromHtAndRate(ht, rate).tva_cts
+    setForm(p => ({ ...p, tva_amount: (suggested / 100).toFixed(2) }))
+  }, [form.montant_ht, form.tva_rate, tvaTouched])
 
   const handleSave = async () => {
     if (!form.label.trim()) { toast('Le libellé est requis', 'error'); return }
@@ -221,17 +244,24 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
           <Field label="TVA (%)">
             <TvaRateInput
               value={parseFloat(form.tva_rate || '20')}
-              onChange={r => set('tva_rate', String(r))}
+              onChange={r => { set('tva_rate', String(r)); setTvaTouched(false) }}
+              disabled={isPennylane}
             />
           </Field>
         </div>
 
+        <Field label={`Montant TVA (€)${tvaTouched ? ' ✎' : ' — auto'}`}>
+          <Input
+            type="number"
+            value={form.tva_amount}
+            onChange={v => { set('tva_amount', v); setTvaTouched(true) }}
+            placeholder="0.00"
+            disabled={isPennylane}
+          />
+        </Field>
+
         {absHtCts > 0 && (
           <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] divide-y divide-[var(--border)] overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2">
-              <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">TVA ({tvaRate} %)</span>
-              <span className="font-mono text-[var(--fs-sm)]">{formatCents(tvaCts)}</span>
-            </div>
             <div className="flex items-center justify-between px-4 py-2.5">
               <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">Total TTC</span>
               <span className="font-mono font-semibold text-[var(--text)]">{formatCents(ttcCts)}</span>
