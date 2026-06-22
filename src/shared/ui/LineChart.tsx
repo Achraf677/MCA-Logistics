@@ -7,23 +7,10 @@ interface LineChartProps {
   formatValue?: (v: number) => string
 }
 
-/** Catmull-Rom → cubic Bezier pour une courbe lissée passant par chaque point. */
-function smoothPath(pts: { x: number; y: number }[]): string {
+/** Segments droits — garantit que la courbe ne dépasse jamais les valeurs des points. */
+function linearPath(pts: { x: number; y: number }[]): string {
   if (pts.length < 2) return ''
-  if (pts.length === 2) return `M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)} L${pts[1].x.toFixed(1)},${pts[1].y.toFixed(1)}`
-  const d: string[] = [`M${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`]
-  for (let i = 0; i < pts.length - 1; i++) {
-    const p0 = pts[Math.max(i - 1, 0)]
-    const p1 = pts[i]
-    const p2 = pts[i + 1]
-    const p3 = pts[Math.min(i + 2, pts.length - 1)]
-    const cp1x = (p1.x + (p2.x - p0.x) / 6).toFixed(1)
-    const cp1y = (p1.y + (p2.y - p0.y) / 6).toFixed(1)
-    const cp2x = (p2.x - (p3.x - p1.x) / 6).toFixed(1)
-    const cp2y = (p2.y - (p3.y - p1.y) / 6).toFixed(1)
-    d.push(`C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`)
-  }
-  return d.join(' ')
+  return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
 }
 
 export function LineChart({ points, formatValue }: LineChartProps) {
@@ -44,7 +31,7 @@ export function LineChart({ points, formatValue }: LineChartProps) {
   const y = (v: number) => chartBot - ((v - min) / span) * (chartBot - chartTop)
 
   const pts = points.map((p, i) => ({ x: x(i), y: y(p.value) }))
-  const lineD = smoothPath(pts)
+  const lineD = linearPath(pts)
   const areaD = `${lineD} L${pts[pts.length - 1].x.toFixed(1)},${chartBot} L${pts[0].x.toFixed(1)},${chartBot} Z`
 
   const fmt = formatValue ?? (v => String(v))
