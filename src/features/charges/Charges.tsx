@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { CreditCard, Receipt, Euro, Wallet, RefreshCw, Lock, ExternalLink } from 'lucide-react'
+import { CreditCard, Receipt, Euro, Wallet, RefreshCw, Lock, ExternalLink, Loader } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -9,7 +9,7 @@ import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { TabActions } from '../../shared/ui/TabbedSection'
 import { DrawerCharge } from './DrawerCharge'
 import { useToast } from '../../shared/ui/useToast'
-import { getCharges, exportChargesCSV, syncPennylane, updateCharge } from './charges.queries'
+import { getCharges, exportChargesCSV, syncPennylane, updateCharge, getChargeFileUrl } from './charges.queries'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import {
   CHARGE_CATEGORIES, CATEGORY_LABELS, formatCents, kpiSummary,
@@ -29,6 +29,7 @@ export function Charges() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected]   = useState<ChargeRow | null>(null)
   const [syncPending, setSyncPending] = useState(false)
+  const [openingPdf, setOpeningPdf]   = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -74,6 +75,20 @@ export function Charges() {
     setRows(prev => prev.map(r => r.id === rowId ? { ...r, category } : r))
     const { error } = await updateCharge(rowId, { category })
     if (error) { toast(error.message, 'error'); load() }
+  }
+
+  const openPdf = async (e: React.MouseEvent, row: ChargeRow) => {
+    e.stopPropagation()
+    if (!row.receipt_url && !row.pennylane_id) return
+    if (!row.pennylane_id) {
+      window.open(row.receipt_url!, '_blank', 'noopener,noreferrer')
+      return
+    }
+    setOpeningPdf(row.id)
+    const { data, error } = await getChargeFileUrl(row.pennylane_id)
+    setOpeningPdf(null)
+    if (error || !data?.url) { toast('Impossible d\'accéder au PDF', 'error'); return }
+    window.open(data.url, '_blank', 'noopener,noreferrer')
   }
 
   // Seules les charges manuelles (sans pennylane_id) ouvrent le drawer d'édition
@@ -221,17 +236,17 @@ export function Charges() {
                         {row.montant_ttc_cts ? formatCents(row.montant_ttc_cts) : '—'}
                       </td>
                       <td className="px-4 py-3">
-                        {row.receipt_url ? (
-                          <a
-                            href={row.receipt_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={e => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 text-[var(--info)] hover:underline text-[var(--fs-xs)]"
+                        {(row.receipt_url || row.pennylane_id) ? (
+                          <button
+                            onClick={e => openPdf(e, row)}
+                            disabled={openingPdf === row.id}
+                            className="inline-flex items-center gap-1 text-[var(--info)] hover:underline text-[var(--fs-xs)] disabled:opacity-50"
                           >
-                            <ExternalLink size={11} />
+                            {openingPdf === row.id
+                              ? <Loader size={11} className="animate-spin" />
+                              : <ExternalLink size={11} />}
                             Facture
-                          </a>
+                          </button>
                         ) : (
                           <span className="text-[var(--text-disabled)]">—</span>
                         )}
@@ -296,17 +311,17 @@ export function Charges() {
                       <span className="font-mono font-semibold text-[var(--text)]">
                         {formatCents(row.montant_ht_cts)} HT
                       </span>
-                      {row.receipt_url && (
-                        <a
-                          href={row.receipt_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={e => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 text-[var(--info)] text-[var(--fs-xs)]"
+                      {(row.receipt_url || row.pennylane_id) && (
+                        <button
+                          onClick={e => openPdf(e, row)}
+                          disabled={openingPdf === row.id}
+                          className="inline-flex items-center gap-1 text-[var(--info)] text-[var(--fs-xs)] disabled:opacity-50"
                         >
-                          <ExternalLink size={10} />
+                          {openingPdf === row.id
+                            ? <Loader size={10} className="animate-spin" />
+                            : <ExternalLink size={10} />}
                           Facture
-                        </a>
+                        </button>
                       )}
                     </div>
                   </div>
