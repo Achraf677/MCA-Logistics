@@ -1,15 +1,20 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { Link2 } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
+import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
+import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
+import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import { createMaintenance, updateMaintenance } from './entretiens.queries'
 import {
   MAINTENANCE_TYPE_LABELS, MAINTENANCE_TYPE_COLOR, formatCents,
 } from './entretiens.logic'
 import type { MaintenanceRow, MaintenanceInsert, MaintenanceType } from './entretiens.types'
+import type { ChargePick } from '../../shared/types/charges'
 
 interface Props {
   open: boolean
@@ -36,6 +41,7 @@ const EMPTY_FORM = {
   next_due_date: '',
   next_due_km: '',
   notes: '',
+  chargeId: '',
 }
 
 export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) {
@@ -47,6 +53,8 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
   const [saving, setSaving] = useState(false)
   const [vehicles, setVehicles] = useState<Lookup[]>([])
   const [suppliers, setSuppliers] = useState<Lookup[]>([])
+  const [selectorOpen, setSelectorOpen] = useState(false)
+  const [linkedCharge, setLinkedCharge] = useState<ChargePick | null>(null)
 
   useEffect(() => {
     if (!open) return
@@ -69,13 +77,51 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
         next_due_date: maintenance.next_due_date ?? '',
         next_due_km: maintenance.next_due_km != null ? String(maintenance.next_due_km) : '',
         notes: maintenance.notes ?? '',
+        chargeId: maintenance.charge_id ?? '',
       })
+      if (maintenance.charges) {
+        setLinkedCharge({
+          id: maintenance.charges.id,
+          date: maintenance.date,
+          label: maintenance.charges.label,
+          montant_ht_cts: 0,
+          montant_ttc_cts: maintenance.charges.montant_ttc_cts,
+          tva_cts: null,
+          tva_rate: 0,
+          receipt_url: maintenance.charges.receipt_url,
+          pennylane_id: maintenance.charges.pennylane_id,
+          supplier_id: null,
+          category: null,
+          suppliers: null,
+        })
+      } else {
+        setLinkedCharge(null)
+      }
     } else {
       setForm({ ...EMPTY_FORM, date: new Date().toISOString().slice(0, 10) })
+      setLinkedCharge(null)
     }
   }, [maintenance, open])
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  const handleChargeSelect = (charge: ChargePick) => {
+    setLinkedCharge(charge)
+    setForm(prev => ({
+      ...prev,
+      chargeId: charge.id,
+      date: charge.date,
+      supplier_id: charge.supplier_id ?? prev.supplier_id,
+      cost_cts_str: charge.montant_ttc_cts != null
+        ? (charge.montant_ttc_cts / 100).toFixed(2)
+        : prev.cost_cts_str,
+    }))
+  }
+
+  const handleDetach = () => {
+    setLinkedCharge(null)
+    set('chargeId', '')
+  }
 
   const costCts = form.cost_cts_str ? Math.round(parseFloat(form.cost_cts_str) * 100) : null
 
@@ -95,8 +141,9 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
         supplier_id: form.supplier_id || null,
         next_due_date: form.next_due_date || null,
         next_due_km: form.next_due_km ? parseInt(form.next_due_km) : null,
-        receipt_url: null,
+        receipt_url: linkedCharge?.receipt_url ?? (isEdit ? maintenance?.receipt_url ?? null : null),
         notes: form.notes || null,
+        charge_id: form.chargeId || null,
       }
 
       if (isEdit && maintenance) {
@@ -123,102 +170,128 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
     : 'Nouvel entretien'
 
   return (
-    <Drawer open={open} onClose={onClose} title={drawerTitle}>
-      <div className="flex flex-col gap-4">
-        {isEdit && maintenance?.type && (
-          <div className="flex items-center gap-2 mb-1">
-            <Badge color={MAINTENANCE_TYPE_COLOR[maintenance.type]}>
-              {MAINTENANCE_TYPE_LABELS[maintenance.type]}
-            </Badge>
-            <span className="ml-auto font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
-              {new Date(maintenance.date).toLocaleDateString('fr-FR')}
-            </span>
-          </div>
-        )}
+    <>
+      <Drawer open={open} onClose={onClose} title={drawerTitle}>
+        <div className="flex flex-col gap-4">
+          {isEdit && maintenance?.type && (
+            <div className="flex items-center gap-2 mb-1">
+              <Badge color={MAINTENANCE_TYPE_COLOR[maintenance.type]}>
+                {MAINTENANCE_TYPE_LABELS[maintenance.type]}
+              </Badge>
+              {maintenance.charges && <Badge color="success">Facturé</Badge>}
+              <span className="ml-auto font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
+                {new Date(maintenance.date).toLocaleDateString('fr-FR')}
+              </span>
+            </div>
+          )}
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Date *">
-            <Input type="date" value={form.date} onChange={v => set('date', v)} />
-          </Field>
-          <Field label="Type">
-            <select value={form.type} onChange={e => set('type', e.target.value)} className={inputCls}>
-              <option value="">— Aucun —</option>
-              {MAINTENANCE_TYPES.map(t => <option key={t} value={t}>{MAINTENANCE_TYPE_LABELS[t]}</option>)}
+          {/* ── Rapprochement charge ─────────────────────────────────────────── */}
+          {linkedCharge ? (
+            <LinkedChargeCard charge={linkedCharge} onDetach={handleDetach} />
+          ) : (
+            <button
+              type="button"
+              onClick={() => setSelectorOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-[var(--r-md)] border border-dashed border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--brand)] hover:text-[var(--brand)] transition-colors text-[var(--fs-sm)]"
+            >
+              <Link2 size={14} />
+              Rapprocher une facture
+            </button>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Date *">
+              <Input type="date" value={form.date} onChange={v => set('date', v)} />
+            </Field>
+            <Field label="Type">
+              <select value={form.type} onChange={e => set('type', e.target.value)} className={inputCls}>
+                <option value="">— Aucun —</option>
+                {MAINTENANCE_TYPES.map(t => <option key={t} value={t}>{MAINTENANCE_TYPE_LABELS[t]}</option>)}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Véhicule *">
+            <select value={form.vehicle_id} onChange={e => set('vehicle_id', e.target.value)} className={inputCls}>
+              <option value="">— Sélectionner un véhicule —</option>
+              {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
             </select>
           </Field>
-        </div>
 
-        <Field label="Véhicule *">
-          <select value={form.vehicle_id} onChange={e => set('vehicle_id', e.target.value)} className={inputCls}>
-            <option value="">— Sélectionner un véhicule —</option>
-            {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
-          </select>
-        </Field>
-
-        <Field label="Description">
-          <Input value={form.description} onChange={v => set('description', v)}
-            placeholder="Détail de l'intervention…" />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Coût (€ HT)">
-            <Input type="number" value={form.cost_cts_str} onChange={v => set('cost_cts_str', v)}
-              placeholder="0.00" />
+          <Field label="Description">
+            <Input value={form.description} onChange={v => set('description', v)}
+              placeholder="Détail de l'intervention…" />
           </Field>
-          <Field label="Kilométrage">
-            <Input type="number" value={form.mileage_km} onChange={v => set('mileage_km', v)}
-              placeholder="125000" />
-          </Field>
-        </div>
 
-        {costCts != null && costCts > 0 && (
-          <div className="flex items-center justify-between px-4 py-2.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
-            <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">Coût HT</span>
-            <span className="font-mono font-semibold text-[var(--text)]">{formatCents(costCts)}</span>
-          </div>
-        )}
-
-        <Field label="Prestataire / Garage">
-          <select value={form.supplier_id} onChange={e => set('supplier_id', e.target.value)} className={inputCls}>
-            <option value="">— Aucun —</option>
-            {suppliers.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
-        </Field>
-
-        {/* Prochaine échéance */}
-        <div className="rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3">
-          <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
-            Prochaine échéance
-          </span>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Date">
-              <Input type="date" value={form.next_due_date} onChange={v => set('next_due_date', v)} />
+            <Field label={linkedCharge ? 'Coût TTC (€) — depuis la facture' : 'Coût (€ HT)'}>
+              <Input type="number" value={form.cost_cts_str} onChange={v => set('cost_cts_str', v)}
+                placeholder="0.00" />
             </Field>
             <Field label="Kilométrage">
-              <Input type="number" value={form.next_due_km} onChange={v => set('next_due_km', v)}
-                placeholder="135000" />
+              <Input type="number" value={form.mileage_km} onChange={v => set('mileage_km', v)}
+                placeholder="125000" />
             </Field>
           </div>
-        </div>
 
-        <Field label="Notes">
-          <textarea
-            value={form.notes}
-            onChange={e => set('notes', e.target.value)}
-            rows={3}
-            placeholder="Observations, pièces remplacées…"
-            className={`${inputCls} resize-none`}
-          />
-        </Field>
+          {costCts != null && costCts > 0 && (
+            <div className="flex items-center justify-between px-4 py-2.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
+              <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">
+                {linkedCharge ? 'Coût TTC' : 'Coût HT'}
+              </span>
+              <span className="font-mono font-semibold text-[var(--text)]">{formatCents(costCts)}</span>
+            </div>
+          )}
 
-        <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
-          <Button variant="primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Enregistrement…' : 'Enregistrer'}
-          </Button>
-          <Button variant="secondary" onClick={onClose}>Annuler</Button>
+          <Field label="Prestataire / Garage">
+            <select value={form.supplier_id} onChange={e => set('supplier_id', e.target.value)} className={inputCls}>
+              <option value="">— Aucun —</option>
+              {suppliers.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            </select>
+          </Field>
+
+          {/* Prochaine échéance */}
+          <div className="rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3">
+            <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+              Prochaine échéance
+            </span>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Date">
+                <Input type="date" value={form.next_due_date} onChange={v => set('next_due_date', v)} />
+              </Field>
+              <Field label="Kilométrage">
+                <Input type="number" value={form.next_due_km} onChange={v => set('next_due_km', v)}
+                  placeholder="135000" />
+              </Field>
+            </div>
+          </div>
+
+          <Field label="Notes">
+            <textarea
+              value={form.notes}
+              onChange={e => set('notes', e.target.value)}
+              rows={3}
+              placeholder="Observations, pièces remplacées…"
+              className={`${inputCls} resize-none`}
+            />
+          </Field>
+
+          <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
+            <Button variant="primary" onClick={handleSave} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+            <Button variant="secondary" onClick={onClose}>Annuler</Button>
+          </div>
         </div>
-      </div>
-    </Drawer>
+      </Drawer>
+
+      <SelecteurCharge
+        open={selectorOpen}
+        onClose={() => setSelectorOpen(false)}
+        onSelect={handleChargeSelect}
+        fetchCharges={() => getUnlinkedChargesFor('vehicle_maintenances')}
+      />
+    </>
   )
 }
 
