@@ -13,6 +13,7 @@ import { useToast }    from '../../shared/ui/useToast'
 import { useProfile, supabase } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney, addTva, centimesToEuros } from '../../shared/lib/money'
+import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
   TRANSITION_ACTION_LABELS,
@@ -65,6 +66,7 @@ const EMPTY_FORM = {
   pallets:          '',
   manual_ht:        '',   // HT en euros (mode manuel)
   tva_override:     '',   // TVA en euros, éditable dans tous les modes
+  tva_rate:         '20', // Taux TVA % (pilote l'auto-suggestion)
   notes:            '',
 }
 
@@ -202,6 +204,11 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
     if (delivery) {
       const storedTvaCts = delivery.tva_cts ?? null
       setTvaTouched(storedTvaCts != null)
+      // Dérive le taux TVA depuis tva_cts / amount_ht_cts si disponible, sinon 20 %
+      const derivedHt = effectiveHtCts(delivery)
+      const derivedRate = storedTvaCts != null && derivedHt > 0
+        ? Math.round(storedTvaCts / derivedHt * 100)
+        : 20
       setForm({
         date:             delivery.date,
         client_id:        delivery.client_id,
@@ -214,10 +221,9 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         km:               delivery.km != null ? String(delivery.km) : '',
         empty_km:         delivery.empty_km != null ? String(delivery.empty_km) : '',
         pallets:          delivery.weight_kg != null ? String(delivery.weight_kg) : '',
-        manual_ht:        effectiveHtCts(delivery) > 0
-                            ? (effectiveHtCts(delivery) / 100).toFixed(2) : '',
-        tva_override:     storedTvaCts != null
-                            ? (storedTvaCts / 100).toFixed(2) : '',
+        manual_ht:        derivedHt > 0 ? (derivedHt / 100).toFixed(2) : '',
+        tva_override:     storedTvaCts != null ? (storedTvaCts / 100).toFixed(2) : '',
+        tva_rate:         String(derivedRate),
         notes:            delivery.notes ?? '',
       })
       setDeliveryCoords({ lat: delivery.delivery_lat ?? null, lng: delivery.delivery_lng ?? null })
@@ -266,6 +272,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
 
   const computed = useMemo(() => {
     if (!selectedClient) return null
+    const rate = parseFloat(form.tva_rate || '20') / 100
     return computeAmount(
       selectedClient,
       {
@@ -277,21 +284,23 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         manual_tva_cts: tvaTouched && form.tva_override
           ? Math.round(parseFloat(form.tva_override) * 100) : null,
       },
+      rate,
     )
-  }, [selectedClient, form.km, form.pallets, form.manual_ht, form.tva_override, tvaTouched])
+  }, [selectedClient, form.km, form.pallets, form.manual_ht, form.tva_override, form.tva_rate, tvaTouched])
 
-  // Auto-remplit le champ TVA à 20 % du HT quand le HT change
+  // Auto-remplit le champ TVA depuis le taux courant quand le HT ou le taux changent
   // et que l'utilisateur n'a pas encore surchargé la TVA.
   useEffect(() => {
     if (tvaTouched || !selectedClient) return
     const htCts = computed?.amount_ht_cts ?? 0
+    const rate = parseFloat(form.tva_rate || '20') / 100
     if (htCts > 0) {
-      const autoTvaCts = addTva(htCts, 0.20) - htCts
+      const autoTvaCts = addTva(htCts, rate) - htCts
       setForm(p => ({ ...p, tva_override: (autoTvaCts / 100).toFixed(2) }))
     } else {
       setForm(p => ({ ...p, tva_override: '' }))
     }
-  }, [computed?.amount_ht_cts, tvaTouched, selectedClient])
+  }, [computed?.amount_ht_cts, form.tva_rate, tvaTouched, selectedClient])
 
   // ── Permissions ───────────────────────────────────────────────────────────────
 
@@ -629,6 +638,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
           set={set}
           tvaTouched={tvaTouched}
           onTvaChange={v => { set('tva_override', v); setTvaTouched(true) }}
+          onTvaRateChange={r => { set('tva_rate', String(r)); setTvaTouched(false) }}
           selectedClient={selectedClient}
           computed={computed}
           delivery={delivery}
@@ -679,7 +689,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
 // ── Onglet Montant ────────────────────────────────────────────────────────────
 
 function MontantTab({
-  form, set, tvaTouched, onTvaChange,
+  form, set, tvaTouched, onTvaChange, onTvaRateChange,
   selectedClient, computed, delivery,
   isReadOnly, saving, onSave, onClose,
 }: {
@@ -687,6 +697,7 @@ function MontantTab({
   set: (k: keyof typeof EMPTY_FORM, v: string) => void
   tvaTouched: boolean
   onTvaChange: (v: string) => void
+  onTvaRateChange: (r: number) => void
   selectedClient: ClientTariff | null
   computed: ReturnType<typeof computeAmount>
   delivery?: DeliveryRow | null
@@ -753,17 +764,26 @@ function MontantTab({
         </Field>
       )}
 
-      {/* Champ TVA éditable — visible dès qu'un HT est calculable */}
+      {/* Taux TVA + montant TVA éditable */}
       {selectedClient && (
-        <Field label={`TVA (€)${tvaTouched ? ' ✎' : ' — auto 20 %'}`}>
-          <Input
-            type="number"
-            value={form.tva_override}
-            onChange={onTvaChange}
-            placeholder="0.00"
-            disabled={isReadOnly}
-          />
-        </Field>
+        <>
+          <Field label="Taux TVA">
+            <TvaRateInput
+              value={parseFloat(form.tva_rate || '20')}
+              onChange={onTvaRateChange}
+              disabled={isReadOnly}
+            />
+          </Field>
+          <Field label={`Montant TVA (€)${tvaTouched ? ' ✎' : ' — auto'}`}>
+            <Input
+              type="number"
+              value={form.tva_override}
+              onChange={onTvaChange}
+              placeholder="0.00"
+              disabled={isReadOnly}
+            />
+          </Field>
+        </>
       )}
 
       {/* Récapitulatif HT / TVA / TTC */}

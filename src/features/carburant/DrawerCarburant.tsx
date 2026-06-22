@@ -13,6 +13,7 @@ import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
 import { DeleteButton } from '../../shared/ui/DeleteButton'
 import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, formatCents } from './carburant.logic'
+import { fromTtcAndRate, fromTtcAndManualTva } from '../../shared/lib/montants'
 import type { FuelLogRow, FuelLogInsert, FuelType, ChargePick } from './carburant.types'
 
 interface Props {
@@ -38,6 +39,7 @@ const EMPTY_FORM = {
   mileage_km: '',
   station: '',
   tva_rate: '20',
+  tva_amount: '',
   tva_deductible_pct: '100',
   chargeId: '',
 }
@@ -49,6 +51,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
 
   const [form, setForm] = useState(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
+  const [tvaTouched, setTvaTouched] = useState(false)
   const [vehicles, setVehicles] = useState<Lookup[]>([])
   const [drivers, setDrivers]   = useState<Lookup[]>([])
   const [selectorOpen, setSelectorOpen] = useState(false)
@@ -65,6 +68,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
 
   useEffect(() => {
     if (fuelLog) {
+      setTvaTouched(fuelLog.tva_cts != null)
       setForm({
         date: fuelLog.date,
         vehicle_id: fuelLog.vehicle_id,
@@ -76,6 +80,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
         mileage_km: fuelLog.mileage_km != null ? String(fuelLog.mileage_km) : '',
         station: fuelLog.station ?? '',
         tva_rate: String(fuelLog.tva_rate ?? 20),
+        tva_amount: fuelLog.tva_cts != null ? (fuelLog.tva_cts / 100).toFixed(2) : '',
         tva_deductible_pct: String(fuelLog.tva_deductible_pct ?? 100),
         chargeId: fuelLog.charge_id ?? '',
       })
@@ -98,6 +103,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
         setLinkedCharge(null)
       }
     } else {
+      setTvaTouched(false)
       setForm({ ...EMPTY_FORM, date: new Date().toISOString().slice(0, 10) })
       setLinkedCharge(null)
     }
@@ -134,6 +140,21 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
     ? Math.round(parseFloat(form.total_ttc) * 100)
     : (autoTotalCts ?? 0)
 
+  // Dérivation HT/TVA/TTC depuis TTC + TVA saisie ou taux
+  const tvaAmtCts = Math.round(parseFloat(form.tva_amount || '0') * 100)
+  const montants = tvaTouched && tvaAmtCts > 0
+    ? fromTtcAndManualTva(totalCts, tvaAmtCts)
+    : fromTtcAndRate(totalCts, parseFloat(form.tva_rate || '20'))
+
+  // Auto-suggère le montant TVA quand TTC ou taux changent
+  useEffect(() => {
+    if (tvaTouched) return
+    if (totalCts <= 0) { setForm(p => ({ ...p, tva_amount: '' })); return }
+    const rate = parseFloat(form.tva_rate || '20')
+    const suggested = fromTtcAndRate(totalCts, rate).tva_cts
+    setForm(p => ({ ...p, tva_amount: (suggested / 100).toFixed(2) }))
+  }, [form.total_ttc, form.tva_rate, tvaTouched])
+
   const handleLitersOrPriceChange = (k: 'liters' | 'price_per_liter', v: string) => {
     setForm(p => {
       const newForm = { ...p, [k]: v }
@@ -158,7 +179,8 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
         driver_id: form.driver_id || null,
         liters,
         price_per_liter_cts: pricePerLiterCts || Math.round(totalCts / liters),
-        total_cts: totalCts,
+        total_cts: montants.ttc_cts,
+        tva_cts: montants.tva_cts > 0 ? montants.tva_cts : null,
         fuel_type: (form.fuel_type || null) as FuelType | null,
         mileage_km: form.mileage_km ? parseInt(form.mileage_km) : null,
         station: form.station || null,
@@ -274,10 +296,37 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
               placeholder="92.50" />
           </Field>
 
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="TVA (%)">
+              <TvaRateInput
+                value={parseFloat(form.tva_rate || '20')}
+                onChange={r => { set('tva_rate', String(r)); setTvaTouched(false) }}
+              />
+            </Field>
+            <Field label={`Montant TVA (€)${tvaTouched ? ' ✎' : ' — auto'}`}>
+              <Input
+                type="number"
+                value={form.tva_amount}
+                onChange={v => { set('tva_amount', v); setTvaTouched(true) }}
+                placeholder="0.00"
+              />
+            </Field>
+          </div>
+
           {totalCts > 0 && (
-            <div className="flex items-center justify-between px-4 py-2.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
-              <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">Total TTC</span>
-              <span className="font-mono font-semibold text-[var(--text)]">{formatCents(totalCts)}</span>
+            <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] divide-y divide-[var(--border)] overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-2">
+                <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">HT</span>
+                <span className="font-mono text-[var(--fs-sm)]">{formatCents(montants.ht_cts)}</span>
+              </div>
+              <div className="flex items-center justify-between px-4 py-2">
+                <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">TVA</span>
+                <span className="font-mono text-[var(--fs-sm)]">{formatCents(montants.tva_cts)}</span>
+              </div>
+              <div className="flex items-center justify-between px-4 py-2.5">
+                <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">Total TTC</span>
+                <span className="font-mono font-semibold text-[var(--text)]">{formatCents(montants.ttc_cts)}</span>
+              </div>
             </div>
           )}
 
@@ -291,21 +340,13 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="TVA (%)">
-              <TvaRateInput
-                value={parseFloat(form.tva_rate || '20')}
-                onChange={r => set('tva_rate', String(r))}
-              />
-            </Field>
-            <Field label="TVA déductible (%)">
-              <select value={form.tva_deductible_pct} onChange={e => set('tva_deductible_pct', e.target.value)} className={inputCls}>
-                <option value="100">100 %</option>
-                <option value="80">80 %</option>
-                <option value="0">0 %</option>
-              </select>
-            </Field>
-          </div>
+          <Field label="TVA déductible (%)">
+            <select value={form.tva_deductible_pct} onChange={e => set('tva_deductible_pct', e.target.value)} className={inputCls}>
+              <option value="100">100 %</option>
+              <option value="80">80 %</option>
+              <option value="0">0 %</option>
+            </select>
+          </Field>
 
           <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
             <Button variant="primary" onClick={handleSave} disabled={saving}>

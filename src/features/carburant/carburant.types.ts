@@ -28,9 +28,9 @@ export interface FuelLogRow extends FuelLog {
   charges: { id: string; label: string; montant_ttc_cts: number | null; receipt_url: string | null; pennylane_id: string | null } | null
 }
 
-// charge_id optionnel : les pleins manuels (sans rapprochement) ne l'incluent pas
-export type FuelLogInsert = Omit<FuelLog, 'id' | 'created_at' | 'updated_at' | 'tva_cts' | 'charge_id'> & { charge_id?: string | null }
-export type FuelLogUpdate = Partial<Omit<FuelLog, 'id' | 'company_id' | 'created_at' | 'tva_cts'>>
+// charge_id et tva_cts sont optionnels
+export type FuelLogInsert = Omit<FuelLog, 'id' | 'created_at' | 'updated_at' | 'tva_cts' | 'charge_id'> & { tva_cts?: number | null; charge_id?: string | null }
+export type FuelLogUpdate = Partial<Omit<FuelLog, 'id' | 'company_id' | 'created_at'>>
 
 export interface FuelFilters {
   vehicle_id?: string | 'all'
