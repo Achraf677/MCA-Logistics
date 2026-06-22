@@ -56,6 +56,66 @@ export async function getRecentDeliveries() {
     .returns<DeliveryRow[]>()
 }
 
+export interface ActionItems {
+  facturesImpayees: number
+  montantImpayeCts: number
+  chargesNonCategorisees: number
+  carburantARapprocher: number
+  entretienARapprocher: number
+  entretienAVenir: number
+}
+
+export async function getActionItems(): Promise<ActionItems> {
+  const today = new Date().toISOString().slice(0, 10)
+
+  // Vague 1 : requêtes indépendantes en parallèle
+  const [
+    impayeesRes,
+    nonCatRes,
+    carburantCatsRes,
+    entretienCatsRes,
+    fuelLinkedRes,
+    maintLinkedRes,
+    aVenirRes,
+  ] = await Promise.all([
+    supabase.from('deliveries').select('amount_ht_cts').eq('statut', 'facturee'),
+    supabase.from('charges').select('id', { count: 'exact', head: true }).is('category_id', null),
+    supabase.from('charge_categories').select('id').eq('type', 'carburant'),
+    supabase.from('charge_categories').select('id').eq('type', 'entretien'),
+    supabase.from('fuel_logs').select('charge_id').not('charge_id', 'is', null),
+    supabase.from('vehicle_maintenances').select('charge_id').not('charge_id', 'is', null),
+    supabase.from('vehicle_maintenances')
+      .select('id', { count: 'exact', head: true })
+      .not('next_due_date', 'is', null)
+      .gte('next_due_date', today),
+  ])
+
+  const impayees        = impayeesRes.data ?? []
+  const carburantCatIds = (carburantCatsRes.data ?? []).map(c => c.id)
+  const entretienCatIds = (entretienCatsRes.data ?? []).map(c => c.id)
+  const fuelLinkedIds   = new Set((fuelLinkedRes.data ?? []).map(r => r.charge_id).filter(Boolean))
+  const maintLinkedIds  = new Set((maintLinkedRes.data ?? []).map(r => r.charge_id).filter(Boolean))
+
+  // Vague 2 : charges par catégorie (dépend des catIds)
+  const [carburantChargesRes, entretienChargesRes] = await Promise.all([
+    carburantCatIds.length
+      ? supabase.from('charges').select('id').in('category_id', carburantCatIds)
+      : Promise.resolve({ data: [] as { id: string }[] }),
+    entretienCatIds.length
+      ? supabase.from('charges').select('id').in('category_id', entretienCatIds)
+      : Promise.resolve({ data: [] as { id: string }[] }),
+  ])
+
+  return {
+    facturesImpayees:       impayees.length,
+    montantImpayeCts:       impayees.reduce((s, d) => s + (d.amount_ht_cts ?? 0), 0),
+    chargesNonCategorisees: nonCatRes.count ?? 0,
+    carburantARapprocher:   (carburantChargesRes.data ?? []).filter(c => !fuelLinkedIds.has(c.id)).length,
+    entretienARapprocher:   (entretienChargesRes.data ?? []).filter(c => !maintLinkedIds.has(c.id)).length,
+    entretienAVenir:        aVenirRes.count ?? 0,
+  }
+}
+
 export type TrendPeriod = '6m' | '12m' | 'ytd'
 
 export async function getMonthlyTrend(period: TrendPeriod = '6m') {
