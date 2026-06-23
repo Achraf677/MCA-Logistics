@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { Euro, TrendingDown, Fuel, Wrench } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
@@ -6,6 +7,8 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { formatCents } from '../../shared/lib/money'
 import { getStatistiquesData } from './statistiques.queries'
 import { caMensuel, annualTotals, topClients, chargesByCategory, type StatistiquesData } from './statistiques.logic'
+
+const TOP_N = 6
 
 const FR_MONTHS_SHORT = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
 
@@ -40,10 +43,16 @@ export function Statistiques() {
     ? (margeBrute / caTotal * 100).toFixed(1) + ' %'
     : '—'
 
-  const clients = topClients(data?.deliveries ?? [], 5)
-  const maxClient = clients[0]?.cts ?? 1
+  const allClients = topClients(data?.deliveries ?? [])
+  const visibleClients = allClients.slice(0, TOP_N)
+  const restClients = allClients.slice(TOP_N)
+  const restClientsCts = restClients.reduce((s, c) => s + c.cts, 0)
+  const maxClient = allClients[0]?.cts ?? 1
 
   const sortedCategories = chargesByCategory(data?.charges ?? [])
+  const visibleCategories = sortedCategories.slice(0, TOP_N)
+  const restCategories = sortedCategories.slice(TOP_N)
+  const restCategoriesCts = restCategories.reduce((s, [, cts]) => s + cts, 0)
   const maxCategory = sortedCategories[0]?.[1] ?? 1
 
   const currentMonth = new Date().getMonth()
@@ -139,47 +148,75 @@ export function Statistiques() {
 
           {/* Top clients */}
           <section>
-            <h2 className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">
-              Top clients (CA HT)
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
+                Top clients (CA HT)
+              </h2>
+              <Link
+                to="/clients"
+                className="text-[var(--fs-xs)] text-[var(--text-muted)] hover:text-[var(--brand)] transition-colors"
+              >
+                Voir tout →
+              </Link>
+            </div>
             <div className="glass rounded-[var(--r-xl)] divide-y divide-[var(--border)] overflow-hidden">
               {loading ? (
                 <div className="p-4"><Skeleton className="h-32" /></div>
-              ) : clients.length === 0 ? (
+              ) : allClients.length === 0 ? (
                 <p className="px-4 py-8 text-center text-[var(--text-muted)] text-[var(--fs-sm)]">
                   Aucune donnée
                 </p>
-              ) : clients.map((c, i) => {
-                const pct = caTotal > 0 ? (c.cts / caTotal * 100).toFixed(1) : '0.0'
-                return (
-                  <div key={i} className="px-4 py-3 flex items-center gap-3 min-h-[52px]">
-                    <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] w-4 shrink-0">{i + 1}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <span className="text-[var(--fs-sm)] font-medium text-[var(--text)] truncate">{c.name}</span>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-[var(--fs-xs)] font-mono text-[var(--text-muted)]">{pct} %</span>
-                          <span className="text-[var(--fs-xs)] font-mono text-[var(--text)]">{formatCents(c.cts)}</span>
+              ) : <>
+                {visibleClients.map((c, i) => {
+                  const pct = caTotal > 0 ? (c.cts / caTotal * 100).toFixed(1) : '0.0'
+                  return (
+                    <div key={i} className="px-4 py-3 flex items-center gap-3 min-h-[52px]">
+                      <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] w-4 shrink-0">{i + 1}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 mb-1.5">
+                          <span className="text-[var(--fs-sm)] font-medium text-[var(--text)] truncate">{c.name}</span>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[var(--fs-xs)] font-mono text-[var(--text-muted)]">{pct} %</span>
+                            <span className="text-[var(--fs-xs)] font-mono text-[var(--text)]">{formatCents(c.cts)}</span>
+                          </div>
+                        </div>
+                        <div className="h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-[var(--brand)] transition-all"
+                            style={{ width: `${(c.cts / maxClient) * 100}%` }}
+                          />
                         </div>
                       </div>
-                      <div className="h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-[var(--brand)] transition-all"
-                          style={{ width: `${(c.cts / maxClient) * 100}%` }}
-                        />
-                      </div>
                     </div>
+                  )
+                })}
+                {restClients.length > 0 && (
+                  <div className="px-4 py-3 flex items-center justify-between min-h-[44px]">
+                    <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">
+                      + {restClients.length} autre{restClients.length > 1 ? 's' : ''}
+                    </span>
+                    <span className="text-[var(--fs-xs)] font-mono text-[var(--text-muted)]">
+                      · {formatCents(restClientsCts)}
+                    </span>
                   </div>
-                )
-              })}
+                )}
+              </>}
             </div>
           </section>
 
           {/* Charges par catégorie */}
           <section>
-            <h2 className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest mb-3">
-              Charges par catégorie
-            </h2>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
+                Charges par catégorie
+              </h2>
+              <Link
+                to="/charges"
+                className="text-[var(--fs-xs)] text-[var(--text-muted)] hover:text-[var(--brand)] transition-colors"
+              >
+                Voir tout →
+              </Link>
+            </div>
             <div className="glass rounded-[var(--r-xl)] divide-y divide-[var(--border)] overflow-hidden">
               {loading ? (
                 <div className="p-4"><Skeleton className="h-32" /></div>
@@ -187,22 +224,34 @@ export function Statistiques() {
                 <p className="px-4 py-8 text-center text-[var(--text-muted)] text-[var(--fs-sm)]">
                   Aucune donnée
                 </p>
-              ) : sortedCategories.map(([cat, cts]) => (
-                <div key={cat} className="px-4 py-3 flex items-center gap-3 min-h-[52px]">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <span className="text-[var(--fs-sm)] text-[var(--text)] truncate">{cat}</span>
-                      <span className="text-[var(--fs-xs)] font-mono text-[var(--text)] shrink-0">{formatCents(cts)}</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-[var(--warning)]/70 transition-all"
-                        style={{ width: `${(cts / maxCategory) * 100}%` }}
-                      />
+              ) : <>
+                {visibleCategories.map(([cat, cts]) => (
+                  <div key={cat} className="px-4 py-3 flex items-center gap-3 min-h-[52px]">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className="text-[var(--fs-sm)] text-[var(--text)] truncate">{cat}</span>
+                        <span className="text-[var(--fs-xs)] font-mono text-[var(--text)] shrink-0">{formatCents(cts)}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-[var(--warning)]/70 transition-all"
+                          style={{ width: `${(cts / maxCategory) * 100}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
+                {restCategories.length > 0 && (
+                  <div className="px-4 py-3 flex items-center justify-between min-h-[44px]">
+                    <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">
+                      + {restCategories.length} autre{restCategories.length > 1 ? 's' : ''}
+                    </span>
+                    <span className="text-[var(--fs-xs)] font-mono text-[var(--text-muted)]">
+                      · {formatCents(restCategoriesCts)}
+                    </span>
+                  </div>
+                )}
+              </>}
             </div>
           </section>
 
