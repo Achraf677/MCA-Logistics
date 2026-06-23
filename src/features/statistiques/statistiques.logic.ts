@@ -18,7 +18,7 @@ export interface StatDelivery {
 export interface StatCharge {
   date: string | null
   montant_ht_cts: number | null
-  charge_categories: { name: string; slug: string } | null
+  charge_categories: { name: string; slug: string; type: string | null } | null
 }
 export interface StatFuel { date: string | null; total_cts: number | null }
 export interface StatMaintenance { date: string | null; cost_cts: number | null }
@@ -36,8 +36,10 @@ export interface ClientCa { name: string; cts: number }
 export interface AnnualTotals {
   caTotal: number
   chargesTotal: number
-  fuelTotal: number
-  maintenanceTotal: number
+  /** Sous-ensemble de chargesTotal : charges dont catégorie type='carburant'. */
+  carburantTotal: number
+  /** Sous-ensemble de chargesTotal : charges dont catégorie type='entretien'. */
+  entretienTotal: number
 }
 
 // ── CA HT mensuel ────────────────────────────────────────────────────────────────
@@ -54,13 +56,17 @@ export function caMensuel(deliveries: StatDelivery[]): MonthCa[] {
 
 // ── Totaux annuels ──────────────────────────────────────────────────────────────
 
-export function annualTotals(data: Pick<StatistiquesData, 'deliveries' | 'charges' | 'fuel' | 'maintenances'>): AnnualTotals {
-  return {
-    caTotal:          data.deliveries.reduce((s, d) => s + effectiveHtCts(d), 0),
-    chargesTotal:     data.charges.reduce((s, d) => s + (d.montant_ht_cts ?? 0), 0),
-    fuelTotal:        data.fuel.reduce((s, d) => s + (d.total_cts ?? 0), 0),
-    maintenanceTotal: data.maintenances.reduce((s, d) => s + (d.cost_cts ?? 0), 0),
-  }
+export function annualTotals(data: Pick<StatistiquesData, 'deliveries' | 'charges'>): AnnualTotals {
+  const caTotal      = data.deliveries.reduce((s, d) => s + effectiveHtCts(d), 0)
+  const chargesTotal = data.charges.reduce((s, d) => s + (d.montant_ht_cts ?? 0), 0)
+  // Carburant et entretien = SOUS-ENSEMBLES de chargesTotal (zéro double-compte)
+  const carburantTotal = data.charges
+    .filter(d => d.charge_categories?.type === 'carburant')
+    .reduce((s, d) => s + (d.montant_ht_cts ?? 0), 0)
+  const entretienTotal = data.charges
+    .filter(d => d.charge_categories?.type === 'entretien')
+    .reduce((s, d) => s + (d.montant_ht_cts ?? 0), 0)
+  return { caTotal, chargesTotal, carburantTotal, entretienTotal }
 }
 
 // ── Top clients ──────────────────────────────────────────────────────────────────
