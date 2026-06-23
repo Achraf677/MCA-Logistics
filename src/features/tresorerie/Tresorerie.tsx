@@ -120,6 +120,17 @@ export function Tresorerie() {
     ? getMatchingChargesForDebit(txEnCours.amount_cts, charges, linkedChargeIds, txEnCours.settled_at)
     : []
 
+  // Toutes les charges non liées, triées par proximité de date — pour le mode "Autre montant"
+  const allNonLinked: ChargePick[] = (() => {
+    const pool = charges.filter(c => !linkedChargeIds.has(c.id))
+    if (!txEnCours?.settled_at) return pool
+    const ref = new Date(txEnCours.settled_at).getTime()
+    return [...pool].sort((a, b) =>
+      Math.abs(new Date(a.date).getTime() - ref) -
+      Math.abs(new Date(b.date).getTime() - ref)
+    )
+  })()
+
   // ── Sous-composant accordéon (partagé desktop/mobile) ─────────────────────
   const renderAccordeonContent = (tx: QontoTx, matches: ChargePick[]) => {
     const status = classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length)
@@ -127,11 +138,16 @@ export function Tresorerie() {
     const suggestion = suggestJustifType(tx.label, tx.operation_type, associeNames)
 
     if (status === 'justifie_charge' && linked) {
+      const isNet = linked.montant_ttc_cts !== tx.amount_cts
       return (
-        <LinkedChargeCard
-          charge={linked}
-          onDetach={() => handleDetach(tx.qonto_id)}
-        />
+        <div className="space-y-1.5">
+          <LinkedChargeCard charge={linked} onDetach={() => handleDetach(tx.qonto_id)} />
+          {isNet && (
+            <p className="text-[var(--fs-xs)] text-[var(--text-muted)] italic">
+              montant net (avoir/partiel)
+            </p>
+          )}
+        </div>
       )
     }
 
@@ -195,11 +211,20 @@ export function Tresorerie() {
           ))}
         </div>
 
-        {/* Hint si aucune charge */}
+        {/* Bouton de secours si aucune charge au même montant */}
         {matches.length === 0 && (
-          <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-            Aucune charge Pennylane au montant TTC de {formatMoney(tx.amount_cts)}.
-          </p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+              Aucune charge au montant TTC de {formatMoney(tx.amount_cts)}.
+            </p>
+            <Button
+              variant="secondary"
+              size="compact"
+              onClick={e => { e.stopPropagation(); setRapprochOpen(tx.qonto_id) }}
+            >
+              Lier une charge →
+            </Button>
+          </div>
         )}
       </div>
     )
@@ -416,6 +441,7 @@ export function Tresorerie() {
         onClose={() => setRapprochOpen(null)}
         onSelect={handleLink}
         fetchCharges={() => Promise.resolve(chargesDisponibles)}
+        fetchAllCharges={() => Promise.resolve(allNonLinked)}
       />
     </Shell>
   )
