@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 interface Pt { label: string; value: number }
 
@@ -27,13 +27,29 @@ function smoothPath(pts: { x: number; y: number }[]): string {
 }
 
 export function LineChart({ points, formatValue }: LineChartProps) {
-  const W = 620, H = 220, pad = 18
-  const chartTop = 8, chartBot = H - 34
+  const containerRef = useRef<HTMLDivElement>(null)
+  // W mesuré en px → viewBox identique → ratio 1:1, aucune distorsion
+  const [W, setW] = useState(620)
+  const H = 220, pad = 18
+  const chartTop = 8
+  // Labels mois maintenant en HTML sous le SVG → on récupère le bas
+  const chartBot = H - 10
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(entries => {
+      const w = Math.round(entries[0].contentRect.width)
+      if (w > 0) setW(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const [hovered, setHovered] = useState<number | null>(null)
   const [tipPos, setTipPos] = useState({ pctX: 0, pctY: 0 })
 
-  if (!points.length) return <div style={{ height: H }} />
+  if (!points.length) return <div ref={containerRef} style={{ height: H + 24 }} />
 
   const vals = points.map(p => p.value)
   const max = Math.max(...vals, 1)
@@ -50,6 +66,7 @@ export function LineChart({ points, formatValue }: LineChartProps) {
 
   const fmt = formatValue ?? (v => String(v))
   const hpt = hovered !== null ? points[hovered] : null
+  // animKey basé sur les données UNIQUEMENT — le resize ne redéclenche pas l'animation
   const animKey = vals.join(',')
 
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -65,124 +82,142 @@ export function LineChart({ points, formatValue }: LineChartProps) {
   }
 
   const tipOnRight = tipPos.pctX > 0.65
-  const tipAbove  = tipPos.pctY > 0.55
+  const tipAbove   = tipPos.pctY > 0.55
 
   return (
-    <div style={{ position: 'relative' }}>
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        width="100%"
-        height={H}
-        preserveAspectRatio="none"
-        style={{ cursor: 'crosshair', display: 'block' }}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={() => setHovered(null)}
-      >
-        <defs>
-          {/* Dégradé horizontal de la courbe : brand → gold */}
-          <linearGradient id="lc-line" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="var(--brand)" />
-            <stop offset="1" stopColor="var(--gold)" />
-          </linearGradient>
-          {/* Dégradé vertical de l'aire : brand léger → transparent */}
-          <linearGradient id="lc-area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="var(--brand)" stopOpacity="0.12" />
-            <stop offset="1" stopColor="var(--brand)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
+    <div ref={containerRef}>
+      {/* Wrapper SVG avec position:relative pour le tooltip */}
+      <div style={{ position: 'relative' }}>
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          width="100%"
+          height={H}
+          style={{ cursor: 'crosshair', display: 'block' }}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHovered(null)}
+        >
+          <defs>
+            <linearGradient id="lc-line" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stopColor="var(--brand)" />
+              <stop offset="1" stopColor="var(--gold)" />
+            </linearGradient>
+            <linearGradient id="lc-area" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="var(--brand)" stopOpacity="0.12" />
+              <stop offset="1" stopColor="var(--brand)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
 
-        {/* Aire dégradée douce */}
-        <path key={`area-${animKey}`} d={areaD} fill="url(#lc-area)" className="lc-area" />
+          {/* Aire dégradée */}
+          <path key={`area-${animKey}`} d={areaD} fill="url(#lc-area)" className="lc-area" />
 
-        {/* Courbe nette — un seul trait, pas de glow/blur */}
-        <path
-          key={`line-${animKey}`}
-          d={lineD}
-          fill="none"
-          stroke="url(#lc-line)"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          shapeRendering="geometricPrecision"
-          pathLength="1"
-          className="lc-line"
-        />
-
-        {/* Ligne de zéro discrète (seuil de rentabilité) — visible si des valeurs sont négatives */}
-        {hasNegative && (
-          <line
-            x1={pad} y1={y(0)} x2={W - pad} y2={y(0)}
-            stroke="var(--border)" strokeWidth="1" strokeDasharray="4 3"
+          {/* Courbe — vector-effect évite l'épaisseur variable si scale résiduel */}
+          <path
+            key={`line-${animKey}`}
+            d={lineD}
+            fill="none"
+            stroke="url(#lc-line)"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            shapeRendering="geometricPrecision"
+            pathLength="1"
+            className="lc-line"
+            vectorEffect="non-scaling-stroke"
           />
-        )}
 
-        {/* Crosshair au survol */}
-        {hovered !== null && (
-          <line
-            x1={x(hovered)} y1={chartTop} x2={x(hovered)} y2={chartBot}
-            stroke="var(--text-disabled)" strokeWidth="1" strokeDasharray="4 3"
-          />
-        )}
+          {/* Ligne zéro (marge négative) */}
+          {hasNegative && (
+            <line
+              x1={pad} y1={y(0)} x2={W - pad} y2={y(0)}
+              stroke="var(--border)" strokeWidth="1" strokeDasharray="4 3"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
 
-        {/* Points + labels */}
+          {/* Crosshair */}
+          {hovered !== null && (
+            <line
+              x1={x(hovered)} y1={chartTop} x2={x(hovered)} y2={chartBot}
+              stroke="var(--text-disabled)" strokeWidth="1" strokeDasharray="4 3"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+
+          {/* Points — pas de <text> SVG, labels en HTML ci-dessous */}
+          {points.map((p, i) => {
+            const isHov = i === hovered
+            return (
+              <g key={i}>
+                {isHov && (
+                  <circle cx={x(i)} cy={y(p.value)} r={14}
+                    fill="var(--brand)" opacity="0.15" />
+                )}
+                <circle
+                  cx={x(i)} cy={y(p.value)}
+                  r={isHov ? 5.5 : 3.5}
+                  fill="var(--brand)"
+                  stroke="var(--bg-card)"
+                  strokeWidth="2"
+                  shapeRendering="geometricPrecision"
+                />
+              </g>
+            )
+          })}
+        </svg>
+
+        {/* Tooltip HTML — positionné relatif au wrapper SVG */}
+        {hpt && hovered !== null && (
+          <div style={{
+            position: 'absolute',
+            left:   tipOnRight ? undefined : `calc(${tipPos.pctX * 100}% + 12px)`,
+            right:  tipOnRight ? `calc(${(1 - tipPos.pctX) * 100}% + 12px)` : undefined,
+            top:    tipAbove   ? undefined : `calc(${tipPos.pctY * 100}% - 8px)`,
+            bottom: tipAbove   ? `calc(${(1 - tipPos.pctY) * 100}% + 8px)` : undefined,
+            pointerEvents: 'none',
+            zIndex: 10,
+            background:   'var(--bg-elevated)',
+            border:       '1px solid var(--border)',
+            borderRadius: 'var(--r-md)',
+            padding:      '6px 10px',
+            minWidth:     '88px',
+            boxShadow:    'var(--shadow-card)',
+            whiteSpace:   'nowrap',
+          }}>
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>
+              {hpt.label}
+            </div>
+            <div style={{ fontSize: 'var(--fs-sm)', color: hpt.value < 0 ? 'var(--danger)' : 'var(--text)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+              {fmt(hpt.value)}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Labels mois en HTML — netteté native du navigateur, aucun étirement SVG */}
+      <div style={{ position: 'relative', height: 20, marginTop: 3 }}>
         {points.map((p, i) => {
           const isHov = i === hovered
           return (
-            <g key={i}>
-              {/* Halo léger uniquement au survol */}
-              {isHov && (
-                <circle cx={x(i)} cy={y(p.value)} r={14}
-                  fill="var(--brand)" opacity="0.15" />
-              )}
-              <circle
-                cx={x(i)} cy={y(p.value)}
-                r={isHov ? 5.5 : 3.5}
-                fill="var(--brand)"
-                stroke="var(--bg-card)"
-                strokeWidth="2"
-                shapeRendering="geometricPrecision"
-              />
-              <text
-                x={x(i)} y={H - 3}
-                textAnchor="middle"
-                fontSize="11"
-                fill={isHov ? 'var(--text)' : 'var(--text-muted)'}
-                fontWeight={isHov ? '600' : 'normal'}
-                style={{ fontFamily: 'var(--font-mono)' }}
-              >
-                {p.label}
-              </text>
-            </g>
+            <span
+              key={i}
+              style={{
+                position:  'absolute',
+                left:      `${(x(i) / W) * 100}%`,
+                transform: 'translateX(-50%)',
+                fontSize:  11,
+                fontFamily:'var(--font-mono)',
+                color:     isHov ? 'var(--text)' : 'var(--text-muted)',
+                fontWeight:isHov ? 600 : 400,
+                whiteSpace:'nowrap',
+                lineHeight:'1',
+                userSelect:'none',
+              }}
+            >
+              {p.label}
+            </span>
           )
         })}
-      </svg>
-
-      {/* Tooltip HTML — rendu hors SVG pour éviter la distorsion preserveAspectRatio */}
-      {hpt && hovered !== null && (
-        <div style={{
-          position: 'absolute',
-          left:   tipOnRight ? undefined : `calc(${tipPos.pctX * 100}% + 12px)`,
-          right:  tipOnRight ? `calc(${(1 - tipPos.pctX) * 100}% + 12px)` : undefined,
-          top:    tipAbove   ? undefined : `calc(${tipPos.pctY * 100}% - 8px)`,
-          bottom: tipAbove   ? `calc(${(1 - tipPos.pctY) * 100}% + 8px)` : undefined,
-          pointerEvents: 'none',
-          zIndex: 10,
-          background:   'var(--bg-elevated)',
-          border:       '1px solid var(--border)',
-          borderRadius: 'var(--r-md)',
-          padding:      '6px 10px',
-          minWidth:     '88px',
-          boxShadow:    'var(--shadow-card)',
-          whiteSpace:   'nowrap',
-        }}>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>
-            {hpt.label}
-          </div>
-          <div style={{ fontSize: 'var(--fs-sm)', color: hpt.value < 0 ? 'var(--danger)' : 'var(--text)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
-            {fmt(hpt.value)}
-          </div>
-        </div>
-      )}
+      </div>
     </div>
   )
 }
