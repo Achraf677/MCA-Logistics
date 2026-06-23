@@ -18,9 +18,11 @@ function smoothPath(pts: { x: number; y: number }[]): string {
     const p2 = pts[i + 1]
     const p3 = pts[Math.min(i + 2, pts.length - 1)]
     const cp1x = (p1.x + (p2.x - p0.x) / 6).toFixed(1)
-    const cp1y = (p1.y + (p2.y - p0.y) / 6).toFixed(1)
     const cp2x = (p2.x - (p3.x - p1.x) / 6).toFixed(1)
-    const cp2y = (p2.y - (p3.y - p1.y) / 6).toFixed(1)
+    // Clamp vertical uniquement : empêche l'undershoot/overshoot sans casser le lissage horizontal
+    const yLo = Math.min(p1.y, p2.y), yHi = Math.max(p1.y, p2.y)
+    const cp1y = Math.min(yHi, Math.max(yLo, p1.y + (p2.y - p0.y) / 6)).toFixed(1)
+    const cp2y = Math.min(yHi, Math.max(yLo, p2.y - (p3.y - p1.y) / 6)).toFixed(1)
     d.push(`C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`)
   }
   return d.join(' ')
