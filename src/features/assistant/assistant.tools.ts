@@ -1178,7 +1178,7 @@ export async function prepareModifierLivraison(args: ModifierLivraisonArgs): Pro
 
 // ── c) create_plein ───────────────────────────────────────────────────────────
 // Réutilise createFuelLog() (onglet Carburant). tva_cts NON écrit (généré en base).
-// price_per_liter_cts dérivé = round(total_cts / litres), comme le drawer.
+// price_per_liter_milli dérivé = round(total_cts * 10 / litres), comme le drawer.
 
 export interface CreatePleinArgs {
   vehicule?: string
@@ -1202,7 +1202,7 @@ export async function prepareCreatePlein(args: CreatePleinArgs): Promise<Prepare
   if (!companyId) return { ok: false, message: 'Profil non chargé : impossible de créer le plein.' }
 
   const totalCts = Math.round(args.montant_ttc_eur * 100)
-  const pricePerLiterCts = Math.round(totalCts / args.litres)
+  const pricePerLiterMilli = Math.round(totalCts * 10 / args.litres)
 
   const payload: FuelLogInsert = {
     company_id: companyId,
@@ -1210,7 +1210,7 @@ export async function prepareCreatePlein(args: CreatePleinArgs): Promise<Prepare
     driver_id: null,
     date,
     liters: args.litres,
-    price_per_liter_cts: pricePerLiterCts,
+    price_per_liter_milli: pricePerLiterMilli,
     total_cts: totalCts,
     fuel_type: null,
     mileage_km: null,

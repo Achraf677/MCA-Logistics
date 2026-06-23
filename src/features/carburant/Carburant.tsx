@@ -160,7 +160,7 @@ export function Carburant() {
                     <td className="px-4 py-3 text-[var(--text-muted)]">{row.team_members?.full_name ?? '—'}</td>
                     <td className="px-4 py-3 font-mono">{row.liters.toFixed(2)} L</td>
                     <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
-                      {(row.price_per_liter_cts / 100).toFixed(3)} €
+                      {(row.price_per_liter_milli / 1000).toFixed(3)} €
                     </td>
                     <td className="px-4 py-3 font-mono font-semibold text-[var(--text)]">
                       {formatCents(row.total_cts)}
@@ -216,7 +216,7 @@ export function Carburant() {
                 <div className="flex items-end justify-between gap-2">
                   <div className="flex flex-col gap-0.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
                     <span>{new Date(row.date).toLocaleDateString('fr-FR')}</span>
-                    <span>{row.liters.toFixed(2)} L · {(row.price_per_liter_cts / 100).toFixed(3)} €/L</span>
+                    <span>{row.liters.toFixed(2)} L · {(row.price_per_liter_milli / 1000).toFixed(3)} €/L</span>
                     {row.station && <span>{row.station}</span>}
                   </div>
                   <span className="font-mono font-semibold text-[var(--text)]">{formatCents(row.total_cts)}</span>

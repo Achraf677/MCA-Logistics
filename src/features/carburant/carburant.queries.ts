@@ -46,7 +46,7 @@ export async function exportFuelCSV(filters: FuelFilters = {}) {
     d.vehicles?.plate ?? '',
     d.team_members?.full_name ?? '',
     d.liters,
-    (d.price_per_liter_cts / 100).toFixed(3),
+    (d.price_per_liter_milli / 1000).toFixed(3),
     (d.total_cts / 100).toFixed(2),
     d.fuel_type ?? '',
     d.mileage_km ?? '',

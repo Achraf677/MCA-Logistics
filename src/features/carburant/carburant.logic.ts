@@ -25,8 +25,8 @@ export function formatLiters(liters: number): string {
   }) + ' L'
 }
 
-export function formatPricePerLiter(cts: number): string {
-  return (cts / 100).toLocaleString('fr-FR', {
+export function formatPricePerLiter(milli: number): string {
+  return (milli / 1000).toLocaleString('fr-FR', {
     minimumFractionDigits: 3,
     maximumFractionDigits: 3,
   }) + ' €/L'
@@ -35,8 +35,9 @@ export function formatPricePerLiter(cts: number): string {
 export function kpiSummary(rows: FuelLogRow[]) {
   const totalCts = rows.reduce((s, r) => s + r.total_cts, 0)
   const totalLiters = rows.reduce((s, r) => s + r.liters, 0)
+  // Moyenne pondérée en millièmes → reste en millièmes pour formatPricePerLiter
   const avgPricePerLiter = totalLiters > 0
-    ? rows.reduce((s, r) => s + r.price_per_liter_cts * r.liters, 0) / totalLiters
+    ? rows.reduce((s, r) => s + r.price_per_liter_milli * r.liters, 0) / totalLiters
     : 0
   return { totalCts, totalLiters, avgPricePerLiter, nb: rows.length }
 }
