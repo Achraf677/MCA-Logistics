@@ -7,7 +7,7 @@ export interface FuelLog {
   driver_id: string | null
   date: string
   liters: number
-  price_per_liter_cts: number
+  price_per_liter_milli: number
   total_cts: number
   fuel_type: FuelType | null
   mileage_km: number | null

@@ -74,7 +74,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
         vehicle_id: fuelLog.vehicle_id,
         driver_id: fuelLog.driver_id ?? '',
         liters: String(fuelLog.liters),
-        price_per_liter: (fuelLog.price_per_liter_cts / 100).toFixed(3),
+        price_per_liter: (fuelLog.price_per_liter_milli / 1000).toFixed(3),
         total_ttc: (fuelLog.total_cts / 100).toFixed(2),
         fuel_type: fuelLog.fuel_type ?? '',
         mileage_km: fuelLog.mileage_km != null ? String(fuelLog.mileage_km) : '',
@@ -131,9 +131,9 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
 
   // Auto-calcul du total quand litres ou prix/L changent
   const liters = parseFloat(form.liters || '0')
-  const pricePerLiterCts = Math.round(parseFloat(form.price_per_liter || '0') * 100)
-  const autoTotalCts = liters > 0 && pricePerLiterCts > 0
-    ? Math.round(liters * pricePerLiterCts)
+  const priceMilli = Math.round(parseFloat(form.price_per_liter || '0') * 1000)
+  const autoTotalCts = liters > 0 && priceMilli > 0
+    ? Math.round(liters * priceMilli / 10)
     : null
 
   const totalCts = form.total_ttc
@@ -178,7 +178,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
         vehicle_id: form.vehicle_id,
         driver_id: form.driver_id || null,
         liters,
-        price_per_liter_cts: pricePerLiterCts || Math.round(totalCts / liters),
+        price_per_liter_milli: priceMilli || Math.round(totalCts * 10 / liters),
         total_cts: montants.ttc_cts,
         tva_cts: montants.tva_cts > 0 ? montants.tva_cts : null,
         fuel_type: (form.fuel_type || null) as FuelType | null,
