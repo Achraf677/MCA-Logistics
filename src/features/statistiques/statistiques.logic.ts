@@ -72,10 +72,11 @@ export function annualTotals(data: Pick<StatistiquesData, 'deliveries' | 'charge
 // ── Top clients ──────────────────────────────────────────────────────────────────
 
 /**
- * CA HT regroupé par client_id, trié décroissant, limité à `n` (défaut 5).
+ * CA HT regroupé par client_id, trié décroissant, LISTE COMPLÈTE.
+ * Le découpage Top N + agrégation du reste est la responsabilité du composant.
  * Le nom est pris sur la première livraison rencontrée ; absent → « — ».
  */
-export function topClients(deliveries: StatDelivery[], n = 5): ClientCa[] {
+export function topClients(deliveries: StatDelivery[]): ClientCa[] {
   const clientMap: Record<string, ClientCa> = {}
   for (const d of deliveries) {
     const cid = d.client_id as string
@@ -83,7 +84,7 @@ export function topClients(deliveries: StatDelivery[], n = 5): ClientCa[] {
     if (!clientMap[cid]) clientMap[cid] = { name: cname, cts: 0 }
     clientMap[cid].cts += effectiveHtCts(d)
   }
-  return Object.values(clientMap).sort((a, b) => b.cts - a.cts).slice(0, n)
+  return Object.values(clientMap).sort((a, b) => b.cts - a.cts)
 }
 
 // ── Charges par catégorie ─────────────────────────────────────────────────────────

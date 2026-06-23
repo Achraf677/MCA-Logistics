@@ -102,7 +102,7 @@ describe('annualTotals — totaux charges-only (zéro double-comptage)', () => {
 })
 
 // ── topClients ────────────────────────────────────────────────────────────────────
-describe('topClients — regroupement, tri, limite', () => {
+describe('topClients — regroupement, tri, liste complète', () => {
   it('cumule les livraisons d\'un même client et trie décroissant', () => {
     const top = topClients([
       deliv({ client_id: 'a', clients: { name: 'Alpha' }, montant_ht_cts: 10_000 }),
@@ -115,23 +115,23 @@ describe('topClients — regroupement, tri, limite', () => {
     ])
   })
 
-  it('limite au top 5 par défaut', () => {
+  it('renvoie la liste COMPLÈTE triée (le composant découpe, pas la logique)', () => {
     const deliveries = Array.from({ length: 8 }, (_, i) =>
       deliv({ client_id: `c${i}`, clients: { name: `C${i}` }, montant_ht_cts: (i + 1) * 1_000 }),
     )
     const top = topClients(deliveries)
-    expect(top).toHaveLength(5)
-    // Les 5 plus gros : c7=8000, c6=7000, c5=6000, c4=5000, c3=4000
-    expect(top.map(c => c.cts)).toEqual([8_000, 7_000, 6_000, 5_000, 4_000])
+    expect(top).toHaveLength(8)
+    // Tri décroissant : c7=8000, c6=7000, …, c0=1000
+    expect(top.map(c => c.cts)).toEqual([8_000, 7_000, 6_000, 5_000, 4_000, 3_000, 2_000, 1_000])
   })
 
-  it('respecte un n personnalisé', () => {
+  it('liste déjà ≤ N → tout est visible, pas d\'autres', () => {
     const top = topClients([
       deliv({ client_id: 'a', clients: { name: 'A' }, montant_ht_cts: 3_000 }),
       deliv({ client_id: 'b', clients: { name: 'B' }, montant_ht_cts: 2_000 }),
       deliv({ client_id: 'c', clients: { name: 'C' }, montant_ht_cts: 1_000 }),
-    ], 2)
-    expect(top.map(c => c.name)).toEqual(['A', 'B'])
+    ])
+    expect(top.map(c => c.name)).toEqual(['A', 'B', 'C'])
   })
 
   it('nom client manquant (clients null) → « — »', () => {
