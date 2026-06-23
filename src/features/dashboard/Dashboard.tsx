@@ -21,12 +21,12 @@ export function Dashboard() {
   const navigate = useNavigate()
   const [kpis, setKpis] = useState<DashboardKpis | null>(null)
   const [recent, setRecent] = useState<DeliveryRow[]>([])
-  const [trend, setTrend] = useState<{ month: string; caHtCts: number; nb: number; nbFacturee: number; nbPayee: number }[]>([])
+  const [trend, setTrend] = useState<{ month: string; caHtCts: number; chargesHtCts: number; margeHtCts: number; nb: number; nbFacturee: number; nbPayee: number }[]>([])
   const [loading, setLoading] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
   const [period, setPeriod] = useState<TrendPeriod>('6m')
-  const [metric, setMetric] = useState<'ca' | 'livraisons'>('ca')
+  const [metric, setMetric] = useState<'ca' | 'livraisons' | 'marge'>('ca')
   const [actions, setActions] = useState<ActionItems | null>(null)
 
   const load = useCallback(async () => {
@@ -123,7 +123,7 @@ export function Dashboard() {
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div className="flex items-baseline gap-3">
                 <span className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">
-                  {metric === 'ca' ? "Chiffre d'affaires HT" : 'Livraisons'}
+                  {metric === 'ca' ? "Chiffre d'affaires HT" : metric === 'marge' ? 'Marge HT (CA − charges)' : 'Livraisons'}
                 </span>
               </div>
               {/* Contrôles période + métrique */}
@@ -139,12 +139,12 @@ export function Dashboard() {
                   ))}
                 </div>
                 <div className="flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden text-[var(--fs-xs)]">
-                  {(['ca', 'livraisons'] as const).map(m => (
+                  {(['ca', 'livraisons', 'marge'] as const).map(m => (
                     <button key={m} type="button" onClick={() => setMetric(m)}
                       className={`px-3 py-1.5 transition-colors ${metric === m
                         ? 'bg-[var(--brand)] text-white font-semibold'
                         : 'bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]'}`}>
-                      {m === 'ca' ? 'CA HT' : 'Livraisons'}
+                      {m === 'ca' ? 'CA HT' : m === 'marge' ? 'Marge' : 'Livraisons'}
                     </button>
                   ))}
                 </div>
@@ -154,8 +154,11 @@ export function Dashboard() {
               ? <Skeleton className="h-[220px]" />
               : <LineChart
                   key={`${period}-${metric}`}
-                  points={trend.map(t => ({ label: t.month, value: metric === 'ca' ? t.caHtCts : t.nb }))}
-                  formatValue={metric === 'ca' ? formatCents : v => `${v} liv.`}
+                  points={trend.map(t => ({
+                    label: t.month,
+                    value: metric === 'ca' ? t.caHtCts : metric === 'marge' ? t.margeHtCts : t.nb,
+                  }))}
+                  formatValue={metric === 'livraisons' ? v => `${v} liv.` : formatCents}
                 />
             }
           </div>

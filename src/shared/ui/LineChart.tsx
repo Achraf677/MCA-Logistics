@@ -39,6 +39,7 @@ export function LineChart({ points, formatValue }: LineChartProps) {
   const max = Math.max(...vals, 1)
   const min = Math.min(...vals, 0)
   const span = max - min || 1
+  const hasNegative = vals.some(v => v < 0)
 
   const x = (i: number) => pad + (i * (W - pad * 2)) / Math.max(points.length - 1, 1)
   const y = (v: number) => chartBot - ((v - min) / span) * (chartBot - chartTop)
@@ -107,6 +108,14 @@ export function LineChart({ points, formatValue }: LineChartProps) {
           className="lc-line"
         />
 
+        {/* Ligne de zéro discrète (seuil de rentabilité) — visible si des valeurs sont négatives */}
+        {hasNegative && (
+          <line
+            x1={pad} y1={y(0)} x2={W - pad} y2={y(0)}
+            stroke="var(--border)" strokeWidth="1" strokeDasharray="4 3"
+          />
+        )}
+
         {/* Crosshair au survol */}
         {hovered !== null && (
           <line
@@ -169,7 +178,7 @@ export function LineChart({ points, formatValue }: LineChartProps) {
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', marginBottom: 2 }}>
             {hpt.label}
           </div>
-          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+          <div style={{ fontSize: 'var(--fs-sm)', color: hpt.value < 0 ? 'var(--danger)' : 'var(--text)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
             {fmt(hpt.value)}
           </div>
         </div>
