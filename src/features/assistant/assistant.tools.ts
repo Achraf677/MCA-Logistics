@@ -282,7 +282,7 @@ export async function getTva(mois?: string) {
   return {
     mois: label,
     tva_collectee_eur: centimesToEuros(t.tvaCollecteeCts),
-    tva_deductible_eur: centimesToEuros(t.tvaDeductibleCharges + t.tvaDeductibleCarburant),
+    tva_deductible_eur: centimesToEuros(t.tvaDeductibleChargesFR + t.tvaDeductibleCarburantFR),
     tva_nette_eur: centimesToEuros(t.soldeCts),
   }
 }
