@@ -15,4 +15,5 @@ export interface QontoTx {
   side: TxSide
   operation_type: string | null
   settled_at: string | null
+  charge_id: string | null
 }
