@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronRight, Euro, Package, FileCheck2, CheckCircle2, Truck, Users, Building2, Tag, Fuel, Wrench, CalendarClock } from 'lucide-react'
+import { ChevronRight, Euro, Package, FileCheck2, CheckCircle2, Truck, Users, Building2, Tag, Fuel, Wrench, CalendarClock, CreditCard } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
@@ -345,6 +345,17 @@ function ActionPanel({ loading, actions, kpis, onNavigate }: ActionPanelProps) {
       iconColor: 'var(--info)',
       badgeBg: 'color-mix(in srgb, var(--info) 14%, transparent)',
       badgeColor: 'var(--info)',
+    },
+    {
+      count: actions.qontoDebitsATraiter,
+      label: actions.qontoDebitsATraiter === 1 ? '1 débit bancaire à rapprocher' : `${actions.qontoDebitsATraiter} débits bancaires à rapprocher`,
+      sub: actions.montantQontoATraiterCts > 0 ? `· ${(actions.montantQontoATraiterCts / 100).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} €` : undefined,
+      path: '/tresorerie',
+      icon: <CreditCard size={14} />,
+      iconBg: 'bg-[var(--warn-soft)]',
+      iconColor: 'var(--warn)',
+      badgeBg: 'var(--warn-soft)',
+      badgeColor: 'var(--warn)',
     },
   ].filter(a => a.count > 0) : []
 

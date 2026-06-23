@@ -63,6 +63,8 @@ export interface ActionItems {
   carburantARapprocher: number
   entretienARapprocher: number
   entretienAVenir: number
+  qontoDebitsATraiter: number
+  montantQontoATraiterCts: number
 }
 
 export async function getActionItems(): Promise<ActionItems> {
@@ -77,6 +79,7 @@ export async function getActionItems(): Promise<ActionItems> {
     fuelLinkedRes,
     maintLinkedRes,
     aVenirRes,
+    qontoDebitsRes,
   ] = await Promise.all([
     supabase.from('deliveries').select('amount_ht_cts').eq('statut', 'facturee'),
     supabase.from('charges').select('id', { count: 'exact', head: true }).is('category_id', null),
@@ -88,6 +91,11 @@ export async function getActionItems(): Promise<ActionItems> {
       .select('id', { count: 'exact', head: true })
       .not('next_due_date', 'is', null)
       .gte('next_due_date', today),
+    supabase.from('qonto_transactions')
+      .select('amount_cts')
+      .eq('side', 'debit')
+      .is('charge_id', null)
+      .is('justif_type', null),
   ])
 
   const impayees        = impayeesRes.data ?? []
@@ -106,13 +114,17 @@ export async function getActionItems(): Promise<ActionItems> {
       : Promise.resolve({ data: [] as { id: string }[] }),
   ])
 
+  const qontoDebits = qontoDebitsRes.data ?? []
+
   return {
-    facturesImpayees:       impayees.length,
-    montantImpayeCts:       impayees.reduce((s, d) => s + (d.amount_ht_cts ?? 0), 0),
-    chargesNonCategorisees: nonCatRes.count ?? 0,
-    carburantARapprocher:   (carburantChargesRes.data ?? []).filter(c => !fuelLinkedIds.has(c.id)).length,
-    entretienARapprocher:   (entretienChargesRes.data ?? []).filter(c => !maintLinkedIds.has(c.id)).length,
-    entretienAVenir:        aVenirRes.count ?? 0,
+    facturesImpayees:        impayees.length,
+    montantImpayeCts:        impayees.reduce((s, d) => s + (d.amount_ht_cts ?? 0), 0),
+    chargesNonCategorisees:  nonCatRes.count ?? 0,
+    carburantARapprocher:    (carburantChargesRes.data ?? []).filter(c => !fuelLinkedIds.has(c.id)).length,
+    entretienARapprocher:    (entretienChargesRes.data ?? []).filter(c => !maintLinkedIds.has(c.id)).length,
+    entretienAVenir:         aVenirRes.count ?? 0,
+    qontoDebitsATraiter:     qontoDebits.length,
+    montantQontoATraiterCts: qontoDebits.reduce((s, t) => s + (t.amount_cts ?? 0), 0),
   }
 }
 
