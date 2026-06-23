@@ -89,6 +89,26 @@ function decodeVatCode(code: string | number | null | undefined): number | null 
 }
 
 /**
+ * Fallback taux TVA par les montants quand le code Pennylane est inconnu.
+ * tva=0 → 0 (exonéré/marge). Sinon : raw = round(tva/ht*100), puis calage
+ * sur le standard le plus proche parmi {0, 5.5, 10, 19, 20} ±1.5.
+ * Si hors tolérance (taux atypique), conserve le taux brut calculé.
+ */
+function snapVatRate(tvaCts: number, htCts: number): number {
+  if (tvaCts <= 0 || htCts <= 0) return 0;
+  const raw = Math.round(tvaCts / htCts * 100);
+  const STANDARDS = [0, 5.5, 10, 19, 20];
+  const TOLERANCE = 1.5;
+  let best: number | null = null;
+  let bestDist = Infinity;
+  for (const s of STANDARDS) {
+    const dist = Math.abs(raw - s);
+    if (dist <= TOLERANCE && dist < bestDist) { bestDist = dist; best = s; }
+  }
+  return best ?? raw;
+}
+
+/**
  * Récupère le taux TVA dominant d'une facture via ses lignes.
  * "Dominant" = ligne avec le plus grand montant HT.
  * Retourne null si les lignes sont inaccessibles ou le code inconnu.
@@ -224,11 +244,14 @@ Deno.serve(async (req) => {
         const tvaCts = toCents(inv.currency_tax);
         const ttcCts = toCents(inv.currency_amount);
 
-        // Taux TVA : lu depuis les lignes de facture — JAMAIS recalculé depuis les montants.
+        // Taux TVA : priorité au code Pennylane (lignes de facture).
+        // Fallback par les montants quand le code est inconnu (tva_cts / ht_cts).
         let tvaRate: number | null = null;
         if (inv.invoice_lines?.url) {
           tvaRate = await fetchDominantVatRate(inv.invoice_lines.url, token);
-
+        }
+        if (tvaRate === null) {
+          tvaRate = snapVatRate(tvaCts, htCts);
         }
 
         chargeRows.push({
@@ -240,7 +263,7 @@ Deno.serve(async (req) => {
           montant_ht_cts:      htCts,
           tva_cts:             tvaCts,
           montant_ttc_cts:     ttcCts,
-          tva_rate:            tvaRate,   // null si inconnu, jamais une approximation
+          tva_rate:            tvaRate,
           receipt_url:         inv.public_file_url ?? null,
           pennylane_synced_at: new Date().toISOString(),
         });
