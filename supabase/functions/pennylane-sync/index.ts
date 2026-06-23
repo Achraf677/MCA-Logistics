@@ -12,10 +12,6 @@ interface PennylaneSupplierRef {
   url: string;
 }
 
-interface PennylaneInvoiceLines {
-  url: string;
-}
-
 interface PennylaneSupplierInvoice {
   id:                           number;
   invoice_number:               string | null;
@@ -26,28 +22,12 @@ interface PennylaneSupplierInvoice {
   currency_amount:              string | null;
   supplier:                     PennylaneSupplierRef | null;
   public_file_url:              string | null;
-  invoice_lines:                PennylaneInvoiceLines | null;
 }
 
 interface InvoicesPage {
   items:       PennylaneSupplierInvoice[];
   has_more:    boolean;
   next_cursor: string | null;
-}
-
-// Ligne de facture — champ vat_rate : code Pennylane ("FR_200", "FR_100", "FR_055", "FR_021", "FR_000")
-// ou valeur numérique directe selon la version de l'API.
-interface PennylaneInvoiceLine {
-  id:                         number;
-  label:                      string | null;
-  currency_amount_before_tax: string | null;  // montant HT de la ligne
-  vat_rate:                   string | number | null;
-}
-
-// Réponse GET /supplier_invoices/{id}/invoice_lines
-interface InvoiceLinesResponse {
-  invoice_lines?: PennylaneInvoiceLine[];
-  items?:         PennylaneInvoiceLine[];  // fallback si la clé change
 }
 
 // Détail fournisseur
@@ -71,32 +51,16 @@ function toCents(euroStr: string | null | undefined): number {
 }
 
 /**
- * Décode un code TVA Pennylane vers un taux numérique (%).
- * "FR_200" → 20.0 · "FR_100" → 10.0 · "FR_055" → 5.5 · "FR_021" → 2.1 · "FR_000" → 0.0
- * "exempt" → 0.0 (exonéré de TVA)
- * Valeur numérique directe (ex. 20) → passée telle quelle.
- * Code non reconnu → null (on ne devine jamais).
- */
-function decodeVatCode(code: string | number | null | undefined): number | null {
-  if (code == null) return null;
-  if (typeof code === 'number') return code;
-  const s = String(code).toLowerCase().trim();
-  if (s === 'exempt' || s === 'fr_000' || s === '0') return 0;
-  // "FR_200" → extrait les chiffres finaux → parseInt / 10
-  const m = s.match(/(\d+)$/);
-  if (!m) return null;
-  return parseInt(m[1], 10) / 10;
-}
-
-/**
- * Fallback taux TVA par les montants quand le code Pennylane est inconnu.
- * tva=0 → 0 (exonéré/marge). Sinon : raw = round(tva/ht*100), puis calage
- * sur le standard le plus proche parmi {0, 5.5, 10, 19, 20} ±1.5.
- * Si hors tolérance (taux atypique), conserve le taux brut calculé.
+ * Taux TVA dérivé des montants — SOURCE PRIMAIRE (déterministe).
+ * Fonctionne en valeur absolue pour les avoirs (montants négatifs).
+ * absTva=0 → 0 (exonéré/marge). raw = round(absTva/absHt*1000)/10 (1 décimale).
+ * Calage sur {0, 5.5, 10, 19, 20} ±1.5 ; hors tolérance → taux brut (jamais null).
  */
 function snapVatRate(tvaCts: number, htCts: number): number {
-  if (tvaCts <= 0 || htCts <= 0) return 0;
-  const raw = Math.round(tvaCts / htCts * 100);
+  const absHt  = Math.abs(htCts);
+  const absTva = Math.abs(tvaCts);
+  if (absHt === 0 || absTva === 0) return 0;
+  const raw = Math.round(absTva / absHt * 1000) / 10;
   const STANDARDS = [0, 5.5, 10, 19, 20];
   const TOLERANCE = 1.5;
   let best: number | null = null;
@@ -106,35 +70,6 @@ function snapVatRate(tvaCts: number, htCts: number): number {
     if (dist <= TOLERANCE && dist < bestDist) { bestDist = dist; best = s; }
   }
   return best ?? raw;
-}
-
-/**
- * Récupère le taux TVA dominant d'une facture via ses lignes.
- * "Dominant" = ligne avec le plus grand montant HT.
- * Retourne null si les lignes sont inaccessibles ou le code inconnu.
- */
-async function fetchDominantVatRate(
-  invoiceLinesUrl: string,
-  token: string,
-): Promise<number | null> {
-  try {
-    const data = await fetchJson<InvoiceLinesResponse>(
-      invoiceLinesUrl,
-      { headers: pennylaneHeaders(token) },
-    );
-    const lines = data.invoice_lines ?? data.items ?? [];
-    if (lines.length === 0) return null;
-
-    let dominant = lines[0];
-    for (const line of lines) {
-      if (toCents(line.currency_amount_before_tax) > toCents(dominant.currency_amount_before_tax)) {
-        dominant = line;
-      }
-    }
-    return decodeVatCode(dominant.vat_rate);
-  } catch {
-    return null;
-  }
 }
 
 async function fetchSupplierDetail(
@@ -244,15 +179,8 @@ Deno.serve(async (req) => {
         const tvaCts = toCents(inv.currency_tax);
         const ttcCts = toCents(inv.currency_amount);
 
-        // Taux TVA : priorité au code Pennylane (lignes de facture).
-        // Fallback par les montants quand le code est inconnu (tva_cts / ht_cts).
-        let tvaRate: number | null = null;
-        if (inv.invoice_lines?.url) {
-          tvaRate = await fetchDominantVatRate(inv.invoice_lines.url, token);
-        }
-        if (tvaRate === null) {
-          tvaRate = snapVatRate(tvaCts, htCts);
-        }
+        // Taux TVA dérivé des montants (déterministe, gère avoirs).
+        const tvaRate = snapVatRate(tvaCts, htCts);
 
         chargeRows.push({
           company_id:          companyId,
