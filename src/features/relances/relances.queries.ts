@@ -9,8 +9,6 @@ type RawRow = {
   pennylane_invoice_id: string | null
   amount_ttc_cts: number | null
   invoiced_at: string
-  relance_count: number | null
-  last_relance_at: string | null
   clients: { name: string; email: string | null; payment_terms: number } | null
 }
 
@@ -20,7 +18,7 @@ export async function getOverdueInvoices(): Promise<{ data: RelanceRow[] | null;
     .select(`
       id, client_id, pennylane_invoice_id,
       amount_ttc_cts,
-      invoiced_at, relance_count, last_relance_at,
+      invoiced_at,
       clients!client_id(name, email, payment_terms)
     `)
     .eq('statut', 'facturee')
@@ -48,8 +46,6 @@ export async function getOverdueInvoices(): Promise<{ data: RelanceRow[] | null;
       echeance_date,
       jours_retard,
       palier: computePalier(jours_retard),
-      relance_count: raw.relance_count ?? 0,
-      last_relance_at: raw.last_relance_at,
     })
   }
 
@@ -57,14 +53,8 @@ export async function getOverdueInvoices(): Promise<{ data: RelanceRow[] | null;
   return { data: result, error: null }
 }
 
-export async function markRelanceSent(id: string, currentCount: number) {
-  return supabase
-    .from('deliveries')
-    .update({
-      relance_count: currentCount + 1,
-      last_relance_at: new Date().toISOString(),
-    } as Record<string, unknown>)
-    .eq('id', id)
+export async function checkPayments() {
+  return supabase.functions.invoke('pennylane-payment-check', { body: {} })
 }
 
 export async function generateRelanceDraft(prompt: string) {

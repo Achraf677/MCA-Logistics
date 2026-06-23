@@ -30,12 +30,9 @@ export function buildRelancePrompt(params: {
   ttc_eur: number
   echeance_date: string
   jours_retard: number
-  relance_count: number
 }): string {
-  const { client_name, invoice_id, ttc_eur, echeance_date, jours_retard, relance_count } = params
+  const { client_name, invoice_id, ttc_eur, echeance_date, jours_retard } = params
   const echeanceFr = new Date(echeance_date + 'T00:00:00').toLocaleDateString('fr-FR')
-  const numRelance = relance_count + 1
-  const rang = numRelance === 1 ? '1ère relance' : `${numRelance}e relance`
   const lines: (string | null)[] = [
     'Société émettrice : MCA Logistics',
     `Client destinataire : ${client_name}`,
@@ -43,7 +40,6 @@ export function buildRelancePrompt(params: {
     `Montant TTC dû : ${ttc_eur.toFixed(2)} €`,
     `Date d'échéance contractuelle : ${echeanceFr}`,
     `Retard actuel : ${jours_retard} jour${jours_retard > 1 ? 's' : ''}`,
-    `Rang de relance : ${rang}`,
     'Ton souhaité : courtois et professionnel en toutes circonstances, quel que soit le retard.',
     'Rédige la relance de paiement.',
   ]
