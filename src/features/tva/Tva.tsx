@@ -80,7 +80,7 @@ export function Tva() {
           <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">{year}</span>
         </div>
 
-        {/* KPIs */}
+        {/* ── CA3 — TVA française ───────────────────────────────────────────── */}
         {loading ? (
           <div className="grid grid-cols-2 gap-5 [&>*]:min-w-0">
             {[0,1,2,3].map(i => <Skeleton key={i} className="h-[72px]" />)}
@@ -88,21 +88,40 @@ export function Tva() {
         ) : (
           <div className="grid grid-cols-2 gap-5 [&>*]:min-w-0">
             <KpiCard label="TVA collectée" value={fmt(result!.tvaCollecteeCts)} accent />
-            <KpiCard label="TVA déductible charges" value={fmt(result!.tvaDeductibleCharges)} />
-            <KpiCard label="TVA déductible carburant" value={fmt(result!.tvaDeductibleCarburant)} />
+            <KpiCard label="TVA déductible charges (FR)" value={fmt(result!.tvaDeductibleChargesFR)} />
+            <KpiCard label="TVA déductible carburant (FR)" value={fmt(result!.tvaDeductibleCarburantFR)} />
             <KpiCard
-              label="Solde à déclarer"
+              label="Solde CA3 à déclarer"
               value={fmt(result!.soldeCts)}
               accent={result!.soldeCts > 0}
             />
           </div>
         )}
 
-        {/* Détail */}
+        {/* ── 8e directive — TVA allemande ──────────────────────────────────── */}
+        {loading ? (
+          <Skeleton className="h-[72px]" />
+        ) : (
+          <div className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] p-4 flex items-start justify-between gap-4">
+            <div className="space-y-0.5">
+              <p className="text-[var(--fs-sm)] font-medium text-[var(--text)]">
+                TVA allemande à récupérer — 8e directive (compte 467)
+              </p>
+              <p className="text-[var(--fs-xs)] text-[var(--text-disabled)]">
+                Récupérable annuellement via procédure 8e directive — hors CA3
+              </p>
+            </div>
+            <span className="font-mono font-bold text-lg text-[var(--brand)] whitespace-nowrap">
+              {fmt(result!.tvaAllemandeCts)}
+            </span>
+          </div>
+        )}
+
+        {/* ── Détail déclaration CA3 ────────────────────────────────────────── */}
         <div className="glass rounded-[var(--r-xl)] overflow-hidden">
           <div className="px-4 py-2.5 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
             <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
-              Déclaration TVA — {periodLabel}
+              Déclaration TVA CA3 — {periodLabel}
             </span>
           </div>
 
@@ -114,23 +133,32 @@ export function Tva() {
             <div className="divide-y divide-[var(--border)]">
               <Row label="TVA collectée sur ventes" value={result!.tvaCollecteeCts} positive />
               <div className="px-4 py-2 text-[var(--fs-xs)] text-[var(--text-muted)] bg-[var(--bg-elevated)]/50 uppercase tracking-wide font-medium">
-                TVA déductible
+                TVA déductible (France)
               </div>
-              <Row label="→ Charges générales" value={result!.tvaDeductibleCharges} negative />
-              <Row label="→ Carburant" value={result!.tvaDeductibleCarburant} negative />
+              <Row label="→ Charges générales (FR)" value={result!.tvaDeductibleChargesFR} negative />
+              <Row label="→ Carburant (FR)" value={result!.tvaDeductibleCarburantFR} negative />
               <div className="px-4 py-3 flex items-center justify-between bg-[var(--bg-elevated)]">
-                <span className="font-semibold text-[var(--text)]">TVA nette à déclarer</span>
+                <span className="font-semibold text-[var(--text)]">TVA nette à déclarer (CA3)</span>
                 <span className={`font-mono font-bold text-lg
                   ${result!.soldeCts > 0 ? 'text-[var(--danger)]' : 'text-[var(--success)]'}`}>
                   {fmt(result!.soldeCts)}
                 </span>
               </div>
+              {result!.tvaAllemandeCts > 0 && (
+                <>
+                  <div className="px-4 py-2 text-[var(--fs-xs)] text-[var(--text-muted)] bg-[var(--bg-elevated)]/50 uppercase tracking-wide font-medium">
+                    Hors CA3 — 8e directive
+                  </div>
+                  <Row label="TVA allemande (compte 467)" value={result!.tvaAllemandeCts} />
+                </>
+              )}
             </div>
           )}
         </div>
 
         <p className="text-[var(--fs-xs)] text-[var(--text-disabled)]">
           * TVA calculée sur les livraisons au statut "Facturée" ou "Payée".
+          Les charges liées à un plein carburant sont exclues (déjà comptées via les fuel_logs).
           Vérifiez auprès de votre comptable avant toute déclaration.
         </p>
       </div>
