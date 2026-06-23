@@ -147,18 +147,29 @@ export async function getMonthlyTrend(period: TrendPeriod = '6m') {
     })
   }
 
-  // Requêtes parallèles (vs séquentielles avant)
+  // Requêtes parallèles par slot : livraisons + charges simultanées
   return Promise.all(slots.map(async ({ start, end, label }) => {
-    const { data } = await supabase
-      .from('deliveries')
-      .select('amount_ht_cts, statut')
-      .gte('date', start)
-      .lte('date', end)
-      .neq('statut', 'annulee')
-    const rows = data ?? []
+    const [delivRes, chargesRes] = await Promise.all([
+      supabase
+        .from('deliveries')
+        .select('amount_ht_cts, statut')
+        .gte('date', start)
+        .lte('date', end)
+        .neq('statut', 'annulee'),
+      supabase
+        .from('charges')
+        .select('montant_ht_cts')
+        .gte('date', start)
+        .lte('date', end),
+    ])
+    const rows = delivRes.data ?? []
+    const caHtCts = rows.reduce((s, d) => s + effectiveHtCts(d), 0)
+    const chargesHtCts = (chargesRes.data ?? []).reduce((s, c) => s + (c.montant_ht_cts ?? 0), 0)
     return {
       month: label,
-      caHtCts: rows.reduce((s, d) => s + effectiveHtCts(d), 0),
+      caHtCts,
+      chargesHtCts,
+      margeHtCts: caHtCts - chargesHtCts,
       nb: rows.length,
       nbFacturee: rows.filter(d => d.statut === 'facturee' || d.statut === 'payee').length,
       nbPayee: rows.filter(d => d.statut === 'payee').length,
