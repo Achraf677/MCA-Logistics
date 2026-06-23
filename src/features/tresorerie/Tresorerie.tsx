@@ -10,51 +10,74 @@ import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
 import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
 import { formatMoney } from '../../shared/lib/money'
-import { getMatchingChargesForDebit, classifyDebit } from '../../shared/lib/rapprochementQonto'
+import {
+  getMatchingChargesForDebit, classifyDebit, suggestJustifType,
+} from '../../shared/lib/rapprochementQonto'
+import type { JustifType } from '../../shared/lib/rapprochementQonto'
 import {
   getLatestSnapshot, getTransactions, syncQonto, checkPayments,
   getChargesForRapprochement, linkChargeToTransaction, unlinkChargeFromTransaction,
+  setJustifType, clearJustifType, getTeamMemberNames,
 } from './tresorerie.queries'
 import {
   amountColorClass, formatSignedAmount, operationTypeLabel, formatTxDate,
 } from './tresorerie.logic'
 import { useToast } from '../../shared/ui/useToast'
+import { useProfile } from '../../app/providers'
 import type { TreasurySnapshot, QontoTx } from './tresorerie.types'
 import type { ChargePick } from '../../shared/types/charges'
 
+const JUSTIF_TYPE_LABELS: Record<JustifType, string> = {
+  cca: 'CCA',
+  frais_bancaire: 'Frais bancaire',
+  hors_activite: 'Hors activité',
+}
+
+const ALL_TYPES: JustifType[] = ['cca', 'frais_bancaire', 'hors_activite']
+
 export function Tresorerie() {
   const { toast } = useToast()
-  const [snapshot, setSnapshot]   = useState<TreasurySnapshot | null>(null)
-  const [txs, setTxs]             = useState<QontoTx[]>([])
-  const [charges, setCharges]     = useState<ChargePick[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState<string | null>(null)
+  const { profile } = useProfile()
+
+  const [snapshot, setSnapshot]       = useState<TreasurySnapshot | null>(null)
+  const [txs, setTxs]                 = useState<QontoTx[]>([])
+  const [charges, setCharges]         = useState<ChargePick[]>([])
+  const [memberNames, setMemberNames] = useState<string[]>([])
+  const [loading, setLoading]         = useState(true)
+  const [error, setError]             = useState<string | null>(null)
   const [expandedTx, setExpandedTx]   = useState<string | null>(null)
   const [rapprochOpen, setRapprochOpen] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
-    const [snapRes, txRes, chargesData] = await Promise.all([
+    const [snapRes, txRes, chargesData, names] = await Promise.all([
       getLatestSnapshot(),
       getTransactions(),
       getChargesForRapprochement(),
+      getTeamMemberNames(),
     ])
     if (snapRes.error) setError(snapRes.error.message)
     else setSnapshot(snapRes.data ?? null)
     if (txRes.error) setError(txRes.error.message)
     else setTxs(txRes.data ?? [])
     setCharges(chargesData)
+    setMemberNames(names)
     setLoading(false)
   }, [])
 
   useEffect(() => { load() }, [load])
 
   // ── Dérivés rapprochement ──────────────────────────────────────────────────
+  const associeNames = [
+    ...(profile?.full_name ? [profile.full_name] : []),
+    ...memberNames,
+  ].filter((n, i, arr) => arr.indexOf(n) === i)
+
   const linkedChargeIds = new Set(txs.filter(t => t.charge_id).map(t => t.charge_id!))
   const debits = txs.filter(t => t.side === 'debit')
   const debitsSansJustif = debits.filter(t => {
     const m = getMatchingChargesForDebit(t.amount_cts, charges, linkedChargeIds, t.settled_at)
-    return classifyDebit(t.charge_id, m.length) === 'sans_justificatif'
+    return classifyDebit(t.charge_id, t.justif_type ?? null, m.length) === 'sans_justificatif'
   })
   const totalSansJustifCts = debitsSansJustif.reduce((s, t) => s + t.amount_cts, 0)
 
@@ -75,6 +98,20 @@ export function Tresorerie() {
     toast('Rapprochement supprimé')
   }
 
+  const handleSetJustifType = async (qontoId: string, type: JustifType) => {
+    const { error } = await setJustifType(qontoId, type)
+    if (error) { toast(error.message, 'error'); return }
+    await load()
+    toast(`Marqué : ${JUSTIF_TYPE_LABELS[type]}`)
+  }
+
+  const handleClearJustifType = async (qontoId: string) => {
+    const { error } = await clearJustifType(qontoId)
+    if (error) { toast(error.message, 'error'); return }
+    await load()
+    toast('Tag retiré')
+  }
+
   const toggleExpand = (qontoId: string) =>
     setExpandedTx(prev => prev === qontoId ? null : qontoId)
 
@@ -82,6 +119,91 @@ export function Tresorerie() {
   const chargesDisponibles: ChargePick[] = txEnCours
     ? getMatchingChargesForDebit(txEnCours.amount_cts, charges, linkedChargeIds, txEnCours.settled_at)
     : []
+
+  // ── Sous-composant accordéon (partagé desktop/mobile) ─────────────────────
+  const renderAccordeonContent = (tx: QontoTx, matches: ChargePick[]) => {
+    const status = classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length)
+    const linked = tx.charge_id ? charges.find(c => c.id === tx.charge_id) ?? null : null
+    const suggestion = suggestJustifType(tx.label, tx.operation_type, associeNames)
+
+    if (status === 'justifie_charge' && linked) {
+      return (
+        <LinkedChargeCard
+          charge={linked}
+          onDetach={() => handleDetach(tx.qonto_id)}
+        />
+      )
+    }
+
+    if (status === 'justifie_type') {
+      return (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge color="muted">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>
+          <button
+            onClick={e => { e.stopPropagation(); handleClearJustifType(tx.qonto_id) }}
+            className="text-[var(--fs-xs)] text-[var(--text-muted)] underline hover:text-[var(--text)] transition-colors"
+          >
+            Retirer
+          </button>
+        </div>
+      )
+    }
+
+    // a_rapprocher ou sans_justificatif
+    return (
+      <div className="space-y-2.5">
+        {/* Rapprocher si charges disponibles */}
+        {matches.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+              {matches.length} charge{matches.length > 1 ? 's' : ''} au même montant
+            </span>
+            <Button
+              variant="secondary"
+              size="compact"
+              onClick={e => { e.stopPropagation(); setRapprochOpen(tx.qonto_id) }}
+            >
+              Rapprocher ({matches.length})
+            </Button>
+          </div>
+        )}
+
+        {/* Suggestion auto */}
+        {suggestion && (
+          <div className="flex items-center gap-2">
+            <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Suggéré :</span>
+            <button
+              onClick={e => { e.stopPropagation(); handleSetJustifType(tx.qonto_id, suggestion) }}
+              className="px-2.5 py-0.5 text-[var(--fs-xs)] font-semibold rounded bg-[var(--brand-soft,#eff6ff)] text-[var(--brand)] border border-[var(--brand)] hover:bg-[var(--brand)] hover:text-white transition-colors"
+            >
+              {JUSTIF_TYPE_LABELS[suggestion]}
+            </button>
+          </div>
+        )}
+
+        {/* Sélecteur manuel */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Marquer :</span>
+          {ALL_TYPES.map(t => (
+            <button
+              key={t}
+              onClick={e => { e.stopPropagation(); handleSetJustifType(tx.qonto_id, t) }}
+              className="px-2 py-0.5 text-[var(--fs-xs)] rounded border border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--brand)] hover:text-[var(--text)] transition-colors"
+            >
+              {JUSTIF_TYPE_LABELS[t]}
+            </button>
+          ))}
+        </div>
+
+        {/* Hint si aucune charge */}
+        {matches.length === 0 && (
+          <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+            Aucune charge Pennylane au montant TTC de {formatMoney(tx.amount_cts)}.
+          </p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <Shell pageTitle="Trésorerie">
@@ -166,14 +288,15 @@ export function Tresorerie() {
               </thead>
               <tbody>
                 {txs.map((tx, i) => {
-                  const isDebit   = tx.side === 'debit'
-                  const expanded  = expandedTx === tx.qonto_id
-                  const matches   = isDebit
+                  const isDebit  = tx.side === 'debit'
+                  const expanded = expandedTx === tx.qonto_id
+                  const matches  = isDebit
                     ? getMatchingChargesForDebit(tx.amount_cts, charges, linkedChargeIds, tx.settled_at)
                     : []
-                  const status    = isDebit ? classifyDebit(tx.charge_id, matches.length) : null
-                  const linked    = tx.charge_id ? charges.find(c => c.id === tx.charge_id) ?? null : null
-                  const rowBg     = i % 2 === 0 ? '' : 'bg-[var(--bg-card)]/40'
+                  const status   = isDebit
+                    ? classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length)
+                    : null
+                  const rowBg    = i % 2 === 0 ? '' : 'bg-[var(--bg-card)]/40'
 
                   return (
                     <>
@@ -205,42 +328,18 @@ export function Tresorerie() {
                           {formatSignedAmount(tx)}
                         </td>
                         <td className="px-4 py-3">
-                          {status === 'justifie'            && <Badge color="success">Justifié</Badge>}
-                          {status === 'a_rapprocher'        && <Badge color="info">À rapprocher</Badge>}
-                          {status === 'sans_justificatif'   && <Badge color="warning">Justificatif manquant</Badge>}
+                          {status === 'justifie_charge'    && <Badge color="success">Justifié</Badge>}
+                          {status === 'justifie_type'      && <Badge color="muted">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
+                          {status === 'a_rapprocher'       && <Badge color="info">À rapprocher</Badge>}
+                          {status === 'sans_justificatif'  && <Badge color="warning">Justificatif manquant</Badge>}
                         </td>
                       </tr>
 
-                      {/* Accordéon inline */}
                       {isDebit && expanded && (
-                        <tr key={`${tx.qonto_id}-accordion`} className="border-t border-[var(--border)]">
+                        <tr key={`${tx.qonto_id}-acc`} className="border-t border-[var(--border)]">
                           <td colSpan={5} className="p-0">
-                            <div className="px-6 py-4 bg-[var(--bg-elevated)] space-y-3">
-                              {status === 'justifie' && linked && (
-                                <LinkedChargeCard
-                                  charge={linked}
-                                  onDetach={() => handleDetach(tx.qonto_id)}
-                                />
-                              )}
-                              {status === 'a_rapprocher' && (
-                                <div className="flex items-center gap-3">
-                                  <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-                                    {matches.length} charge{matches.length > 1 ? 's' : ''} au même montant disponible{matches.length > 1 ? 's' : ''}
-                                  </p>
-                                  <Button
-                                    variant="secondary"
-                                    size="compact"
-                                    onClick={e => { e.stopPropagation(); setRapprochOpen(tx.qonto_id) }}
-                                  >
-                                    Rapprocher
-                                  </Button>
-                                </div>
-                              )}
-                              {status === 'sans_justificatif' && (
-                                <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-                                  Aucune charge au montant TTC de {formatMoney(tx.amount_cts)} sur la période. Vérifiez dans Charges.
-                                </p>
-                              )}
+                            <div className="px-6 py-4 bg-[var(--bg-elevated)]">
+                              {renderAccordeonContent(tx, matches)}
                             </div>
                           </td>
                         </tr>
@@ -260,8 +359,9 @@ export function Tresorerie() {
               const matches  = isDebit
                 ? getMatchingChargesForDebit(tx.amount_cts, charges, linkedChargeIds, tx.settled_at)
                 : []
-              const status   = isDebit ? classifyDebit(tx.charge_id, matches.length) : null
-              const linked   = tx.charge_id ? charges.find(c => c.id === tx.charge_id) ?? null : null
+              const status   = isDebit
+                ? classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length)
+                : null
 
               return (
                 <div
@@ -284,7 +384,8 @@ export function Tresorerie() {
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Badge color="muted">{operationTypeLabel(tx.operation_type)}</Badge>
-                        {status === 'justifie'          && <Badge color="success">Justifié</Badge>}
+                        {status === 'justifie_charge'   && <Badge color="success">Justifié</Badge>}
+                        {status === 'justifie_type'     && <Badge color="muted">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
                         {status === 'a_rapprocher'      && <Badge color="info">À rapprocher</Badge>}
                         {status === 'sans_justificatif' && <Badge color="warning">Manquant</Badge>}
                       </div>
@@ -297,31 +398,9 @@ export function Tresorerie() {
                     </div>
                   </div>
 
-                  {/* Accordéon mobile */}
                   {isDebit && expanded && (
-                    <div className="px-4 pb-4 pt-0 border-t border-[var(--border)] bg-[var(--bg-elevated)] space-y-3 pt-3">
-                      {status === 'justifie' && linked && (
-                        <LinkedChargeCard charge={linked} onDetach={() => handleDetach(tx.qonto_id)} />
-                      )}
-                      {status === 'a_rapprocher' && (
-                        <div className="flex items-center gap-3">
-                          <p className="text-[var(--fs-xs)] text-[var(--text-muted)] flex-1">
-                            {matches.length} charge{matches.length > 1 ? 's' : ''} disponible{matches.length > 1 ? 's' : ''}
-                          </p>
-                          <Button
-                            variant="secondary"
-                            size="compact"
-                            onClick={() => setRapprochOpen(tx.qonto_id)}
-                          >
-                            Rapprocher
-                          </Button>
-                        </div>
-                      )}
-                      {status === 'sans_justificatif' && (
-                        <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-                          Aucune charge au montant TTC de {formatMoney(tx.amount_cts)}.
-                        </p>
-                      )}
+                    <div className="px-4 pb-4 pt-3 border-t border-[var(--border)] bg-[var(--bg-elevated)]">
+                      {renderAccordeonContent(tx, matches)}
                     </div>
                   )}
                 </div>

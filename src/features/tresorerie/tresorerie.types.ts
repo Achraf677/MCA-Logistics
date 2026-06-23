@@ -16,4 +16,5 @@ export interface QontoTx {
   operation_type: string | null
   settled_at: string | null
   charge_id: string | null
+  justif_type: string | null
 }

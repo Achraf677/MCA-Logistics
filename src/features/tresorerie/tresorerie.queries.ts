@@ -16,7 +16,7 @@ export async function getLatestSnapshot() {
 export async function getTransactions() {
   return supabase
     .from('qonto_transactions')
-    .select('qonto_id, label, amount_cts, side, operation_type, settled_at, charge_id')
+    .select('qonto_id, label, amount_cts, side, operation_type, settled_at, charge_id, justif_type')
     .order('settled_at', { ascending: false, nullsFirst: false })
     .returns<QontoTx[]>()
 }
@@ -49,6 +49,28 @@ export async function unlinkChargeFromTransaction(qontoId: string) {
     .from('qonto_transactions')
     .update({ charge_id: null })
     .eq('qonto_id', qontoId)
+}
+
+export async function setJustifType(qontoId: string, type: string) {
+  return supabase
+    .from('qonto_transactions')
+    .update({ justif_type: type })
+    .eq('qonto_id', qontoId)
+}
+
+export async function clearJustifType(qontoId: string) {
+  return supabase
+    .from('qonto_transactions')
+    .update({ justif_type: null })
+    .eq('qonto_id', qontoId)
+}
+
+export async function getTeamMemberNames(): Promise<string[]> {
+  const { data } = await supabase
+    .from('team_members')
+    .select('full_name')
+    .eq('active', true)
+  return (data ?? []).map((m: { full_name: string }) => m.full_name).filter(Boolean)
 }
 
 // ── Déclenchements (Edge Functions — jamais d'appel API externe direct) ────────

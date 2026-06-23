@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getMatchingChargesForDebit, classifyDebit } from './rapprochementQonto'
+import { getMatchingChargesForDebit, classifyDebit, suggestJustifType } from './rapprochementQonto'
 import type { ChargePick } from '../types/charges'
 
 function charge(id: string, ttc: number, date = '2026-06-01'): ChargePick {
@@ -54,17 +54,71 @@ describe('getMatchingChargesForDebit', () => {
 })
 
 describe('classifyDebit', () => {
-  it('justifie quand charge_id est défini', () => {
-    expect(classifyDebit('uuid-123', 0)).toBe('justifie')
-    expect(classifyDebit('uuid-123', 3)).toBe('justifie')
+  it('justifie_charge si charge_id set (priorité maximale)', () => {
+    expect(classifyDebit('uuid-123', null, 0)).toBe('justifie_charge')
+    expect(classifyDebit('uuid-123', null, 3)).toBe('justifie_charge')
+    // charge_id prime même si justifType est aussi set
+    expect(classifyDebit('uuid-123', 'cca', 0)).toBe('justifie_charge')
   })
 
-  it('a_rapprocher quand charge_id null et matchCount > 0', () => {
-    expect(classifyDebit(null, 1)).toBe('a_rapprocher')
-    expect(classifyDebit(null, 5)).toBe('a_rapprocher')
+  it('justifie_type si justifType set et pas de charge_id', () => {
+    expect(classifyDebit(null, 'cca', 0)).toBe('justifie_type')
+    expect(classifyDebit(null, 'frais_bancaire', 3)).toBe('justifie_type')
+    expect(classifyDebit(null, 'hors_activite', 0)).toBe('justifie_type')
   })
 
-  it('sans_justificatif quand charge_id null et 0 charge disponible', () => {
-    expect(classifyDebit(null, 0)).toBe('sans_justificatif')
+  it('a_rapprocher si rien et matchCount > 0', () => {
+    expect(classifyDebit(null, null, 1)).toBe('a_rapprocher')
+    expect(classifyDebit(null, null, 5)).toBe('a_rapprocher')
+  })
+
+  it('sans_justificatif en dernier ressort', () => {
+    expect(classifyDebit(null, null, 0)).toBe('sans_justificatif')
+  })
+})
+
+describe('suggestJustifType', () => {
+  it("CCA si transfer et nom d'associe dans label (ordre naturel)", () => {
+    expect(suggestJustifType('VIR ACHRAF CHIKRI 2026', 'transfer', ['Achraf Chikri']))
+      .toBe('cca')
+  })
+
+  it("CCA si transfer et nom d'associe dans label (ordre inverse)", () => {
+    expect(suggestJustifType('VIR CHIKRI ACHRAF 2026', 'transfer', ['Achraf Chikri']))
+      .toBe('cca')
+  })
+
+  it('CCA : casse et accents ignores', () => {
+    expect(suggestJustifType('Virement Elodie Dupont', 'transfer', ['Elodie Dupont']))
+      .toBe('cca')
+  })
+
+  it('pas CCA si transfer mais aucun associe ne matche', () => {
+    expect(suggestJustifType('VIR DURAND PIERRE', 'transfer', ['Achraf Chikri']))
+      .toBeNull()
+  })
+
+  it('pas CCA si pas transfer (operation card)', () => {
+    expect(suggestJustifType('Achraf Chikri remboursement', 'card', ['Achraf Chikri']))
+      .toBeNull()
+  })
+
+  it('frais_bancaire si operationType qonto_fee', () => {
+    expect(suggestJustifType('Mensualite plan business', 'qonto_fee', []))
+      .toBe('frais_bancaire')
+  })
+
+  it('frais_bancaire si label contient qonto (casse ignoree)', () => {
+    expect(suggestJustifType('QONTO FEE JUILLET', 'card', []))
+      .toBe('frais_bancaire')
+  })
+
+  it('null si rien ne matche', () => {
+    expect(suggestJustifType('Fournitures bureau', 'card', ['Achraf Chikri']))
+      .toBeNull()
+  })
+
+  it('null si label et operationType vides', () => {
+    expect(suggestJustifType(null, null, [])).toBeNull()
   })
 })
