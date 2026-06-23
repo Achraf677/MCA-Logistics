@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   caMensuel, annualTotals, topClients, chargesByCategory,
-  type StatDelivery, type StatCharge, type StatFuel, type StatMaintenance,
+  type StatDelivery, type StatCharge,
 } from './statistiques.logic'
 
 // Helpers : construisent les formes minimales lues par la logique.
@@ -17,12 +17,12 @@ function deliv(p: Partial<StatDelivery>): StatDelivery {
     clients: 'clients' in p ? p.clients! : { name: 'Client 1' },
   }
 }
-function charge(p: { date?: string; montant_ht_cts?: number | null; category?: string | null }): StatCharge {
+function charge(p: { date?: string; montant_ht_cts?: number | null; category?: string | null; type?: string | null }): StatCharge {
   const slug = p.category ?? null
   return {
     date: p.date ?? day(0),
     montant_ht_cts: p.montant_ht_cts ?? 0,
-    charge_categories: slug ? { name: slug, slug } : null,
+    charge_categories: slug ? { name: slug, slug, type: p.type ?? null } : null,
   }
 }
 
@@ -63,25 +63,41 @@ describe('caMensuel — CA HT par mois', () => {
 })
 
 // ── annualTotals ──────────────────────────────────────────────────────────────────
-describe('annualTotals — 4 totaux', () => {
-  it('somme chaque source indépendamment', () => {
+describe('annualTotals — totaux charges-only (zéro double-comptage)', () => {
+  it('carburant et entretien = sous-ensembles de chargesTotal', () => {
     const data = {
       deliveries: [deliv({ montant_ht_cts: 100_000 }), deliv({ montant_ht_cts: 50_000 })],
-      charges: [charge({ montant_ht_cts: 20_000 }), charge({ montant_ht_cts: 5_000 })],
-      fuel: [{ date: day(0), total_cts: 8_000 }, { date: day(1), total_cts: 2_000 }] as StatFuel[],
-      maintenances: [{ date: day(0), cost_cts: 3_000 }, { date: day(1), cost_cts: null }] as StatMaintenance[],
+      charges: [
+        charge({ montant_ht_cts: 20_000, category: 'Assurance', type: null }),
+        charge({ montant_ht_cts: 8_000,  category: 'Carburant', type: 'carburant' }),
+        charge({ montant_ht_cts: 3_000,  category: 'Carburant', type: 'carburant' }),
+        charge({ montant_ht_cts: 5_000,  category: 'Entretien', type: 'entretien' }),
+      ],
     }
     expect(annualTotals(data)).toEqual({
       caTotal: 150_000,
-      chargesTotal: 25_000,
-      fuelTotal: 10_000,
-      maintenanceTotal: 3_000, // le null compte comme 0
+      chargesTotal: 36_000,      // 20+8+3+5
+      carburantTotal: 11_000,    // sous-ensemble : 8+3
+      entretienTotal: 5_000,     // sous-ensemble : 5
+    })
+  })
+
+  it('pas de catégorie type carburant/entretien → sous-totaux à 0', () => {
+    const data = {
+      deliveries: [deliv({ montant_ht_cts: 50_000 })],
+      charges: [charge({ montant_ht_cts: 10_000, category: 'Assurance', type: null })],
+    }
+    expect(annualTotals(data)).toEqual({
+      caTotal: 50_000,
+      chargesTotal: 10_000,
+      carburantTotal: 0,
+      entretienTotal: 0,
     })
   })
 
   it('sources vides → tous les totaux à 0', () => {
-    expect(annualTotals({ deliveries: [], charges: [], fuel: [], maintenances: [] }))
-      .toEqual({ caTotal: 0, chargesTotal: 0, fuelTotal: 0, maintenanceTotal: 0 })
+    expect(annualTotals({ deliveries: [], charges: [] }))
+      .toEqual({ caTotal: 0, chargesTotal: 0, carburantTotal: 0, entretienTotal: 0 })
   })
 })
 

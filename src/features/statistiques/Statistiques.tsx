@@ -29,14 +29,13 @@ export function Statistiques() {
   const monthlyCa = caMensuel(data?.deliveries ?? [])
   const maxCa = Math.max(...monthlyCa.map(m => m.cts), 1)
 
-  const { caTotal, chargesTotal, fuelTotal, maintenanceTotal } = annualTotals({
+  const { caTotal, chargesTotal, carburantTotal, entretienTotal } = annualTotals({
     deliveries: data?.deliveries ?? [],
     charges: data?.charges ?? [],
-    fuel: data?.fuel ?? [],
-    maintenances: data?.maintenances ?? [],
   })
 
-  const margeBrute = caTotal - chargesTotal - fuelTotal - maintenanceTotal
+  // Marge = CA − charges totales (carburant/entretien sont déjà inclus dans chargesTotal)
+  const margeBrute = caTotal - chargesTotal
   const tauxMarge = caTotal > 0
     ? (margeBrute / caTotal * 100).toFixed(1) + ' %'
     : '—'
@@ -61,10 +60,10 @@ export function Statistiques() {
           </h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {loading ? [0,1,2,3].map(i => <Skeleton key={i} className="h-[72px]" />) : <>
-              <KpiCard label="CA HT"      value={formatCents(caTotal)}          tone="success" icon={<Euro size={18} />} />
-              <KpiCard label="Charges HT" value={formatCents(chargesTotal)}     tone="warning" icon={<TrendingDown size={18} />} />
-              <KpiCard label="Carburant"  value={formatCents(fuelTotal)}        tone="warning" icon={<Fuel size={18} />} />
-              <KpiCard label="Entretiens" value={formatCents(maintenanceTotal)} tone="warning" icon={<Wrench size={18} />} />
+              <KpiCard label="CA HT"      value={formatCents(caTotal)}       tone="success" icon={<Euro size={18} />} />
+              <KpiCard label="Charges HT" value={formatCents(chargesTotal)}   tone="warning" icon={<TrendingDown size={18} />} />
+              <KpiCard label="Carburant"  value={formatCents(carburantTotal)} tone="warning" icon={<Fuel size={18} />}    sub="dont charges HT" />
+              <KpiCard label="Entretiens" value={formatCents(entretienTotal)} tone="warning" icon={<Wrench size={18} />}  sub="dont charges HT" />
             </>}
           </div>
         </section>

@@ -14,7 +14,7 @@ export async function getStatistiquesData() {
       .neq('statut', 'annulee'),
     supabase
       .from('charges')
-      .select('date, montant_ht_cts, charge_categories!category_id(name, slug)')
+      .select('date, montant_ht_cts, charge_categories!category_id(name, slug, type)')
       .gte('date', yearStart)
       .lte('date', yearEnd),
     supabase
