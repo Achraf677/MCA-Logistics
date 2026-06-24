@@ -102,7 +102,7 @@ export function Encaissement() {
               label="Autres entrées"
               value={formatCents(kpis.totalAutresCts)}
               sub="hors chiffre d'affaires"
-              tone="muted"
+              tone="neutral"
               icon={<TrendingUp size={18} />}
             />
           </div>
