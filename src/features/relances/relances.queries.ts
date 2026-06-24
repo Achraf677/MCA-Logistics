@@ -57,6 +57,3 @@ export async function checkPayments() {
   return supabase.functions.invoke('pennylane-payment-check', { body: {} })
 }
 
-export async function generateRelanceDraft(prompt: string) {
-  return supabase.functions.invoke('brouillons-generate', { body: { prompt, type: 'relance' } })
-}

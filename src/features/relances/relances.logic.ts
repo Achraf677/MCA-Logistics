@@ -24,24 +24,3 @@ export function computePalier(jours: number): Palier {
   return 'J+30'
 }
 
-export function buildRelancePrompt(params: {
-  client_name: string
-  invoice_id: string | null
-  ttc_eur: number
-  echeance_date: string
-  jours_retard: number
-}): string {
-  const { client_name, invoice_id, ttc_eur, echeance_date, jours_retard } = params
-  const echeanceFr = new Date(echeance_date + 'T00:00:00').toLocaleDateString('fr-FR')
-  const lines: (string | null)[] = [
-    'Société émettrice : MCA Logistics',
-    `Client destinataire : ${client_name}`,
-    invoice_id ? `Numéro de facture : ${invoice_id}` : null,
-    `Montant TTC dû : ${ttc_eur.toFixed(2)} €`,
-    `Date d'échéance contractuelle : ${echeanceFr}`,
-    `Retard actuel : ${jours_retard} jour${jours_retard > 1 ? 's' : ''}`,
-    'Ton souhaité : courtois et professionnel en toutes circonstances, quel que soit le retard.',
-    'Rédige la relance de paiement.',
-  ]
-  return lines.filter(Boolean).join('\n')
-}
