@@ -145,18 +145,35 @@ export async function getInvoiceNumber(token: string, invoiceId: number): Promis
   }
 }
 
-/** Crée un devis Pennylane. Renvoie l'id du devis. Scope requis : quotes:all. */
+/** Crée un devis Pennylane. Renvoie l'id et le quote_number (ex. "DE-2026-06-2"). */
 export async function createQuote(
   token: string,
   body: { customer_id: number; date: string; deadline: string; invoice_lines: InvoiceLine[] },
-): Promise<number> {
+): Promise<{ id: number; quote_number: string | null }> {
   const data = await fetchJson<Record<string, unknown>>(`${PENNYLANE_BASE}/quotes`, {
     method: 'POST',
     headers: pennylaneHeaders(token),
     body: { ...body, currency: 'EUR', language: 'fr_FR' },
   });
-  const quote = (data.quote ?? data) as { id: number };
-  return quote.id;
+  const quote = (data.quote ?? data) as { id: number; quote_number?: string };
+  return { id: quote.id, quote_number: quote.quote_number ?? null };
+}
+
+/**
+ * Lit le numéro de devis lisible (ex. "DE-2026-06-2") depuis Pennylane.
+ * Retourne null en cas d'erreur (ne lève pas d'exception).
+ */
+export async function getQuoteNumber(token: string, quoteId: number): Promise<string | null> {
+  try {
+    const data = await fetchJson<Record<string, unknown>>(
+      `${PENNYLANE_BASE}/quotes/${quoteId}`,
+      { headers: pennylaneHeaders(token) },
+    );
+    const q = (data.quote ?? data) as Record<string, unknown>;
+    return (q.quote_number as string) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** Crée une facture client finalisée à partir d'un devis. Renvoie l'id de la facture.

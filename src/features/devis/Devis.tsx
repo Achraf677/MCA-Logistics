@@ -88,7 +88,7 @@ export function Devis() {
               <table className="w-full text-[var(--fs-sm)]">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                    {['Date', 'Client', 'Description', 'TTC', 'Validité', 'Statut', ''].map(h => (
+                    {['Date', 'N° devis', 'Client', 'Description', 'TTC', 'Validité', 'Statut', ''].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left font-medium text-[var(--text-muted)] text-[var(--fs-xs)] uppercase tracking-wide whitespace-nowrap">
                         {h}
                       </th>
@@ -104,6 +104,11 @@ export function Devis() {
                         onClick={() => openEdit(q)}>
                         <td className="px-4 py-3 text-[var(--text-muted)] whitespace-nowrap">
                           {fmtDate(q.date)}
+                        </td>
+                        <td className="px-4 py-3 font-mono text-[var(--fs-xs)] whitespace-nowrap">
+                          {q.pennylane_quote_number
+                            ? <span className="text-[var(--text)]">{q.pennylane_quote_number}</span>
+                            : <span className="text-[var(--text-disabled)]">—</span>}
                         </td>
                         <td className="px-4 py-3 font-medium text-[var(--text)] whitespace-nowrap">
                           {q.clients?.name ?? '—'}

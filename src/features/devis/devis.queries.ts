@@ -7,7 +7,7 @@ export async function listQuotes(): Promise<{ data: Quote[] | null; error: unkno
     .select(`
       id, company_id, client_id, date, valid_until, description,
       amount_ht_cts, tva_rate, tva_cts, amount_ttc_cts, statut,
-      pennylane_quote_id, pennylane_invoice_id, notes, created_at, updated_at,
+      pennylane_quote_id, pennylane_quote_number, pennylane_invoice_id, notes, created_at, updated_at,
       clients!client_id(name)
     `)
     .order('date', { ascending: false })
@@ -38,6 +38,12 @@ export async function listClientsLight(): Promise<{ data: { id: string; name: st
 
 export async function updateQuoteStatus(id: string, statut: QuoteStatus) {
   return supabase.from('quotes').update({ statut }).eq('id', id)
+}
+
+export async function syncQuoteNumber(quoteId: string) {
+  return supabase.functions.invoke('pennylane-quote', {
+    body: { action: 'sync-number', quote_id: quoteId },
+  })
 }
 
 export async function sendToPennylane(quoteId: string) {

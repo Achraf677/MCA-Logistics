@@ -20,6 +20,7 @@ export interface Quote {
   amount_ttc_cts: number | null
   statut: QuoteStatus
   pennylane_quote_id: string | null
+  pennylane_quote_number: string | null
   pennylane_invoice_id: string | null
   notes: string | null
   created_at: string
