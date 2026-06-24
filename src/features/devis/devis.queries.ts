@@ -15,7 +15,7 @@ export async function listQuotes(): Promise<{ data: Quote[] | null; error: unkno
   return { data: data as unknown as Quote[] | null, error }
 }
 
-export async function createQuote(payload: Omit<Quote, 'id' | 'created_at' | 'updated_at' | 'clients'>) {
+export async function createQuote(payload: Omit<Quote, 'id' | 'created_at' | 'updated_at' | 'clients' | 'pennylane_quote_number'>) {
   return supabase.from('quotes').insert(payload).select().single()
 }
 
