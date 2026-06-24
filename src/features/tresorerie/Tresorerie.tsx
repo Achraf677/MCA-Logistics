@@ -12,12 +12,13 @@ import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
 import { formatMoney } from '../../shared/lib/money'
 import {
   getMatchingChargesForDebit, classifyDebit, suggestJustifType,
+  classifyCredit, suggestCreditTag,
 } from '../../shared/lib/rapprochementQonto'
-import type { JustifType } from '../../shared/lib/rapprochementQonto'
+import type { JustifType, CreditTag } from '../../shared/lib/rapprochementQonto'
 import {
   getLatestSnapshot, getTransactions, syncQonto, checkPayments,
   getChargesForRapprochement, linkChargeToTransaction, unlinkChargeFromTransaction,
-  setJustifType, clearJustifType, getTeamMemberNames,
+  setJustifType, clearJustifType, getTeamMemberNames, getClientNames,
 } from './tresorerie.queries'
 import {
   amountColorClass, formatSignedAmount, operationTypeLabel, formatTxDate,
@@ -28,12 +29,16 @@ import type { TreasurySnapshot, QontoTx } from './tresorerie.types'
 import type { ChargePick } from '../../shared/types/charges'
 
 const JUSTIF_TYPE_LABELS: Record<JustifType, string> = {
-  cca: 'CCA',
+  cca:            'CCA',
   frais_bancaire: 'Frais bancaire',
-  hors_activite: 'Hors activité',
+  hors_activite:  'Hors activité',
+  client:         'Client',
+  remboursement:  'Remboursement',
+  autre:          'Autre',
 }
 
-const ALL_TYPES: JustifType[] = ['cca', 'frais_bancaire', 'hors_activite']
+const ALL_DEBIT_TYPES: JustifType[] = ['cca', 'frais_bancaire', 'hors_activite']
+const CREDIT_TAGS: CreditTag[]      = ['client', 'cca', 'remboursement', 'autre']
 
 export function Tresorerie() {
   const { toast } = useToast()
@@ -43,6 +48,7 @@ export function Tresorerie() {
   const [txs, setTxs]                 = useState<QontoTx[]>([])
   const [charges, setCharges]         = useState<ChargePick[]>([])
   const [memberNames, setMemberNames] = useState<string[]>([])
+  const [clientNames, setClientNames] = useState<string[]>([])
   const [loading, setLoading]         = useState(true)
   const [error, setError]             = useState<string | null>(null)
   const [expandedTx, setExpandedTx]   = useState<string | null>(null)
@@ -50,11 +56,12 @@ export function Tresorerie() {
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
-    const [snapRes, txRes, chargesData, names] = await Promise.all([
+    const [snapRes, txRes, chargesData, names, cNames] = await Promise.all([
       getLatestSnapshot(),
       getTransactions(),
       getChargesForRapprochement(),
       getTeamMemberNames(),
+      getClientNames(),
     ])
     if (snapRes.error) setError(snapRes.error.message)
     else setSnapshot(snapRes.data ?? null)
@@ -62,6 +69,7 @@ export function Tresorerie() {
     else setTxs(txRes.data ?? [])
     setCharges(chargesData)
     setMemberNames(names)
+    setClientNames(cNames)
     setLoading(false)
   }, [])
 
@@ -80,6 +88,10 @@ export function Tresorerie() {
     return classifyDebit(t.charge_id, t.justif_type ?? null, m.length) === 'sans_justificatif'
   })
   const totalSansJustifCts = debitsSansJustif.reduce((s, t) => s + t.amount_cts, 0)
+
+  const credits = txs.filter(t => t.side === 'credit')
+  const creditsNonIdentifies = credits.filter(t => classifyCredit(t.justif_type ?? null) === 'non_identifie')
+  const totalCreditsNonIdentifiesCts = creditsNonIdentifies.reduce((s, t) => s + t.amount_cts, 0)
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleLink = async (charge: ChargePick) => {
@@ -200,7 +212,7 @@ export function Tresorerie() {
         {/* Sélecteur manuel */}
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Marquer :</span>
-          {ALL_TYPES.map(t => (
+          {ALL_DEBIT_TYPES.map(t => (
             <button
               key={t}
               onClick={e => { e.stopPropagation(); handleSetJustifType(tx.qonto_id, t) }}
@@ -226,6 +238,54 @@ export function Tresorerie() {
             </Button>
           </div>
         )}
+      </div>
+    )
+  }
+
+  // ── Accordéon crédits ─────────────────────────────────────────────────────
+  const renderCreditAccordeonContent = (tx: QontoTx) => {
+    const status     = classifyCredit(tx.justif_type ?? null)
+    const suggestion = suggestCreditTag(tx.label, tx.operation_type, clientNames, associeNames)
+
+    if (status === 'identifie') {
+      return (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge color="success">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>
+          <button
+            onClick={e => { e.stopPropagation(); handleClearJustifType(tx.qonto_id) }}
+            className="text-[var(--fs-xs)] text-[var(--text-muted)] underline hover:text-[var(--text)] transition-colors"
+          >
+            Retirer
+          </button>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-2.5">
+        {suggestion && (
+          <div className="flex items-center gap-2">
+            <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Suggéré :</span>
+            <button
+              onClick={e => { e.stopPropagation(); handleSetJustifType(tx.qonto_id, suggestion) }}
+              className="px-2.5 py-0.5 text-[var(--fs-xs)] font-semibold rounded bg-[var(--brand-soft,#eff6ff)] text-[var(--brand)] border border-[var(--brand)] hover:bg-[var(--brand)] hover:text-white transition-colors"
+            >
+              {JUSTIF_TYPE_LABELS[suggestion]}
+            </button>
+          </div>
+        )}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Marquer :</span>
+          {CREDIT_TAGS.map(t => (
+            <button
+              key={t}
+              onClick={e => { e.stopPropagation(); handleSetJustifType(tx.qonto_id, t) }}
+              className="px-2 py-0.5 text-[var(--fs-xs)] rounded border border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--brand)] hover:text-[var(--text)] transition-colors"
+            >
+              {JUSTIF_TYPE_LABELS[t]}
+            </button>
+          ))}
+        </div>
       </div>
     )
   }
@@ -273,15 +333,29 @@ export function Tresorerie() {
         />
       </div>
 
-      {/* Stat discrète débits sans justificatif */}
-      {!loading && debitsSansJustif.length > 0 && (
-        <div className="flex items-center gap-2 mb-3 text-[var(--fs-xs)] text-[var(--text-muted)]">
-          <span className="w-1.5 h-1.5 rounded-full bg-[var(--warn)] shrink-0" />
-          <span>
-            Débits sans justificatif : <strong className="text-[var(--text)]">{debitsSansJustif.length}</strong>
-            <span className="mx-1">·</span>
-            <strong className="text-[var(--text)]">{formatMoney(totalSansJustifCts)}</strong>
-          </span>
+      {/* Stats discrètes */}
+      {!loading && (debitsSansJustif.length > 0 || creditsNonIdentifies.length > 0) && (
+        <div className="flex flex-col gap-1 mb-3">
+          {debitsSansJustif.length > 0 && (
+            <div className="flex items-center gap-2 text-[var(--fs-xs)] text-[var(--text-muted)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--warn)] shrink-0" />
+              <span>
+                Débits sans justificatif : <strong className="text-[var(--text)]">{debitsSansJustif.length}</strong>
+                <span className="mx-1">·</span>
+                <strong className="text-[var(--text)]">{formatMoney(totalSansJustifCts)}</strong>
+              </span>
+            </div>
+          )}
+          {creditsNonIdentifies.length > 0 && (
+            <div className="flex items-center gap-2 text-[var(--fs-xs)] text-[var(--text-muted)]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[var(--info,#3b82f6)] shrink-0" />
+              <span>
+                Crédits non identifiés : <strong className="text-[var(--text)]">{creditsNonIdentifies.length}</strong>
+                <span className="mx-1">·</span>
+                <strong className="text-[var(--text)]">{formatMoney(totalCreditsNonIdentifiesCts)}</strong>
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -313,23 +387,22 @@ export function Tresorerie() {
               </thead>
               <tbody>
                 {txs.map((tx, i) => {
-                  const isDebit  = tx.side === 'debit'
-                  const expanded = expandedTx === tx.qonto_id
-                  const matches  = isDebit
+                  const isDebit   = tx.side === 'debit'
+                  const isCredit  = tx.side === 'credit'
+                  const expanded  = expandedTx === tx.qonto_id
+                  const matches   = isDebit
                     ? getMatchingChargesForDebit(tx.amount_cts, charges, linkedChargeIds, tx.settled_at)
                     : []
-                  const status   = isDebit
-                    ? classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length)
-                    : null
-                  const rowBg    = i % 2 === 0 ? '' : 'bg-[var(--bg-card)]/40'
+                  const debitStatus  = isDebit  ? classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length) : null
+                  const creditStatus = isCredit ? classifyCredit(tx.justif_type ?? null) : null
+                  const rowBg        = i % 2 === 0 ? '' : 'bg-[var(--bg-card)]/40'
 
                   return (
                     <>
                       <tr
                         key={tx.qonto_id}
-                        onClick={isDebit ? () => toggleExpand(tx.qonto_id) : undefined}
-                        className={`border-t border-[var(--border)] transition-colors
-                          ${isDebit ? 'cursor-pointer hover:bg-[var(--bg-card-hover)]' : ''}
+                        onClick={() => toggleExpand(tx.qonto_id)}
+                        className={`border-t border-[var(--border)] transition-colors cursor-pointer hover:bg-[var(--bg-card-hover)]
                           ${expanded ? 'bg-[var(--bg-elevated)]' : rowBg}`}
                       >
                         <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
@@ -337,12 +410,10 @@ export function Tresorerie() {
                         </td>
                         <td className="px-4 py-3 font-medium text-[var(--text)]">
                           <div className="flex items-center gap-2">
-                            {isDebit && (
-                              <ChevronDown
-                                size={13}
-                                className={`text-[var(--text-muted)] shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
-                              />
-                            )}
+                            <ChevronDown
+                              size={13}
+                              className={`text-[var(--text-muted)] shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                            />
                             {tx.label ?? '—'}
                           </div>
                         </td>
@@ -353,10 +424,12 @@ export function Tresorerie() {
                           {formatSignedAmount(tx)}
                         </td>
                         <td className="px-4 py-3">
-                          {status === 'justifie_charge'    && <Badge color="success">Justifié</Badge>}
-                          {status === 'justifie_type'      && <Badge color="muted">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
-                          {status === 'a_rapprocher'       && <Badge color="info">À rapprocher</Badge>}
-                          {status === 'sans_justificatif'  && <Badge color="warning">Justificatif manquant</Badge>}
+                          {debitStatus === 'justifie_charge'   && <Badge color="success">Justifié</Badge>}
+                          {debitStatus === 'justifie_type'     && <Badge color="muted">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
+                          {debitStatus === 'a_rapprocher'      && <Badge color="info">À rapprocher</Badge>}
+                          {debitStatus === 'sans_justificatif' && <Badge color="warning">Justificatif manquant</Badge>}
+                          {creditStatus === 'identifie'        && <Badge color="success">Identifié · {JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
+                          {creditStatus === 'non_identifie'    && <Badge color="warning">Non identifié</Badge>}
                         </td>
                       </tr>
 
@@ -365,6 +438,15 @@ export function Tresorerie() {
                           <td colSpan={5} className="p-0">
                             <div className="px-6 py-4 bg-[var(--bg-elevated)]">
                               {renderAccordeonContent(tx, matches)}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                      {isCredit && expanded && (
+                        <tr key={`${tx.qonto_id}-acc`} className="border-t border-[var(--border)]">
+                          <td colSpan={5} className="p-0">
+                            <div className="px-6 py-4 bg-[var(--bg-elevated)]">
+                              {renderCreditAccordeonContent(tx)}
                             </div>
                           </td>
                         </tr>
@@ -379,14 +461,14 @@ export function Tresorerie() {
           {/* Mobile */}
           <div className="md:hidden flex flex-col gap-3">
             {txs.map(tx => {
-              const isDebit  = tx.side === 'debit'
-              const expanded = expandedTx === tx.qonto_id
-              const matches  = isDebit
+              const isDebit   = tx.side === 'debit'
+              const isCredit  = tx.side === 'credit'
+              const expanded  = expandedTx === tx.qonto_id
+              const matches   = isDebit
                 ? getMatchingChargesForDebit(tx.amount_cts, charges, linkedChargeIds, tx.settled_at)
                 : []
-              const status   = isDebit
-                ? classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length)
-                : null
+              const debitStatus  = isDebit  ? classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length) : null
+              const creditStatus = isCredit ? classifyCredit(tx.justif_type ?? null) : null
 
               return (
                 <div
@@ -394,25 +476,25 @@ export function Tresorerie() {
                   className="bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden"
                 >
                   <div
-                    onClick={isDebit ? () => toggleExpand(tx.qonto_id) : undefined}
-                    className={`p-4 ${isDebit ? 'cursor-pointer' : ''}`}
+                    onClick={() => toggleExpand(tx.qonto_id)}
+                    className="p-4 cursor-pointer"
                   >
                     <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="flex items-center gap-2 min-w-0">
-                        {isDebit && (
-                          <ChevronDown
-                            size={13}
-                            className={`text-[var(--text-muted)] shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
-                          />
-                        )}
+                        <ChevronDown
+                          size={13}
+                          className={`text-[var(--text-muted)] shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                        />
                         <span className="font-medium text-[var(--text)] truncate">{tx.label ?? '—'}</span>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
                         <Badge color="muted">{operationTypeLabel(tx.operation_type)}</Badge>
-                        {status === 'justifie_charge'   && <Badge color="success">Justifié</Badge>}
-                        {status === 'justifie_type'     && <Badge color="muted">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
-                        {status === 'a_rapprocher'      && <Badge color="info">À rapprocher</Badge>}
-                        {status === 'sans_justificatif' && <Badge color="warning">Manquant</Badge>}
+                        {debitStatus === 'justifie_charge'   && <Badge color="success">Justifié</Badge>}
+                        {debitStatus === 'justifie_type'     && <Badge color="muted">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
+                        {debitStatus === 'a_rapprocher'      && <Badge color="info">À rapprocher</Badge>}
+                        {debitStatus === 'sans_justificatif' && <Badge color="warning">Manquant</Badge>}
+                        {creditStatus === 'identifie'        && <Badge color="success">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
+                        {creditStatus === 'non_identifie'    && <Badge color="warning">Non identifié</Badge>}
                       </div>
                     </div>
                     <div className="flex items-end justify-between gap-2">
@@ -426,6 +508,11 @@ export function Tresorerie() {
                   {isDebit && expanded && (
                     <div className="px-4 pb-4 pt-3 border-t border-[var(--border)] bg-[var(--bg-elevated)]">
                       {renderAccordeonContent(tx, matches)}
+                    </div>
+                  )}
+                  {isCredit && expanded && (
+                    <div className="px-4 pb-4 pt-3 border-t border-[var(--border)] bg-[var(--bg-elevated)]">
+                      {renderCreditAccordeonContent(tx)}
                     </div>
                   )}
                 </div>

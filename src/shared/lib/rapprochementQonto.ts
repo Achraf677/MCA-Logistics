@@ -1,7 +1,13 @@
 // Logique pure du rapprochement Qonto↔charges. Aucune dépendance DB ni DOM.
 import type { ChargePick } from '../types/charges'
 
-export type JustifType = 'cca' | 'frais_bancaire' | 'hors_activite'
+/** Toutes les valeurs autorisées dans qonto_transactions.justif_type. */
+export type JustifType =
+  | 'cca' | 'frais_bancaire' | 'hors_activite'   // débits
+  | 'client' | 'remboursement' | 'autre'          // crédits
+
+/** Nature d'un crédit Qonto — sous-ensemble de JustifType. */
+export type CreditTag = 'client' | 'cca' | 'remboursement' | 'autre'
 
 export type DebitStatus =
   | 'justifie_charge'    // charge Pennylane liée
@@ -53,14 +59,11 @@ function normalise(s: string): string {
 }
 
 /**
- * Suggestion automatique du type de justificatif à partir du libellé et du
- * type d'opération Qonto. Retourne null si aucune règle ne s'applique.
- *
+ * Suggestion automatique du type de justificatif DÉBIT.
  * Règles (ordre prioritaire) :
- *  1. CCA          : operationType === 'transfer' ET tous les mots du nom d'associé
- *                    sont présents dans le libellé (ordre ignoré, casse/accents ignorés)
+ *  1. CCA          : operationType === 'transfer' ET tous les mots du nom d'associé présents
  *  2. frais_bancaire : operationType === 'qonto_fee' OU libellé contient 'qonto'
- *  3. null         : hors_activite est toujours manuel uniquement
+ *  3. null         : hors_activite est toujours manuel
  */
 export function suggestJustifType(
   label: string | null,
@@ -70,19 +73,51 @@ export function suggestJustifType(
   const normLabel = normalise(label ?? '')
   const normOp = (operationType ?? '').toLowerCase()
 
-  // CCA : virement entre associés (tous les mots du nom présents, ordre libre)
   if (normOp === 'transfer') {
     for (const name of associeNames) {
       const words = normalise(name).split(/\s+/).filter(Boolean)
-      if (words.length > 0 && words.every(w => normLabel.includes(w))) {
-        return 'cca'
-      }
+      if (words.length > 0 && words.every(w => normLabel.includes(w))) return 'cca'
     }
   }
 
-  // Frais bancaire Qonto
-  if (normOp === 'qonto_fee' || normLabel.includes('qonto')) {
-    return 'frais_bancaire'
+  if (normOp === 'qonto_fee' || normLabel.includes('qonto')) return 'frais_bancaire'
+
+  return null
+}
+
+/** Classement d'un crédit selon son état d'identification. */
+export function classifyCredit(justifType: string | null): 'identifie' | 'non_identifie' {
+  return justifType ? 'identifie' : 'non_identifie'
+}
+
+/**
+ * Suggestion automatique de la nature d'un CRÉDIT.
+ * Règles (ordre prioritaire) :
+ *  1. 'cca'    : operationType === 'transfer' ET nom d'associé dans le libellé
+ *  2. 'client' : nom de client (mots, casse/accents ignorés) dans le libellé
+ *  3. null     : remboursement / autre = toujours manuel
+ */
+export function suggestCreditTag(
+  label: string | null,
+  operationType: string | null,
+  clientNames: string[],
+  associeNames: string[],
+): CreditTag | null {
+  const normLabel = normalise(label ?? '')
+  const normOp = (operationType ?? '').toLowerCase()
+
+  // CCA : apport d'associé via virement
+  if (normOp === 'transfer') {
+    for (const name of associeNames) {
+      const words = normalise(name).split(/\s+/).filter(Boolean)
+      if (words.length > 0 && words.every(w => normLabel.includes(w))) return 'cca'
+    }
+  }
+
+  // Client : paiement d'un client
+  for (const name of clientNames) {
+    const words = normalise(name).split(/\s+/).filter(Boolean)
+    if (words.length > 0 && words.every(w => normLabel.includes(w))) return 'client'
   }
 
   return null
