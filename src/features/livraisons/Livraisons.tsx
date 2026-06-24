@@ -324,7 +324,7 @@ export function Livraisons() {
                     </th>
                   )}
 
-                  {['Date', 'Client', 'Chauffeur', 'Montant TTC', 'km', 'Statut', ''].map(h => (
+                  {['Date', 'N° facture', 'Client', 'Chauffeur', 'Montant TTC', 'km', 'Statut', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -375,6 +375,13 @@ export function Livraisons() {
 
                       <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
                         {new Date(row.date).toLocaleDateString('fr-FR')}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-[var(--fs-xs)]">
+                        {row.pennylane_invoice_number
+                          ? <span className="text-[var(--text)]">{row.pennylane_invoice_number}</span>
+                          : row.pennylane_invoice_id
+                            ? <span className="text-[var(--text-muted)] italic">en attente</span>
+                            : <span className="text-[var(--text-disabled)]">—</span>}
                       </td>
                       <td className="px-4 py-3 font-medium text-[var(--text)]">
                         {row.clients?.name ?? '—'}
@@ -468,6 +475,9 @@ export function Livraisons() {
                         <span>{new Date(row.date).toLocaleDateString('fr-FR')}</span>
                         {row.team_members?.full_name && <span>{row.team_members.full_name}</span>}
                         {row.type && <span>{TYPE_LABELS[row.type] ?? row.type}</span>}
+                        {row.pennylane_invoice_number && (
+                          <span className="font-mono text-[var(--text-muted)]">{row.pennylane_invoice_number}</span>
+                        )}
                       </div>
                       <span className="font-mono font-semibold text-[var(--text)]">
                         {effectiveTtcCts(row) > 0 ? formatCents(effectiveTtcCts(row)) : '—'}

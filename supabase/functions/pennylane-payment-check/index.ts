@@ -5,7 +5,7 @@
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
-import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
+import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders, getInvoiceNumber } from '../_shared/pennylane.ts';
 
 /** Règle v1 : liste de transactions rapprochées non vide ⇒ facture payée. */
 async function isInvoicePaid(token: string, invoiceId: string): Promise<boolean> {
@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
   // ── Livraisons facturées avec une référence Pennylane ─────────────────────────
   const { data: deliveries, error: dErr } = await supabase
     .from('deliveries')
-    .select('id, pennylane_invoice_id')
+    .select('id, pennylane_invoice_id, pennylane_invoice_number')
     .eq('statut', 'facturee')
     .not('pennylane_invoice_id', 'is', null);
 
@@ -46,6 +46,20 @@ Deno.serve(async (req) => {
 
   try {
     for (const invoiceId of uniqueInvoiceIds) {
+      // ── Rattrapage invoice_number manquant (coût quasi nul si déjà renseigné) ──
+      const needsNumber = deliveryList.some(
+        (d) => d.pennylane_invoice_id === invoiceId && !d.pennylane_invoice_number,
+      );
+      if (needsNumber) {
+        const invoiceNumber = await getInvoiceNumber(token, Number(invoiceId));
+        if (invoiceNumber) {
+          await supabase
+            .from('deliveries')
+            .update({ pennylane_invoice_number: invoiceNumber })
+            .eq('pennylane_invoice_id', invoiceId);
+        }
+      }
+
       const paid = await isInvoicePaid(token, invoiceId);
       if (!paid) continue;
 

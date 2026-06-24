@@ -102,7 +102,7 @@ export function Relances() {
                       {row.client_name}
                     </td>
                     <td className="px-4 py-3 font-mono text-[var(--text-muted)] text-[var(--fs-xs)]">
-                      {row.pennylane_invoice_id ?? '—'}
+                      {row.pennylane_invoice_number ?? '—'}
                     </td>
                     <td className="px-4 py-3 font-mono font-medium whitespace-nowrap">
                       {formatMoney(row.effective_ttc_cts)}

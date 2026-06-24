@@ -43,6 +43,7 @@ export interface Delivery {
   // Statut (text en DB, valeurs v2)
   statut: string
   pennylane_invoice_id: string | null
+  pennylane_invoice_number: string | null
   pennylane_synced_at: string | null
   facture_url: string | null
   bon_livraison_url: string | null
@@ -70,7 +71,7 @@ export interface DeliveryRow extends Delivery {
 export type DeliveryInsert = Omit<
   Delivery,
   | 'id' | 'created_at' | 'updated_at'
-  | 'pennylane_invoice_id' | 'pennylane_synced_at'
+  | 'pennylane_invoice_id' | 'pennylane_invoice_number' | 'pennylane_synced_at'
   | 'facture_url' | 'bon_livraison_url' | 'lettre_voiture_url'
   | 'sync_pending' | 'sync_error'
   // Colonnes legacy non inscriptibles en v2 :
