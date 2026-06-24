@@ -14,7 +14,7 @@ import {
 } from './devis.logic'
 import {
   createQuote, updateQuote, updateQuoteStatus, deleteQuote,
-  listClientsLight, sendToPennylane, convertToInvoice, transformToDelivery,
+  listClientsLight, sendToPennylane, syncQuoteNumber, convertToInvoice, transformToDelivery,
 } from './devis.queries'
 import type { Quote, QuoteStatus } from './devis.types'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -63,6 +63,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
   const [actioning, setActioning] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [syncing, setSyncing]   = useState(false)
 
   // ── Chargement clients ────────────────────────────────────────────────────
 
@@ -243,6 +244,21 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
     setActioning(false)
   }
 
+  // ── Synchroniser le numéro de devis Pennylane ────────────────────────────
+
+  const handleSyncNumber = async () => {
+    if (!quote) return
+    setSyncing(true)
+    const { data, error } = await syncQuoteNumber(quote.id)
+    setSyncing(false)
+    if (error || !data?.ok) {
+      toast(data?.error ?? (error as Error)?.message ?? 'Erreur Pennylane', 'error')
+      return
+    }
+    toast(`Numéro récupéré : ${data.data?.pennylane_quote_number ?? '—'}`)
+    onSaved()
+  }
+
   // ── Supprimer ─────────────────────────────────────────────────────────────
 
   const handleDelete = async () => {
@@ -288,9 +304,17 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
           <Badge color={STATUS_COLORS[statut]}>{STATUS_LABELS[statut]}</Badge>
           {expired && <Badge color="warning">Expiré</Badge>}
           {quote!.pennylane_quote_id && (
-            <span className="ml-auto font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
-              {quote!.pennylane_quote_id}
-            </span>
+            quote!.pennylane_quote_number
+              ? <span className="ml-auto font-mono text-[var(--fs-xs)] text-[var(--text-muted)]"
+                      title={quote!.pennylane_quote_id}>
+                  {quote!.pennylane_quote_number}
+                </span>
+              : <div className="ml-auto flex items-center gap-2">
+                  <span className="font-mono text-[var(--fs-xs)] text-[var(--text-muted)] italic">N° en attente</span>
+                  <Button variant="ghost" size="compact" onClick={handleSyncNumber} disabled={syncing}>
+                    {syncing ? '…' : 'Synchroniser le n°'}
+                  </Button>
+                </div>
           )}
         </div>
       )}

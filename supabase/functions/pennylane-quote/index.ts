@@ -1,7 +1,8 @@
 // Edge Function `pennylane-quote`
-// Body : { action: 'create' | 'convert', quote_id: string }
-// action 'create'  → crée le devis chez Pennylane, pose pennylane_quote_id + statut='envoye'.
-// action 'convert' → convertit le devis Pennylane en facture finalisée, pose pennylane_invoice_id + statut='facture'.
+// Body : { action: 'create' | 'convert' | 'sync-number', quote_id: string }
+// action 'create'      → crée le devis chez Pennylane, pose pennylane_quote_id + pennylane_quote_number + statut='envoye'.
+// action 'convert'     → convertit le devis Pennylane en facture finalisée, pose pennylane_invoice_id + statut='facture'.
+// action 'sync-number' → rattrapage : lit quote_number depuis Pennylane et le stocke.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { ExternalApiError } from '../_shared/http.ts';
@@ -12,6 +13,7 @@ import {
   createInvoiceFromQuote,
   createQuote,
   findCustomerByRef,
+  getQuoteNumber,
   pennylaneToken,
   vatRateCode,
 } from '../_shared/pennylane.ts';
@@ -31,8 +33,8 @@ Deno.serve(async (req: Request) => {
   }
 
   if (!quote_id) return jsonResponse({ ok: false, error: 'quote_id requis' }, 400);
-  if (action !== 'create' && action !== 'convert') {
-    return jsonResponse({ ok: false, error: "action doit être 'create' ou 'convert'" }, 400);
+  if (action !== 'create' && action !== 'convert' && action !== 'sync-number') {
+    return jsonResponse({ ok: false, error: "action doit être 'create', 'convert' ou 'sync-number'" }, 400);
   }
 
   let token: string;
@@ -125,7 +127,7 @@ Deno.serve(async (req: Request) => {
       }
 
       // 7. Créer le devis chez Pennylane
-      const pennylaneQuoteId = await createQuote(token, {
+      const { id: pennylaneQuoteId, quote_number } = await createQuote(token, {
         customer_id: pennylaneCustomerId,
         date: quoteDate,
         deadline,
@@ -137,12 +139,37 @@ Deno.serve(async (req: Request) => {
         .from('quotes')
         .update({
           pennylane_quote_id: String(pennylaneQuoteId),
+          pennylane_quote_number: quote_number,
           statut: 'envoye',
           updated_at: new Date().toISOString(),
         })
         .eq('id', quote_id);
 
-      return jsonResponse({ ok: true, data: { pennylane_quote_id: String(pennylaneQuoteId) } });
+      return jsonResponse({ ok: true, data: { pennylane_quote_id: String(pennylaneQuoteId), pennylane_quote_number: quote_number } });
+    }
+
+    // ── Action : sync-number ─────────────────────────────────────────────────
+    if (action === 'sync-number') {
+      const { data: quote, error: qErr } = await supabase
+        .from('quotes')
+        .select('id, pennylane_quote_id')
+        .eq('id', quote_id)
+        .single();
+
+      if (qErr || !quote) return jsonResponse({ ok: false, error: 'devis introuvable' }, 404);
+      if (!quote.pennylane_quote_id) {
+        return jsonResponse({ ok: false, error: "devis non encore envoyé à Pennylane" }, 422);
+      }
+
+      const pennylaneQuoteNumber = await getQuoteNumber(token, Number(quote.pennylane_quote_id));
+      if (pennylaneQuoteNumber) {
+        await supabase
+          .from('quotes')
+          .update({ pennylane_quote_number: pennylaneQuoteNumber })
+          .eq('id', quote_id);
+      }
+
+      return jsonResponse({ ok: true, data: { pennylane_quote_number: pennylaneQuoteNumber } });
     }
 
     // ── Action : convert ──────────────────────────────────────────────────────
