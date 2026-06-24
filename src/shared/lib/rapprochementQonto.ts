@@ -93,28 +93,26 @@ export function classifyCredit(justifType: string | null): 'identifie' | 'non_id
 /**
  * Suggestion automatique de la nature d'un CRÉDIT.
  * Règles (ordre prioritaire) :
- *  1. 'cca'    : operationType === 'transfer' ET nom d'associé dans le libellé
+ *  1. 'cca'    : nom d'associé présent dans le libellé, QUEL QUE SOIT operationType
+ *               (les apports arrivent en 'income', pas uniquement en 'transfer')
  *  2. 'client' : nom de client (mots, casse/accents ignorés) dans le libellé
  *  3. null     : remboursement / autre = toujours manuel
  */
 export function suggestCreditTag(
   label: string | null,
-  operationType: string | null,
+  _operationType: string | null,
   clientNames: string[],
   associeNames: string[],
 ): CreditTag | null {
   const normLabel = normalise(label ?? '')
-  const normOp = (operationType ?? '').toLowerCase()
 
-  // CCA : apport d'associé via virement
-  if (normOp === 'transfer') {
-    for (const name of associeNames) {
-      const words = normalise(name).split(/\s+/).filter(Boolean)
-      if (words.length > 0 && words.every(w => normLabel.includes(w))) return 'cca'
-    }
+  // CCA : apport d'associé — quel que soit le type d'opération Qonto
+  for (const name of associeNames) {
+    const words = normalise(name).split(/\s+/).filter(Boolean)
+    if (words.length > 0 && words.every(w => normLabel.includes(w))) return 'cca'
   }
 
-  // Client : paiement d'un client
+  // Client : paiement reçu d'un client
   for (const name of clientNames) {
     const words = normalise(name).split(/\s+/).filter(Boolean)
     if (words.length > 0 && words.every(w => normLabel.includes(w))) return 'client'

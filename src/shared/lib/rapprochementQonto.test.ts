@@ -146,28 +146,33 @@ describe('classifyCredit', () => {
 })
 
 describe('suggestCreditTag', () => {
+  it('cca si income et nom associe dans label (cas reel apport)', () => {
+    expect(suggestCreditTag('ENCAISSEMENT ACHRAF CHIKRI apport capital', 'income', [], ['Achraf Chikri']))
+      .toBe('cca')
+  })
+
   it('cca si transfer et nom associe dans label', () => {
     expect(suggestCreditTag('VIR ACHRAF CHIKRI apport', 'transfer', [], ['Achraf Chikri']))
       .toBe('cca')
   })
 
-  it('cca : casse et accents ignores', () => {
-    expect(suggestCreditTag('virement elodie dupont capital', 'transfer', [], ['Elodie Dupont']))
-      .toBe('cca')
-  })
-
-  it('cca prioritaire sur client si transfer et les deux matchent', () => {
-    expect(suggestCreditTag('VIR ACHRAF CHIKRI', 'transfer', ['Achraf Chikri'], ['Achraf Chikri']))
-      .toBe('cca')
-  })
-
-  it('pas cca si pas transfer meme si associe match', () => {
+  it('cca quel que soit operationType (card)', () => {
     expect(suggestCreditTag('Achraf Chikri remboursement', 'card', [], ['Achraf Chikri']))
-      .toBeNull()
+      .toBe('cca')
   })
 
-  it('client si nom client dans label (pas de transfer)', () => {
-    expect(suggestCreditTag('PAIEMENT DUPONT TRANSPORTS', null, ['Dupont Transports'], []))
+  it('cca : casse et accents ignores', () => {
+    expect(suggestCreditTag('virement elodie dupont capital', 'income', [], ['Elodie Dupont']))
+      .toBe('cca')
+  })
+
+  it('cca prioritaire sur client si les deux matchent', () => {
+    expect(suggestCreditTag('VIR ACHRAF CHIKRI', 'income', ['Achraf Chikri'], ['Achraf Chikri']))
+      .toBe('cca')
+  })
+
+  it('client si nom client dans label', () => {
+    expect(suggestCreditTag('PAIEMENT DUPONT TRANSPORTS', 'income', ['Dupont Transports'], []))
       .toBe('client')
   })
 
