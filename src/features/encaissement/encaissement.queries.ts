@@ -1,6 +1,6 @@
 import { supabase } from '../../app/providers'
 import { effectiveTtcCts } from '../../shared/lib/money'
-import type { EncaissementFilters, EncaissementRow } from './encaissement.types'
+import type { AutreEntreeRow, EncaissementFilters, EncaissementRow } from './encaissement.types'
 
 type RawRow = {
   id: string
@@ -38,6 +38,24 @@ export async function getEncaissements(
   }))
 
   return { data: rows, error: null }
+}
+
+export async function getAutresEntrees(
+  filters: Pick<EncaissementFilters, 'date_from' | 'date_to'> = {}
+): Promise<{ data: AutreEntreeRow[] | null; error: unknown }> {
+  let q = supabase
+    .from('qonto_transactions')
+    .select('qonto_id, label, amount_cts, settled_at, justif_type')
+    .eq('side', 'credit')
+    .or('justif_type.is.null,justif_type.neq.client')
+    .order('settled_at', { ascending: false, nullsFirst: false })
+
+  if (filters.date_from) q = q.gte('settled_at', filters.date_from)
+  if (filters.date_to)   q = q.lte('settled_at', filters.date_to)
+
+  const { data, error } = await q
+  if (error || !data) return { data: null, error }
+  return { data: data as AutreEntreeRow[], error: null }
 }
 
 export async function checkPayments() {
