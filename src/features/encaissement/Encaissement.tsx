@@ -1,17 +1,18 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CheckCheck, Euro, FileText, Banknote } from 'lucide-react'
+import { CheckCheck, Euro, TrendingUp, Banknote } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
+import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { SyncButton } from '../../shared/ui/SyncButton'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
-import { getEncaissements, checkPayments, exportEncaissementsCSV } from './encaissement.queries'
-import { formatCents, kpiSummary } from './encaissement.logic'
+import { getEncaissements, checkPayments, exportEncaissementsCSV, getAutresEntrees } from './encaissement.queries'
+import { formatCents, buildEntreesUnifiees, kpiSummaryUnifie, natureBadge } from './encaissement.logic'
 import { downloadCSV } from '../../shared/lib/download'
-import type { EncaissementRow, EncaissementFilters } from './encaissement.types'
+import type { EntreeUnifiee, EncaissementFilters } from './encaissement.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
 type ClientLookup = { id: string; label: string }
@@ -23,11 +24,11 @@ function fmtDate(iso: string | null): string {
 
 export function Encaissement() {
   const { toast } = useToast()
-  const [rows, setRows]       = useState<EncaissementRow[]>([])
-  const [clients, setClients] = useState<ClientLookup[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState<string | null>(null)
-  const [filters, setFilters] = useState<EncaissementFilters>({})
+  const [entrees, setEntrees]   = useState<EntreeUnifiee[]>([])
+  const [clients, setClients]   = useState<ClientLookup[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [error, setError]       = useState<string | null>(null)
+  const [filters, setFilters]   = useState<EncaissementFilters>({})
 
   useEffect(() => {
     supabase.from('clients').select('id, name').eq('active', true).order('name')
@@ -36,9 +37,12 @@ export function Encaissement() {
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
-    const { data, error } = await getEncaissements(filters)
-    if (error) setError((error as Error).message)
-    else setRows(data ?? [])
+    const [enc, ae] = await Promise.all([
+      getEncaissements(filters),
+      getAutresEntrees({ date_from: filters.date_from, date_to: filters.date_to }),
+    ])
+    if (enc.error) { setError((enc.error as Error).message); setLoading(false); return }
+    setEntrees(buildEntreesUnifiees(enc.data ?? [], ae.data ?? []))
     setLoading(false)
   }, [filters])
 
@@ -52,7 +56,7 @@ export function Encaissement() {
     }
   }
 
-  const kpis = kpiSummary(rows)
+  const kpis = kpiSummaryUnifie(entrees)
   const hasFilters = !!(
     (filters.client_id && filters.client_id !== 'all') ||
     filters.date_from || filters.date_to
@@ -65,7 +69,7 @@ export function Encaissement() {
         {/* Note + SyncButton */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <p className="text-[var(--fs-xs)] text-[var(--text-muted)] flex-1">
-            Le statut payé provient de Pennylane&nbsp;; la saisie manuelle a été retirée.
+            Le statut payé provient de Pennylane&nbsp;; les crédits Qonto (apports, remboursements) sont affichés hors CA.
           </p>
           <SyncButton
             label="Vérifier les paiements"
@@ -88,8 +92,19 @@ export function Encaissement() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-5 [&>*]:min-w-0">
-            <KpiCard label="Encaissements" value={kpis.nb}                              tone="info"    icon={<FileText size={18} />} />
-            <KpiCard label="Total encaissé" value={formatCents(kpis.totalEncaisseCts)}  tone="success" icon={<Euro size={18} />} />
+            <KpiCard
+              label="Encaissé clients"
+              value={formatCents(kpis.totalClientsCts)}
+              tone="success"
+              icon={<Euro size={18} />}
+            />
+            <KpiCard
+              label="Autres entrées"
+              value={formatCents(kpis.totalAutresCts)}
+              sub="hors chiffre d'affaires"
+              tone="muted"
+              icon={<TrendingUp size={18} />}
+            />
           </div>
         )}
 
@@ -112,7 +127,7 @@ export function Encaissement() {
           )}
         </div>
 
-        {/* Contenu */}
+        {/* Table unifiée */}
         {loading ? (
           <SkeletonTable rows={6} />
         ) : error ? (
@@ -120,13 +135,13 @@ export function Encaissement() {
             <p className="text-[var(--danger)] text-[var(--fs-sm)]">{error}</p>
             <Button variant="secondary" onClick={load}>Réessayer</Button>
           </div>
-        ) : rows.length === 0 ? (
+        ) : entrees.length === 0 ? (
           <EmptyState
             icon={<Banknote size={48} />}
-            title="Aucun encaissement"
+            title="Aucune entrée d'argent"
             description={hasFilters
               ? 'Aucun résultat pour ces filtres.'
-              : 'Les factures réglées (rapprochées dans Pennylane) apparaîtront ici automatiquement.'}
+              : 'Les factures réglées (Pennylane) et les crédits Qonto apparaîtront ici.'}
           />
         ) : (
           <>
@@ -135,45 +150,54 @@ export function Encaissement() {
               <table className="w-full text-[var(--fs-sm)]">
                 <thead>
                   <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                    {['Date encaissement', 'Client', 'Montant TTC', 'N° facture'].map(h => (
+                    {['Date', 'Libellé', 'Montant', 'Nature'].map(h => (
                       <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
-                  {rows.map(row => (
-                    <tr key={row.id} className="transition-colors hover:bg-[var(--bg-card-hover)]">
-                      <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)] whitespace-nowrap">
-                        {fmtDate(row.paid_at)}
-                      </td>
-                      <td className="px-4 py-3 font-medium text-[var(--text)]">{row.client_name}</td>
-                      <td className="px-4 py-3 font-mono font-semibold text-[var(--text)] whitespace-nowrap">
-                        {formatCents(row.effective_ttc_cts)}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
-                        {row.pennylane_invoice_id ?? '—'}
-                      </td>
-                    </tr>
-                  ))}
+                  {entrees.map(e => {
+                    const badge = natureBadge(e.nature)
+                    return (
+                      <tr key={e.key} className="transition-colors hover:bg-[var(--bg-card-hover)]">
+                        <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)] whitespace-nowrap">
+                          {fmtDate(e.date)}
+                        </td>
+                        <td className="px-4 py-3 font-medium text-[var(--text)] max-w-xs truncate">
+                          {e.libelle}
+                        </td>
+                        <td className="px-4 py-3 font-mono font-semibold text-[var(--text)] whitespace-nowrap">
+                          +{formatCents(e.montant_cts)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge color={badge.color}>{badge.label}</Badge>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
 
             {/* Mobile */}
             <div className="md:hidden flex flex-col gap-3">
-              {rows.map(row => (
-                <div key={row.id}
-                  className="glass rounded-[var(--r-lg)] p-4">
-                  <div className="flex items-start justify-between gap-2 mb-1">
-                    <span className="font-medium text-[var(--text)]">{row.client_name}</span>
-                    <span className="font-mono font-semibold text-[var(--text)]">{formatCents(row.effective_ttc_cts)}</span>
+              {entrees.map(e => {
+                const badge = natureBadge(e.nature)
+                return (
+                  <div key={e.key} className="glass rounded-[var(--r-lg)] p-4">
+                    <div className="flex items-start justify-between gap-2 mb-1">
+                      <span className="font-medium text-[var(--text)] truncate flex-1">{e.libelle}</span>
+                      <span className="font-mono font-semibold text-[var(--text)] whitespace-nowrap shrink-0">
+                        +{formatCents(e.montant_cts)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[var(--fs-xs)] text-[var(--text-muted)]">
+                      <span>{fmtDate(e.date)}</span>
+                      <Badge color={badge.color}>{badge.label}</Badge>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-[var(--fs-xs)] text-[var(--text-muted)]">
-                    <span>{fmtDate(row.paid_at)}</span>
-                    <span className="font-mono">{row.pennylane_invoice_id ?? '—'}</span>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </>
         )}

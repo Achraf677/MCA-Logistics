@@ -8,6 +8,25 @@ export interface EncaissementRow {
   pennylane_invoice_id: string | null
 }
 
+/** Crédit Qonto hors paiement client (CCA, remboursement, autre, non identifié). */
+export interface AutreEntreeRow {
+  qonto_id: string
+  label: string | null
+  amount_cts: number
+  settled_at: string | null
+  justif_type: string | null
+}
+
+/** Ligne unifiée fusionnant encaissements clients + crédits Qonto non-client. */
+export interface EntreeUnifiee {
+  key: string
+  date: string | null
+  libelle: string
+  montant_cts: number
+  /** 'client' | 'cca' | 'remboursement' | 'autre' | 'non_identifie' */
+  nature: string
+}
+
 export interface EncaissementFilters {
   client_id?: string | 'all'
   date_from?: string
