@@ -7,6 +7,7 @@ type RawRow = {
   id: string
   client_id: string
   pennylane_invoice_id: string | null
+  pennylane_invoice_number: string | null
   amount_ttc_cts: number | null
   invoiced_at: string
   clients: { name: string; email: string | null; payment_terms: number } | null
@@ -16,7 +17,7 @@ export async function getOverdueInvoices(): Promise<{ data: RelanceRow[] | null;
   const { data, error } = await supabase
     .from('deliveries')
     .select(`
-      id, client_id, pennylane_invoice_id,
+      id, client_id, pennylane_invoice_id, pennylane_invoice_number,
       amount_ttc_cts,
       invoiced_at,
       clients!client_id(name, email, payment_terms)
@@ -41,6 +42,7 @@ export async function getOverdueInvoices(): Promise<{ data: RelanceRow[] | null;
       client_email: client.email ?? null,
       client_payment_terms: pt,
       pennylane_invoice_id: raw.pennylane_invoice_id,
+      pennylane_invoice_number: raw.pennylane_invoice_number,
       effective_ttc_cts: effectiveTtcCts(raw),
       invoiced_at: raw.invoiced_at,
       echeance_date,

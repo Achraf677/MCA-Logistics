@@ -807,8 +807,11 @@ function MontantTab({
       {delivery?.pennylane_invoice_id && (
         <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] px-4 py-2.5
           flex items-center justify-between text-[var(--fs-sm)]">
-          <span className="text-[var(--text-muted)]">N° Pennylane</span>
-          <span className="font-mono text-[var(--fs-xs)]">{delivery.pennylane_invoice_id}</span>
+          <span className="text-[var(--text-muted)]">N° facture</span>
+          {delivery.pennylane_invoice_number
+            ? <span className="font-mono text-[var(--fs-xs)]">{delivery.pennylane_invoice_number}</span>
+            : <span className="text-[var(--fs-xs)] text-[var(--text-muted)] italic">— (en attente de finalisation)</span>
+          }
         </div>
       )}
       {delivery?.sync_pending && (

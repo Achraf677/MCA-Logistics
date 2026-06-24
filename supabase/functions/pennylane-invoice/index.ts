@@ -11,6 +11,7 @@ import {
   createDraftInvoice,
   finalizeInvoice,
   findCustomerByRef,
+  getInvoiceNumber,
   pennylaneToken,
   vatRateCode,
 } from '../_shared/pennylane.ts';
@@ -185,6 +186,7 @@ Deno.serve(async (req: Request) => {
       invoice_lines: invoiceLines,
     });
     await finalizeInvoice(token, draftInvoiceId);
+    const invoiceNumber = await getInvoiceNumber(token, draftInvoiceId);
 
     // ── invoice_group_id uniquement si N > 1 ─────────────────────────────────
     const invoiceGroupId = ids.length > 1 ? crypto.randomUUID() : null;
@@ -194,6 +196,7 @@ Deno.serve(async (req: Request) => {
       .from('deliveries')
       .update({
         pennylane_invoice_id: String(draftInvoiceId),
+        pennylane_invoice_number: invoiceNumber,
         invoice_group_id: invoiceGroupId,
         statut: 'facturee',
         invoiced_at: now,

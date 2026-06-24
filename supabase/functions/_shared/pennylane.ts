@@ -127,6 +127,24 @@ export async function finalizeInvoice(token: string, invoiceId: number): Promise
   });
 }
 
+/**
+ * Lit le numéro de facture lisible (ex. "FA-2026-06-1") depuis Pennylane.
+ * Appelé juste après finalizeInvoice pour stocker le numéro en base.
+ * Retourne null en cas d'erreur (ne lève pas d'exception).
+ */
+export async function getInvoiceNumber(token: string, invoiceId: number): Promise<string | null> {
+  try {
+    const data = await fetchJson<Record<string, unknown>>(
+      `${PENNYLANE_BASE}/customer_invoices/${invoiceId}`,
+      { headers: pennylaneHeaders(token) },
+    );
+    const invoice = (data.invoice ?? data.customer_invoice ?? data) as Record<string, unknown>;
+    return (invoice.invoice_number as string) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Crée un devis Pennylane. Renvoie l'id du devis. Scope requis : quotes:all. */
 export async function createQuote(
   token: string,

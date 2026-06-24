@@ -7,6 +7,7 @@ export interface RelanceRow {
   client_email: string | null
   client_payment_terms: number
   pennylane_invoice_id: string | null
+  pennylane_invoice_number: string | null
   /** Montant TTC effectif en centimes (v2 ?? legacy fallback) */
   effective_ttc_cts: number
   invoiced_at: string
