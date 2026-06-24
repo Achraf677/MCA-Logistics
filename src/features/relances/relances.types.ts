@@ -13,6 +13,4 @@ export interface RelanceRow {
   echeance_date: string
   jours_retard: number
   palier: Palier
-  relance_count: number
-  last_relance_at: string | null
 }

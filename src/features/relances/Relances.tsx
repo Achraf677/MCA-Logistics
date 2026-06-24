@@ -1,18 +1,17 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Copy, Loader2, CheckCircle, AlertTriangle, FileText, Users } from 'lucide-react'
-import { Shell }       from '../../app/Shell'
-import { KpiCard }     from '../../shared/ui/KpiCard'
-import { Badge }       from '../../shared/ui/Badge'
-import { Button }      from '../../shared/ui/Button'
-import { EmptyState }  from '../../shared/ui/EmptyState'
+import { Copy, Loader2, CheckCircle, AlertTriangle, FileText, Users, CheckCheck } from 'lucide-react'
+import { Shell }        from '../../app/Shell'
+import { KpiCard }      from '../../shared/ui/KpiCard'
+import { Badge }        from '../../shared/ui/Badge'
+import { Button }       from '../../shared/ui/Button'
+import { EmptyState }   from '../../shared/ui/EmptyState'
 import { SkeletonTable } from '../../shared/ui/Skeleton'
-import { useToast }    from '../../shared/ui/useToast'
-import { formatMoney } from '../../shared/lib/money'
-import { getOverdueInvoices, markRelanceSent, generateRelanceDraft } from './relances.queries'
+import { SyncButton }   from '../../shared/ui/SyncButton'
+import { useToast }     from '../../shared/ui/useToast'
+import { formatMoney }  from '../../shared/lib/money'
+import { getOverdueInvoices, checkPayments, generateRelanceDraft } from './relances.queries'
 import { buildRelancePrompt } from './relances.logic'
 import type { RelanceRow, Palier } from './relances.types'
-
-// ── Couleur des badges de palier ─────────────────────────────────────────────
 
 const PALIER_COLOR: Record<Palier, 'muted' | 'warning' | 'danger'> = {
   'J+0':  'muted',
@@ -21,32 +20,21 @@ const PALIER_COLOR: Record<Palier, 'muted' | 'warning' | 'danger'> = {
   'J+30': 'danger',
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function fmtDate(iso: string): string {
   return new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR')
 }
 
-function fmtDatetime(iso: string): string {
-  return new Date(iso).toLocaleDateString('fr-FR')
-}
-
-// ── Composant principal ────────────────────────────────────────────────────────
-
 export function Relances() {
   const { toast } = useToast()
 
-  const [rows, setRows]       = useState<RelanceRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [rows, setRows]           = useState<RelanceRow[]>([])
+  const [loading, setLoading]     = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  // Relance active
-  const [activeId, setActiveId]   = useState<string | null>(null)
-  const [draft, setDraft]         = useState<string | null>(null)
-  const [drafting, setDrafting]   = useState(false)
-  const [marking, setMarking]     = useState(false)
-
-  // ── Chargement ────────────────────────────────────────────────────────────────
+  // Brouillon IA (lecture seule, zéro écriture DB)
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const [draft, setDraft]       = useState<string | null>(null)
+  const [drafting, setDrafting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -59,84 +47,62 @@ export function Relances() {
 
   useEffect(() => { load() }, [load])
 
-  // ── KPIs ──────────────────────────────────────────────────────────────────────
-
-  const totalCts = useMemo(() => rows.reduce((s, r) => s + r.effective_ttc_cts, 0), [rows])
+  const totalCts      = useMemo(() => rows.reduce((s, r) => s + r.effective_ttc_cts, 0), [rows])
   const uniqueClients = useMemo(() => new Set(rows.map(r => r.client_id)).size, [rows])
-
-  // ── Ligne active ──────────────────────────────────────────────────────────────
 
   const activeRow = rows.find(r => r.id === activeId) ?? null
 
-  // ── Préparer le brouillon ─────────────────────────────────────────────────────
-
   const handlePrepare = async (row: RelanceRow) => {
-    if (activeId === row.id) {
-      setActiveId(null)
-      setDraft(null)
-      return
-    }
+    if (activeId === row.id) { setActiveId(null); setDraft(null); return }
     setActiveId(row.id)
     setDraft(null)
     setDrafting(true)
-
     const prompt = buildRelancePrompt({
       client_name:   row.client_name,
       invoice_id:    row.pennylane_invoice_id,
       ttc_eur:       row.effective_ttc_cts / 100,
       echeance_date: row.echeance_date,
       jours_retard:  row.jours_retard,
-      relance_count: row.relance_count,
     })
-
     const { data, error } = await generateRelanceDraft(prompt)
     setDrafting(false)
-
-    if (error || !data?.ok) {
-      toast(error?.message ?? data?.error ?? 'Erreur lors de la génération', 'error')
-      return
-    }
+    if (error || !data?.ok) { toast(error?.message ?? data?.error ?? 'Erreur lors de la génération', 'error'); return }
     setDraft(data?.data?.text ?? '')
   }
 
-  // ── Copier le brouillon ───────────────────────────────────────────────────────
-
   const handleCopy = async () => {
     if (!draft) return
-    try {
-      await navigator.clipboard.writeText(draft)
-      toast('Brouillon copié')
-    } catch {
-      toast('Impossible de copier', 'error')
-    }
+    try { await navigator.clipboard.writeText(draft); toast('Brouillon copié') }
+    catch { toast('Impossible de copier', 'error') }
   }
-
-  // ── Marquer comme relancée ────────────────────────────────────────────────────
-
-  const handleMarkSent = async () => {
-    if (!activeRow) return
-    setMarking(true)
-    const { error } = await markRelanceSent(activeRow.id, activeRow.relance_count)
-    setMarking(false)
-    if (error) {
-      toast((error as { message?: string }).message ?? 'Erreur', 'error')
-      return
-    }
-    toast(`Relance enregistrée pour ${activeRow.client_name}`)
-    setActiveId(null)
-    setDraft(null)
-    await load()
-  }
-
-  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <Shell pageTitle="Relances impayées">
       <div className="flex flex-col gap-5">
 
+        {/* Note + SyncButton */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <p className="text-[var(--fs-xs)] text-[var(--text-muted)] flex-1">
+            Pennylane gère les relances automatiques. Cette vue contrôle les impayés&nbsp;;
+            le statut payé est mis à jour via «&nbsp;Vérifier les paiements&nbsp;».
+          </p>
+          <SyncButton
+            label="Vérifier les paiements"
+            icon={<CheckCheck size={13} />}
+            onSync={async () => {
+              const { data, error } = await checkPayments()
+              if (error || data?.ok === false)
+                return { ok: false, message: error?.message ?? data?.error ?? 'Échec de la vérification' }
+              const marked = data?.data?.marked_payee ?? 0
+              await load()
+              return { ok: true, message: marked > 0 ? `${marked} livraison(s) marquée(s) payée(s)` : 'Aucun nouveau paiement détecté' }
+            }}
+          />
+        </div>
+
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 [&>*]:min-w-0">
-          <KpiCard label="Total en retard"   value={formatMoney(totalCts)} tone="danger" icon={<AlertTriangle size={18} />} />
+          <KpiCard label="Total en retard"   value={formatMoney(totalCts)} tone="danger"  icon={<AlertTriangle size={18} />} />
           <KpiCard label="Factures échues"   value={rows.length} sub="en attente de paiement" tone="warning" icon={<FileText size={18} />} />
           <KpiCard label="Clients concernés" value={uniqueClients} tone="info" icon={<Users size={18} />} />
         </div>
@@ -158,7 +124,7 @@ export function Relances() {
               <table className="w-full text-[var(--fs-sm)]">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                    {['Client', 'N° facture', 'TTC', 'Échéance', 'Retard', 'Palier', 'Relances', 'Dernière', ''].map(h => (
+                    {['Client', 'N° facture', 'TTC', 'Échéance', 'Retard', 'Palier', ''].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left font-medium text-[var(--text-muted)] text-[var(--fs-xs)] uppercase tracking-wide whitespace-nowrap">
                         {h}
                       </th>
@@ -187,12 +153,6 @@ export function Relances() {
                       <td className="px-4 py-3">
                         <Badge color={PALIER_COLOR[row.palier]}>{row.palier}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-center text-[var(--text-muted)]">
-                        {row.relance_count}
-                      </td>
-                      <td className="px-4 py-3 text-[var(--text-muted)] whitespace-nowrap text-[var(--fs-xs)]">
-                        {row.last_relance_at ? fmtDatetime(row.last_relance_at) : '—'}
-                      </td>
                       <td className="px-4 py-3">
                         <Button
                           size="compact"
@@ -200,7 +160,7 @@ export function Relances() {
                           onClick={() => handlePrepare(row)}>
                           {activeId === row.id && drafting
                             ? <Loader2 size={12} className="animate-spin" />
-                            : 'Préparer'}
+                            : 'Brouillon IA'}
                         </Button>
                       </td>
                     </tr>
@@ -209,13 +169,12 @@ export function Relances() {
               </table>
             </div>
 
-            {/* Panneau brouillon */}
+            {/* Panneau brouillon IA — lecture seule, texte à copier */}
             {activeRow && (
               <div className="rounded-[var(--r-lg)] border border-[var(--brand)]/30 bg-[var(--bg-card)] p-5 flex flex-col gap-4">
                 <p className="font-medium text-[var(--text)]">
-                  Relance — <span className="text-[var(--brand)]">{activeRow.client_name}</span>
+                  Brouillon — <span className="text-[var(--brand)]">{activeRow.client_name}</span>
                 </p>
-
                 {drafting ? (
                   <div className="flex items-center gap-2 text-[var(--text-muted)] text-[var(--fs-sm)]">
                     <Loader2 size={16} className="animate-spin" />
@@ -227,20 +186,10 @@ export function Relances() {
                       text-[var(--fs-sm)] text-[var(--text)] whitespace-pre-wrap leading-relaxed">
                       {draft}
                     </div>
-
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                    <div className="flex items-center gap-2 pt-1">
                       <Button variant="secondary" onClick={handleCopy}>
                         <Copy size={13} />
                         Copier
-                      </Button>
-
-                      <Button
-                        variant="primary"
-                        onClick={handleMarkSent}
-                        disabled={marking}
-                        className="ml-auto">
-                        <CheckCircle size={13} />
-                        {marking ? 'Enregistrement…' : 'Marquer comme relancée'}
                       </Button>
                     </div>
                   </>
