@@ -2,16 +2,17 @@ import { useState, useEffect, useCallback } from 'react'
 import { CheckCheck, Euro, FileText, Banknote } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
+import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { SyncButton } from '../../shared/ui/SyncButton'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
-import { getEncaissements, checkPayments, exportEncaissementsCSV } from './encaissement.queries'
-import { formatCents, kpiSummary } from './encaissement.logic'
+import { getEncaissements, checkPayments, exportEncaissementsCSV, getAutresEntrees } from './encaissement.queries'
+import { formatCents, kpiSummary, autreEntreeLabel, autresEntreesTotal } from './encaissement.logic'
 import { downloadCSV } from '../../shared/lib/download'
-import type { EncaissementRow, EncaissementFilters } from './encaissement.types'
+import type { EncaissementRow, EncaissementFilters, AutreEntreeRow } from './encaissement.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
 type ClientLookup = { id: string; label: string }
@@ -23,11 +24,12 @@ function fmtDate(iso: string | null): string {
 
 export function Encaissement() {
   const { toast } = useToast()
-  const [rows, setRows]       = useState<EncaissementRow[]>([])
-  const [clients, setClients] = useState<ClientLookup[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError]     = useState<string | null>(null)
-  const [filters, setFilters] = useState<EncaissementFilters>({})
+  const [rows, setRows]             = useState<EncaissementRow[]>([])
+  const [autres, setAutres]         = useState<AutreEntreeRow[]>([])
+  const [clients, setClients]       = useState<ClientLookup[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [error, setError]           = useState<string | null>(null)
+  const [filters, setFilters]       = useState<EncaissementFilters>({})
 
   useEffect(() => {
     supabase.from('clients').select('id, name').eq('active', true).order('name')
@@ -36,9 +38,13 @@ export function Encaissement() {
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
-    const { data, error } = await getEncaissements(filters)
-    if (error) setError((error as Error).message)
-    else setRows(data ?? [])
+    const [enc, ae] = await Promise.all([
+      getEncaissements(filters),
+      getAutresEntrees({ date_from: filters.date_from, date_to: filters.date_to }),
+    ])
+    if (enc.error) setError((enc.error as Error).message)
+    else setRows(enc.data ?? [])
+    setAutres(ae.data ?? [])
     setLoading(false)
   }, [filters])
 
@@ -177,6 +183,93 @@ export function Encaissement() {
             </div>
           </>
         )}
+        {/* Autres entrées — crédits Qonto hors CA */}
+        <div className="glass rounded-[var(--r-xl)] overflow-hidden">
+          <div className="px-5 pt-4 pb-3 border-b border-[var(--border)]">
+            <p className="font-semibold text-[var(--text)] text-[var(--fs-sm)]">Autres entrées</p>
+            <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mt-0.5">
+              Apports CCA, remboursements — hors chiffre d'affaires
+            </p>
+          </div>
+
+          {loading ? (
+            <div className="p-5"><SkeletonTable rows={3} /></div>
+          ) : autres.length === 0 ? (
+            <div className="px-5 py-8 text-center text-[var(--fs-xs)] text-[var(--text-muted)]">
+              Aucune autre entrée sur la période.
+            </div>
+          ) : (
+            <>
+              {/* Desktop */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-[var(--fs-sm)]">
+                  <thead>
+                    <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
+                      {['Date', 'Libellé', 'Montant', 'Nature'].map(h => (
+                        <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {autres.map(r => (
+                      <tr key={r.qonto_id} className="transition-colors hover:bg-[var(--bg-card-hover)]">
+                        <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)] whitespace-nowrap">
+                          {fmtDate(r.settled_at)}
+                        </td>
+                        <td className="px-4 py-3 text-[var(--text)] max-w-xs truncate">{r.label ?? '—'}</td>
+                        <td className="px-4 py-3 font-mono font-semibold text-[var(--success,#16a34a)] whitespace-nowrap">
+                          +{formatCents(r.amount_cts)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge color={r.justif_type ? 'info' : 'warning'}>
+                            {autreEntreeLabel(r.justif_type)}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                    {/* Sous-total */}
+                    <tr className="border-t-2 border-[var(--border)] bg-[var(--bg-elevated)]">
+                      <td colSpan={2} className="px-4 py-2.5 text-[var(--fs-xs)] text-[var(--text-muted)] font-medium">
+                        Sous-total
+                      </td>
+                      <td className="px-4 py-2.5 font-mono font-bold text-[var(--success,#16a34a)] whitespace-nowrap">
+                        +{formatCents(autresEntreesTotal(autres))}
+                      </td>
+                      <td />
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile */}
+              <div className="md:hidden flex flex-col divide-y divide-[var(--border)]">
+                {autres.map(r => (
+                  <div key={r.qonto_id} className="px-4 py-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[var(--text)] text-[var(--fs-sm)] truncate">{r.label ?? '—'}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">{fmtDate(r.settled_at)}</span>
+                        <Badge color={r.justif_type ? 'info' : 'warning'}>
+                          {autreEntreeLabel(r.justif_type)}
+                        </Badge>
+                      </div>
+                    </div>
+                    <span className="font-mono font-semibold text-[var(--success,#16a34a)] whitespace-nowrap shrink-0">
+                      +{formatCents(r.amount_cts)}
+                    </span>
+                  </div>
+                ))}
+                <div className="px-4 py-2.5 flex items-center justify-between bg-[var(--bg-elevated)]">
+                  <span className="text-[var(--fs-xs)] text-[var(--text-muted)] font-medium">Sous-total</span>
+                  <span className="font-mono font-bold text-[var(--success,#16a34a)]">
+                    +{formatCents(autresEntreesTotal(autres))}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
       </div>
     </Shell>
   )
