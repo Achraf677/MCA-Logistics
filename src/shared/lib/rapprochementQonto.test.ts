@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getMatchingChargesForDebit, classifyDebit, suggestJustifType } from './rapprochementQonto'
+import { getMatchingChargesForDebit, classifyDebit, suggestJustifType, classifyCredit, suggestCreditTag } from './rapprochementQonto'
 import type { ChargePick } from '../types/charges'
 
 function charge(id: string, ttc: number, date = '2026-06-01'): ChargePick {
@@ -120,5 +120,68 @@ describe('suggestJustifType', () => {
 
   it('null si label et operationType vides', () => {
     expect(suggestJustifType(null, null, [])).toBeNull()
+  })
+})
+
+describe('classifyCredit', () => {
+  it('non_identifie si justifType null', () => {
+    expect(classifyCredit(null)).toBe('non_identifie')
+  })
+
+  it('identifie si tag client', () => {
+    expect(classifyCredit('client')).toBe('identifie')
+  })
+
+  it('identifie si tag cca', () => {
+    expect(classifyCredit('cca')).toBe('identifie')
+  })
+
+  it('identifie si tag remboursement', () => {
+    expect(classifyCredit('remboursement')).toBe('identifie')
+  })
+
+  it('identifie si tag autre', () => {
+    expect(classifyCredit('autre')).toBe('identifie')
+  })
+})
+
+describe('suggestCreditTag', () => {
+  it('cca si transfer et nom associe dans label', () => {
+    expect(suggestCreditTag('VIR ACHRAF CHIKRI apport', 'transfer', [], ['Achraf Chikri']))
+      .toBe('cca')
+  })
+
+  it('cca : casse et accents ignores', () => {
+    expect(suggestCreditTag('virement elodie dupont capital', 'transfer', [], ['Elodie Dupont']))
+      .toBe('cca')
+  })
+
+  it('cca prioritaire sur client si transfer et les deux matchent', () => {
+    expect(suggestCreditTag('VIR ACHRAF CHIKRI', 'transfer', ['Achraf Chikri'], ['Achraf Chikri']))
+      .toBe('cca')
+  })
+
+  it('pas cca si pas transfer meme si associe match', () => {
+    expect(suggestCreditTag('Achraf Chikri remboursement', 'card', [], ['Achraf Chikri']))
+      .toBeNull()
+  })
+
+  it('client si nom client dans label (pas de transfer)', () => {
+    expect(suggestCreditTag('PAIEMENT DUPONT TRANSPORTS', null, ['Dupont Transports'], []))
+      .toBe('client')
+  })
+
+  it('client : casse et accents ignores', () => {
+    expect(suggestCreditTag('reglement eurl martin', null, ['EURL Martin'], []))
+      .toBe('client')
+  })
+
+  it('null si rien ne matche', () => {
+    expect(suggestCreditTag('Virement divers', null, ['Dupont'], ['Achraf Chikri']))
+      .toBeNull()
+  })
+
+  it('null si label null', () => {
+    expect(suggestCreditTag(null, null, ['Client SA'], ['Achraf Chikri'])).toBeNull()
   })
 })

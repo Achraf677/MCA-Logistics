@@ -73,6 +73,14 @@ export async function getTeamMemberNames(): Promise<string[]> {
   return (data ?? []).map((m: { full_name: string }) => m.full_name).filter(Boolean)
 }
 
+export async function getClientNames(): Promise<string[]> {
+  const { data } = await supabase
+    .from('clients')
+    .select('name')
+    .eq('active', true)
+  return (data ?? []).map((c: { name: string }) => c.name).filter(Boolean)
+}
+
 // ── Déclenchements (Edge Functions — jamais d'appel API externe direct) ────────
 
 export async function syncQonto() {
