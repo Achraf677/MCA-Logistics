@@ -113,6 +113,7 @@ export function LineChart({ points, formatValue, formatAxisY }: LineChartProps) 
             <line
               x1={padL} y1={t.svgY} x2={W - padR} y2={t.svgY}
               stroke="var(--border)" strokeWidth="1" opacity="0.45"
+              vectorEffect="non-scaling-stroke"
             />
             <text
               x={padL - 6} y={t.svgY + 4}
@@ -145,6 +146,7 @@ export function LineChart({ points, formatValue, formatAxisY }: LineChartProps) 
           strokeLinecap="round"
           strokeLinejoin="round"
           shapeRendering="geometricPrecision"
+          vectorEffect="non-scaling-stroke"
           clipPath="url(#lc-clip)"
           pathLength="1"
           className="lc-line"
@@ -155,6 +157,7 @@ export function LineChart({ points, formatValue, formatAxisY }: LineChartProps) 
           <line
             x1={x(hovered)} y1={chartTop} x2={x(hovered)} y2={chartBot}
             stroke="var(--text-disabled)" strokeWidth="1" strokeDasharray="4 3"
+            vectorEffect="non-scaling-stroke"
           />
         )}
 
@@ -174,6 +177,7 @@ export function LineChart({ points, formatValue, formatAxisY }: LineChartProps) 
                 stroke="var(--bg-card)"
                 strokeWidth="2"
                 shapeRendering="geometricPrecision"
+                vectorEffect="non-scaling-stroke"
               />
               <text
                 x={x(i)} y={H - 3}
