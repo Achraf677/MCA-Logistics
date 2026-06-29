@@ -30,7 +30,8 @@ export function SelecteurCharge({ open, onClose, onSelect, fetchCharges, fetchAl
       setLoading(false)
     })
     setTimeout(() => inputRef.current?.focus(), 80)
-  }, [open]) // fetchCharges intentionnellement exclu : stable par construction
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchCharges est stable par construction (ref ne change pas)
+  }, [open])
 
   const handleToggleAll = () => {
     if (showAll) { setShowAll(false); return }

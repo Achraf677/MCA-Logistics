@@ -13,27 +13,27 @@ import {
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined)
 
-const ASSISTANT_TOOLS: Record<string, (args: any) => Promise<unknown>> = {
+const ASSISTANT_TOOLS: Record<string, (args: Record<string, unknown>) => Promise<unknown>> = {
   // Vague A — finance / tiers / alertes
-  get_kpis_mois:    (args) => getKpisMois(str(args?.mois)),
+  get_kpis_mois:    (args) => getKpisMois(str(args.mois)),
   get_alertes:      () => getAlertes(),
   get_impayes:      () => getImpayes(),
   get_tresorerie:   () => getTresorerie(),
-  get_charges_mois: (args) => getChargesMois(str(args?.mois)),
-  get_tva:          (args) => getTva(str(args?.mois)),
-  get_client:       (args) => getClient(str(args?.nom) ?? ''),
+  get_charges_mois: (args) => getChargesMois(str(args.mois)),
+  get_tva:          (args) => getTva(str(args.mois)),
+  get_client:       (args) => getClient(str(args.nom) ?? ''),
   get_clients:      () => getClientsList(),
   get_fournisseurs: () => getFournisseursList(),
   // Vague B — opérations / flotte / équipe
-  get_livraisons:    (args) => getLivraisons(str(args?.date), str(args?.statut)),
-  get_tournees:      (args) => getTournees(str(args?.date)),
-  get_incidents:     (args) => getIncidentsList(str(args?.statut)),
-  get_inspections:   (args) => getInspectionsList(str(args?.statut)),
+  get_livraisons:    (args) => getLivraisons(str(args.date), str(args.statut)),
+  get_tournees:      (args) => getTournees(str(args.date)),
+  get_incidents:     (args) => getIncidentsList(str(args.statut)),
+  get_inspections:   (args) => getInspectionsList(str(args.statut)),
   get_vehicules:     () => getVehicules(),
-  get_carburant_mois:(args) => getCarburantMois(str(args?.mois)),
+  get_carburant_mois:(args) => getCarburantMois(str(args.mois)),
   get_entretiens:    () => getEntretiens(),
   get_equipe:        () => getEquipe(),
-  get_heures:        (args) => getHeures(str(args?.membre), str(args?.mois)),
+  get_heures:        (args) => getHeures(str(args.membre), str(args.mois)),
 }
 
 // Outils d'ÉCRITURE : jamais exécutés automatiquement. Quand l'IA en demande un,
@@ -87,7 +87,7 @@ const GENERATION_TOOLS = new Set<string>(['generer_mail'])
 
 // ── Boucle de tour (function calling) ─────────────────────────────────────────
 
-interface ToolCall { id: string; name: string; arguments: unknown }
+interface ToolCall { id: string; name: string; arguments: Record<string, unknown> }
 
 type AssistantData =
   | { type: 'message'; content?: string }
