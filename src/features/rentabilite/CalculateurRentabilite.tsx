@@ -180,7 +180,6 @@ function TrajetMap({ geometry, departCoords, arriveeCoords }: {
 }) {
   const latlngs = useMemo(
     () => geometry.coordinates.map(([lon, lat]) => [lat, lon] as [number, number]),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [geometry.coordinates],
   )
   return (
