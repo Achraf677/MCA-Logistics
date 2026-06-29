@@ -117,7 +117,7 @@ export function AlertesBell() {
     }
   }, [open])
 
-  const all = alerts ?? []
+  const all = useMemo(() => alerts ?? [], [alerts])
   const summary = useMemo(() => summarizeAlerts(all), [all])
 
   // Regroupement par sévérité (ordre fixe critique→info), items déjà triés par le moteur.

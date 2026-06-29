@@ -53,5 +53,5 @@ export function applyTheme(id: string) {
   const t = THEMES.find(x => x.id === id) || THEMES[0]
   const root = document.documentElement
   Object.entries(t.vars).forEach(([k,v]) => root.style.setProperty(k, v))
-  try { localStorage.setItem(KEY, t.id) } catch {}
+  try { localStorage.setItem(KEY, t.id) } catch { /* storage indisponible (navigation privée) */ }
 }

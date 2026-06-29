@@ -153,7 +153,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
     const rate = parseFloat(form.tva_rate || '20')
     const suggested = fromTtcAndRate(totalCts, rate).tva_cts
     setForm(p => ({ ...p, tva_amount: (suggested / 100).toFixed(2) }))
-  }, [form.total_ttc, form.tva_rate, tvaTouched])
+  }, [form.total_ttc, form.tva_rate, tvaTouched, totalCts])
 
   const handleLitersOrPriceChange = (k: 'liters' | 'price_per_liter', v: string) => {
     setForm(p => {

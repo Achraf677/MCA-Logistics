@@ -78,7 +78,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
         setDeliveriesLoading(false)
       })
     }
-  }, [tab, client])
+  }, [tab, client, deliveries.length])
 
   const set = (k: keyof typeof form, v: unknown) => setForm(p => ({ ...p, [k]: v }))
 
