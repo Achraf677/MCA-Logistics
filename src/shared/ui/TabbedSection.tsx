@@ -17,7 +17,7 @@ export function TabActions({ children }: { children: ReactNode }) {
   return slot ? createPortal(children, slot) : null
 }
 
-export function TabbedSection({ tabs }: { tabs: SubTab[] }) {
+export function TabbedSection({ tabs, headerRight }: { tabs: SubTab[]; headerRight?: ReactNode }) {
   const [params, setParams] = useSearchParams()
   const { ready, isPresident, can } = usePermissions()
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null)
@@ -68,7 +68,10 @@ export function TabbedSection({ tabs }: { tabs: SubTab[] }) {
               )
             })}
           </div>
-          <div ref={setActionsSlot} className="flex items-center gap-2 shrink-0 pb-1.5" />
+          <div className="flex items-center gap-3 shrink-0 pb-1.5">
+            {headerRight}
+            <div ref={setActionsSlot} className="flex items-center gap-2" />
+          </div>
         </div>
 
         {/* Contenu de l'onglet actif */}
