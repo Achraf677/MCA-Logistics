@@ -76,7 +76,7 @@ export function Admins() {
             Aucun compte trouvé.
           </p>
         ) : (
-          <div className="rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden">
+          <div className="glass rounded-[var(--r-xl)] overflow-hidden">
             {members.map((member, idx) => {
               const isPresident = member.role === 'president'
               const isCurrentUser = member.id === profile?.id

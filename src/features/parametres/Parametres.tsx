@@ -305,7 +305,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden">
+    <div className="glass rounded-[var(--r-xl)] overflow-hidden">
       <div className="px-4 py-2.5 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
         <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">{title}</span>
       </div>
