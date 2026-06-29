@@ -11,7 +11,6 @@ import { LoginPage } from './app/LoginPage'
 import { Button } from './shared/ui/Button'
 import { AssistantProvider } from './features/assistant/AssistantContext'
 import { PermissionsProvider } from './shared/permissions/PermissionsProvider'
-import { ErrorBoundary } from './app/ErrorBoundary'
 
 // ── Garde profil ─────────────────────────────────────────────────────────────
 // Bloque l'app si l'utilisateur authentifié n'a pas encore de ligne en profiles
@@ -88,14 +87,12 @@ function AppCore() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>
-      <BrowserRouter>
-        <AuthProvider>
-          <ToastProvider>
-            <AppCore />
-          </ToastProvider>
-        </AuthProvider>
-      </BrowserRouter>
-    </ErrorBoundary>
+    <BrowserRouter>
+      <AuthProvider>
+        <ToastProvider>
+          <AppCore />
+        </ToastProvider>
+      </AuthProvider>
+    </BrowserRouter>
   </StrictMode>,
 )
