@@ -235,3 +235,13 @@ export async function exportDeliveriesCSV(filters: DeliveryFilters = {}) {
   ])
   return [headers, ...rows].map(r => r.join(';')).join('\n')
 }
+
+// ── Derniers numéros Pennylane (badge barre d'onglets) ────────────────────────
+export async function getDerniersNumeros(): Promise<{ invoice: string | null; quote: string | null }> {
+  const { data, error } = await supabase.functions.invoke('pennylane-last-numbers', { body: {} })
+  if (error || !data) return { invoice: null, quote: null }
+  return {
+    invoice: (data.last_invoice_number as string | null) ?? null,
+    quote:   (data.last_quote_number   as string | null) ?? null,
+  }
+}
