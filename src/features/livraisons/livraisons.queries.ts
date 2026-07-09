@@ -51,7 +51,9 @@ export async function deleteDeliveries(ids: string[]) {
  * - Vérifie canTransition() → erreur si saut illégal.
  * - Bloque livree→facturee si montant absent.
  * - Pose invoiced_at (→facturee) ou paid_at (→payee).
- * - À →facturee : tente Edge Function Pennylane, sinon sync_pending=true.
+ * - À →facturee : tente Edge Function `pennylane-invoice`, sinon sync_pending=true.
+ * - À →payee : tente Edge Function `pennylane-register-payment` en best-effort
+ *   (encaissement hors rapprochement bancaire, ex. Cocolis). Aucun blocage si KO.
  */
 export async function transitionDelivery(
   id: string,
@@ -92,13 +94,18 @@ export async function transitionDelivery(
 
   if (error) return { data: null, error: new Error(error.message) }
 
-  // Push Pennylane uniquement à →facturee
+  // Push Pennylane à →facturee (crée la facture) ou →payee (enregistre le paiement).
   if (to === 'facturee') {
     const pushed = await tryPushPennylane(id)
     if (!pushed) {
-      // Edge Function absente ou KO → sync_queue
+      // Edge Function absente ou KO → sync_queue (rattrapée par resyncPending).
       await supabase.from('deliveries').update({ sync_pending: true }).eq('id', id)
     }
+  } else if (to === 'payee') {
+    // Best-effort : le paiement est déjà effectif côté MCA, on informe Pennylane.
+    // Un échec ne remonte pas comme erreur (pas de sync_pending détourné : cette
+    // colonne est dédiée à la facturation, `resyncPending` ne réagit qu'à ça).
+    await tryPushPaymentPennylane(id)
   }
 
   return { data, error: null }
@@ -107,6 +114,17 @@ export async function transitionDelivery(
 async function tryPushPennylane(deliveryId: string): Promise<boolean> {
   try {
     const { error } = await supabase.functions.invoke('pennylane-invoice', {
+      body: { delivery_id: deliveryId },
+    })
+    return !error
+  } catch {
+    return false
+  }
+}
+
+async function tryPushPaymentPennylane(deliveryId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase.functions.invoke('pennylane-register-payment', {
       body: { delivery_id: deliveryId },
     })
     return !error

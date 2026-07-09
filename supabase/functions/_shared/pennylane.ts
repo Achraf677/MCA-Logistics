@@ -186,3 +186,31 @@ export async function createInvoiceFromQuote(token: string, quoteId: number): Pr
   const invoice = (data.invoice ?? data.customer_invoice ?? data) as { id: number };
   return invoice.id;
 }
+
+/**
+ * Enregistre un paiement manuel sur une facture Pennylane finalisée.
+ * Utilisé quand l'encaissement est déjà réalisé côté MCA (plateforme tierce
+ * type Cocolis, virement hors circuit bancaire suivi, etc.) et qu'on veut
+ * marquer la facture comme réglée dans Pennylane sans attendre le
+ * rapprochement bancaire automatique.
+ *
+ * `paidAt` : date d'encaissement au format ISO "YYYY-MM-DD".
+ * `amountEuros` : montant TTC en euros (ex. 174.00).
+ * `source` : moyen de paiement Pennylane ("other" par défaut).
+ */
+export async function registerInvoicePayment(
+  token: string,
+  invoiceId: string | number,
+  amountEuros: number,
+  paidAt: string,
+  source = 'other',
+): Promise<void> {
+  await fetchJson<unknown>(
+    `${PENNYLANE_BASE}/customer_invoices/${invoiceId}/register_payment`,
+    {
+      method: 'POST',
+      headers: pennylaneHeaders(token),
+      body: { paid_at: paidAt, amount: amountEuros, source },
+    },
+  );
+}
