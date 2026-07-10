@@ -54,7 +54,7 @@ Deno.serve(async (req: Request) => {
     .from('deliveries')
     .select(
       'id, client_id, date, description, type, invoiced_at, ' +
-        'amount_ht_cts, tva_cts, tva_rate, pennylane_invoice_id',
+        'amount_ht_cts, tva_cts, tva_rate, pennylane_invoice_id, extra_lines',
     )
     .in('id', ids);
 
@@ -98,6 +98,7 @@ Deno.serve(async (req: Request) => {
     amountHtCts: number;
     vatCode: string;
     label: string;
+    quantity: number;
   }
   const validatedLines: ValidatedLine[] = [];
 
@@ -127,7 +128,45 @@ Deno.serve(async (req: Request) => {
     const label = (d.description?.trim() ||
       `Livraison ${d.type ?? ''} du ${d.date ?? ''}`.trim());
 
-    validatedLines.push({ id: d.id, amountHtCts, vatCode, label });
+    validatedLines.push({ id: d.id, amountHtCts, vatCode, label, quantity: 1 });
+
+    // ── Lignes supplémentaires — attente, retour à vide, forfait…              ──
+    // Toutes vont sur la même facture Pennylane, chacune avec son propre taux TVA.
+    // Refuse la facturation si une ligne extra a un HT<=0 ou un taux non-standard :
+    // mieux vaut échouer clairement que produire une facture bancale.
+    const extras = Array.isArray(d.extra_lines) ? d.extra_lines as Array<Record<string, unknown>> : [];
+    for (const [idx, raw] of extras.entries()) {
+      const extraLabel = typeof raw.label === 'string' ? raw.label.trim() : '';
+      const extraQty = Number(raw.quantity ?? 1);
+      const extraHt = Number(raw.amount_ht_cts ?? 0);
+      const extraRate = Number(raw.tva_rate ?? ratePct);
+      if (!extraLabel) {
+        return jsonResponse({
+          ok: false,
+          error: `ligne supp. #${idx + 1} sans libellé sur livraison ${d.id}`,
+        }, 422);
+      }
+      if (!Number.isFinite(extraHt) || extraHt <= 0) {
+        return jsonResponse({
+          ok: false,
+          error: `ligne supp. "${extraLabel}" : HT invalide sur livraison ${d.id}`,
+        }, 422);
+      }
+      const extraVatCode = vatRateCode(extraRate);
+      if (extraVatCode === null) {
+        return jsonResponse({
+          ok: false,
+          error: `ligne supp. "${extraLabel}" : taux TVA non standard (${extraRate}%) sur livraison ${d.id}`,
+        }, 422);
+      }
+      validatedLines.push({
+        id: `${d.id}#extra-${idx}`,
+        amountHtCts: extraHt,
+        vatCode: extraVatCode,
+        label: extraLabel,
+        quantity: Number.isFinite(extraQty) && extraQty > 0 ? extraQty : 1,
+      });
+    }
   }
 
   // ── Client Pennylane (créé/récupéré une seule fois) ──────────────────────────
@@ -169,10 +208,10 @@ Deno.serve(async (req: Request) => {
     deadlineObj.setUTCDate(deadlineObj.getUTCDate() + (client.payment_terms ?? 30));
     const deadlineDate = deadlineObj.toISOString().slice(0, 10);
 
-    // ── Lignes de facture : une par livraison ────────────────────────────────
+    // ── Lignes de facture : une par livraison + N par ligne supplémentaire ───
     const invoiceLines: InvoiceLine[] = validatedLines.map((ln) => ({
       label: ln.label,
-      quantity: 1,
+      quantity: ln.quantity,
       unit: 'piece',
       raw_currency_unit_price: centimesToEuros(ln.amountHtCts).toFixed(2),
       vat_rate: ln.vatCode,

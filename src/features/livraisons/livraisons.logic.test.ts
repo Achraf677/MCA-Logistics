@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest'
 import {
   TRANSITIONS, canTransition, allowedNextStatuses,
   computeAmount, effectiveHtCts, effectiveTtcCts, formatCents, kpiSummary,
+  extraLinesHtCts, extraLinesTvaCts, extraLinesTtcCts,
+  deliveryTotalHtCts, deliveryTotalTtcCts,
 } from './livraisons.logic'
 import type { ClientTariff } from './livraisons.logic'
-import type { DeliveryRow, DeliveryStatus } from './livraisons.types'
+import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
 
 // Helper : construit un DeliveryRow minimal (seuls les champs lus par la logique comptent).
 function row(p: Partial<DeliveryRow>): DeliveryRow {
@@ -156,6 +158,67 @@ describe('kpiSummary', () => {
     expect(kpiSummary([])).toEqual({
       nbMois: 0, caFactureCts: 0, enAttenteFacturation: 0, enAttentePaiementCts: 0,
     })
+  })
+})
+
+// ── d.bis Lignes supplémentaires ────────────────────────────────────────────
+describe('extraLinesHtCts / extraLinesTvaCts / extraLinesTtcCts', () => {
+  const attente30: DeliveryExtraLine = { label: 'Attente 30 min', quantity: 1, amount_ht_cts: 3000, tva_rate: 20 }
+  const forfait5: DeliveryExtraLine  = { label: 'Palettes', quantity: 5, amount_ht_cts: 1200, tva_rate: 10 }
+
+  it('null / undefined / vide → 0 partout (rétrocompat)', () => {
+    for (const val of [null, undefined, []]) {
+      expect(extraLinesHtCts(val)).toBe(0)
+      expect(extraLinesTvaCts(val)).toBe(0)
+      expect(extraLinesTtcCts(val)).toBe(0)
+    }
+  })
+
+  it('somme HT × quantité', () => {
+    expect(extraLinesHtCts([attente30])).toBe(3000)
+    expect(extraLinesHtCts([forfait5])).toBe(6000)     // 5 × 1200
+    expect(extraLinesHtCts([attente30, forfait5])).toBe(9000)
+  })
+
+  it('TVA calculée ligne par ligne (chaque taux propre)', () => {
+    // attente30 : 3000 × 20 % = 600
+    // forfait5  : 6000 × 10 % = 600
+    expect(extraLinesTvaCts([attente30])).toBe(600)
+    expect(extraLinesTvaCts([forfait5])).toBe(600)
+    expect(extraLinesTvaCts([attente30, forfait5])).toBe(1200)
+  })
+
+  it('TTC = HT + TVA (invariant préservé)', () => {
+    const lines = [attente30, forfait5]
+    expect(extraLinesTtcCts(lines)).toBe(extraLinesHtCts(lines) + extraLinesTvaCts(lines))
+    expect(extraLinesTtcCts(lines)).toBe(10200)
+  })
+
+  it('tolère quantity manquante (défaut 1)', () => {
+    const line = { label: 'x', amount_ht_cts: 500, tva_rate: 20 } as DeliveryExtraLine
+    expect(extraLinesHtCts([line])).toBe(500)
+  })
+})
+
+describe('deliveryTotalHtCts / deliveryTotalTtcCts', () => {
+  it('combine ligne principale + extras', () => {
+    const d = row({ amount_ht_cts: 24000, amount_ttc_cts: 28800, extra_lines: [
+      { label: 'Attente 30 min', quantity: 1, amount_ht_cts: 3000, tva_rate: 20 },
+    ] })
+    expect(deliveryTotalHtCts(d)).toBe(27000)
+    expect(deliveryTotalTtcCts(d)).toBe(28800 + 3600) // 3000 + 20% = 3600
+  })
+
+  it('sans extras → même comportement que effectiveHtCts / effectiveTtcCts', () => {
+    const d = row({ amount_ht_cts: 24000, amount_ttc_cts: 28800, extra_lines: [] })
+    expect(deliveryTotalHtCts(d)).toBe(effectiveHtCts(d))
+    expect(deliveryTotalTtcCts(d)).toBe(effectiveTtcCts(d))
+  })
+
+  it('extra_lines absent (données legacy) → même comportement', () => {
+    const d = row({ amount_ht_cts: 24000, amount_ttc_cts: 28800 })
+    expect(deliveryTotalHtCts(d)).toBe(24000)
+    expect(deliveryTotalTtcCts(d)).toBe(28800)
   })
 })
 
