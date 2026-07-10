@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import type { ReactNode } from 'react'
-import { Trash2, Loader2, Camera } from 'lucide-react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
+import { Trash2, Loader2, Camera, Plus, X } from 'lucide-react'
 import { DocumentsPanel } from '../documents/DocumentsPanel'
 import { uploadDocument, listDocuments, getDownloadUrl } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
@@ -20,6 +20,7 @@ import {
   allowedNextStatuses,
   computeAmount,
   effectiveHtCts, effectiveTtcCts,
+  extraLinesHtCts, extraLinesTvaCts, extraLinesTtcCts,
 } from './livraisons.logic'
 import type { ClientTariff } from './livraisons.logic'
 import {
@@ -28,7 +29,7 @@ import {
   listDeliveryTemplates, createDeliveryTemplate,
 } from './livraisons.queries'
 import type { DeliveryTemplateLite } from './livraisons.queries'
-import type { DeliveryRow, DeliveryStatus } from './livraisons.types'
+import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
 
@@ -79,6 +80,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
 
   const [tab, setTab]           = useState<Tab>('detail')
   const [form, setForm]         = useState(EMPTY_FORM)
+  const [extraLines, setExtraLines] = useState<DeliveryExtraLine[]>([])
   const [tvaTouched, setTvaTouched] = useState(false)
   const [saving, setSaving]     = useState(false)
   const [clientError, setClientError] = useState('')
@@ -227,10 +229,12 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         notes:            delivery.notes ?? '',
       })
       setDeliveryCoords({ lat: delivery.delivery_lat ?? null, lng: delivery.delivery_lng ?? null })
+      setExtraLines(Array.isArray(delivery.extra_lines) ? delivery.extra_lines : [])
     } else {
       setTvaTouched(false)
       setForm({ ...EMPTY_FORM, date: TODAY })
       setDeliveryCoords({ lat: null, lng: null })
+      setExtraLines([])
     }
     setSaveAsTplOpen(false)
     setTplLabel('')
@@ -351,6 +355,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         tva_cts:          computed?.tva_cts         ?? null,
         amount_ttc_cts:   computed?.amount_ttc_cts ?? null,
         notes:            form.notes || null,
+        extra_lines:      extraLines,
       }
 
       if (isEdit && delivery) {
@@ -634,6 +639,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
       {/* ── Onglet Montant ───────────────────────────────────────────────────── */}
       {tab === 'montant' && (
         <MontantTab
+          extraLines={extraLines}
+          setExtraLines={setExtraLines}
           form={form}
           set={set}
           tvaTouched={tvaTouched}
@@ -691,6 +698,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
 function MontantTab({
   form, set, tvaTouched, onTvaChange, onTvaRateChange,
   selectedClient, computed, delivery,
+  extraLines, setExtraLines,
   isReadOnly, saving, onSave, onClose,
 }: {
   form: typeof EMPTY_FORM
@@ -701,6 +709,8 @@ function MontantTab({
   selectedClient: ClientTariff | null
   computed: ReturnType<typeof computeAmount>
   delivery?: DeliveryRow | null
+  extraLines: DeliveryExtraLine[]
+  setExtraLines: Dispatch<SetStateAction<DeliveryExtraLine[]>>
   isReadOnly: boolean
   saving: boolean
   onSave: () => void
@@ -786,6 +796,17 @@ function MontantTab({
         </>
       )}
 
+      {/* Lignes supplémentaires — attente, retour à vide, forfait…                  */}
+      {/* Toutes sont regroupées avec la ligne principale sur la même facture.      */}
+      {selectedClient && (
+        <ExtraLinesEditor
+          lines={extraLines}
+          onChange={setExtraLines}
+          defaultTvaRate={parseFloat(form.tva_rate || '20')}
+          disabled={isReadOnly}
+        />
+      )}
+
       {/* Récapitulatif HT / TVA / TTC */}
       {displayHt != null && (
         <div className="rounded-[var(--r-lg)] border border-[var(--border)] divide-y divide-[var(--border)] overflow-hidden">
@@ -795,9 +816,21 @@ function MontantTab({
           <InfoRow label="TVA">
             <span className="font-mono">{displayTva != null ? formatMoney(displayTva) : '—'}</span>
           </InfoRow>
+          {extraLines.length > 0 && (
+            <>
+              <InfoRow label={`Lignes supp. (${extraLines.length}) — HT`}>
+                <span className="font-mono">{formatMoney(extraLinesHtCts(extraLines))}</span>
+              </InfoRow>
+              <InfoRow label="Lignes supp. — TVA">
+                <span className="font-mono">{formatMoney(extraLinesTvaCts(extraLines))}</span>
+              </InfoRow>
+            </>
+          )}
           <InfoRow label="Total TTC">
             <span className="font-mono font-semibold text-[var(--text)]">
-              {displayTtc != null ? formatMoney(displayTtc) : '—'}
+              {displayTtc != null
+                ? formatMoney(displayTtc + extraLinesTtcCts(extraLines))
+                : (extraLines.length > 0 ? formatMoney(extraLinesTtcCts(extraLines)) : '—')}
             </span>
           </InfoRow>
         </div>
@@ -1201,6 +1234,117 @@ function InfoRow({ label, children }: { label: string; children: ReactNode }) {
     <div className="flex items-center justify-between px-4 py-2.5">
       <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">{label}</span>
       <span className="text-[var(--fs-sm)]">{children}</span>
+    </div>
+  )
+}
+
+// ── Éditeur de lignes supplémentaires ────────────────────────────────────────
+// Section repliée par défaut si aucune ligne. Bouton « + Ajouter » toujours
+// visible (sauf verrouillage post-facturation). Chaque ligne : label, quantité,
+// HT unitaire, taux TVA, croix pour supprimer. Aucun stockage intermédiaire :
+// on écrit directement dans le state parent (extraLines), sauvegardé avec la
+// livraison via le champ JSONB `extra_lines`.
+
+function ExtraLinesEditor({
+  lines, onChange, defaultTvaRate, disabled,
+}: {
+  lines: DeliveryExtraLine[]
+  onChange: Dispatch<SetStateAction<DeliveryExtraLine[]>>
+  defaultTvaRate: number
+  disabled: boolean
+}) {
+  const addLine = () => {
+    onChange(prev => [...prev, {
+      label: '',
+      quantity: 1,
+      amount_ht_cts: 0,
+      tva_rate: Number.isFinite(defaultTvaRate) ? defaultTvaRate : 20,
+    }])
+  }
+  const updateLine = (i: number, patch: Partial<DeliveryExtraLine>) => {
+    onChange(prev => prev.map((l, j) => j === i ? { ...l, ...patch } : l))
+  }
+  const removeLine = (i: number) => {
+    onChange(prev => prev.filter((_, j) => j !== i))
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+          Lignes supplémentaires
+        </span>
+        {!disabled && (
+          <Button variant="ghost" size="compact" onClick={addLine}>
+            <Plus size={13} />
+            Ajouter une ligne
+          </Button>
+        )}
+      </div>
+
+      {lines.length === 0 ? (
+        <p className="text-[var(--fs-xs)] text-[var(--text-muted)] italic">
+          Attente, retour à vide, forfait… — regroupé sur la même facture.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {lines.map((line, i) => (
+            <div key={i} className="rounded-[var(--r-md)] border border-[var(--border)] p-3 flex flex-col gap-2">
+              <div className="flex items-start gap-2">
+                <div className="flex-1">
+                  <Input
+                    type="text"
+                    value={line.label}
+                    onChange={v => updateLine(i, { label: v })}
+                    placeholder="Ex. : Attente 30 min"
+                    disabled={disabled}
+                  />
+                </div>
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={() => removeLine(i)}
+                    aria-label="Supprimer la ligne"
+                    className="p-1.5 rounded-[var(--r-sm)] text-[var(--text-muted)] hover:text-[var(--danger)]
+                      hover:bg-[var(--danger)]/10 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <Field label="Qté">
+                  <Input
+                    type="number"
+                    value={String(line.quantity ?? 1)}
+                    onChange={v => updateLine(i, { quantity: v === '' ? 1 : parseFloat(v) })}
+                    placeholder="1"
+                    disabled={disabled}
+                  />
+                </Field>
+                <Field label="HT unit. (€)">
+                  <Input
+                    type="number"
+                    value={line.amount_ht_cts ? (line.amount_ht_cts / 100).toFixed(2) : ''}
+                    onChange={v => updateLine(i, {
+                      amount_ht_cts: v === '' ? 0 : Math.round(parseFloat(v) * 100),
+                    })}
+                    placeholder="0.00"
+                    disabled={disabled}
+                  />
+                </Field>
+                <Field label="TVA %">
+                  <TvaRateInput
+                    value={line.tva_rate}
+                    onChange={r => updateLine(i, { tva_rate: r })}
+                    disabled={disabled}
+                  />
+                </Field>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

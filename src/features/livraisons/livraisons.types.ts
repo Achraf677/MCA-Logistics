@@ -58,8 +58,22 @@ export interface Delivery {
   /** Preuve de livraison (POD) */
   pod_recipient_name: string | null
   pod_captured_at: string | null
+  /** Lignes supplémentaires (attente, retour à vide, forfait…). */
+  extra_lines: DeliveryExtraLine[]
   created_at: string
   updated_at: string
+}
+
+/**
+ * Ligne supplémentaire rattachée à une livraison. Toutes les lignes vont
+ * sur la même facture Pennylane, un seul numéro, un seul paiement.
+ * TVA éditable par ligne (héritage du taux de la livraison à la création).
+ */
+export interface DeliveryExtraLine {
+  label: string
+  quantity: number
+  amount_ht_cts: number
+  tva_rate: number
 }
 
 export interface DeliveryRow extends Delivery {
@@ -82,7 +96,9 @@ export type DeliveryInsert = Omit<
   | 'relance_count' | 'last_relance_at'
   // POD : mis à jour via savePod(), pas lors du create.
   | 'pod_recipient_name' | 'pod_captured_at'
->
+  // extra_lines : optionnel à l'insert (default DB '[]'), écrit via updateDelivery.
+  | 'extra_lines'
+> & { extra_lines?: DeliveryExtraLine[] }
 
 export type DeliveryUpdate = Partial<Omit<Delivery, 'id' | 'company_id' | 'created_at'>>
 
