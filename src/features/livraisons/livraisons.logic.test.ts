@@ -198,6 +198,42 @@ describe('extraLinesHtCts / extraLinesTvaCts / extraLinesTtcCts', () => {
     const line = { label: 'x', amount_ht_cts: 500, tva_rate: 20 } as DeliveryExtraLine
     expect(extraLinesHtCts([line])).toBe(500)
   })
+
+  // Clamp aligné sur pennylane-invoice : quantity ≤ 0 ou non finie ≡ 1.
+  // Garantit qu'un HT positif ne devient jamais un total négatif localement,
+  // et que les KPIs / affichages restent cohérents avec ce que Pennylane facture.
+  it('quantity: 0 → traité comme 1', () => {
+    const line: DeliveryExtraLine = { label: 'x', quantity: 0, amount_ht_cts: 500, tva_rate: 20 }
+    expect(extraLinesHtCts([line])).toBe(500)
+    expect(extraLinesTvaCts([line])).toBe(100)
+    expect(extraLinesTtcCts([line])).toBe(extraLinesHtCts([line]) + extraLinesTvaCts([line]))
+  })
+
+  it('quantity: -2 → traité comme 1 (pas de HT négatif)', () => {
+    const line: DeliveryExtraLine = { label: 'x', quantity: -2, amount_ht_cts: 500, tva_rate: 20 }
+    expect(extraLinesHtCts([line])).toBe(500)
+    expect(extraLinesTvaCts([line])).toBe(100)
+    expect(extraLinesHtCts([line])).toBeGreaterThanOrEqual(0)
+  })
+
+  it('amount_ht_cts: 0 → contribue 0 (HT, TVA, TTC)', () => {
+    const line: DeliveryExtraLine = { label: 'x', quantity: 1, amount_ht_cts: 0, tva_rate: 20 }
+    expect(extraLinesHtCts([line])).toBe(0)
+    expect(extraLinesTvaCts([line])).toBe(0)
+    expect(extraLinesTtcCts([line])).toBe(0)
+  })
+
+  // Le front n'impose pas les taux légaux FR (fait par l'Edge à la facturation).
+  // Ici on vérifie juste que le calcul reste correct pour un taux atypique.
+  it('tva_rate non standard (ex 7) → TVA calculée sans erreur, invariant HT+TVA=TTC', () => {
+    const line: DeliveryExtraLine = { label: 'x', quantity: 1, amount_ht_cts: 10000, tva_rate: 7 }
+    const ht = extraLinesHtCts([line])
+    const tva = extraLinesTvaCts([line])
+    const ttc = extraLinesTtcCts([line])
+    expect(ht).toBe(10000)
+    expect(tva).toBe(700)
+    expect(ttc).toBe(ht + tva)
+  })
 })
 
 describe('deliveryTotalHtCts / deliveryTotalTtcCts', () => {

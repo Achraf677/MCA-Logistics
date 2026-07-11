@@ -335,6 +335,35 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
 
     setSaving(true)
     try {
+      // Filtrage extras avant persist :
+      //  - lignes vides (label vide ET HT=0) → silencieusement ignorées (l'utilisateur
+      //    a cliqué « Ajouter » sans compléter, comportement attendu) ;
+      //  - lignes partiellement remplies (label OK mais HT ≤ 0, ou HT OK mais label
+      //    absent) → ignorées avec toast d'avertissement, pour ne pas envoyer un
+      //    extra bancal que l'Edge pennylane-invoice refuserait en 422 plus tard.
+      const cleanedExtras: DeliveryExtraLine[] = []
+      let droppedIncomplete = 0
+      for (const l of extraLines) {
+        const label = (l.label ?? '').trim()
+        const ht = Number(l.amount_ht_cts)
+        const qty = Number(l.quantity)
+        const validLabel = label.length > 0
+        const validHt    = Number.isFinite(ht) && ht > 0
+        const validQty   = Number.isFinite(qty) && qty >= 1
+        const isEmpty    = !validLabel && !(Number.isFinite(ht) && ht > 0)
+        if (isEmpty) continue
+        if (!validLabel || !validHt || !validQty) { droppedIncomplete++; continue }
+        cleanedExtras.push({
+          label,
+          quantity: qty,
+          amount_ht_cts: Math.round(ht),
+          tva_rate: Number(l.tva_rate) || 0,
+        })
+      }
+      if (droppedIncomplete > 0) {
+        toast('Ligne(s) supplémentaire(s) incomplète(s) ignorée(s)', 'error')
+      }
+
       // Seules les colonnes v2 sont écrites pour les montants.
       // montant_ht_cts (DEFAULT 0) et montant_ttc_cts (GENERATED) ne sont JAMAIS écrits.
       const payload = {
@@ -355,7 +384,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         tva_cts:          computed?.tva_cts         ?? null,
         amount_ttc_cts:   computed?.amount_ttc_cts ?? null,
         notes:            form.notes || null,
-        extra_lines:      extraLines,
+        extra_lines:      cleanedExtras,
       }
 
       if (isEdit && delivery) {
@@ -1206,13 +1235,15 @@ const inputCls = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border bo
   transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
 
 function Input({
-  type = 'text', value, onChange, placeholder, disabled,
+  type = 'text', value, onChange, placeholder, disabled, min, step,
 }: {
   type?: string; value: string; onChange: (v: string) => void
   placeholder?: string; disabled?: boolean
+  min?: number | string; step?: number | string
 }) {
   return (
     <input type={type} value={value} placeholder={placeholder} disabled={disabled}
+      min={min} step={step}
       onChange={e => onChange(e.target.value)} className={inputCls} />
   )
 }
@@ -1316,8 +1347,13 @@ function ExtraLinesEditor({
                 <Field label="Qté">
                   <Input
                     type="number"
+                    min={1}
                     value={String(line.quantity ?? 1)}
-                    onChange={v => updateLine(i, { quantity: v === '' ? 1 : parseFloat(v) })}
+                    onChange={v => {
+                      if (v === '') { updateLine(i, { quantity: 1 }); return }
+                      const n = parseFloat(v)
+                      updateLine(i, { quantity: Number.isFinite(n) ? Math.max(1, n) : 1 })
+                    }}
                     placeholder="1"
                     disabled={disabled}
                   />
@@ -1325,6 +1361,7 @@ function ExtraLinesEditor({
                 <Field label="HT unit. (€)">
                   <Input
                     type="number"
+                    min={0}
                     value={line.amount_ht_cts ? (line.amount_ht_cts / 100).toFixed(2) : ''}
                     onChange={v => updateLine(i, {
                       amount_ht_cts: v === '' ? 0 : Math.round(parseFloat(v) * 100),

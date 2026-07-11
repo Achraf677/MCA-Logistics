@@ -16,7 +16,10 @@ export { effectiveHtCts, effectiveTtcCts, formatCents }
 export function extraLinesHtCts(lines: DeliveryExtraLine[] | null | undefined): number {
   if (!lines || lines.length === 0) return 0
   return lines.reduce((s, l) => {
-    const qty = Number(l.quantity) || 1
+    // Clamp identique à pennylane-invoice/index.ts : quantity ≤ 0 ou non finie → 1
+    // (évite les HT négatifs et aligne le total local sur ce qui sera facturé).
+    const q = Number(l.quantity)
+    const qty = Number.isFinite(q) && q > 0 ? q : 1
     return s + Math.round((Number(l.amount_ht_cts) || 0) * qty)
   }, 0)
 }
@@ -26,7 +29,8 @@ export function extraLinesHtCts(lines: DeliveryExtraLine[] | null | undefined): 
 export function extraLinesTvaCts(lines: DeliveryExtraLine[] | null | undefined): number {
   if (!lines || lines.length === 0) return 0
   return lines.reduce((s, l) => {
-    const qty = Number(l.quantity) || 1
+    const q = Number(l.quantity)
+    const qty = Number.isFinite(q) && q > 0 ? q : 1
     const ht = Math.round((Number(l.amount_ht_cts) || 0) * qty)
     const ttc = addTva(ht, (Number(l.tva_rate) || 0) / 100)
     return s + (ttc - ht)
