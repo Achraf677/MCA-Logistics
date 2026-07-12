@@ -3,7 +3,10 @@ import { supabase } from '../../app/providers'
 export async function getTvaData(dateFrom: string, dateTo: string) {
   const [deliveries, chargesRes, fuelRes] = await Promise.all([
     supabase.from('deliveries')
-      .select('amount_ht_cts, amount_ttc_cts, tva_rate')
+      // extra_lines requis : la TVA collectée = deliveryTotalTtcCts −
+      // deliveryTotalHtCts (ligne principale + supp. facturées à Pennylane).
+      // Sans cette colonne, on sous-déclarerait la TVA collectée sur la CA3.
+      .select('amount_ht_cts, amount_ttc_cts, tva_rate, extra_lines')
       .gte('date', dateFrom).lte('date', dateTo)
       .in('statut', ['facturee', 'payee']),
     supabase.from('charges')

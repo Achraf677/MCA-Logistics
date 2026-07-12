@@ -55,6 +55,26 @@ describe('computeTva — TVA collectée = Σ(ttc − ht)', () => {
     ]}))
     expect(r.tvaCollecteeCts).toBe(2000) // 12000 − 10000
   })
+
+  // Intégration extra_lines : la TVA collectée = ligne principale +
+  // lignes supp. facturées à Pennylane. Sans ça, la CA3 sous-déclare la TVA.
+  it('inclut la TVA des extra_lines dans la TVA collectée', () => {
+    const r = computeTva(raw({ deliveries: [
+      {
+        // Principale : 240 HT → 48 TVA (20 %) → 288 TTC
+        amount_ht_cts: 24000, amount_ttc_cts: 28800,
+        extra_lines: [
+          // Attente : 30 HT × 1 → 6 TVA (20 %) → 36 TTC
+          { label: 'Attente', quantity: 1, amount_ht_cts: 3000, tva_rate: 20 },
+          // Forfait : 70 HT × 1 → 14 TVA (20 %) → 84 TTC
+          { label: 'Forfait', quantity: 1, amount_ht_cts: 7000, tva_rate: 20 },
+        ],
+      },
+    ]}))
+    // Total attendu : (28800 − 24000) + (3600 − 3000) + (8400 − 7000)
+    //              = 4800 + 600 + 1400 = 6800
+    expect(r.tvaCollecteeCts).toBe(6800)
+  })
 })
 
 // ── TVA déductible — charges FR ──────────────────────────────────────────────────

@@ -16,7 +16,7 @@ import { downloadCSV } from '../../shared/lib/download'
 import { getDeliveries, exportDeliveriesCSV, getPendingSyncDeliveries, resyncPending, deleteDeliveries } from './livraisons.queries'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
-  kpiSummary, formatCents, effectiveTtcCts,
+  kpiSummary, formatCents, deliveryTotalHtCts, deliveryTotalTtcCts,
 } from './livraisons.logic'
 import type { DeliveryRow, DeliveryFilters, DeliveryStatus } from './livraisons.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
@@ -133,8 +133,10 @@ export function Livraisons() {
   // ── Facturation groupée ────────────────────────────────────────────────────
   const invoiceSelectedRows = rows.filter(r => invoiceIds.has(r.id))
   const invoiceClientName   = invoiceSelectedRows[0]?.clients?.name ?? ''
-  const invoiceTotalHtCts   = invoiceSelectedRows.reduce((s, r) => s + (r.amount_ht_cts ?? 0), 0)
-  const invoiceTotalTtcCts  = invoiceSelectedRows.reduce((s, r) => s + effectiveTtcCts(r), 0)
+  // Prévisualisation du total à facturer : inclut la ligne principale + les
+  // extras de chaque livraison (identique à ce que Pennylane émettra).
+  const invoiceTotalHtCts   = invoiceSelectedRows.reduce((s, r) => s + deliveryTotalHtCts(r), 0)
+  const invoiceTotalTtcCts  = invoiceSelectedRows.reduce((s, r) => s + deliveryTotalTtcCts(r), 0)
 
   const clearInvoiceSelection = () => { setInvoiceIds(new Set()); setInvoiceClientId(null) }
 
@@ -395,7 +397,7 @@ export function Livraisons() {
                           : '—'}
                       </td>
                       <td className="px-4 py-3 font-mono text-[var(--text)]">
-                        {effectiveTtcCts(row) > 0 ? formatCents(effectiveTtcCts(row)) : '—'}
+                        {deliveryTotalTtcCts(row) > 0 ? formatCents(deliveryTotalTtcCts(row)) : '—'}
                       </td>
                       <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
                         {row.km != null ? `${row.km} km` : '—'}
@@ -480,7 +482,7 @@ export function Livraisons() {
                         )}
                       </div>
                       <span className="font-mono font-semibold text-[var(--text)]">
-                        {effectiveTtcCts(row) > 0 ? formatCents(effectiveTtcCts(row)) : '—'}
+                        {deliveryTotalTtcCts(row) > 0 ? formatCents(deliveryTotalTtcCts(row)) : '—'}
                       </span>
                     </div>
                   </button>
@@ -538,7 +540,7 @@ export function Livraisons() {
                       {row.description?.trim() || row.delivery_address || '—'}
                     </span>
                     <span className="font-mono text-[var(--text)] text-right self-center">
-                      {formatCents(effectiveTtcCts(row))}
+                      {formatCents(deliveryTotalTtcCts(row))}
                     </span>
                   </div>
                 ))}

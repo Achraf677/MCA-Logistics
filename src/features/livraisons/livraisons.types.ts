@@ -1,3 +1,10 @@
+import type { DeliveryExtraLine } from '../../shared/lib/money'
+
+// Ré-export : DeliveryExtraLine vit dans shared/lib/money pour être consommable
+// hors features/livraisons (TVA, encaissement…) sans casser la règle
+// « aucun import entre features/ ». Le ré-export garde les imports existants.
+export type { DeliveryExtraLine }
+
 // V2 statuses — machine à états gardée (planifiee → en_cours → livree → facturee → payee)
 export type DeliveryStatus =
   | 'planifiee'
@@ -62,18 +69,6 @@ export interface Delivery {
   extra_lines: DeliveryExtraLine[]
   created_at: string
   updated_at: string
-}
-
-/**
- * Ligne supplémentaire rattachée à une livraison. Toutes les lignes vont
- * sur la même facture Pennylane, un seul numéro, un seul paiement.
- * TVA éditable par ligne (héritage du taux de la livraison à la création).
- */
-export interface DeliveryExtraLine {
-  label: string
-  quantity: number
-  amount_ht_cts: number
-  tva_rate: number
 }
 
 export interface DeliveryRow extends Delivery {

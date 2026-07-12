@@ -1,11 +1,12 @@
 import { supabase } from '../../app/providers'
-import { effectiveTtcCts } from '../../shared/lib/money'
+import { deliveryTotalTtcCts, type DeliveryExtraLine } from '../../shared/lib/money'
 import type { AutreEntreeRow, EncaissementFilters, EncaissementRow } from './encaissement.types'
 
 type RawRow = {
   id: string
   client_id: string | null
   amount_ttc_cts: number | null
+  extra_lines: DeliveryExtraLine[] | null
   invoiced_at: string | null
   paid_at: string | null
   pennylane_invoice_id: string | null
@@ -17,7 +18,9 @@ export async function getEncaissements(
 ): Promise<{ data: EncaissementRow[] | null; error: unknown }> {
   let q = supabase
     .from('deliveries')
-    .select('id, client_id, amount_ttc_cts, invoiced_at, paid_at, pennylane_invoice_id, clients!client_id(name)')
+    // extra_lines requis pour que le TTC affiché = ce qui a été facturé
+    // (ligne principale + lignes supplémentaires envoyées à Pennylane).
+    .select('id, client_id, amount_ttc_cts, extra_lines, invoiced_at, paid_at, pennylane_invoice_id, clients!client_id(name)')
     .eq('statut', 'payee')
     .order('paid_at', { ascending: false })
 
@@ -31,7 +34,7 @@ export async function getEncaissements(
   const rows: EncaissementRow[] = (data as unknown as RawRow[]).map(r => ({
     id: r.id,
     client_name: r.clients?.name ?? '—',
-    effective_ttc_cts: effectiveTtcCts(r),
+    effective_ttc_cts: deliveryTotalTtcCts(r),
     invoiced_at: r.invoiced_at,
     paid_at: r.paid_at,
     pennylane_invoice_id: r.pennylane_invoice_id,

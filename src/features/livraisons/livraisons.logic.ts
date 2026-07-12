@@ -1,55 +1,21 @@
-import { addTva, effectiveHtCts, effectiveTtcCts, formatCents } from '../../shared/lib/money'
-import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
+import { addTva, deliveryTotalTtcCts } from '../../shared/lib/money'
+import type { DeliveryRow, DeliveryStatus } from './livraisons.types'
 
-// Réexport pour conserver les imports existants (Livraisons.tsx, DrawerLivraison.tsx, tests).
-export { effectiveHtCts, effectiveTtcCts, formatCents }
-
-// ── Lignes supplémentaires ───────────────────────────────────────────────────
-// Une livraison peut porter N lignes en plus de la ligne principale (attente,
-// retour à vide, forfait…). Toutes vont sur la même facture Pennylane, un seul
-// numéro, un seul paiement. TVA propre à chaque ligne.
-//
-// Invariant : `extra_lines` est toujours un tableau (colonne DB NOT NULL
-// DEFAULT '[]'). Les helpers ci-dessous acceptent quand même null/undefined
-// pour tolérer les DeliveryRow chargés avant migration ou partiellement.
-
-export function extraLinesHtCts(lines: DeliveryExtraLine[] | null | undefined): number {
-  if (!lines || lines.length === 0) return 0
-  return lines.reduce((s, l) => {
-    // Clamp identique à pennylane-invoice/index.ts : quantity ≤ 0 ou non finie → 1
-    // (évite les HT négatifs et aligne le total local sur ce qui sera facturé).
-    const q = Number(l.quantity)
-    const qty = Number.isFinite(q) && q > 0 ? q : 1
-    return s + Math.round((Number(l.amount_ht_cts) || 0) * qty)
-  }, 0)
-}
-
-/** TVA totale des extras — calcul ligne par ligne, arrondi TTC puis diff (même
- *  invariant que computeAmount : ht + tva ≡ ttc pour chaque ligne). */
-export function extraLinesTvaCts(lines: DeliveryExtraLine[] | null | undefined): number {
-  if (!lines || lines.length === 0) return 0
-  return lines.reduce((s, l) => {
-    const q = Number(l.quantity)
-    const qty = Number.isFinite(q) && q > 0 ? q : 1
-    const ht = Math.round((Number(l.amount_ht_cts) || 0) * qty)
-    const ttc = addTva(ht, (Number(l.tva_rate) || 0) / 100)
-    return s + (ttc - ht)
-  }, 0)
-}
-
-export function extraLinesTtcCts(lines: DeliveryExtraLine[] | null | undefined): number {
-  return extraLinesHtCts(lines) + extraLinesTvaCts(lines)
-}
-
-/** HT total facturable = ligne principale + extras. */
-export function deliveryTotalHtCts(row: DeliveryRow | { extra_lines?: DeliveryExtraLine[] | null } & Parameters<typeof effectiveHtCts>[0]): number {
-  return effectiveHtCts(row) + extraLinesHtCts(row.extra_lines)
-}
-
-/** TTC total facturable = ligne principale + extras. */
-export function deliveryTotalTtcCts(row: DeliveryRow | { extra_lines?: DeliveryExtraLine[] | null } & Parameters<typeof effectiveTtcCts>[0]): number {
-  return effectiveTtcCts(row) + extraLinesTtcCts(row.extra_lines)
-}
+// Réexports pour conserver les imports existants (Livraisons.tsx,
+// DrawerLivraison.tsx, tests…). Les helpers vivent désormais dans
+// shared/lib/money — même clamp, même comportement — pour être consommables
+// depuis d'autres features (TVA, encaissement, relances, assistant) sans
+// enfreindre la règle « aucun import entre features/ ».
+export {
+  effectiveHtCts,
+  effectiveTtcCts,
+  formatCents,
+  extraLinesHtCts,
+  extraLinesTvaCts,
+  extraLinesTtcCts,
+  deliveryTotalHtCts,
+  deliveryTotalTtcCts,
+} from '../../shared/lib/money'
 
 // ── Machine à états ──────────────────────────────────────────────────────────
 
