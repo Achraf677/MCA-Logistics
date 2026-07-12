@@ -256,6 +256,20 @@ describe('deliveryTotalHtCts / deliveryTotalTtcCts', () => {
     expect(deliveryTotalHtCts(d)).toBe(24000)
     expect(deliveryTotalTtcCts(d)).toBe(28800)
   })
+
+  // Scénario intégration ODT #4003 : principale 240 HT à 20 % + 100 HT
+  // d'extras à 20 % → 408 € TTC = 40800 cts. Verrouille le calcul de bout en bout.
+  it('scénario 240 HT + 100 HT extras à 20 % → TTC = 40800 cts', () => {
+    const d = row({
+      amount_ht_cts: 24000, amount_ttc_cts: 28800,
+      extra_lines: [
+        { label: 'Retour palette', quantity: 1, amount_ht_cts: 5000, tva_rate: 20 },
+        { label: 'Frais d’attente', quantity: 1, amount_ht_cts: 5000, tva_rate: 20 },
+      ],
+    })
+    expect(deliveryTotalHtCts(d)).toBe(34000)
+    expect(deliveryTotalTtcCts(d)).toBe(40800)
+  })
 })
 
 // ── e. Formatage ─────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@
 // d'autres features (consigne d'étape : réutiliser l'existant, ne pas dupliquer).
 
 import { supabase } from '../../app/providers'
-import { effectiveHtCts, effectiveTtcCts, centimesToEuros } from '../../shared/lib/money'
+import { deliveryTotalTtcCts, effectiveHtCts, centimesToEuros } from '../../shared/lib/money'
 import type { PendingAction } from './AssistantContext'
 // Queries LOCALES à l'assistant (étanchéité) pour la modification de client.
 import { findClientsByName, updateClient, updateDelivery } from './assistant.queries'
@@ -742,7 +742,7 @@ export async function prepareChangerStatutLivraison(args: ChangerStatutArgs): Pr
   if (dels.length === 0) return { ok: false, message: `Aucune livraison trouvée pour ${client.name}${suffixe}.` }
   if (dels.length > 1) {
     const liste = dels.slice(0, 5).map(d => {
-      const ttc = centimesToEuros(effectiveTtcCts(d))
+      const ttc = centimesToEuros(deliveryTotalTtcCts(d))
       return `${d.date} · ${ttc} € · ${statutLabel(d.statut)}`
     }).join(' ; ')
     return { ok: false, message: `Plusieurs livraisons correspondent : ${liste}. Précise la date.` }
@@ -762,7 +762,7 @@ export async function prepareChangerStatutLivraison(args: ChangerStatutArgs): Pr
   const amountForTransition = to === 'facturee'
     ? { amount_ht_cts: d.amount_ht_cts ?? 0, tva_cts: d.tva_cts ?? 0, amount_ttc_cts: d.amount_ttc_cts ?? 0 }
     : undefined
-  const ttc = centimesToEuros(effectiveTtcCts(d))
+  const ttc = centimesToEuros(deliveryTotalTtcCts(d))
 
   return {
     ok: true,
@@ -1079,7 +1079,7 @@ export async function prepareModifierLivraison(args: ModifierLivraisonArgs): Pro
   }
   if (dels.length > 1) {
     const liste = dels.slice(0, 5).map(d => {
-      const ttc = centimesToEuros(effectiveTtcCts(d))
+      const ttc = centimesToEuros(deliveryTotalTtcCts(d))
       return `${d.date} · ${ttc} € · ${statutLabel(d.statut)}`
     }).join(' ; ')
     return { ok: false, message: `Plusieurs livraisons correspondent : ${liste}. Précise la date.` }

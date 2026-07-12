@@ -3,14 +3,18 @@
 // Ne renvoie que des NOMBRES (centimes). Le découpage trimestre/mois et le
 // formatage (€) restent dans le composant.
 // Règles de calcul —
-//   - TVA collectée via effectiveTtcCts − effectiveHtCts (amount_* prioritaire, repli legacy montant_*) ;
+//   - TVA collectée = deliveryTotalTtcCts − deliveryTotalHtCts (ligne principale
+//     + lignes supp. facturées à Pennylane), avec amount_* prioritaire sur
+//     legacy montant_* pour le principal ;
 //   - null compté comme 0 ;
 //   - tva_deductible_pct absent = 100 ;
 //   - carburant FR : Math.round(tva_cts × pct / 100) par ligne ;
 //   - charge liée à un fuel_log (linkedToFuel) → ignorée (déjà comptée côté carburant) ;
 //   - TVA DE (charges tva_pays='DE' ou fuel tva_rate=19) → poche séparée, hors solde CA3.
 
-import { effectiveHtCts, effectiveTtcCts } from '../../shared/lib/money'
+import {
+  deliveryTotalHtCts, deliveryTotalTtcCts, type DeliveryExtraLine,
+} from '../../shared/lib/money'
 
 // ── Formes minimales des données brutes (seuls les champs lus comptent) ─────────
 
@@ -19,6 +23,7 @@ export interface TvaDelivery {
   amount_ttc_cts?: number | null
   montant_ht_cts?: number | null
   montant_ttc_cts?: number | null
+  extra_lines?: DeliveryExtraLine[] | null
 }
 export interface TvaCharge {
   tva_cts:     number | null
@@ -49,7 +54,7 @@ export interface TvaResult {
 
 export function computeTva(raw: TvaRaw): TvaResult {
   const tvaCollecteeCts = raw.deliveries.reduce(
-    (s, d) => s + (effectiveTtcCts(d) - effectiveHtCts(d)), 0
+    (s, d) => s + (deliveryTotalTtcCts(d) - deliveryTotalHtCts(d)), 0
   )
 
   let tvaDeductibleChargesFR = 0
