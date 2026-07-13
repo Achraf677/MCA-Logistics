@@ -1320,68 +1320,150 @@ function ExtraLinesEditor({
       ) : (
         <div className="flex flex-col gap-2">
           {lines.map((line, i) => (
-            <div key={i} className="rounded-[var(--r-md)] border border-[var(--border)] p-3 flex flex-col gap-2">
-              <div className="flex items-start gap-2">
-                <div className="flex-1">
-                  <Input
-                    type="text"
-                    value={line.label}
-                    onChange={v => updateLine(i, { label: v })}
-                    placeholder="Ex. : Attente 30 min"
-                    disabled={disabled}
-                  />
-                </div>
-                {!disabled && (
-                  <button
-                    type="button"
-                    onClick={() => removeLine(i)}
-                    aria-label="Supprimer la ligne"
-                    className="p-1.5 rounded-[var(--r-sm)] text-[var(--text-muted)] hover:text-[var(--danger)]
-                      hover:bg-[var(--danger)]/10 transition-colors"
-                  >
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <Field label="Qté">
-                  <Input
-                    type="number"
-                    min={1}
-                    value={String(line.quantity ?? 1)}
-                    onChange={v => {
-                      if (v === '') { updateLine(i, { quantity: 1 }); return }
-                      const n = parseFloat(v)
-                      updateLine(i, { quantity: Number.isFinite(n) ? Math.max(1, n) : 1 })
-                    }}
-                    placeholder="1"
-                    disabled={disabled}
-                  />
-                </Field>
-                <Field label="HT unit. (€)">
-                  <Input
-                    type="number"
-                    min={0}
-                    value={line.amount_ht_cts ? (line.amount_ht_cts / 100).toFixed(2) : ''}
-                    onChange={v => updateLine(i, {
-                      amount_ht_cts: v === '' ? 0 : Math.round(parseFloat(v) * 100),
-                    })}
-                    placeholder="0.00"
-                    disabled={disabled}
-                  />
-                </Field>
-                <Field label="TVA %">
-                  <TvaRateInput
-                    value={line.tva_rate}
-                    onChange={r => updateLine(i, { tva_rate: r })}
-                    disabled={disabled}
-                  />
-                </Field>
-              </div>
-            </div>
+            <ExtraLineRow
+              key={i}
+              line={line}
+              disabled={disabled}
+              onUpdate={patch => updateLine(i, patch)}
+              onRemove={() => removeLine(i)}
+            />
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Ligne extra (édition inline) ────────────────────────────────────────────
+// Saisie libre : le HT et la Qté sont conservés en texte local pendant la
+// frappe (rawHt/rawQty) pour ne pas être re-formatés à chaque touche. On
+// n'écrit dans l'état parent qu'au onBlur, après normalisation (« , » → « . »).
+// Bénéfices : on peut taper « 2,01 », les zéros de fin ne disparaissent pas,
+// et l'input ne devient jamais rouge pendant la saisie.
+//
+// La sync inverse (parent → local) n'est pas mise en place volontairement :
+// les seuls changements externes à `line` passent par onUpdate ou remove/add
+// (via ExtraLinesEditor), et remove/add démontent/remontent la ligne — ce qui
+// suffit à réinitialiser les états locaux avec les bonnes valeurs.
+
+function ExtraLineRow({
+  line, disabled, onUpdate, onRemove,
+}: {
+  line: DeliveryExtraLine
+  disabled: boolean
+  onUpdate: (patch: Partial<DeliveryExtraLine>) => void
+  onRemove: () => void
+}) {
+  const [rawHt, setRawHt] = useState<string>(() =>
+    line.amount_ht_cts ? (line.amount_ht_cts / 100).toFixed(2).replace('.', ',') : '',
+  )
+  const [rawQty, setRawQty] = useState<string>(() =>
+    String(line.quantity ?? 1),
+  )
+
+  // Autorise chiffres + un séparateur optionnel (« , » ou « . ») + chiffres.
+  // La regex accepte aussi la chaîne vide et un caractère isolé « , » / « . »
+  // pour ne pas bloquer la frappe intermédiaire.
+  const DECIMAL_RE = /^[0-9]*[.,]?[0-9]*$/
+
+  const commitHt = () => {
+    const s = rawHt.trim().replace(',', '.')
+    if (s === '' || s === '.') {
+      onUpdate({ amount_ht_cts: 0 })
+      setRawHt('')
+      return
+    }
+    const n = parseFloat(s)
+    if (!Number.isFinite(n) || n < 0) {
+      // Reset visuel à la dernière valeur valide connue si saisie corrompue.
+      setRawHt(line.amount_ht_cts ? (line.amount_ht_cts / 100).toFixed(2).replace('.', ',') : '')
+      return
+    }
+    const cts = Math.round(n * 100)
+    onUpdate({ amount_ht_cts: cts })
+    setRawHt((cts / 100).toFixed(2).replace('.', ','))
+  }
+
+  const commitQty = () => {
+    const s = rawQty.trim().replace(',', '.')
+    if (s === '' || s === '.') {
+      onUpdate({ quantity: 1 })
+      setRawQty('1')
+      return
+    }
+    const n = parseFloat(s)
+    if (!Number.isFinite(n) || n < 1) {
+      onUpdate({ quantity: 1 })
+      setRawQty('1')
+      return
+    }
+    onUpdate({ quantity: n })
+    setRawQty(String(n))
+  }
+
+  return (
+    <div className="rounded-[var(--r-md)] border border-[var(--border)] p-3 flex flex-col gap-2">
+      <div className="flex items-start gap-2">
+        <div className="flex-1">
+          <Input
+            type="text"
+            value={line.label}
+            onChange={v => onUpdate({ label: v })}
+            placeholder="Ex. : Attente 30 min"
+            disabled={disabled}
+          />
+        </div>
+        {!disabled && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label="Supprimer la ligne"
+            className="p-1.5 rounded-[var(--r-sm)] text-[var(--text-muted)] hover:text-[var(--danger)]
+              hover:bg-[var(--danger)]/10 transition-colors"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <Field label="Qté">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={rawQty}
+            onChange={e => {
+              const v = e.target.value
+              if (DECIMAL_RE.test(v)) setRawQty(v)
+            }}
+            onBlur={commitQty}
+            placeholder="1"
+            disabled={disabled}
+            className={inputCls}
+          />
+        </Field>
+        <Field label="HT unit. (€)">
+          <input
+            type="text"
+            inputMode="decimal"
+            value={rawHt}
+            onChange={e => {
+              const v = e.target.value
+              if (DECIMAL_RE.test(v)) setRawHt(v)
+            }}
+            onBlur={commitHt}
+            placeholder="0,00"
+            disabled={disabled}
+            className={inputCls}
+          />
+        </Field>
+        <Field label="TVA %">
+          <TvaRateInput
+            value={line.tva_rate}
+            onChange={r => onUpdate({ tva_rate: r })}
+            disabled={disabled}
+          />
+        </Field>
+      </div>
     </div>
   )
 }

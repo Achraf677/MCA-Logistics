@@ -30,7 +30,10 @@ function smoothPath(pts: { x: number; y: number }[]): string {
 
 export function LineChart({ points, formatValue, formatAxisY }: LineChartProps) {
   const W = 620, H = 220
-  const padL = 52, padR = 18      // padL réservé aux labels Y
+  // padL réservé aux labels Y ; padR élargi pour que le dernier point (cercle
+  // de rayon 5.5px au survol) et le label X extrême ne soient pas coupés.
+  // padL légèrement gonflé pour la même raison côté gauche.
+  const padL = 60, padR = 34
   const chartTop = 8, chartBot = H - 34
 
   const [hovered, setHovered] = useState<number | null>(null)
@@ -88,7 +91,10 @@ export function LineChart({ points, formatValue, formatAxisY }: LineChartProps) 
         width="100%"
         height={H}
         preserveAspectRatio="none"
-        style={{ cursor: 'crosshair', display: 'block' }}
+        // overflow: visible évite que les cercles d'extrémité et les labels X
+        // ne soient clippés au bord du <svg> quand ils débordent légèrement
+        // du viewBox à cause du non-scaling-stroke.
+        style={{ cursor: 'crosshair', display: 'block', overflow: 'visible' }}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHovered(null)}
       >
