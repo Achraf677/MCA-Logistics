@@ -140,23 +140,24 @@ describe('kpiSummary', () => {
     const old = '2000-01-01'
 
     const rows: DeliveryRow[] = [
-      row({ statut: 'facturee', date: thisMonth, amount_ttc_cts: 12000, montant_ttc_cts: null }),
-      row({ statut: 'payee',    date: thisMonth, amount_ttc_cts: 5000,  montant_ttc_cts: null }),
-      row({ statut: 'livree',   date: thisMonth, amount_ttc_cts: 9999,  montant_ttc_cts: null }),
+      row({ statut: 'facturee', date: thisMonth, amount_ht_cts: 10000, amount_ttc_cts: 12000, montant_ttc_cts: null }),
+      row({ statut: 'payee',    date: thisMonth, amount_ht_cts:  4200, amount_ttc_cts:  5000, montant_ttc_cts: null }),
+      row({ statut: 'livree',   date: thisMonth, amount_ttc_cts: 9999, montant_ttc_cts: null }),
       row({ statut: 'annulee',  date: thisMonth, amount_ttc_cts: 99999, montant_ttc_cts: null }),
       row({ statut: 'planifiee', date: old,      amount_ttc_cts: 1000,  montant_ttc_cts: null }),
     ]
 
     const k = kpiSummary(rows)
     expect(k.nbMois).toBe(3)                  // 3 du mois courant, hors annulée
-    expect(k.caFactureCts).toBe(17000)        // facturee 12000 + payee 5000
+    expect(k.caFactureHtCts).toBe(14200)      // HT : facturee 10000 + payee 4200
+    expect(k.caFactureCts).toBe(17000)        // TTC : facturee 12000 + payee 5000
     expect(k.enAttenteFacturation).toBe(1)    // 1 livree
     expect(k.enAttentePaiementCts).toBe(12000) // facturee uniquement
   })
 
   it('tableau vide → zéros', () => {
     expect(kpiSummary([])).toEqual({
-      nbMois: 0, caFactureCts: 0, enAttenteFacturation: 0, enAttentePaiementCts: 0,
+      nbMois: 0, caFactureHtCts: 0, caFactureCts: 0, enAttenteFacturation: 0, enAttentePaiementCts: 0,
     })
   })
 })

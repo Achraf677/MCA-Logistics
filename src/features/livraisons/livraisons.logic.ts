@@ -1,4 +1,4 @@
-import { addTva, deliveryTotalTtcCts } from '../../shared/lib/money'
+import { addTva, deliveryTotalHtCts, deliveryTotalTtcCts } from '../../shared/lib/money'
 import type { DeliveryRow, DeliveryStatus } from './livraisons.types'
 
 // Réexports pour conserver les imports existants (Livraisons.tsx,
@@ -166,9 +166,11 @@ export function kpiSummary(rows: DeliveryRow[]) {
   const active   = rows.filter(r => r.statut !== 'annulee')
   const thisMonth = active.filter(r => r.date >= monthStart)
 
-  const caFactureCts = active
-    .filter(r => r.statut === 'facturee' || r.statut === 'payee')
-    .reduce((s, r) => s + deliveryTotalTtcCts(r), 0)
+  const factureesOuPayees = active.filter(r => r.statut === 'facturee' || r.statut === 'payee')
+  // Convention compta : le CA s'exprime HT ; on garde le TTC pour la sous-ligne
+  // « TVA · TTC » affichée sous le gros chiffre HT dans la carte KPI.
+  const caFactureHtCts  = factureesOuPayees.reduce((s, r) => s + deliveryTotalHtCts(r), 0)
+  const caFactureCts    = factureesOuPayees.reduce((s, r) => s + deliveryTotalTtcCts(r), 0)
 
   const enAttenteFacturation = active.filter(r => r.statut === 'livree').length
 
@@ -176,5 +178,11 @@ export function kpiSummary(rows: DeliveryRow[]) {
     .filter(r => r.statut === 'facturee')
     .reduce((s, r) => s + deliveryTotalTtcCts(r), 0)
 
-  return { nbMois: thisMonth.length, caFactureCts, enAttenteFacturation, enAttentePaiementCts }
+  return {
+    nbMois: thisMonth.length,
+    caFactureHtCts,
+    caFactureCts,
+    enAttenteFacturation,
+    enAttentePaiementCts,
+  }
 }

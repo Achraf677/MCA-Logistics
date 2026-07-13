@@ -191,7 +191,14 @@ export function Livraisons() {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
           <KpiCard label="Ce mois"          value={kpis.nbMois} tone="info" icon={<Package size={18} />} />
-          <KpiCard label="CA facturé"        value={formatCents(kpis.caFactureCts)} tone="success" icon={<Euro size={18} />} />
+          {/* CA en HT (convention comptable) ; TVA + TTC en sous-ligne pour info. */}
+          <KpiCard
+            label="CA facturé"
+            value={formatCents(kpis.caFactureHtCts)}
+            sub={`TVA ${formatCents(kpis.caFactureCts - kpis.caFactureHtCts)} · TTC ${formatCents(kpis.caFactureCts)}`}
+            tone="success"
+            icon={<Euro size={18} />}
+          />
           <KpiCard label="À facturer"        value={kpis.enAttenteFacturation} tone="violet" icon={<FileText size={18} />} />
           <KpiCard label="En att. paiement"  value={formatCents(kpis.enAttentePaiementCts)} tone="warning" icon={<Clock size={18} />} />
         </div>

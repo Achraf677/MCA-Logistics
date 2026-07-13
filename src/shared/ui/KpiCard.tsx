@@ -44,9 +44,9 @@ const toneGradient: Record<Tone, string> = {
 
 export function KpiCard({ label, value, sub, tone = 'neutral', icon, delta, progress, spark }: KpiCardProps) {
   return (
-    <div className={`bg-[var(--bg-card)] rounded-[var(--r-xl)] border border-[var(--border)] px-5 py-5 flex flex-col gap-1 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-1 ${toneHoverBorder[tone]}`}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider">{label}</span>
+    <div className={`bg-[var(--bg-card)] rounded-[var(--r-xl)] border border-[var(--border)] px-5 py-5 flex flex-col gap-1 min-w-0 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-1 ${toneHoverBorder[tone]}`}>
+      <div className="flex items-center justify-between gap-2 min-w-0">
+        <span className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider min-w-0 truncate">{label}</span>
         <div className="flex items-center gap-2 shrink-0">
           {spark && spark.length > 1 && (() => {
             const mx = Math.max(...spark, 1), mn = Math.min(...spark, 0), sp = mx - mn || 1
@@ -60,7 +60,13 @@ export function KpiCard({ label, value, sub, tone = 'neutral', icon, delta, prog
           )}
         </div>
       </div>
-      <span className="font-mono font-semibold leading-none text-[var(--text)] mt-1" style={{ fontSize: 'var(--fs-kpi)' }}>
+      {/* clamp(min, préf, max) : lisible en mobile ~360px sans dépasser le cadre,
+       *   plafonné à --fs-kpi en desktop. tabular-nums + whitespace-nowrap
+       *   pour aligner les chiffres et éviter tout retour à la ligne. */}
+      <span
+        className="font-mono font-semibold leading-none text-[var(--text)] mt-1 min-w-0 tabular-nums whitespace-nowrap"
+        style={{ fontSize: 'clamp(1.15rem, 7vw, var(--fs-kpi))' }}
+      >
         {value}
       </span>
       {progress !== undefined && (
