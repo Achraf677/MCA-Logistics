@@ -364,6 +364,24 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         toast('Ligne(s) supplémentaire(s) incomplète(s) ignorée(s)', 'error')
       }
 
+      // Filet de sécurité géocodage : si l'adresse de livraison est saisie
+      // mais sans coords (autocomplétion Photon échouée ou saisie tapée sans
+      // clic sur une suggestion), on interroge l'Edge Function `geocode` (BAN)
+      // avant persist. Échec → toast d'avertissement, on sauvegarde quand
+      // même (l'optim de tournée sera juste indisponible sur cette ligne).
+      let delivery_lat = deliveryCoords.lat
+      let delivery_lng = deliveryCoords.lng
+      const addr = form.delivery_address?.trim() ?? ''
+      if (addr && (delivery_lat == null || delivery_lng == null)) {
+        const { data } = await supabase.functions.invoke('geocode', { body: { address: addr } })
+        if (data?.ok && typeof data.lat === 'number' && typeof data.lng === 'number') {
+          delivery_lat = data.lat
+          delivery_lng = data.lng
+        } else {
+          toast('Adresse de livraison non localisée', 'error')
+        }
+      }
+
       // Seules les colonnes v2 sont écrites pour les montants.
       // montant_ht_cts (DEFAULT 0) et montant_ttc_cts (GENERATED) ne sont JAMAIS écrits.
       const payload = {
@@ -375,8 +393,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         description:      form.description || null,
         pickup_address:   form.pickup_address   || null,
         delivery_address: form.delivery_address || null,
-        delivery_lat:     deliveryCoords.lat,
-        delivery_lng:     deliveryCoords.lng,
+        delivery_lat,
+        delivery_lng,
         km:               form.km       ? parseFloat(form.km)       : null,
         empty_km:         form.empty_km ? parseFloat(form.empty_km) : null,
         weight_kg:        form.pallets  ? parseFloat(form.pallets)  : null,

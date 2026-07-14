@@ -30,6 +30,10 @@ export function AddressAutocomplete({
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([])
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  // Signale un échec réseau Photon → petit hint sous l'input. Le save-time
+  // geocode (Edge `geocode`, BAN) prend le relais, donc l'utilisateur n'est
+  // pas bloqué : l'adresse tapée sera quand même localisée à l'enregistrement.
+  const [suggestFailed, setSuggestFailed] = useState(false)
   // Empêche une requête de se relancer juste après une sélection.
   const justSelected = useRef(false)
   const boxRef = useRef<HTMLDivElement>(null)
@@ -38,19 +42,25 @@ export function AddressAutocomplete({
   useEffect(() => {
     if (justSelected.current) { justSelected.current = false; return }
     const q = value.trim()
-    if (q.length < MIN_CHARS) { setSuggestions([]); setOpen(false); setLoading(false); return }
+    if (q.length < MIN_CHARS) {
+      setSuggestions([]); setOpen(false); setLoading(false); setSuggestFailed(false); return
+    }
 
     setLoading(true)
     const ctrl = new AbortController()
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(photonUrl(q), { signal: ctrl.signal })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
         const json = await res.json()
         const parsed = parsePhotonResponse(json)
         setSuggestions(parsed)
         setOpen(parsed.length > 0)
-      } catch {
-        // Réseau coupé / abort : on n'affiche rien, la saisie libre reste possible.
+        setSuggestFailed(false)
+      } catch (err) {
+        // AbortError = frappe suivante : normal, on n'affiche rien.
+        // Autre erreur = Photon inaccessible : hint discret, saisie libre OK.
+        if ((err as Error)?.name !== 'AbortError') setSuggestFailed(true)
       } finally {
         setLoading(false)
       }
@@ -121,6 +131,11 @@ export function AddressAutocomplete({
           </ul>
         )}
       </div>
+      {suggestFailed && !loading && (
+        <span className="text-[var(--fs-xs)] text-[var(--text-muted)] italic">
+          Suggestions indisponibles — l'adresse sera localisée à l'enregistrement.
+        </span>
+      )}
     </div>
   )
 }

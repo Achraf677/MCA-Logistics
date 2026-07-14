@@ -5,7 +5,7 @@ import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
-import { useProfile } from '../../app/providers'
+import { useProfile, supabase } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
 import {
   getCompanyDepot, getActiveVehicles, getActiveDrivers,
@@ -85,6 +85,36 @@ export function Tournees() {
 
   // Réinitialise l'avertissement « non réparties » quand la date change.
   useEffect(() => { setUnassignedCount(0) }, [date])
+
+  // ── Géocodage manquant : bouton de rattrapage 1-clic ───────────────────────
+  const [geocoding, setGeocoding] = useState(false)
+  const handleBackfillGeocode = async () => {
+    setGeocoding(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('geocode', {
+        body: { backfill: true },
+      })
+      if (error || !data?.ok) {
+        toast(error?.message ?? data?.error ?? 'Échec du géocodage', 'error')
+        return
+      }
+      const d = data.data as { depot_ok: string; deliveries_ok: number; deliveries_echec: number }
+      const parts: string[] = []
+      if (d.depot_ok === 'ok') parts.push('dépôt localisé')
+      if (d.deliveries_ok > 0) parts.push(`${d.deliveries_ok} livraison(s) localisée(s)`)
+      if (d.deliveries_echec > 0) parts.push(`${d.deliveries_echec} échec(s)`)
+      toast(parts.length ? parts.join(' · ') : 'Aucune adresse à géocoder')
+
+      // Recharge le dépôt (pour lever le blocage) puis le board si dispo.
+      if (companyId) {
+        const { data: fresh } = await getCompanyDepot(companyId)
+        if (fresh) setDepot({ lat: fresh.depot_lat, lng: fresh.depot_lng, name: fresh.name })
+      }
+      await loadBoard()
+    } finally {
+      setGeocoding(false)
+    }
+  }
 
   // ── Dérivés ──────────────────────────────────────────────────────────────────
   const depotGeocoded = depot.lat != null && depot.lng != null
@@ -172,14 +202,22 @@ export function Tournees() {
           </Field>
         </div>
 
-        {/* Dépôt non géocodé */}
+        {/* Dépôt non géocodé — bouton de rattrapage 1-clic (Edge geocode). */}
         {!depotGeocoded && (
-          <div className="flex items-start gap-2 px-4 py-3 rounded-[var(--r-md)]
+          <div className="flex flex-wrap items-start gap-3 px-4 py-3 rounded-[var(--r-md)]
             bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-[var(--fs-sm)]">
             <AlertTriangle size={16} className="text-[var(--warning)] mt-0.5 shrink-0" />
-            <span className="text-[var(--text-muted)]">
-              Le dépôt n'est pas localisé. Renseigne l'adresse du dépôt dans <strong className="text-[var(--text)]">Paramètres</strong> pour pouvoir optimiser.
+            <span className="text-[var(--text-muted)] flex-1 min-w-0">
+              Le dépôt et certaines livraisons ne sont pas encore localisés.
             </span>
+            <Button
+              variant="secondary"
+              size="compact"
+              onClick={handleBackfillGeocode}
+              disabled={geocoding}
+            >
+              {geocoding ? 'Géocodage…' : 'Géocoder les adresses manquantes'}
+            </Button>
           </div>
         )}
 
