@@ -72,14 +72,32 @@ export function Parametres() {
   const handleSave = async () => {
     if (!companyId) return
     setSaving(true)
+
+    // Filet de sécurité côté serveur : si une adresse est saisie sans coords
+    // (autocomplétion Photon a échoué, saisie manuelle…), on géocode via l'Edge
+    // Function `geocode` (BAN api-adresse.data.gouv.fr) avant d'enregistrer.
+    // Un échec n'empêche pas la sauvegarde : simple toast d'avertissement.
+    let depot_lat = form.depot_lat
+    let depot_lng = form.depot_lng
+    const address = form.address?.trim() ?? ''
+    if (address && (depot_lat == null || depot_lng == null)) {
+      const { data } = await supabase.functions.invoke('geocode', { body: { address } })
+      if (data?.ok && typeof data.lat === 'number' && typeof data.lng === 'number') {
+        depot_lat = data.lat
+        depot_lng = data.lng
+      } else {
+        toast('Adresse non localisée — enregistrée sans coordonnées', 'error')
+      }
+    }
+
     const { error } = await updateCompany(companyId, {
       name:      form.name || undefined,
       siren:     form.siren || null,
       siret:     form.siret || null,
       tva_intra: form.tva_intra || null,
       address:   form.address || null,
-      depot_lat: form.depot_lat,
-      depot_lng: form.depot_lng,
+      depot_lat,
+      depot_lng,
       capital_cts: form.capital_cts,
       iban:      form.iban || null,
       bic:       form.bic || null,
@@ -87,7 +105,14 @@ export function Parametres() {
       rc_pro_expiry:            form.rc_pro_expiry || null,
     })
     if (error) toast((error as Error).message, 'error')
-    else { toast('Paramètres enregistrés'); setDirty(false) }
+    else {
+      toast('Paramètres enregistrés')
+      setDirty(false)
+      // Reflète les coords géocodées dans le formulaire local (badge 📍).
+      if (depot_lat !== form.depot_lat || depot_lng !== form.depot_lng) {
+        setForm(p => ({ ...p, depot_lat, depot_lng }))
+      }
+    }
     setSaving(false)
   }
 
