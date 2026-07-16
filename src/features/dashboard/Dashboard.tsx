@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronRight, Euro, Package, FileCheck2, CheckCircle2, Truck, Users, Building2 } from 'lucide-react'
+import { ChevronRight, Euro, Package, FileCheck2, CheckCircle2, Truck, Users, Building2, Link2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
@@ -14,6 +14,8 @@ import { getDashboardKpis, getRecentDeliveries, getMonthlyTrend } from './dashbo
 import type { TrendPeriod } from './dashboard.queries'
 import { formatCents, STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
 import { effectiveHtCts } from '../../shared/lib/money'
+import { getARapprocherCounts } from '../../shared/lib/aRapprocher.queries'
+import type { ARapprocherCounts } from '../../shared/lib/aRapprocher'
 import type { DashboardKpis } from './dashboard.queries'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
 
@@ -27,17 +29,20 @@ export function Dashboard() {
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
   const [period, setPeriod] = useState<TrendPeriod>('6m')
   const [metric, setMetric] = useState<'ca' | 'livraisons'>('ca')
+  const [aRapprocher, setARapprocher] = useState<ARapprocherCounts | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [k, r, t] = await Promise.all([
+    const [k, r, t, ar] = await Promise.all([
       getDashboardKpis(),
       getRecentDeliveries(),
       getMonthlyTrend('6m'),
+      getARapprocherCounts(),
     ])
     setKpis(k)
     setRecent(r.data ?? [])
     setTrend(t)
+    setARapprocher(ar)
     setLoading(false)
   }, [])
 
@@ -198,6 +203,28 @@ export function Dashboard() {
                     <ChevronRight size={18} className="ml-auto text-[var(--text-disabled)]" />
                   </button>
                 ))}
+                {/* À rapprocher — visible seulement si N > 0 (état neutre sinon,
+                 *   pour ne pas ajouter de bruit quand tout est propre). Route
+                 *   par défaut vers Trésorerie où se fait le rapprochement. */}
+                {aRapprocher && aRapprocher.total > 0 && (
+                  <button
+                    onClick={() => navigate('/tresorerie')}
+                    className="w-full flex items-center gap-3 p-3 rounded-[var(--r-md)] hover:bg-[var(--bg-card-hover)] transition-colors text-left"
+                  >
+                    <span className="w-10 h-10 rounded-[var(--r-md)] grid place-items-center bg-[var(--warning)]/15 text-[var(--warning)] shrink-0">
+                      <Link2 size={18} />
+                    </span>
+                    <span className="min-w-0">
+                      <b className="font-mono text-xl text-[var(--text)]">{aRapprocher.total}</b>
+                      <small className="block text-[var(--text-muted)] text-[var(--fs-xs)]">
+                        À rapprocher
+                        {aRapprocher.tresorerie > 0 && ` · ${aRapprocher.tresorerie} mouvement${aRapprocher.tresorerie > 1 ? 's' : ''}`}
+                        {aRapprocher.encaissements > 0 && ` · ${aRapprocher.encaissements} encaissement${aRapprocher.encaissements > 1 ? 's' : ''}`}
+                      </small>
+                    </span>
+                    <ChevronRight size={18} className="ml-auto text-[var(--text-disabled)]" />
+                  </button>
+                )}
               </div>
             )}
           </div>
