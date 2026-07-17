@@ -267,6 +267,23 @@ export function AlertesBell() {
                           </div>
                         </button>
                       )}
+                      {aRapprocher.categorisation > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => { navigate('/charges'); setOpen(false) }}
+                          className="flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-[var(--bg-card-hover)]"
+                        >
+                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--warning)]" />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-[var(--fs-sm)] font-medium text-[var(--text)]">
+                                {aRapprocher.categorisation} charge{aRapprocher.categorisation > 1 ? 's' : ''} à catégoriser
+                              </span>
+                              <span className="shrink-0 text-[var(--fs-xs)] text-[var(--text-disabled)]">Charges</span>
+                            </div>
+                          </div>
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}

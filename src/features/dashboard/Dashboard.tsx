@@ -217,9 +217,10 @@ export function Dashboard() {
                     <span className="min-w-0">
                       <b className="font-mono text-xl text-[var(--text)]">{aRapprocher.total}</b>
                       <small className="block text-[var(--text-muted)] text-[var(--fs-xs)]">
-                        À rapprocher
+                        À traiter
                         {aRapprocher.tresorerie > 0 && ` · ${aRapprocher.tresorerie} mouvement${aRapprocher.tresorerie > 1 ? 's' : ''}`}
                         {aRapprocher.encaissements > 0 && ` · ${aRapprocher.encaissements} encaissement${aRapprocher.encaissements > 1 ? 's' : ''}`}
+                        {aRapprocher.categorisation > 0 && ` · ${aRapprocher.categorisation} à catégoriser`}
                       </small>
                     </span>
                     <ChevronRight size={18} className="ml-auto text-[var(--text-disabled)]" />
