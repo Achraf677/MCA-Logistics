@@ -28,6 +28,8 @@ export interface TxPick {
 export interface ChargePick {
   id: string
   montant_ttc_cts: number | null
+  /** Optionnel : présent seulement quand on compte aussi la catégorisation. */
+  category_id?: string | null
 }
 
 export interface ARapprocherCounts {
@@ -37,9 +39,11 @@ export interface ARapprocherCounts {
   charges: number
   /** Crédits Qonto non identifiés. */
   encaissements: number
+  /** Charges sans category_id (indépendant du rapprochement Qonto). */
+  categorisation: number
   /**
-   * Total à rapprocher affiché sur le badge = tresorerie + encaissements.
-   * `charges` n'est PAS additionné (miroir de tresorerie).
+   * Total à rapprocher affiché sur le badge = tresorerie + encaissements +
+   * categorisation. `charges` (miroir de tresorerie) n'est PAS additionné.
    */
   total: number
 }
@@ -77,14 +81,24 @@ export function countChargesArapprocher(txs: TxPick[], charges: ChargePick[]): n
   ).length
 }
 
+/** Charges dont `category_id` est explicitement null — indépendant du
+ *  rapprochement Qonto. Les charges dont le champ est absent (`undefined`,
+ *  cas rétrocompat où l'appelant n'a pas sélectionné category_id) ne sont
+ *  pas comptées : la définition est stricte. */
+export function countChargesNonCategorisees(charges: ChargePick[]): number {
+  return charges.filter(c => c.category_id === null).length
+}
+
 /** Aggrégation complète — utilisée par le badge Dashboard + la cloche. */
 export function countARapprocher(txs: TxPick[], charges: ChargePick[]): ARapprocherCounts {
   const tresorerie = countTresorerie(txs)
   const encaissements = countEncaissements(txs)
+  const categorisation = countChargesNonCategorisees(charges)
   return {
     tresorerie,
     charges: countChargesArapprocher(txs, charges),
     encaissements,
-    total: tresorerie + encaissements,
+    categorisation,
+    total: tresorerie + encaissements + categorisation,
   }
 }

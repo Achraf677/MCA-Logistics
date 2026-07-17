@@ -23,7 +23,7 @@ export async function getARapprocherCounts(): Promise<ARapprocherCounts> {
       .select('side, amount_cts, charge_id, justif_type'),
     supabase
       .from('charges')
-      .select('id, montant_ttc_cts'),
+      .select('id, montant_ttc_cts, category_id'),
   ])
   const txs = (txsRes.data ?? []) as TxPick[]
   const charges = (chargesRes.data ?? []) as ChargePick[]

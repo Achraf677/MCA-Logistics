@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { CreditCard, Receipt, Euro, Wallet, Lock } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { CreditCard, Receipt, Euro, Wallet, Lock, Sparkles } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -18,6 +18,7 @@ import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatCents, categoryColor, kpiSummary } from './charges.logic'
 import { getCategories } from '../../shared/lib/categories.queries'
 import { downloadCSV } from '../../shared/lib/download'
+import { suggestCategory } from '../../shared/lib/suggestCategorie'
 import type { ChargeRow, ChargeFilters } from './charges.types'
 import type { ChargeCategoryRow } from '../../shared/types/categories'
 import type { ActionKey } from '../../shared/actions/ActionBar'
@@ -86,6 +87,29 @@ export function Charges() {
   const hasFilters = !!(
     (filters.category_id && filters.category_id !== 'all') ||
     filters.date_from || filters.date_to
+  )
+
+  // Suggestions déterministes de catégorie par fournisseur — calculées 1 fois
+  // par rendu de rows. Historique = TOUTES les rows chargées (`getCharges` ne
+  // paginant pas, la fenêtre est stable). Une charge non-catégorisée avec un
+  // fournisseur qui a une catégorie dominante ≥ 60 % (min 2 occurrences)
+  // reçoit une suggestion 1-clic. Aucun appel réseau ni écriture silencieuse.
+  const suggestions = useMemo(() => {
+    const history = rows.map(r => ({
+      supplier_id: r.supplier_id,
+      category_id: r.category_id,
+    }))
+    const map = new Map<string, string>()
+    for (const r of rows) {
+      if (r.category_id || !r.supplier_id) continue
+      const cat = suggestCategory(r.supplier_id, history)
+      if (cat) map.set(r.id, cat)
+    }
+    return map
+  }, [rows])
+  const categoryById = useMemo(
+    () => new Map(categories.map(c => [c.id, c])),
+    [categories],
   )
 
   return (
@@ -217,6 +241,25 @@ export function Charges() {
                             <option key={c.id} value={c.id}>{c.name}</option>
                           ))}
                         </select>
+                        {(() => {
+                          const suggestedId = suggestions.get(row.id)
+                          if (!suggestedId) return null
+                          const cat = categoryById.get(suggestedId)
+                          if (!cat) return null
+                          return (
+                            <div className="mt-1 flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
+                              <Sparkles size={10} className="text-[var(--brand)]" />
+                              <span>Suggérée : <strong className="text-[var(--text)]">{cat.name}</strong></span>
+                              <button
+                                type="button"
+                                onClick={() => handleCategoryChange(row.id, suggestedId)}
+                                className="text-[var(--brand)] hover:underline"
+                              >
+                                Appliquer
+                              </button>
+                            </div>
+                          )
+                        })()}
                       </td>
                       <td className={`px-4 py-3 font-mono ${row.montant_ht_cts < 0 ? 'text-[var(--loss)]' : ''}`}>
                         {formatCents(row.montant_ht_cts)}
@@ -260,18 +303,36 @@ export function Charges() {
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <span title={row.label} className="font-medium text-[var(--text)] truncate">{row.label}</span>
-                    <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
-                      {cat && <Badge color={categoryColor(cat.slug)}>{cat.name}</Badge>}
-                      <select
-                        value={row.category_id ?? ''}
-                        onChange={e => handleCategoryChange(row.id, e.target.value || null)}
-                        className={categoryCls}
-                      >
-                        <option value="">—</option>
-                        {categories.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
+                    <div className="flex flex-col items-end gap-1 shrink-0" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-1.5">
+                        {cat && <Badge color={categoryColor(cat.slug)}>{cat.name}</Badge>}
+                        <select
+                          value={row.category_id ?? ''}
+                          onChange={e => handleCategoryChange(row.id, e.target.value || null)}
+                          className={categoryCls}
+                        >
+                          <option value="">—</option>
+                          {categories.map(c => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {(() => {
+                        const suggestedId = suggestions.get(row.id)
+                        if (!suggestedId) return null
+                        const sCat = categoryById.get(suggestedId)
+                        if (!sCat) return null
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => handleCategoryChange(row.id, suggestedId)}
+                            className="flex items-center gap-1 text-[var(--fs-xs)] text-[var(--brand)] hover:underline"
+                          >
+                            <Sparkles size={10} />
+                            <span>Suggérée : {sCat.name}</span>
+                          </button>
+                        )
+                      })()}
                     </div>
                   </div>
                   <div className="flex items-end justify-between gap-2">

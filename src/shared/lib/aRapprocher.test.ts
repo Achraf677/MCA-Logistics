@@ -13,8 +13,8 @@ const debit = (amount: number, opts: Partial<TxPick> = {}): TxPick =>
   ({ side: 'debit', amount_cts: amount, charge_id: null, justif_type: null, ...opts })
 const credit = (amount: number, opts: Partial<TxPick> = {}): TxPick =>
   ({ side: 'credit', amount_cts: amount, charge_id: null, justif_type: null, ...opts })
-const ch = (id: string, montant: number | null): ChargePick =>
-  ({ id, montant_ttc_cts: montant })
+const ch = (id: string, montant: number | null, category_id: string | null = 'cat-x'): ChargePick =>
+  ({ id, montant_ttc_cts: montant, category_id })
 
 describe('countTresorerie', () => {
   it('cas vide → 0', () => {
@@ -78,7 +78,7 @@ describe('countChargesArapprocher', () => {
 describe('countARapprocher — agrégation', () => {
   it('cas 0 partout → total 0 (état neutre)', () => {
     expect(countARapprocher([], [])).toEqual({
-      tresorerie: 0, charges: 0, encaissements: 0, total: 0,
+      tresorerie: 0, charges: 0, encaissements: 0, categorisation: 0, total: 0,
     })
   })
 
@@ -100,16 +100,28 @@ describe('countARapprocher — agrégation', () => {
       tresorerie: 2,
       charges: 2,
       encaissements: 1,
-      total: 3,   // 2 + 1 — charges NON additionné (miroir de tresorerie)
+      categorisation: 0,      // toutes les charges du fixture ont category_id
+      total: 3,               // 2 + 1 — charges NON additionné (miroir)
     })
   })
 
   it("total n'additionne jamais charges (miroir de tresorerie)", () => {
-    // Preuve d'invariant : total === tresorerie + encaissements, quels que soient
-    // les charges. Garde-fou de non-régression du choix de définition.
+    // Preuve d'invariant : total === tresorerie + encaissements + categorisation,
+    // quels que soient les charges "candidates rapprochement" (b).
     const txs: TxPick[] = [debit(1000), credit(500)]
-    const many = Array.from({ length: 50 }, (_, i) => ch(`c${i}`, 1000))
+    const many = Array.from({ length: 50 }, (_, i) => ch(`c${i}`, 1000, 'cat-x'))
     const r = countARapprocher(txs, many)
-    expect(r.total).toBe(r.tresorerie + r.encaissements)
+    expect(r.total).toBe(r.tresorerie + r.encaissements + r.categorisation)
+  })
+
+  it('compte les charges sans category_id (categorisation)', () => {
+    const charges: ChargePick[] = [
+      ch('c1', 1000, null),      // ✅ non catégorisée
+      ch('c2', 2000, null),      // ✅ non catégorisée
+      ch('c3', 3000, 'cat-x'),   // ❌ catégorisée
+    ]
+    const r = countARapprocher([], charges)
+    expect(r.categorisation).toBe(2)
+    expect(r.total).toBe(2)   // 0 tresorerie + 0 encaissements + 2 categorisation
   })
 })
