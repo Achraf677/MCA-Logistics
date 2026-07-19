@@ -23,7 +23,10 @@ export async function getARapprocherCounts(): Promise<ARapprocherCounts> {
       .select('side, amount_cts, charge_id, justif_type'),
     supabase
       .from('charges')
-      .select('id, montant_ttc_cts, category_id'),
+      // mode_paiement : introduit par la migration 20260716120000. Nécessaire
+      // pour exclure les charges hors Qonto (note de frais, cash…) qui n'ont
+      // pas vocation à être rapprochées à un mouvement bancaire.
+      .select('id, montant_ttc_cts, category_id, mode_paiement'),
   ])
   const txs = (txsRes.data ?? []) as TxPick[]
   const charges = (chargesRes.data ?? []) as ChargePick[]

@@ -124,4 +124,34 @@ describe('countARapprocher — agrégation', () => {
     expect(r.categorisation).toBe(2)
     expect(r.total).toBe(2)   // 0 tresorerie + 0 encaissements + 2 categorisation
   })
+
+  // Notes de frais / cash / prépayé : sortent du miroir (b) mais restent
+  // comptées dans "categorisation" si elles n'ont pas de category_id
+  // (comportement indépendant).
+  it('mode_paiement != qonto exclut la charge du miroir "charges à rapprocher"', () => {
+    const txs: TxPick[] = [debit(1000)]  // débit 10 € candidat
+    const charges: ChargePick[] = [
+      { id: 'c1', montant_ttc_cts: 1000, category_id: 'x', mode_paiement: 'note_de_frais' },
+      { id: 'c2', montant_ttc_cts: 1000, category_id: 'x', mode_paiement: 'especes' },
+      { id: 'c3', montant_ttc_cts: 1000, category_id: 'x', mode_paiement: 'qonto' },
+    ]
+    // Seul c3 matche → 1 charge au miroir
+    expect(countARapprocher(txs, charges).charges).toBe(1)
+  })
+
+  it('mode_paiement absent (legacy) = qonto par défaut (rétrocompat)', () => {
+    const txs: TxPick[] = [debit(1000)]
+    const charges: ChargePick[] = [
+      { id: 'c1', montant_ttc_cts: 1000, category_id: 'x' }, // sans mode_paiement
+    ]
+    expect(countARapprocher(txs, charges).charges).toBe(1)
+  })
+
+  it('une charge qonto non liée reste comptée (comportement préservé)', () => {
+    const txs: TxPick[] = [debit(2000)]
+    const charges: ChargePick[] = [
+      { id: 'c1', montant_ttc_cts: 2000, category_id: 'x', mode_paiement: 'qonto' },
+    ]
+    expect(countARapprocher(txs, charges).charges).toBe(1)
+  })
 })

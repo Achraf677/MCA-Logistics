@@ -35,6 +35,17 @@ const EMPTY_FORM = {
   tva_rate: '20',
   tva_amount: '',
   notes: '',
+  mode_paiement: 'qonto' as 'qonto' | 'note_de_frais' | 'especes' | 'prepaye' | 'autre',
+  avance_par: '',
+  rembourse_le: '',
+}
+
+const MODE_PAIEMENT_LABELS: Record<string, string> = {
+  qonto:         'Qonto (compte pro)',
+  note_de_frais: 'Note de frais',
+  especes:       'Espèces',
+  prepaye:       'Jetons / prépayé',
+  autre:         'Autre canal',
 }
 
 export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Props) {
@@ -51,11 +62,14 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [suppliers, setSuppliers] = useState<Lookup[]>([])
+  const [teamMembers, setTeamMembers] = useState<Lookup[]>([])
 
   useEffect(() => {
     if (!open) return
     supabase.from('suppliers').select('id, name').eq('active', true).order('name')
       .then(({ data }) => setSuppliers((data ?? []).map(s => ({ id: s.id, label: s.name }))))
+    supabase.from('team_members').select('id, full_name').eq('active', true).order('full_name')
+      .then(({ data }) => setTeamMembers((data ?? []).map(t => ({ id: t.id, label: t.full_name }))))
   }, [open])
 
   useEffect(() => {
@@ -73,6 +87,9 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
         tva_amount: charge.tva_cts != null
           ? (Math.abs(charge.tva_cts) / 100).toFixed(2) : '',
         notes: charge.notes ?? '',
+        mode_paiement: (charge.mode_paiement ?? 'qonto') as typeof EMPTY_FORM.mode_paiement,
+        avance_par: charge.avance_par ?? '',
+        rembourse_le: charge.rembourse_le ?? '',
       })
     } else {
       setIsAvoir(false)
@@ -125,6 +142,11 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
         montant_ttc_cts: ttcCts,
         receipt_url: null,
         notes: form.notes || null,
+        mode_paiement: form.mode_paiement,
+        // Champs uniquement pertinents pour la note de frais — sinon null pour
+        // ne pas polluer avec des données obsolètes si l'utilisateur bascule.
+        avance_par: form.mode_paiement === 'note_de_frais' ? (form.avance_par || null) : null,
+        rembourse_le: form.mode_paiement === 'note_de_frais' ? (form.rembourse_le || null) : null,
       }
 
       if (isEdit && charge) {
@@ -236,6 +258,45 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
             {suppliers.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </Field>
+
+        {/* Mode de paiement — hors Qonto → sort du compteur "à rapprocher".
+         *   Note de frais → révèle "avancé par" + "remboursé le". */}
+        <Field label="Mode de paiement">
+          <select
+            value={form.mode_paiement}
+            onChange={e => set('mode_paiement', e.target.value as typeof form.mode_paiement)}
+            className={inputCls}
+            disabled={isPennylane}
+          >
+            {(Object.keys(MODE_PAIEMENT_LABELS) as Array<keyof typeof MODE_PAIEMENT_LABELS>).map(k => (
+              <option key={k} value={k}>{MODE_PAIEMENT_LABELS[k]}</option>
+            ))}
+          </select>
+        </Field>
+
+        {form.mode_paiement === 'note_de_frais' && (
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Avancé par">
+              <select
+                value={form.avance_par}
+                onChange={e => set('avance_par', e.target.value)}
+                className={inputCls}
+                disabled={isPennylane}
+              >
+                <option value="">— Choisir —</option>
+                {teamMembers.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+              </select>
+            </Field>
+            <Field label={`Remboursé le${form.rembourse_le ? '' : ' (à rembourser)'}`}>
+              <Input
+                type="date"
+                value={form.rembourse_le}
+                onChange={v => set('rembourse_le', v)}
+                disabled={isPennylane}
+              />
+            </Field>
+          </div>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Montant HT (€) *">

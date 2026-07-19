@@ -30,6 +30,20 @@ export interface ChargePick {
   montant_ttc_cts: number | null
   /** Optionnel : présent seulement quand on compte aussi la catégorisation. */
   category_id?: string | null
+  /**
+   * Canal de paiement (mise en place par la migration 20260716120000).
+   * Absent (`undefined`) sur les données legacy pré-migration = interprété
+   * comme 'qonto' pour rester rétrocompatible.
+   */
+  mode_paiement?: string | null
+}
+
+/** Une charge est "candidate au rapprochement Qonto" uniquement si elle a été
+ *  payée par Qonto. Les autres canaux (note de frais, cash, jetons prépayés,
+ *  autre) n'auront JAMAIS de mouvement bancaire à rapprocher — inutile de les
+ *  compter. Legacy sans `mode_paiement` renseigné = considéré 'qonto'. */
+function isChargeQonto(c: ChargePick): boolean {
+  return c.mode_paiement == null || c.mode_paiement === 'qonto'
 }
 
 export interface ARapprocherCounts {
@@ -76,6 +90,7 @@ export function countChargesArapprocher(txs: TxPick[], charges: ChargePick[]): n
   )
   return charges.filter(c =>
     c.montant_ttc_cts != null &&
+    isChargeQonto(c) &&                             // exclut les canaux hors Qonto
     !linkedChargeIds.has(c.id) &&
     unreconciledDebitAmounts.has(c.montant_ttc_cts),
   ).length
