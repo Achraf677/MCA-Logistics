@@ -235,6 +235,21 @@ export async function savePod(id: string, recipientName: string) {
     .eq('id', id)
 }
 
+// ── Lettre de voiture — récupération des numéros LV attribués sur l'année ───
+// Sert à alimenter lvNumero() côté logic : la fonction reste pure, l'appelant
+// ici fournit la liste des lv_numero déjà attribués sur l'année en cours.
+export async function getLvNumerosForYear(year: number): Promise<{ data: string[] | null; error: unknown }> {
+  const prefix = `LV-${year}-`
+  const { data, error } = await supabase
+    .from('deliveries')
+    .select('lv_numero')
+    .like('lv_numero', `${prefix}%`)
+  if (error) return { data: null, error }
+  const list = ((data as { lv_numero: string | null }[] | null) ?? [])
+    .map(r => r.lv_numero).filter((n): n is string => !!n)
+  return { data: list, error: null }
+}
+
 // ── Export CSV ────────────────────────────────────────────────────────────────
 export async function exportDeliveriesCSV(filters: DeliveryFilters = {}) {
   const { data } = await getDeliveries(filters)

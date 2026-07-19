@@ -19,6 +19,7 @@ const EMPTY: Omit<CompanyData, 'id'> = {
   address: '', depot_lat: null, depot_lng: null,
   capital_cts: null, iban: '', bic: '',
   transport_license_expiry: null, rc_pro_expiry: null,
+  licence_transport: '',
 }
 
 export function Parametres() {
@@ -58,6 +59,7 @@ export function Parametres() {
           bic:         data.bic ?? '',
           transport_license_expiry: data.transport_license_expiry,
           rc_pro_expiry:            data.rc_pro_expiry,
+          licence_transport:        data.licence_transport ?? '',
         })
       }
       setLoading(false)
@@ -103,6 +105,7 @@ export function Parametres() {
       bic:       form.bic || null,
       transport_license_expiry: form.transport_license_expiry || null,
       rc_pro_expiry:            form.rc_pro_expiry || null,
+      licence_transport:        (form.licence_transport ?? '') || null,
     })
     if (error) toast((error as Error).message, 'error')
     else {
@@ -237,7 +240,11 @@ export function Parametres() {
 
             {/* Section Conformité */}
             <Section title="Conformité / Documents société">
-              <Field label="Licence de transport / inscription registre (DREAL)">
+              <Field label="N° licence de transport (DREAL) — obligatoire lettre de voiture">
+                <Input value={form.licence_transport ?? ''} onChange={v => set('licence_transport', v)}
+                  placeholder="Ex. 2020/68/0000123" />
+              </Field>
+              <Field label="Licence de transport — date d'expiration">
                 <input
                   type="date"
                   value={form.transport_license_expiry ?? ''}
