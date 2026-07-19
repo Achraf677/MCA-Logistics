@@ -16,8 +16,12 @@
 // Le total dans le badge = (a) + (c). (b) est affiché en détail mais NON
 // additionné (doublon de (a)).
 
+import { targetCouvertureCts, type AllocationPick } from './allocations'
+
 /** Forme minimale d'une qonto_transaction lue par ces compteurs. */
 export interface TxPick {
+  /** Requis quand on croise avec charge_allocations (target_id = qonto_transactions.id). */
+  id?: string
   side: 'debit' | 'credit'
   amount_cts: number
   charge_id: string | null
@@ -62,9 +66,21 @@ export interface ARapprocherCounts {
   total: number
 }
 
-/** Débits sans rapprochement — angle transaction. */
-export function countTresorerie(txs: TxPick[]): number {
-  return txs.filter(t => t.side === 'debit' && !t.charge_id && !t.justif_type).length
+/** Débits sans rapprochement — angle transaction. Un débit est "à rapprocher"
+ *  s'il n'a ni charge_id direct, ni justif_type, ET si aucune allocation ne
+ *  couvre encore son montant (targetCouvertureCts > 0). Rétrocompat : sans
+ *  `allocations`, comportement identique à avant. */
+export function countTresorerie(txs: TxPick[], allocations: AllocationPick[] = []): number {
+  const qontoAllocs = allocations.filter(a => a.target_table === 'qonto_transactions')
+  return txs.filter(t => {
+    if (t.side !== 'debit') return false
+    if (t.charge_id) return false
+    if (t.justif_type) return false
+    // Si le débit est déjà entièrement alloué via charge_allocations, il sort.
+    // Sans allocations = 0 conso = reste = amount_cts > 0 → toujours compté.
+    if (!t.id) return true
+    return targetCouvertureCts(t.amount_cts, qontoAllocs, t.id) > 0
+  }).length
 }
 
 /** Crédits sans classification — angle transaction. */
@@ -104,9 +120,15 @@ export function countChargesNonCategorisees(charges: ChargePick[]): number {
   return charges.filter(c => c.category_id === null).length
 }
 
-/** Aggrégation complète — utilisée par le badge Dashboard + la cloche. */
-export function countARapprocher(txs: TxPick[], charges: ChargePick[]): ARapprocherCounts {
-  const tresorerie = countTresorerie(txs)
+/** Aggrégation complète — utilisée par le badge Dashboard + la cloche.
+ *  `allocations` est optionnel (rétrocompat) : sans lui, comportement identique
+ *  au pré-charge_allocations. */
+export function countARapprocher(
+  txs: TxPick[],
+  charges: ChargePick[],
+  allocations: AllocationPick[] = [],
+): ARapprocherCounts {
+  const tresorerie = countTresorerie(txs, allocations)
   const encaissements = countEncaissements(txs)
   const categorisation = countChargesNonCategorisees(charges)
   return {
