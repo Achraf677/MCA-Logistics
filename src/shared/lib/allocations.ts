@@ -13,6 +13,10 @@ export interface AllocationPick {
   /** Cible pour targetCouvertureCts (facultatif quand on filtre en amont). */
   target_table?: 'qonto_transactions' | 'fuel_logs' | 'vehicle_maintenances'
   target_id?: string
+  /** Catégorie analytique de cette part (null = hérite de la charge côté app).
+   *  Non utilisée par les helpers reste/couverture (basés uniquement sur amount_cts),
+   *  mais exposée pour la ventilation UI et les futurs agrégats. */
+  category_id?: string | null
 }
 
 /** Somme des allocations. Ignore les valeurs non finies / ≤ 0 (invariant du CHECK SQL). */

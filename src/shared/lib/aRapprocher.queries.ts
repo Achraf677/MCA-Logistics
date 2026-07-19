@@ -34,7 +34,7 @@ export async function getARapprocherCounts(): Promise<ARapprocherCounts> {
     // charge_id historique). Absence de table = tableau vide OK.
     supabase
       .from('charge_allocations')
-      .select('amount_cts, target_table, target_id'),
+      .select('amount_cts, target_table, target_id, category_id'),
   ])
   const txs = (txsRes.data ?? []) as TxPick[]
   const charges = (chargesRes.data ?? []) as ChargePick[]

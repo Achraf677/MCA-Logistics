@@ -17,6 +17,12 @@ create table if not exists public.charge_allocations (
                    ('qonto_transactions','fuel_logs','vehicle_maintenances')),
   target_id     uuid not null,
   amount_cts    integer not null check (amount_cts > 0),
+  -- Catégorisation "par montant" : chaque part d'une charge peut porter sa
+  -- propre catégorie. Optionnel — null = hérite de la catégorie de la charge
+  -- au niveau applicatif. ON DELETE : la catégorie n'est pas contrainte fort
+  -- (cf. FK simple sans on delete), la suppression d'une catégorie active
+  -- devra être gérée manuellement / via un check applicatif.
+  category_id   uuid references public.charge_categories(id),
   note          text,
   created_at    timestamptz not null default now()
 );
@@ -36,11 +42,19 @@ comment on column public.charge_allocations.amount_cts is
    La somme des allocations d''une charge ne doit pas dépasser son montant TTC
    (invariant applicatif, pas contraint en DB pour permettre les corrections).';
 
+comment on column public.charge_allocations.category_id is
+  'Catégorie affectée à cette part de la charge (ventilation par montant).
+   NULL = hérite de charges.category_id au niveau applicatif. Permet
+   qu''une même charge soit ventilée sur plusieurs catégories analytiques.';
+
 create index if not exists idx_charge_allocations_charge
   on public.charge_allocations(charge_id);
 
 create index if not exists idx_charge_allocations_target
   on public.charge_allocations(target_table, target_id);
+
+create index if not exists idx_charge_allocations_categorie
+  on public.charge_allocations(category_id);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2) RLS — alignée sur charges (accès par company via jointure)
@@ -123,11 +137,12 @@ create policy "charge_allocations_delete_dg_president_comptable"
 -- (== charge.montant_ttc_cts pour les rapprochements historiques 1-1).
 -- WHERE NOT EXISTS : ré-exécution sans doublon.
 
--- qonto_transactions.charge_id → allocation
-insert into public.charge_allocations (charge_id, target_table, target_id, amount_cts, note)
-select qt.charge_id, 'qonto_transactions', qt.id, qt.amount_cts,
+-- qonto_transactions.charge_id → allocation (hérite category_id de la charge)
+insert into public.charge_allocations (charge_id, target_table, target_id, amount_cts, category_id, note)
+select qt.charge_id, 'qonto_transactions', qt.id, qt.amount_cts, c.category_id,
        'Backfill 20260716130000 : rapprochement 1-1 historique'
 from public.qonto_transactions qt
+join public.charges c on c.id = qt.charge_id
 where qt.charge_id is not null
   and qt.amount_cts > 0
   and not exists (
@@ -137,9 +152,9 @@ where qt.charge_id is not null
       and ca.charge_id    = qt.charge_id
   );
 
--- fuel_logs.charge_id → allocation
-insert into public.charge_allocations (charge_id, target_table, target_id, amount_cts, note)
-select fl.charge_id, 'fuel_logs', fl.id, coalesce(fl.total_cts, c.montant_ttc_cts, 0),
+-- fuel_logs.charge_id → allocation (hérite category_id de la charge)
+insert into public.charge_allocations (charge_id, target_table, target_id, amount_cts, category_id, note)
+select fl.charge_id, 'fuel_logs', fl.id, coalesce(fl.total_cts, c.montant_ttc_cts, 0), c.category_id,
        'Backfill 20260716130000 : rapprochement 1-1 historique'
 from public.fuel_logs fl
 join public.charges c on c.id = fl.charge_id
@@ -152,9 +167,9 @@ where fl.charge_id is not null
       and ca.charge_id    = fl.charge_id
   );
 
--- vehicle_maintenances.charge_id → allocation
-insert into public.charge_allocations (charge_id, target_table, target_id, amount_cts, note)
-select vm.charge_id, 'vehicle_maintenances', vm.id, coalesce(vm.cost_cts, c.montant_ttc_cts, 0),
+-- vehicle_maintenances.charge_id → allocation (hérite category_id de la charge)
+insert into public.charge_allocations (charge_id, target_table, target_id, amount_cts, category_id, note)
+select vm.charge_id, 'vehicle_maintenances', vm.id, coalesce(vm.cost_cts, c.montant_ttc_cts, 0), c.category_id,
        'Backfill 20260716130000 : rapprochement 1-1 historique'
 from public.vehicle_maintenances vm
 join public.charges c on c.id = vm.charge_id
@@ -174,6 +189,7 @@ where vm.charge_id is not null
 --   drop policy if exists "charge_allocations_update_dg_president_comptable" on public.charge_allocations;
 --   drop policy if exists "charge_allocations_insert_dg_president_comptable" on public.charge_allocations;
 --   drop policy if exists "charge_allocations_select_own" on public.charge_allocations;
+--   drop index if exists public.idx_charge_allocations_categorie;
 --   drop index if exists public.idx_charge_allocations_target;
 --   drop index if exists public.idx_charge_allocations_charge;
 --   drop table if exists public.charge_allocations;
