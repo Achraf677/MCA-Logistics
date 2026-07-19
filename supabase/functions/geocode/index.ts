@@ -4,8 +4,9 @@
 //   b) { backfill: true } → géocode le dépôt (companies.address → depot_lat/lng)
 //      + toutes les deliveries de la company de l'appelant dont l'adresse est
 //      remplie mais delivery_lat/lng est NULL. Écrit les coords côté serveur
-//      (service_role). Retourne un compte { depot_ok, deliveries_ok,
-//      deliveries_echec }.
+//      (service_role). Retourne un compte détaillé :
+//      { depot_ok, deliveries_ok, deliveries_echec, echecs:[adresses],
+//        depot_missing_address }.
 //
 // verify_jwt = true : la company de l'appelant est déduite de son JWT
 // (profiles.company_id). Le service_role ne sert que pour l'écriture DB, pas
@@ -56,22 +57,34 @@ Deno.serve(async (req: Request) => {
       if (!companyId) return jsonResponse({ ok: false, error: 'société introuvable' }, 400)
 
       // ── Dépôt ────────────────────────────────────────────────────────────
-      let depot_ok: 'skipped' | 'ok' | 'echec' = 'skipped'
+      // 'skipped' = déjà géocodé (rien à faire)
+      // 'no_address' = adresse dépôt vide → à renseigner dans Paramètres
+      // 'ok' / 'echec' = tentative de résolution
+      let depot_ok: 'skipped' | 'ok' | 'echec' | 'no_address' = 'skipped'
+      const echecs: string[] = []
       const { data: company } = await service
         .from('companies')
         .select('address, depot_lat, depot_lng')
         .eq('id', companyId)
         .single()
-      if (company?.address && (company.depot_lat == null || company.depot_lng == null)) {
-        const c = await geocode(company.address as string)
-        if (c) {
-          const { error } = await service
-            .from('companies')
-            .update({ depot_lat: c.lat, depot_lng: c.lng })
-            .eq('id', companyId)
-          depot_ok = error ? 'echec' : 'ok'
+      const depotAddress = (company?.address as string | null)?.trim() ?? ''
+      const depotNeedsGeocode = company?.depot_lat == null || company?.depot_lng == null
+      if (depotNeedsGeocode) {
+        if (!depotAddress) {
+          depot_ok = 'no_address'
         } else {
-          depot_ok = 'echec'
+          const c = await geocode(depotAddress)
+          if (c) {
+            const { error } = await service
+              .from('companies')
+              .update({ depot_lat: c.lat, depot_lng: c.lng })
+              .eq('id', companyId)
+            depot_ok = error ? 'echec' : 'ok'
+            if (error) echecs.push(`Dépôt : ${depotAddress}`)
+          } else {
+            depot_ok = 'echec'
+            echecs.push(`Dépôt : ${depotAddress}`)
+          }
         }
       }
 
@@ -90,18 +103,32 @@ Deno.serve(async (req: Request) => {
         const addr = (d.delivery_address as string | null)?.trim()
         if (!addr) continue
         const c = await geocode(addr)
-        if (!c) { deliveries_echec++; continue }
+        if (!c) {
+          deliveries_echec++
+          echecs.push(addr)
+          continue
+        }
         const { error } = await service
           .from('deliveries')
           .update({ delivery_lat: c.lat, delivery_lng: c.lng })
           .eq('id', d.id)
-        if (error) deliveries_echec++
-        else deliveries_ok++
+        if (error) {
+          deliveries_echec++
+          echecs.push(addr)
+        } else {
+          deliveries_ok++
+        }
       }
 
       return jsonResponse({
         ok: true,
-        data: { depot_ok, deliveries_ok, deliveries_echec },
+        data: {
+          depot_ok,
+          deliveries_ok,
+          deliveries_echec,
+          echecs,
+          depot_missing_address: depot_ok === 'no_address',
+        },
       })
     }
 

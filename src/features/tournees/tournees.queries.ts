@@ -131,13 +131,16 @@ export async function optimizeTour(tourId: string) {
 
 // ── Multi-véhicule (dispatch + optimisation) ──────────────────────────────────
 
-/** Tente de lire le corps JSON d'une erreur HTTP de Function (ex. 409). */
+/** Tente de lire le corps JSON d'une erreur HTTP de Function (ex. 409 / 422).
+ *  Priorité : data.message (payload structuré) → message (top-level) → error.
+ *  Retourne null si le corps est illisible ou vide, laissant l'appelant retomber
+ *  sur error.message ("Edge Function returned a non-2xx status code", générique). */
 async function readFunctionErrorMessage(error: unknown): Promise<string | null> {
   const ctx = (error as { context?: unknown } | null)?.context
   if (ctx && typeof (ctx as Response).json === 'function') {
     try {
       const body = await (ctx as Response).json()
-      return body?.data?.message ?? body?.message ?? null
+      return body?.data?.message ?? body?.message ?? body?.error ?? null
     } catch {
       // corps illisible : on retombera sur error.message
     }

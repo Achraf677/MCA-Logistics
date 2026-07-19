@@ -74,7 +74,8 @@ Deno.serve(async (req)=>{
   const geocoded = (deliveries ?? []).filter((d)=>d.delivery_lat != null && d.delivery_lng != null);
   if (geocoded.length === 0) return jsonResponse({
     ok: false,
-    error: 'no geocoded deliveries in pool'
+    error: 'no geocoded deliveries in pool',
+    message: "Aucune livraison sélectionnée n'est localisée — clique sur « Géocoder les adresses manquantes » puis réessaie."
   }, 422);
   const companyId = geocoded[0].company_id;
   const vehicleIds = assignments.map((a)=>a.vehicle_id);
@@ -103,7 +104,8 @@ Deno.serve(async (req)=>{
   if (depotLat == null || depotLng == null) {
     return jsonResponse({
       ok: false,
-      error: 'depot not geocoded (companies.depot_lat/lng)'
+      error: 'depot not geocoded (companies.depot_lat/lng)',
+      message: "Dépôt non localisé — renseigne/valide l'adresse du dépôt dans Paramètres, puis clique sur « Géocoder les adresses manquantes »."
     }, 422);
   }
   // ── jobs (amount:[1]) + vehicles (capacity:[plafond]) ──
