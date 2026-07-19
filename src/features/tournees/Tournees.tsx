@@ -48,6 +48,10 @@ export function Tournees() {
   const [dispatching, setDispatching] = useState(false)
   const [unassignedCount, setUnassignedCount] = useState(0)
 
+  // Résultat du dernier backfill géocodage — pour lister les adresses non résolues.
+  const [geocodeReport, setGeocodeReport] =
+    useState<{ echecs: string[]; depotMissingAddress: boolean } | null>(null)
+
   // ── Référentiels (une fois) ─────────────────────────────────────────────────
   useEffect(() => {
     if (!companyId) return
@@ -98,12 +102,24 @@ export function Tournees() {
         toast(error?.message ?? data?.error ?? 'Échec du géocodage', 'error')
         return
       }
-      const d = data.data as { depot_ok: string; deliveries_ok: number; deliveries_echec: number }
+      const d = data.data as {
+        depot_ok: 'skipped' | 'ok' | 'echec' | 'no_address'
+        deliveries_ok: number
+        deliveries_echec: number
+        echecs?: string[]
+        depot_missing_address?: boolean
+      }
       const parts: string[] = []
       if (d.depot_ok === 'ok') parts.push('dépôt localisé')
+      if (d.depot_ok === 'no_address') parts.push('adresse du dépôt manquante')
       if (d.deliveries_ok > 0) parts.push(`${d.deliveries_ok} livraison(s) localisée(s)`)
       if (d.deliveries_echec > 0) parts.push(`${d.deliveries_echec} échec(s)`)
-      toast(parts.length ? parts.join(' · ') : 'Aucune adresse à géocoder')
+      toast(parts.length ? parts.join(' · ') : 'Aucune adresse à géocoder',
+        d.depot_ok === 'no_address' || d.deliveries_echec > 0 ? 'error' : 'success')
+      setGeocodeReport({
+        echecs: d.echecs ?? [],
+        depotMissingAddress: !!d.depot_missing_address,
+      })
 
       // Recharge le dépôt (pour lever le blocage) puis le board si dispo.
       if (companyId) {
@@ -218,6 +234,35 @@ export function Tournees() {
             >
               {geocoding ? 'Géocodage…' : 'Géocoder les adresses manquantes'}
             </Button>
+          </div>
+        )}
+
+        {/* Rapport du dernier backfill — adresses non résolues (à corriger manuellement). */}
+        {geocodeReport && (geocodeReport.echecs.length > 0 || geocodeReport.depotMissingAddress) && (
+          <div className="flex flex-col gap-2 px-4 py-3 rounded-[var(--r-md)]
+            bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-[var(--fs-sm)]">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={16} className="text-[var(--danger)] mt-0.5 shrink-0" />
+              <span className="text-[var(--text)] font-medium flex-1">
+                {geocodeReport.depotMissingAddress
+                  ? "Adresse du dépôt manquante — renseigne-la dans Paramètres puis relance le géocodage."
+                  : `${geocodeReport.echecs.length} adresse(s) non résolue(s) — corrige-les puis relance :`}
+              </span>
+              <button
+                type="button"
+                onClick={() => setGeocodeReport(null)}
+                className="text-[var(--text-muted)] hover:text-[var(--text)] text-[var(--fs-xs)]"
+              >
+                Fermer
+              </button>
+            </div>
+            {geocodeReport.echecs.length > 0 && (
+              <ul className="list-disc pl-8 text-[var(--fs-xs)] text-[var(--text-muted)] max-h-40 overflow-auto">
+                {geocodeReport.echecs.map((addr, i) => (
+                  <li key={i} className="font-mono">{addr}</li>
+                ))}
+              </ul>
+            )}
           </div>
         )}
 

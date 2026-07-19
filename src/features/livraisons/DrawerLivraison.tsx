@@ -570,10 +570,16 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
             <Input value={form.description} onChange={v => set('description', v)}
               placeholder="Objet de la course…" disabled={isDetailReadOnly} />
           </Field>
-          <Field label="Adresse d'enlèvement">
-            <Input value={form.pickup_address} onChange={v => set('pickup_address', v)}
-              placeholder="Rue, ville…" disabled={isDetailReadOnly} />
-          </Field>
+          {/* Enlèvement : autocomplétion Photon. Pas de colonne pickup_lat/lng en DB —
+              on ne persiste que le texte, les suggestions servent juste à saisir vite/juste. */}
+          <AddressAutocomplete
+            label="Adresse d'enlèvement"
+            value={form.pickup_address}
+            placeholder="Rue, ville…"
+            disabled={isDetailReadOnly}
+            onChange={v => set('pickup_address', v)}
+            onSelect={s => set('pickup_address', s.address)}
+          />
           <AddressAutocomplete
             label="Adresse de livraison"
             value={form.delivery_address}
@@ -633,8 +639,11 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
 
           <Field label="Notes">
             <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
-              rows={3} disabled={isDetailReadOnly} placeholder="Notes internes…"
-              className={`${inputCls} resize-none`} />
+              rows={6} disabled={isDetailReadOnly} placeholder="Notes internes…"
+              className="w-full min-h-[140px] px-3 py-2 rounded-[var(--r-md)] bg-[var(--bg)]
+                border border-[var(--border)] text-[var(--text)] text-[var(--fs-body)]
+                leading-relaxed resize-y focus:outline-none focus:border-[var(--brand)]
+                transition-colors disabled:opacity-50 disabled:cursor-not-allowed" />
           </Field>
 
           <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
