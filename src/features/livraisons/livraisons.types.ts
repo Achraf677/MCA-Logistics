@@ -67,8 +67,38 @@ export interface Delivery {
   pod_captured_at: string | null
   /** Lignes supplémentaires (attente, retour à vide, forfait…). */
   extra_lines: DeliveryExtraLine[]
+  // ── Lettre de voiture nationale (migration 20260719120000) ─────────────────
+  /** Mentions obligatoires LV (décret 99-752). NULL = à compléter avant génération. */
+  expediteur_nom: string | null
+  expediteur_siren: string | null
+  destinataire_nom: string | null
+  marchandise_desc: string | null
+  nb_colis: number | null
+  poids_kg_reel: number | null
+  /** Numéro applicatif « LV-AAAA-N ». Attribué à la 1ʳᵉ génération. */
+  lv_numero: string | null
+  /** Signatures collectées (base64 PNG + timestamp + geo optionnelle). */
+  lv_signatures: LvSignatures
+  /** URL du PDF LV archivé sur Drive (nouvelle génération). */
+  lv_pdf_url: string | null
   created_at: string
   updated_at: string
+}
+
+/** Signature capturée sur SignaturePad — 3 rôles possibles. */
+export interface LvSignatureData {
+  /** Data URL PNG (`data:image/png;base64,…`). */
+  png: string
+  /** Timestamp ISO 8601 UTC de la capture (sert de date de prise en charge / livraison). */
+  ts: string
+  /** Géoloc optionnelle si autorisée par le navigateur. */
+  geo?: { lat: number; lng: number; acc?: number }
+}
+
+export type LvSignatures = {
+  expediteur?: LvSignatureData
+  transporteur?: LvSignatureData
+  destinataire?: LvSignatureData
 }
 
 export interface DeliveryRow extends Delivery {
@@ -93,7 +123,23 @@ export type DeliveryInsert = Omit<
   | 'pod_recipient_name' | 'pod_captured_at'
   // extra_lines : optionnel à l'insert (default DB '[]'), écrit via updateDelivery.
   | 'extra_lines'
-> & { extra_lines?: DeliveryExtraLine[] }
+  // Lettre de voiture : tous optionnels à l'insert (nullable/DEFAULT côté DB).
+  | 'expediteur_nom' | 'expediteur_siren' | 'destinataire_nom'
+  | 'marchandise_desc' | 'nb_colis' | 'poids_kg_reel'
+  | 'lv_numero' | 'lv_signatures' | 'lv_pdf_url'
+> & {
+  extra_lines?: DeliveryExtraLine[]
+  // Ré-exposés comme optionnels pour rester écrivables via updateDelivery(Partial).
+  expediteur_nom?: string | null
+  expediteur_siren?: string | null
+  destinataire_nom?: string | null
+  marchandise_desc?: string | null
+  nb_colis?: number | null
+  poids_kg_reel?: number | null
+  lv_numero?: string | null
+  lv_signatures?: LvSignatures
+  lv_pdf_url?: string | null
+}
 
 export type DeliveryUpdate = Partial<Omit<Delivery, 'id' | 'company_id' | 'created_at'>>
 

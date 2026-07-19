@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { Trash2, Loader2, Camera, Plus, X } from 'lucide-react'
 import { DocumentsPanel } from '../documents/DocumentsPanel'
+import { LettreVoitureTab } from './LettreVoitureTab'
 import { uploadDocument, listDocuments, getDownloadUrl } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { Drawer }      from '../../shared/ui/Drawer'
@@ -40,7 +41,7 @@ interface Props {
   onSaved: () => void
 }
 
-type Tab = 'detail' | 'montant' | 'suivi' | 'documents' | 'pod'
+type Tab = 'detail' | 'montant' | 'suivi' | 'documents' | 'pod' | 'lv'
 
 interface ClientLookup extends ClientTariff {
   id: string
@@ -319,6 +320,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         { key: 'suivi',     label: 'Suivi' },
         { key: 'documents', label: 'Documents' },
         { key: 'pod',       label: 'POD' },
+        { key: 'lv',        label: 'Lettre de voiture' },
       ]
     : [{ key: 'detail', label: 'Détail' }, { key: 'montant', label: 'Montant' }]
 
@@ -730,6 +732,11 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
       {/* ── Onglet POD ───────────────────────────────────────────────────────── */}
       {tab === 'pod' && (
         <PodTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
+      )}
+
+      {/* ── Onglet Lettre de voiture ────────────────────────────────────────── */}
+      {tab === 'lv' && (
+        <LettreVoitureTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
       )}
 
       <ConfirmDialog
