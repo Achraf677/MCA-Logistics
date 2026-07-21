@@ -6,6 +6,7 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { SyncButton } from '../../shared/ui/SyncButton'
 import { EmptyState } from '../../shared/ui/EmptyState'
+import { ContactLinks } from '../../shared/ui/ContactLinks'
 import { SkeletonTable, SkeletonKpis } from '../../shared/ui/Skeleton'
 import { TabActions } from '../../shared/ui/TabbedSection'
 import { DrawerClient } from './DrawerClient'
@@ -288,8 +289,7 @@ export function Clients() {
                     )}
                   </div>
                   <div className="flex flex-col gap-1 text-[var(--fs-xs)] text-[var(--text-muted)]">
-                    {c.email && <span>{c.email}</span>}
-                    {c.phone && <span>{c.phone}</span>}
+                    <ContactLinks phone={c.phone} email={c.email} />
                     <span>Délai : {c.payment_terms} j · {getTariffLabel(c)}</span>
                     {enc && enc.count > 0 && (
                       <span className={enc.overdue_cts > 0 ? 'text-[var(--danger)]' : ''}>

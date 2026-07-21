@@ -11,6 +11,7 @@ import { Button }      from '../../shared/ui/Button'
 import { Badge }       from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
+import { ContactLinks } from '../../shared/ui/ContactLinks'
 import { useToast }    from '../../shared/ui/useToast'
 import { useProfile, supabase } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
@@ -47,6 +48,8 @@ type Tab = 'detail' | 'montant' | 'suivi' | 'documents' | 'pod' | 'lv'
 interface ClientLookup extends ClientTariff {
   id: string
   label: string
+  phone: string | null
+  email: string | null
 }
 
 interface Lookup { id: string; label: string }
@@ -119,6 +122,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
         label: c.name,
         tariff_mode: (c.tariff_mode ?? 'manuel') as ClientTariff['tariff_mode'],
         tariff_rate_cts: c.tariff_rate_cts ?? null,
+        phone: (c as { phone?: string | null }).phone ?? null,
+        email: (c as { email?: string | null }).email ?? null,
       })))
     )
     getActiveVehicles().then(({ data }) =>
@@ -550,6 +555,12 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
               <option value="">— Sélectionner un client —</option>
               {clients.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
             </select>
+            {/* Contact du client sélectionné — tel/email cliquables (si dispo). */}
+            {selectedClient && (selectedClient.phone || selectedClient.email) && (
+              <div className="mt-1.5 text-[var(--fs-xs)]">
+                <ContactLinks phone={selectedClient.phone} email={selectedClient.email} />
+              </div>
+            )}
           </Field>
 
           <div className="grid grid-cols-2 gap-3">

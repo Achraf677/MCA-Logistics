@@ -176,7 +176,7 @@ export async function resyncPending(): Promise<{ resynced: number; failed: numbe
 export async function getActiveClients() {
   return supabase
     .from('clients')
-    .select('id, name, tariff_mode, tariff_rate_cts')
+    .select('id, name, tariff_mode, tariff_rate_cts, phone, email')
     .eq('active', true)
     .order('name')
 }

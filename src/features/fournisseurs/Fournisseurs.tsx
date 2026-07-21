@@ -5,6 +5,8 @@ import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
+import { ContactLinks } from '../../shared/ui/ContactLinks'
+import { telHref, mailtoHref } from '../../shared/lib/contact'
 import { SkeletonTable, SkeletonKpis } from '../../shared/ui/Skeleton'
 import { Drawer } from '../../shared/ui/Drawer'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -218,8 +220,16 @@ export function Fournisseurs() {
                         <Badge color="muted">{getCategoryLabel(s.category)}</Badge>
                       </td>
                       <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">{s.siret ?? '—'}</td>
-                      <td className="px-4 py-3 text-[var(--text-muted)]">{s.email ?? '—'}</td>
-                      <td className="px-4 py-3 text-[var(--text-muted)]">{s.phone ?? '—'}</td>
+                      <td className="px-4 py-3 text-[var(--text-muted)]" onClick={e => e.stopPropagation()}>
+                        {mailtoHref(s.email)
+                          ? <a href={mailtoHref(s.email)!} className="hover:text-[var(--brand)] transition-colors">{s.email}</a>
+                          : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-[var(--text-muted)]" onClick={e => e.stopPropagation()}>
+                        {telHref(s.phone)
+                          ? <a href={telHref(s.phone)!} className="hover:text-[var(--brand)] transition-colors">{s.phone}</a>
+                          : '—'}
+                      </td>
                       <td className="px-4 py-3 text-right">
                         <Button variant="ghost" size="compact" onClick={e => { e.stopPropagation(); openDrawer(s) }}>Voir</Button>
                       </td>
@@ -238,7 +248,9 @@ export function Fournisseurs() {
                     <span className="font-medium text-[var(--text)]">{s.name}</span>
                     <Badge color="muted">{getCategoryLabel(s.category)}</Badge>
                   </div>
-                  <div className="text-[var(--fs-xs)] text-[var(--text-muted)]">{s.email ?? s.phone ?? '—'}</div>
+                  <div onClick={e => e.stopPropagation()}>
+                    <ContactLinks phone={s.phone} email={s.email} />
+                  </div>
                 </button>
               ))}
             </div>
