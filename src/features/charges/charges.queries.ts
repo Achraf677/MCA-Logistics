@@ -33,6 +33,18 @@ export async function deleteCharge(id: string) {
   return supabase.from('charges').delete().eq('id', id)
 }
 
+/** « Ignorer » une suppression Pennylane : CONSERVE la charge mais la détache
+ *  de Pennylane (pennylane_id → null, flag effacé). Choix documenté : c'est la
+ *  variante la plus simple ET permanente — sans détachement, le prochain
+ *  pennylane-sync re-poserait le flag (l'id resterait absent de la liste).
+ *  La charge devient locale (éditable dans l'app, plus de lien Pennylane). */
+export async function ignorePennylaneDeletion(id: string) {
+  return supabase
+    .from('charges')
+    .update({ pennylane_id: null, pennylane_deleted_at: null })
+    .eq('id', id)
+}
+
 export async function syncPennylane() {
   return supabase.functions.invoke('pennylane-sync', { body: {} })
 }

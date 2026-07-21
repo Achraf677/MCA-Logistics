@@ -110,6 +110,9 @@ Deno.serve(async (req) => {
     let suppliersUpserts = 0;
     let chargesUpserts = 0;
     const errors: string[] = [];
+    // Tous les pennylane_id vus dans CE sync — sert à détecter les factures
+    // supprimées côté Pennylane (absentes de la liste courante).
+    const seenPennylaneIds = new Set<string>();
 
     do {
       const qs = new URLSearchParams({ limit: '100' });
@@ -182,6 +185,7 @@ Deno.serve(async (req) => {
         // Taux TVA dérivé des montants (déterministe, gère avoirs).
         const tvaRate = snapVatRate(tvaCts, htCts);
 
+        seenPennylaneIds.add(String(inv.id));
         chargeRows.push({
           company_id:          companyId,
           pennylane_id:        String(inv.id),
@@ -194,6 +198,9 @@ Deno.serve(async (req) => {
           tva_rate:            tvaRate,
           receipt_url:         inv.public_file_url ?? null,
           pennylane_synced_at: new Date().toISOString(),
+          // Présente dans la liste courante → efface un éventuel signalement
+          // de suppression (l'id a "réapparu" côté Pennylane).
+          pennylane_deleted_at: null,
         });
       }
 
@@ -216,6 +223,36 @@ Deno.serve(async (req) => {
       cursor = page.has_more ? (page.next_cursor ?? null) : null;
     } while (cursor !== null);
 
+    // ── Détection des factures SUPPRIMÉES côté Pennylane ──────────────────────
+    // On n'arrive ici qu'après avoir parcouru TOUTES les pages : seenPennylaneIds
+    // est complet. Toute charge locale liée à un pennylane_id absent de la liste
+    // courante est SIGNALÉE (pennylane_deleted_at=now()) — jamais supprimée.
+    // Le retour à null en cas de réapparition est géré par l'upsert ci-dessus.
+    let deleted_flagged = 0;
+    {
+      const { data: localCharges, error: lcErr } = await supabase
+        .from('charges')
+        .select('id, pennylane_id')
+        .eq('company_id', companyId)
+        .not('pennylane_id', 'is', null)
+        .is('pennylane_deleted_at', null);
+      if (lcErr) {
+        errors.push(`detect deleted: ${lcErr.message}`);
+      } else {
+        const missingIds = (localCharges ?? [])
+          .filter((c) => !seenPennylaneIds.has(c.pennylane_id as string))
+          .map((c) => c.id as string);
+        if (missingIds.length > 0) {
+          const { error: updErr } = await supabase
+            .from('charges')
+            .update({ pennylane_deleted_at: new Date().toISOString() })
+            .in('id', missingIds);
+          if (updErr) errors.push(`flag deleted: ${updErr.message}`);
+          else deleted_flagged = missingIds.length;
+        }
+      }
+    }
+
     // Horodatage du dernier run réussi — même si 0 nouveauté.
     await supabase.from('integration_sync_state').upsert(
       { company_id: companyId, integration: 'pennylane_charges', last_run_at: new Date().toISOString() },
@@ -224,7 +261,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       ok:   true,
-      data: { suppliers_upserts: suppliersUpserts, charges_upserts: chargesUpserts, pages, errors },
+      data: { suppliers_upserts: suppliersUpserts, charges_upserts: chargesUpserts, pages, deleted_flagged, errors },
     });
 
   } catch (err) {

@@ -24,6 +24,9 @@ export interface Charge {
   avance_par: string | null
   /** Note de frais : date de remboursement effectif (null = à rembourser). */
   rembourse_le: string | null
+  /** Migration 20260721120000. Non-null = la facture a disparu de Pennylane
+   *  (détectée par pennylane-sync). Jamais de suppression automatique. */
+  pennylane_deleted_at: string | null
   created_at: string
   updated_at: string
 }
@@ -35,6 +38,8 @@ export interface ChargeRow extends Charge {
 
 export type ChargeInsert = Omit<Charge,
   | 'id' | 'created_at' | 'updated_at' | 'pennylane_id' | 'pennylane_synced_at'
+  // Posé uniquement par l'Edge pennylane-sync, jamais à l'insert.
+  | 'pennylane_deleted_at'
   // Champs optionnels à l'insert (défaut DB pour mode_paiement, NULL pour les autres).
   | 'mode_paiement' | 'avance_par' | 'rembourse_le'
 > & {

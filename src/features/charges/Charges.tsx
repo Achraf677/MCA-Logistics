@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { CreditCard, Receipt, Euro, Wallet, Lock, Sparkles } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { CreditCard, Receipt, Euro, Wallet, Lock, Sparkles, AlertTriangle } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -12,7 +13,8 @@ import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { DrawerCharge } from './DrawerCharge'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
-import { getCharges, exportChargesCSV, syncPennylane, updateCharge } from './charges.queries'
+import { getCharges, exportChargesCSV, syncPennylane, updateCharge, deleteCharge, ignorePennylaneDeletion } from './charges.queries'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { getSyncState } from '../../shared/lib/syncState'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatCents, categoryColor, kpiSummary } from './charges.logic'
@@ -36,6 +38,12 @@ export function Charges() {
   const [drawerOpen, setDrawerOpen]   = useState(false)
   const [selected, setSelected]       = useState<ChargeRow | null>(null)
   const [lastSyncAt, setLastSyncAt]   = useState<string | null>(null)
+  // Suppression Pennylane : charge en attente de confirmation "Supprimer de l'app".
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deletingFlagged, setDeletingFlagged] = useState(false)
+  // Filtre spécial via URL (?filtre=pennylane_supprimees) — clic depuis la cloche.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filtreSupprimees = searchParams.get('filtre') === 'pennylane_supprimees'
 
   // Chargement des catégories (une fois par companyId)
   useEffect(() => {
@@ -83,11 +91,36 @@ export function Charges() {
     setSelected(row); setDrawerOpen(true)
   }
 
+  // ── Suppressions Pennylane détectées ────────────────────────────────────────
+  const handleDeleteFlagged = async () => {
+    if (!confirmDeleteId) return
+    setDeletingFlagged(true)
+    const { error } = await deleteCharge(confirmDeleteId)
+    setDeletingFlagged(false)
+    if (error) { toast(error.message, 'error'); return }
+    setConfirmDeleteId(null)
+    await load()
+    toast('Charge supprimée de l\'app')
+  }
+
+  const handleIgnoreDeletion = async (id: string) => {
+    const { error } = await ignorePennylaneDeletion(id)
+    if (error) { toast(error.message, 'error'); return }
+    await load()
+    toast('Charge conservée — détachée de Pennylane')
+  }
+
   const kpis = kpiSummary(rows)
   const hasFilters = !!(
     (filters.category_id && filters.category_id !== 'all') ||
     filters.date_from || filters.date_to
   )
+
+  // Liste affichée : filtre "supprimées Pennylane" appliqué côté client.
+  const displayRows = filtreSupprimees
+    ? rows.filter(r => r.pennylane_deleted_at != null)
+    : rows
+  const nbSupprimees = rows.filter(r => r.pennylane_deleted_at != null).length
 
   // Suggestions déterministes de catégorie par fournisseur — calculées 1 fois
   // par rendu de rows. Historique = TOUTES les rows chargées (`getCharges` ne
@@ -177,6 +210,28 @@ export function Charges() {
         )}
       </div>
 
+      {/* Bandeau factures supprimées côté Pennylane */}
+      {!loading && nbSupprimees > 0 && (
+        <div className="flex flex-wrap items-center gap-3 mb-4 px-4 py-3 rounded-[var(--r-xl)]
+          border border-[var(--danger)]/30 bg-[var(--danger)]/10 text-[var(--fs-sm)]">
+          <AlertTriangle size={16} className="text-[var(--danger)] shrink-0" />
+          <span className="text-[var(--text)] flex-1">
+            {nbSupprimees} facture{nbSupprimees > 1 ? 's' : ''} supprimée{nbSupprimees > 1 ? 's' : ''} dans Pennylane —
+            à traiter (supprimer de l'app ou conserver).
+          </span>
+          {filtreSupprimees ? (
+            <Button variant="ghost" size="compact" onClick={() => setSearchParams({})}>
+              Voir toutes les charges
+            </Button>
+          ) : (
+            <Button variant="secondary" size="compact"
+              onClick={() => setSearchParams({ filtre: 'pennylane_supprimees' })}>
+              Voir la liste
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Contenu */}
       {loading ? (
         <SkeletonTable rows={6} />
@@ -209,7 +264,7 @@ export function Charges() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => {
+                {displayRows.map((row, i) => {
                   const isPennylane = !!row.pennylane_id
                   return (
                     <tr
@@ -229,6 +284,25 @@ export function Charges() {
                         <div className="flex items-center gap-2">
                           <span title={row.label} className="font-medium text-[var(--text)] truncate">{row.label}</span>
                         </div>
+                        {row.pennylane_deleted_at && (
+                          <div className="mt-1 flex items-center gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
+                            <Badge color="danger">Supprimée dans Pennylane</Badge>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDeleteId(row.id)}
+                              className="text-[var(--fs-xs)] text-[var(--danger)] underline hover:no-underline"
+                            >
+                              Supprimer de l'app
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleIgnoreDeletion(row.id)}
+                              className="text-[var(--fs-xs)] text-[var(--text-muted)] underline hover:text-[var(--text)]"
+                            >
+                              Ignorer
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                         <select
@@ -291,7 +365,7 @@ export function Charges() {
 
           {/* Mobile */}
           <div className="md:hidden flex flex-col gap-3">
-            {rows.map(row => {
+            {displayRows.map(row => {
               const isPennylane = !!row.pennylane_id
               const cat = row.charge_categories
               return (
@@ -301,6 +375,25 @@ export function Charges() {
                   className={`w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 transition-colors
                     ${isPennylane ? 'cursor-default' : 'cursor-pointer hover:bg-[var(--bg-card-hover)]'}`}
                 >
+                  {row.pennylane_deleted_at && (
+                    <div className="mb-2 flex items-center gap-2 flex-wrap" onClick={e => e.stopPropagation()}>
+                      <Badge color="danger">Supprimée dans Pennylane</Badge>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(row.id)}
+                        className="text-[var(--fs-xs)] text-[var(--danger)] underline"
+                      >
+                        Supprimer de l'app
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleIgnoreDeletion(row.id)}
+                        className="text-[var(--fs-xs)] text-[var(--text-muted)] underline"
+                      >
+                        Ignorer
+                      </button>
+                    </div>
+                  )}
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <span title={row.label} className="font-medium text-[var(--text)] truncate">{row.label}</span>
                     <div className="flex flex-col items-end gap-1 shrink-0" onClick={e => e.stopPropagation()}>
@@ -369,6 +462,16 @@ export function Charges() {
         charge={selected}
         onSaved={load}
         categories={categories}
+      />
+
+      {/* Confirmation "Supprimer de l'app" (charge dont la facture Pennylane a disparu) */}
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        title="Supprimer cette charge de l'app ?"
+        message="La facture a été supprimée côté Pennylane. Supprimer la charge ici retire aussi ses rapprochements et allocations. Action irréversible."
+        onConfirm={handleDeleteFlagged}
+        onCancel={() => setConfirmDeleteId(null)}
+        loading={deletingFlagged}
       />
     </Shell>
   )

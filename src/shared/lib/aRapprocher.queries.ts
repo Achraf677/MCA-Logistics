@@ -27,7 +27,9 @@ export async function getARapprocherCounts(): Promise<ARapprocherCounts> {
       // mode_paiement : introduit par la migration 20260716120000. Nécessaire
       // pour exclure les charges hors Qonto (note de frais, cash…) qui n'ont
       // pas vocation à être rapprochées à un mouvement bancaire.
-      .select('id, montant_ttc_cts, category_id, mode_paiement'),
+      // pennylane_deleted_at : introduit par 20260721120000. Compte les
+      // charges dont la facture a été supprimée côté Pennylane.
+      .select('id, montant_ttc_cts, category_id, mode_paiement, pennylane_deleted_at'),
     // charge_allocations : introduit par 20260716130000. Permet le rapprochement
     // partiel (1 justif → N cibles, 1 cible ← N justifs). Rétrocompat totale
     // via le backfill de la migration (allocation "montant plein" pour chaque
