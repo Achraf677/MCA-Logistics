@@ -5,10 +5,26 @@ import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { toLocalISO } from '../../shared/lib/dates'
 import { getAlertesDetectionData, getAlertesBriefing } from './alertes.queries'
-import { detectAlerts, summarizeAlerts } from './alertes.logic'
-import { getARapprocherCounts } from '../../shared/lib/aRapprocher.queries'
-import type { ARapprocherCounts } from '../../shared/lib/aRapprocher'
+import { detectAlerts } from './alertes.logic'
+import { getAlertesMetier } from '../../shared/lib/alertesEngine.queries'
+import { resumeAlertes } from '../../shared/lib/alertesEngine'
+import { formatMoney } from '../../shared/lib/money'
+import type { AlerteMetier, AlerteSeverite } from '../../shared/lib/alertesEngine'
 import type { Alert, AlertCategory, AlertSeverity } from './alertes.types'
+
+// Domaines métier gérés par le MOTEUR (source unique). Les échéances détaillées
+// (detectAlerts) ne rendent QUE les catégories non couvertes par le moteur,
+// pour éviter tout double comptage dans le badge.
+const CATEGORIES_HORS_MOTEUR: AlertCategory[] = [
+  'incident', 'inspection', 'chauffeur', 'rh', 'conformite', 'entretien',
+]
+
+const SEV_META_METIER: Record<AlerteSeverite, { label: string; soft: string; dot: string }> = {
+  rouge:  { label: 'Rouge',  soft: 'bg-[var(--danger)]/12 text-[var(--danger)]',   dot: 'bg-[var(--danger)]' },
+  orange: { label: 'Orange', soft: 'bg-[var(--warning)]/12 text-[var(--warning)]', dot: 'bg-[var(--warning)]' },
+  info:   { label: 'Info',   soft: 'bg-[var(--info)]/12 text-[var(--info)]',        dot: 'bg-[var(--info)]' },
+}
+const SEV_ORDER_METIER: AlerteSeverite[] = ['rouge', 'orange', 'info']
 
 // ── Métadonnées d'affichage (version condensée de Alertes.tsx) ────────────────
 
@@ -89,7 +105,7 @@ function BellRow({ alert, onNavigate }: { alert: Alert; onNavigate: () => void }
 export function AlertesBell() {
   const navigate = useNavigate()
   const [alerts, setAlerts] = useState<Alert[] | null>(null)
-  const [aRapprocher, setARapprocher] = useState<ARapprocherCounts | null>(null)
+  const [metier, setMetier] = useState<AlerteMetier[] | null>(null)
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [briefing, setBriefing] = useState<string | null>(null)
@@ -99,16 +115,18 @@ export function AlertesBell() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [data, counts] = await Promise.all([
+    const [data, metierAlertes] = await Promise.all([
       getAlertesDetectionData(),
-      getARapprocherCounts(),
+      getAlertesMetier(),
     ])
     setAlerts(detectAlerts(data))
-    setARapprocher(counts)
+    setMetier(metierAlertes)
     setLoading(false)
   }, [])
 
+  // Recalcul temps réel : au montage + à chaque OUVERTURE de la cloche.
   useEffect(() => { load() }, [load])
+  useEffect(() => { if (open) load() }, [open, load])
 
   // Fermeture : clic hors du composant + touche Échap. Listeners nettoyés au démontage.
   useEffect(() => {
@@ -126,15 +144,34 @@ export function AlertesBell() {
   }, [open])
 
   const all = useMemo(() => alerts ?? [], [alerts])
-  const summary = useMemo(() => summarizeAlerts(all), [all])
 
-  // Regroupement par sévérité (ordre fixe critique→info), items déjà triés par le moteur.
-  const groups = useMemo(
-    () => SEVERITY_ORDER
-      .map(sev => ({ sev, items: all.filter(a => a.severity === sev) }))
-      .filter(g => g.items.length > 0),
+  // Échéances détaillées : SEULEMENT les catégories hors moteur (incidents,
+  // inspections, RH, entretien, conformité) — le reste vient du moteur unifié.
+  const echeancesDetail = useMemo(
+    () => all.filter(a => CATEGORIES_HORS_MOTEUR.includes(a.category)),
     [all],
   )
+  const echeanceGroups = useMemo(
+    () => SEVERITY_ORDER
+      .map(sev => ({ sev, items: echeancesDetail.filter(a => a.severity === sev) }))
+      .filter(g => g.items.length > 0),
+    [echeancesDetail],
+  )
+  // Badge échéances = critique/urgent/warning (info exclu), aligné sur la règle moteur.
+  const echeanceBadge = useMemo(
+    () => echeancesDetail.filter(a => a.severity !== 'info').length,
+    [echeancesDetail],
+  )
+
+  // Moteur métier — source unifiée (finance, encaissement, véhicules, devis…).
+  const metierAll = useMemo(() => metier ?? [], [metier])
+  const metierGroups = useMemo(
+    () => SEV_ORDER_METIER
+      .map(sev => ({ sev, items: metierAll.filter(a => a.severite === sev) }))
+      .filter(g => g.items.length > 0),
+    [metierAll],
+  )
+  const metierResume = useMemo(() => resumeAlertes(metierAll), [metierAll])
 
   const runBriefing = useCallback(async () => {
     setBriefingLoading(true)
@@ -149,9 +186,9 @@ export function AlertesBell() {
     }
   }, [all])
 
-  // Badge global de la cloche = alertes échéance + éléments à rapprocher.
-  const reconciliationCount = aRapprocher?.total ?? 0
-  const count = summary.total + reconciliationCount
+  // Badge global = badge moteur (rouge+orange) + échéances non-info hors moteur.
+  // Les alertes 'info' n'incrémentent JAMAIS le badge (règle du moteur).
+  const count = metierResume.badge + echeanceBadge
 
   return (
     <div ref={rootRef} className="relative">
@@ -209,103 +246,45 @@ export function AlertesBell() {
           <div className="max-h-[70vh] overflow-y-auto">
             {loading && alerts === null ? (
               <div className="px-3 py-8 text-center text-[var(--fs-sm)] text-[var(--text-muted)]">Chargement…</div>
-            ) : count === 0 ? (
+            ) : count === 0 && metierAll.length === 0 && echeancesDetail.length === 0 ? (
               <EmptyState
                 icon={<Bell size={36} />}
-                title="Aucune alerte 🎉"
-                description="Tout est en ordre."
+                title="Tout est en ordre ✓"
+                description="Aucune action requise pour le moment."
               />
             ) : (
               <div className="divide-y divide-[var(--border)]">
-                {/* Section à rapprocher — visible seulement si > 0. Deux entrées
-                 *   navigables : Trésorerie (mouvements + charges miroir) et
-                 *   Encaissement (crédits non identifiés). */}
-                {aRapprocher && aRapprocher.total > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 bg-[var(--warning)]/12 text-[var(--warning)] px-3 py-1.5">
+                {/* Moteur métier unifié — groupé par sévérité (rouge → info). */}
+                {metierGroups.map(({ sev, items }) => (
+                  <div key={`m-${sev}`}>
+                    <div className={`flex items-center gap-2 px-3 py-1.5 ${SEV_META_METIER[sev].soft}`}>
                       <Link2 size={12} />
-                      <span className="text-[var(--fs-xs)] font-semibold">À rapprocher</span>
-                      <span className="text-[var(--fs-xs)] opacity-70">({aRapprocher.total})</span>
+                      <span className="text-[var(--fs-xs)] font-semibold">{SEV_META_METIER[sev].label}</span>
+                      <span className="text-[var(--fs-xs)] opacity-70">({items.length})</span>
                     </div>
                     <div className="divide-y divide-[var(--border)]">
-                      {aRapprocher.tresorerie > 0 && (
+                      {items.map(a => (
                         <button
+                          key={a.id}
                           type="button"
-                          onClick={() => { navigate('/tresorerie'); setOpen(false) }}
+                          onClick={() => { navigate(a.lien); setOpen(false) }}
                           className="flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-[var(--bg-card-hover)]"
                         >
-                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--warning)]" />
+                          <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${SEV_META_METIER[sev].dot}`} />
                           <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="truncate text-[var(--fs-sm)] font-medium text-[var(--text)]">
-                                {aRapprocher.tresorerie} mouvement{aRapprocher.tresorerie > 1 ? 's' : ''} bancaire{aRapprocher.tresorerie > 1 ? 's' : ''} à rapprocher
-                              </span>
-                              <span className="shrink-0 text-[var(--fs-xs)] text-[var(--text-disabled)]">Trésorerie</span>
-                            </div>
-                            {aRapprocher.charges > 0 && (
-                              <p className="mt-0.5 truncate text-[var(--fs-xs)] text-[var(--text-muted)]">
-                                {aRapprocher.charges} facture{aRapprocher.charges > 1 ? 's' : ''} candidate{aRapprocher.charges > 1 ? 's' : ''} au rapprochement
-                              </p>
+                            <span className="block truncate text-[var(--fs-sm)] font-medium text-[var(--text)]">{a.label}</span>
+                            {a.montantCts != null && a.montantCts > 0 && (
+                              <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">{formatMoney(a.montantCts)}</span>
                             )}
                           </div>
                         </button>
-                      )}
-                      {aRapprocher.encaissements > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => { navigate('/encaissement'); setOpen(false) }}
-                          className="flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-[var(--bg-card-hover)]"
-                        >
-                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--warning)]" />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="truncate text-[var(--fs-sm)] font-medium text-[var(--text)]">
-                                {aRapprocher.encaissements} encaissement{aRapprocher.encaissements > 1 ? 's' : ''} à identifier
-                              </span>
-                              <span className="shrink-0 text-[var(--fs-xs)] text-[var(--text-disabled)]">Encaissement</span>
-                            </div>
-                          </div>
-                        </button>
-                      )}
-                      {aRapprocher.categorisation > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => { navigate('/charges'); setOpen(false) }}
-                          className="flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-[var(--bg-card-hover)]"
-                        >
-                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--warning)]" />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="truncate text-[var(--fs-sm)] font-medium text-[var(--text)]">
-                                {aRapprocher.categorisation} charge{aRapprocher.categorisation > 1 ? 's' : ''} à catégoriser
-                              </span>
-                              <span className="shrink-0 text-[var(--fs-xs)] text-[var(--text-disabled)]">Charges</span>
-                            </div>
-                          </div>
-                        </button>
-                      )}
-                      {aRapprocher.pennylane_supprimees > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => { navigate('/charges?filtre=pennylane_supprimees'); setOpen(false) }}
-                          className="flex w-full items-start gap-2.5 px-3 py-2 text-left transition-colors hover:bg-[var(--bg-card-hover)]"
-                        >
-                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[var(--danger)]" />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="truncate text-[var(--fs-sm)] font-medium text-[var(--text)]">
-                                {aRapprocher.pennylane_supprimees} facture{aRapprocher.pennylane_supprimees > 1 ? 's' : ''} supprimée{aRapprocher.pennylane_supprimees > 1 ? 's' : ''} dans Pennylane
-                              </span>
-                              <span className="shrink-0 text-[var(--fs-xs)] text-[var(--text-disabled)]">Charges</span>
-                            </div>
-                          </div>
-                        </button>
-                      )}
+                      ))}
                     </div>
                   </div>
-                )}
+                ))}
 
-                {groups.map(({ sev, items }) => (
+                {/* Échéances détaillées (incidents, inspections, RH, entretien…). */}
+                {echeanceGroups.map(({ sev, items }) => (
                   <div key={sev}>
                     <div className={`flex items-center gap-2 px-3 py-1.5 ${SEVERITY_META[sev].soft}`}>
                       <span className={`h-2 w-2 rounded-full ${SEVERITY_META[sev].dot}`} />
