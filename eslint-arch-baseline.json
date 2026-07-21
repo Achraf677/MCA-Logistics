@@ -1,0 +1,21 @@
+{
+  "_comment": "Dette architecturale EXISTANTE (imports cross-feature déjà présents au moment de la mise en place du garde-fou). Ces arêtes sont tolérées pour ne pas bloquer la CI sur du legacy ; TOUT nouvel import cross-feature vers une cible NON listée ici est bloqué (ratchet). Objectif : ne jamais AJOUTER de couplage, et réduire cette liste au fil des refactos. Format : <feature source> -> [<features cibles tolérées>]. Ne RIEN ajouter ici sans justification.",
+  "allowed": {
+    "assistant": [
+      "alertes", "brouillons", "carburant", "charges", "clients", "copilote",
+      "entretiens", "equipe", "fournisseurs", "heures", "incidents",
+      "inspections", "livraisons", "tournees", "tresorerie", "tva", "vehicules"
+    ],
+    "calendrier": ["livraisons"],
+    "carburant": ["charges"],
+    "clients": ["documents"],
+    "dashboard": ["livraisons"],
+    "entretiens": ["charges"],
+    "equipe": ["documents"],
+    "livraisons": ["documents", "parametres"],
+    "planning": ["livraisons"],
+    "tournees": ["livraisons"],
+    "tresorerie": ["charges"],
+    "vehicules": ["documents"]
+  }
+}
