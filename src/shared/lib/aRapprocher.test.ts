@@ -78,7 +78,8 @@ describe('countChargesArapprocher', () => {
 describe('countARapprocher — agrégation', () => {
   it('cas 0 partout → total 0 (état neutre)', () => {
     expect(countARapprocher([], [])).toEqual({
-      tresorerie: 0, charges: 0, encaissements: 0, categorisation: 0, total: 0,
+      tresorerie: 0, charges: 0, encaissements: 0, categorisation: 0,
+      pennylane_supprimees: 0, total: 0,
     })
   })
 
@@ -100,8 +101,9 @@ describe('countARapprocher — agrégation', () => {
       tresorerie: 2,
       charges: 2,
       encaissements: 1,
-      categorisation: 0,      // toutes les charges du fixture ont category_id
-      total: 3,               // 2 + 1 — charges NON additionné (miroir)
+      categorisation: 0,        // toutes les charges du fixture ont category_id
+      pennylane_supprimees: 0,  // aucun flag dans le fixture
+      total: 3,                 // 2 + 1 — charges NON additionné (miroir)
     })
   })
 
@@ -153,5 +155,38 @@ describe('countARapprocher — agrégation', () => {
       { id: 'c1', montant_ttc_cts: 2000, category_id: 'x', mode_paiement: 'qonto' },
     ]
     expect(countARapprocher(txs, charges).charges).toBe(1)
+  })
+
+  // ── Suppressions Pennylane (migration 20260721120000) ──────────────────────
+  it('compte les charges dont la facture a disparu de Pennylane', () => {
+    const charges: ChargePick[] = [
+      { id: 'c1', montant_ttc_cts: 1000, category_id: 'x', pennylane_deleted_at: '2026-07-21T10:00:00Z' },
+      { id: 'c2', montant_ttc_cts: 2000, category_id: 'x', pennylane_deleted_at: null },
+      { id: 'c3', montant_ttc_cts: 3000, category_id: 'x' },  // champ absent (rétrocompat)
+    ]
+    const r = countARapprocher([], charges)
+    expect(r.pennylane_supprimees).toBe(1)
+    // Intégré au total du badge (action attendue de l'utilisateur).
+    expect(r.total).toBe(1)
+  })
+
+  it('pennylane_supprimees = 0 quand aucun flag (aucun bruit)', () => {
+    const charges: ChargePick[] = [
+      { id: 'c1', montant_ttc_cts: 1000, category_id: 'x' },
+    ]
+    const r = countARapprocher([], charges)
+    expect(r.pennylane_supprimees).toBe(0)
+    expect(r.total).toBe(0)
+  })
+
+  it('total = tresorerie + encaissements + categorisation + pennylane_supprimees', () => {
+    const txs: TxPick[] = [debit(1000), credit(500)]
+    const charges: ChargePick[] = [
+      { id: 'c1', montant_ttc_cts: 900, category_id: null },   // à catégoriser
+      { id: 'c2', montant_ttc_cts: 800, category_id: 'x', pennylane_deleted_at: '2026-07-21T10:00:00Z' },
+    ]
+    const r = countARapprocher(txs, charges)
+    expect(r.total).toBe(r.tresorerie + r.encaissements + r.categorisation + r.pennylane_supprimees)
+    expect(r.pennylane_supprimees).toBe(1)
   })
 })

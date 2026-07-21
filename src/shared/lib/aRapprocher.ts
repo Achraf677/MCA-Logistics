@@ -40,6 +40,12 @@ export interface ChargePick {
    * comme 'qonto' pour rester rétrocompatible.
    */
   mode_paiement?: string | null
+  /**
+   * Horodatage "facture disparue de Pennylane" (migration 20260721120000).
+   * Non-null = la facture a été supprimée côté Pennylane, action attendue
+   * (supprimer de l'app ou conserver). Absent = non compté (rétrocompat).
+   */
+  pennylane_deleted_at?: string | null
 }
 
 /** Une charge est "candidate au rapprochement Qonto" uniquement si elle a été
@@ -59,9 +65,12 @@ export interface ARapprocherCounts {
   encaissements: number
   /** Charges sans category_id (indépendant du rapprochement Qonto). */
   categorisation: number
+  /** Charges dont la facture a été supprimée côté Pennylane (action attendue). */
+  pennylane_supprimees: number
   /**
    * Total à rapprocher affiché sur le badge = tresorerie + encaissements +
-   * categorisation. `charges` (miroir de tresorerie) n'est PAS additionné.
+   * categorisation + pennylane_supprimees. `charges` (miroir de tresorerie)
+   * n'est PAS additionné.
    */
   total: number
 }
@@ -120,6 +129,13 @@ export function countChargesNonCategorisees(charges: ChargePick[]): number {
   return charges.filter(c => c.category_id === null).length
 }
 
+/** Charges dont la facture a DISPARU de Pennylane (pennylane_deleted_at posé
+ *  par l'Edge pennylane-sync). Champ absent (`undefined`) = non compté —
+ *  rétrocompat avec les appels qui ne sélectionnent pas la colonne. */
+export function countChargesPennylaneSupprimees(charges: ChargePick[]): number {
+  return charges.filter(c => c.pennylane_deleted_at != null).length
+}
+
 /** Aggrégation complète — utilisée par le badge Dashboard + la cloche.
  *  `allocations` est optionnel (rétrocompat) : sans lui, comportement identique
  *  au pré-charge_allocations. */
@@ -131,11 +147,13 @@ export function countARapprocher(
   const tresorerie = countTresorerie(txs, allocations)
   const encaissements = countEncaissements(txs)
   const categorisation = countChargesNonCategorisees(charges)
+  const pennylane_supprimees = countChargesPennylaneSupprimees(charges)
   return {
     tresorerie,
     charges: countChargesArapprocher(txs, charges),
     encaissements,
     categorisation,
-    total: tresorerie + encaissements + categorisation,
+    pennylane_supprimees,
+    total: tresorerie + encaissements + categorisation + pennylane_supprimees,
   }
 }

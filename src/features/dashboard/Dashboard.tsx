@@ -221,6 +221,7 @@ export function Dashboard() {
                         {aRapprocher.tresorerie > 0 && ` · ${aRapprocher.tresorerie} mouvement${aRapprocher.tresorerie > 1 ? 's' : ''}`}
                         {aRapprocher.encaissements > 0 && ` · ${aRapprocher.encaissements} encaissement${aRapprocher.encaissements > 1 ? 's' : ''}`}
                         {aRapprocher.categorisation > 0 && ` · ${aRapprocher.categorisation} à catégoriser`}
+                        {aRapprocher.pennylane_supprimees > 0 && ` · ${aRapprocher.pennylane_supprimees} supprimée${aRapprocher.pennylane_supprimees > 1 ? 's' : ''} (Pennylane)`}
                       </small>
                     </span>
                     <ChevronRight size={18} className="ml-auto text-[var(--text-disabled)]" />
