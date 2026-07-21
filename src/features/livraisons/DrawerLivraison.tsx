@@ -3,6 +3,7 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { Trash2, Loader2, Camera, Plus, X } from 'lucide-react'
 import { DocumentsPanel } from '../documents/DocumentsPanel'
 import { LettreVoitureTab } from './LettreVoitureTab'
+import { ApercuFacture } from './ApercuFacture'
 import { uploadDocument, listDocuments, getDownloadUrl } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { Drawer }      from '../../shared/ui/Drawer'
@@ -947,6 +948,8 @@ function SuiviTab({
   const nextStatuses = allowedNextStatuses(delivery.statut)
   const actionLabels = TRANSITION_ACTION_LABELS[delivery.statut] ?? {}
   const currentIdx   = STATUS_TIMELINE.indexOf(delivery.statut)
+  const [preview, setPreview] = useState(false)
+  const canPreviewInvoice = nextStatuses.includes('facturee')
 
   return (
     <div className="flex flex-col gap-5">
@@ -996,6 +999,11 @@ function SuiviTab({
 
       {nextStatuses.length > 0 && (
         <div className="flex flex-col gap-2 pt-2 border-t border-[var(--border)]">
+          {canPreviewInvoice && (
+            <Button variant="secondary" onClick={() => setPreview(true)} disabled={transitioning !== null}>
+              Prévisualiser la facture
+            </Button>
+          )}
           {nextStatuses.map(to => {
             const label    = actionLabels[to] ?? STATUS_LABELS[to]
             const isCancel = to === 'annulee'
@@ -1016,6 +1024,15 @@ function SuiviTab({
       <div className={`pt-3 ${nextStatuses.length === 0 ? 'border-t border-[var(--border)]' : ''}`}>
         <Button variant="secondary" onClick={onClose}>Fermer</Button>
       </div>
+
+      {/* Modale d'aperçu — le bouton "Facturer" dedans déclenche la transition. */}
+      <ApercuFacture
+        open={preview}
+        rows={[delivery]}
+        invoicing={transitioning === 'facturee'}
+        onFacturer={() => { setPreview(false); onTransition('facturee') }}
+        onClose={() => setPreview(false)}
+      />
     </div>
   )
 }
