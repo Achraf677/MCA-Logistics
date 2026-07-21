@@ -12,7 +12,10 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
 const REDIRECT_URI = 'https://pzfgtcugmqeqixogwzcu.supabase.co/functions/v1/drive-oauth-callback';
-const SCOPE = 'https://www.googleapis.com/auth/drive';
+// Scope Drive (upload/browse) + gmail.send (envoi facture au client par email
+// depuis l'adresse @mcalogistics.fr). Reconnexion requise après ajout du scope
+// pour régénérer un refresh_token incluant Gmail.
+const SCOPE = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/gmail.send';
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { Trash2, Loader2, Camera, Plus, X } from 'lucide-react'
+import { Trash2, Loader2, Camera, Plus, X, Mail } from 'lucide-react'
 import { DocumentsPanel } from '../documents/DocumentsPanel'
 import { LettreVoitureTab } from './LettreVoitureTab'
 import { ApercuFacture } from './ApercuFacture'
@@ -28,7 +28,7 @@ import type { ClientTariff } from './livraisons.logic'
 import {
   createDelivery, updateDelivery, transitionDelivery, deleteDelivery,
   getActiveClients, getActiveVehicles, getActiveDrivers, savePod,
-  listDeliveryTemplates, createDeliveryTemplate,
+  listDeliveryTemplates, createDeliveryTemplate, sendClientEmail,
 } from './livraisons.queries'
 import type { DeliveryTemplateLite } from './livraisons.queries'
 import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
@@ -1021,6 +1021,11 @@ function SuiviTab({
         </div>
       )}
 
+      {/* Envoi email au client — livraison facturée/payée uniquement. */}
+      {(delivery.statut === 'facturee' || delivery.statut === 'payee') && (
+        <EnvoiClientSection delivery={delivery} />
+      )}
+
       <div className={`pt-3 ${nextStatuses.length === 0 ? 'border-t border-[var(--border)]' : ''}`}>
         <Button variant="secondary" onClick={onClose}>Fermer</Button>
       </div>
@@ -1032,6 +1037,63 @@ function SuiviTab({
         invoicing={transitioning === 'facturee'}
         onFacturer={() => { setPreview(false); onTransition('facturee') }}
         onClose={() => setPreview(false)}
+      />
+    </div>
+  )
+}
+
+// ── Envoi email client (facture Pennylane + BL) ───────────────────────────────
+// Réutilisable drawer + liste. Confirmation affichant l'email destinataire,
+// puis invocation de l'Edge send-client-email. Aucun changement de layout.
+
+function EnvoiClientSection({ delivery }: { delivery: DeliveryRow }) {
+  const { toast } = useToast()
+  const [confirm, setConfirm] = useState(false)
+  const [sending, setSending] = useState(false)
+  const [sentAt, setSentAt]   = useState<string | null>(delivery.email_sent_at ?? null)
+  const email = delivery.clients?.email?.trim() || ''
+
+  const handleSend = async () => {
+    setSending(true)
+    const { data, error } = await sendClientEmail(delivery.id)
+    setSending(false)
+    if (error || !data?.ok) {
+      toast(data?.error ?? error?.message ?? 'Envoi échoué', 'error')
+      return
+    }
+    setConfirm(false)
+    setSentAt(new Date().toISOString())
+    toast(data.data?.bl_attached
+      ? 'Email envoyé (facture + BL)'
+      : 'Email envoyé (facture — BL non joint)')
+  }
+
+  return (
+    <div className="pt-3 border-t border-[var(--border)] flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <Button variant="secondary" onClick={() => setConfirm(true)} disabled={!email}>
+          <Mail size={14} />
+          Envoyer au client
+        </Button>
+        {sentAt && (
+          <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+            Envoyée le {new Date(sentAt).toLocaleDateString('fr-FR')}
+          </span>
+        )}
+      </div>
+      {!email && (
+        <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+          Aucun email client — complète la fiche client pour activer l'envoi.
+        </span>
+      )}
+
+      <ConfirmDialog
+        open={confirm}
+        title="Envoyer la facture au client ?"
+        message={`La facture Pennylane${delivery.lv_pdf_url ? ' et le bon de livraison' : ''} seront envoyés à ${email}.`}
+        onConfirm={handleSend}
+        onCancel={() => setConfirm(false)}
+        loading={sending}
       />
     </div>
   )

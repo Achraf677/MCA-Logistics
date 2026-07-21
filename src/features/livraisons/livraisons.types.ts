@@ -81,6 +81,8 @@ export interface Delivery {
   lv_signatures: LvSignatures
   /** URL du PDF LV archivé sur Drive (nouvelle génération). */
   lv_pdf_url: string | null
+  /** Horodatage du dernier envoi email au client (migration 20260721140000). */
+  email_sent_at: string | null
   created_at: string
   updated_at: string
 }
@@ -102,7 +104,7 @@ export type LvSignatures = {
 }
 
 export interface DeliveryRow extends Delivery {
-  clients: { name: string; tariff_mode: string; tariff_rate_cts: number | null } | null
+  clients: { name: string; tariff_mode: string; tariff_rate_cts: number | null; email: string | null } | null
   vehicles: { label: string } | null
   team_members: { full_name: string } | null
 }
@@ -127,6 +129,7 @@ export type DeliveryInsert = Omit<
   | 'expediteur_nom' | 'expediteur_siren' | 'destinataire_nom'
   | 'marchandise_desc' | 'nb_colis' | 'poids_kg_reel'
   | 'lv_numero' | 'lv_signatures' | 'lv_pdf_url'
+  | 'email_sent_at'
 > & {
   extra_lines?: DeliveryExtraLine[]
   // Ré-exposés comme optionnels pour rester écrivables via updateDelivery(Partial).

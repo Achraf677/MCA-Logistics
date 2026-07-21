@@ -5,10 +5,15 @@ import type { DeliveryFilters, DeliveryInsert, DeliveryStatus } from './livraiso
 
 const WITH_JOINS = `
   *,
-  clients!client_id(name, tariff_mode, tariff_rate_cts),
+  clients!client_id(name, tariff_mode, tariff_rate_cts, email),
   vehicles!vehicle_id(label),
   team_members!driver_id(full_name)
 `.trim()
+
+/** Envoie au client la facture Pennylane + BL par email (Edge send-client-email). */
+export async function sendClientEmail(deliveryId: string) {
+  return supabase.functions.invoke('send-client-email', { body: { delivery_id: deliveryId } })
+}
 
 export async function getDeliveries(filters: DeliveryFilters = {}) {
   let q = supabase
