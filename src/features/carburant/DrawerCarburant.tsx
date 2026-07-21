@@ -10,6 +10,7 @@ import { supabase, useProfile } from '../../app/providers'
 import { createFuelLog, updateFuelLog, deleteFuelLog } from './carburant.queries'
 import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
 import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
+import { PanneauVentilation } from '../../shared/ui/PanneauVentilation'
 import { DeleteButton } from '../../shared/ui/DeleteButton'
 import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, formatCents } from './carburant.logic'
@@ -249,6 +250,22 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
               <Link2 size={14} />
               Rapprocher une facture Pennylane
             </button>
+          )}
+
+          {/* ── Ventilation partielle (édition uniquement — cible = ce plein) */}
+          {isEdit && fuelLog && fuelLog.total_cts > 0 && (
+            <div className="rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3">
+              <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+                Ventilation (allocations partielles)
+              </span>
+              <PanneauVentilation
+                targetTable="fuel_logs"
+                targetId={fuelLog.id}
+                targetAmountCts={fuelLog.total_cts}
+                fetchCharges={() => getUnlinkedChargesFor('fuel_logs')}
+                onChanged={onSaved}
+              />
+            </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">

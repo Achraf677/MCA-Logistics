@@ -9,6 +9,7 @@ import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
 import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
+import { PanneauVentilation } from '../../shared/ui/PanneauVentilation'
 import { formatMoney } from '../../shared/lib/money'
 import {
   getMatchingChargesForDebit, classifyDebit, suggestJustifType,
@@ -53,6 +54,9 @@ export function Tresorerie() {
   const [error, setError]             = useState<string | null>(null)
   const [expandedTx, setExpandedTx]   = useState<string | null>(null)
   const [rapprochOpen, setRapprochOpen] = useState<string | null>(null)
+  // Ventilation ouverte (qonto_id) — panneau replié par défaut pour ne pas
+  // charger charge_allocations à chaque expand.
+  const [ventilationTx, setVentilationTx] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -238,6 +242,42 @@ export function Tresorerie() {
             </Button>
           </div>
         )}
+
+        {/* Ventilation partielle — 1 débit couvert par N charges catégorisées.
+            Complémentaire du rapprochement 1-clic (qui reste le chemin rapide). */}
+        <div onClick={e => e.stopPropagation()}>
+          {ventilationTx === tx.qonto_id ? (
+            <div className="pt-2 border-t border-[var(--border)] space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+                  Ventilation partielle
+                </span>
+                <button
+                  onClick={() => setVentilationTx(null)}
+                  className="text-[var(--fs-xs)] text-[var(--text-muted)] underline hover:text-[var(--text)]"
+                >
+                  Replier
+                </button>
+              </div>
+              <PanneauVentilation
+                targetTable="qonto_transactions"
+                targetId={tx.id}
+                targetAmountCts={tx.amount_cts}
+                fetchCharges={() => Promise.resolve(
+                  charges.filter(c => !linkedChargeIds.has(c.id))
+                )}
+                onChanged={load}
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => setVentilationTx(tx.qonto_id)}
+              className="text-[var(--fs-xs)] text-[var(--brand)] hover:underline"
+            >
+              Ventiler ce débit sur plusieurs charges →
+            </button>
+          )}
+        </div>
       </div>
     )
   }
