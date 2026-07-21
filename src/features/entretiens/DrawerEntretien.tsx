@@ -8,6 +8,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
 import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
+import { PanneauVentilation } from '../../shared/ui/PanneauVentilation'
 import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import { createMaintenance, updateMaintenance, deleteMaintenance } from './entretiens.queries'
 import {
@@ -207,6 +208,22 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
               <Link2 size={14} />
               Rapprocher une facture
             </button>
+          )}
+
+          {/* ── Ventilation partielle (édition uniquement — cible = cet entretien) */}
+          {isEdit && maintenance && costCts != null && costCts > 0 && (
+            <div className="rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3">
+              <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+                Ventilation (allocations partielles)
+              </span>
+              <PanneauVentilation
+                targetTable="vehicle_maintenances"
+                targetId={maintenance.id}
+                targetAmountCts={costCts}
+                fetchCharges={() => getUnlinkedChargesFor('vehicle_maintenances')}
+                onChanged={onSaved}
+              />
+            </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">

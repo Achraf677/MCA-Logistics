@@ -16,7 +16,7 @@ export async function getLatestSnapshot() {
 export async function getTransactions() {
   return supabase
     .from('qonto_transactions')
-    .select('qonto_id, label, amount_cts, side, operation_type, settled_at, charge_id, justif_type')
+    .select('id, qonto_id, label, amount_cts, side, operation_type, settled_at, charge_id, justif_type')
     .order('settled_at', { ascending: false, nullsFirst: false })
     .returns<QontoTx[]>()
 }

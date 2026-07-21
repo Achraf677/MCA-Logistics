@@ -9,6 +9,8 @@ export interface TreasurySnapshot {
 export type TxSide = 'credit' | 'debit'
 
 export interface QontoTx {
+  /** uuid DB — cible des charge_allocations (target_id). */
+  id: string
   qonto_id: string
   label: string | null
   amount_cts: number
