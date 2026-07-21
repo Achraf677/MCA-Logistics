@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Package, RefreshCw, Loader2, Trash2, FileText, Euro, Clock } from 'lucide-react'
+import { Package, RefreshCw, Loader2, Trash2, FileText, Euro, Clock, Mail } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
 import { KpiCard }     from '../../shared/ui/KpiCard'
 import { Badge }       from '../../shared/ui/Badge'
@@ -14,7 +14,7 @@ import { useToast }    from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { downloadCSV } from '../../shared/lib/download'
-import { getDeliveries, exportDeliveriesCSV, getPendingSyncDeliveries, resyncPending, deleteDeliveries } from './livraisons.queries'
+import { getDeliveries, exportDeliveriesCSV, getPendingSyncDeliveries, resyncPending, deleteDeliveries, sendClientEmail } from './livraisons.queries'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
   kpiSummary, formatCents, deliveryTotalHtCts, deliveryTotalTtcCts,
@@ -61,6 +61,9 @@ export function Livraisons() {
   const [confirmInvoice, setConfirmInvoice] = useState(false)
   const [previewInvoice, setPreviewInvoice] = useState(false)
   const [invoicing, setInvoicing]           = useState(false)
+  // Envoi email facture au client (depuis la liste).
+  const [emailConfirm, setEmailConfirm]     = useState<DeliveryRow | null>(null)
+  const [emailSendingId, setEmailSendingId] = useState<string | null>(null)
 
   // ── Chargement ─────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
@@ -175,6 +178,21 @@ export function Livraisons() {
     }
   }
 
+  const handleSendEmail = async () => {
+    if (!emailConfirm) return
+    const row = emailConfirm
+    setEmailSendingId(row.id)
+    const { data, error } = await sendClientEmail(row.id)
+    setEmailSendingId(null)
+    setEmailConfirm(null)
+    if (error || !data?.ok) {
+      toast(data?.error ?? error?.message ?? 'Envoi échoué', 'error')
+      return
+    }
+    await load()
+    toast(data.data?.bl_attached ? 'Email envoyé (facture + BL)' : 'Email envoyé (facture)')
+  }
+
   // ── Filtres ─────────────────────────────────────────────────────────────────
   const hasFilters = !!(
     filters.date_from || filters.date_to ||
@@ -285,6 +303,18 @@ export function Livraisons() {
         invoicing={invoicing}
         onFacturer={handleInvoice}
         onClose={() => setPreviewInvoice(false)}
+      />
+
+      {/* Confirmation envoi email au client (liste) */}
+      <ConfirmDialog
+        open={emailConfirm !== null}
+        title="Envoyer la facture au client ?"
+        message={emailConfirm
+          ? `La facture Pennylane${emailConfirm.lv_pdf_url ? ' et le bon de livraison' : ''} seront envoyés à ${emailConfirm.clients?.email ?? ''}.`
+          : ''}
+        onConfirm={handleSendEmail}
+        onCancel={() => setEmailConfirm(null)}
+        loading={emailSendingId !== null}
       />
 
       {/* Barre d'action suppression (≥ 1 sélectionnée, si droit delete) */}
@@ -437,10 +467,29 @@ export function Livraisons() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="compact"
-                          onClick={e => { e.stopPropagation(); openRow(row) }}>
-                          Voir
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          {(row.statut === 'facturee' || row.statut === 'payee') && (
+                            <button
+                              type="button"
+                              title={row.clients?.email
+                                ? `Envoyer la facture à ${row.clients.email}`
+                                : 'Aucun email client'}
+                              disabled={!row.clients?.email || emailSendingId === row.id}
+                              onClick={e => { e.stopPropagation(); setEmailConfirm(row) }}
+                              className="p-1.5 rounded-[var(--r-sm)] text-[var(--text-muted)]
+                                hover:text-[var(--brand)] hover:bg-[var(--brand)]/10 transition-colors
+                                disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              {emailSendingId === row.id
+                                ? <Loader2 size={14} className="animate-spin" />
+                                : <Mail size={14} />}
+                            </button>
+                          )}
+                          <Button variant="ghost" size="compact"
+                            onClick={e => { e.stopPropagation(); openRow(row) }}>
+                            Voir
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   )
