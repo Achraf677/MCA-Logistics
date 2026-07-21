@@ -9,6 +9,7 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { DriverAvatar } from '../../shared/ui/DriverAvatar'
 import { DrawerLivraison } from './DrawerLivraison'
+import { ApercuFacture } from './ApercuFacture'
 import { useToast }    from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
@@ -58,6 +59,7 @@ export function Livraisons() {
   const [invoiceIds, setInvoiceIds]         = useState<Set<string>>(new Set())
   const [invoiceClientId, setInvoiceClientId] = useState<string | null>(null)
   const [confirmInvoice, setConfirmInvoice] = useState(false)
+  const [previewInvoice, setPreviewInvoice] = useState(false)
   const [invoicing, setInvoicing]           = useState(false)
 
   // ── Chargement ─────────────────────────────────────────────────────────────
@@ -162,6 +164,7 @@ export function Livraisons() {
         return
       }
       setConfirmInvoice(false)
+      setPreviewInvoice(false)
       clearInvoiceSelection()
       await load()
       toast(`Facture créée — ${ids.length} course(s)`, 'success')
@@ -263,12 +266,26 @@ export function Livraisons() {
               Tout désélectionner
             </button>
           </div>
-          <Button variant="primary" size="compact" onClick={() => setConfirmInvoice(true)}>
-            <FileText size={14} />
-            Facturer ({invoiceIds.size})
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="secondary" size="compact" onClick={() => setPreviewInvoice(true)}>
+              Prévisualiser
+            </Button>
+            <Button variant="primary" size="compact" onClick={() => setConfirmInvoice(true)}>
+              <FileText size={14} />
+              Facturer ({invoiceIds.size})
+            </Button>
+          </div>
         </div>
       )}
+
+      {/* Modale Aperçu — ouverte depuis la barre d'action groupée */}
+      <ApercuFacture
+        open={previewInvoice}
+        rows={invoiceSelectedRows}
+        invoicing={invoicing}
+        onFacturer={handleInvoice}
+        onClose={() => setPreviewInvoice(false)}
+      />
 
       {/* Barre d'action suppression (≥ 1 sélectionnée, si droit delete) */}
       {canDelete && selectedIds.size > 0 && (
