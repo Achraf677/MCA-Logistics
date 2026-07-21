@@ -12,7 +12,7 @@ import { TabActions } from '../../shared/ui/TabbedSection'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { DrawerCharge } from './DrawerCharge'
 import { useToast } from '../../shared/ui/useToast'
-import { useProfile } from '../../app/providers'
+import { useProfile, supabase } from '../../app/providers'
 import { getCharges, exportChargesCSV, syncPennylane, updateCharge, deleteCharge, ignorePennylaneDeletion } from './charges.queries'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { getSyncState } from '../../shared/lib/syncState'
@@ -21,6 +21,7 @@ import { formatCents, categoryColor, kpiSummary } from './charges.logic'
 import { getCategories } from '../../shared/lib/categories.queries'
 import { downloadCSV } from '../../shared/lib/download'
 import { suggestCategory } from '../../shared/lib/suggestCategorie'
+import { parseSuggestionIa } from '../../shared/lib/suggestionIa'
 import type { ChargeRow, ChargeFilters } from './charges.types'
 import type { ChargeCategoryRow } from '../../shared/types/categories'
 import type { ActionKey } from '../../shared/actions/ActionBar'
@@ -108,6 +109,32 @@ export function Charges() {
     if (error) { toast(error.message, 'error'); return }
     await load()
     toast('Charge conservée — détachée de Pennylane')
+  }
+
+  // ── Suggestion IA (Mistral) — en COMPLÉMENT de l'heuristique F1 ─────────────
+  // Jamais d'application automatique : l'utilisateur clique "Appliquer".
+  const [iaSuggestions, setIaSuggestions] = useState<Map<string, string>>(new Map())
+  const [iaLoadingId, setIaLoadingId]     = useState<string | null>(null)
+
+  const handleSuggestIa = async (chargeId: string) => {
+    setIaLoadingId(chargeId)
+    try {
+      const { data, error } = await supabase.functions.invoke('suggest-categorie-ia', {
+        body: { charge_id: chargeId },
+      })
+      if (error || !data?.ok) {
+        toast(data?.error ?? error?.message ?? 'Suggestion IA indisponible', 'error')
+        return
+      }
+      const parsed = parseSuggestionIa(data.data, categories)
+      if (!parsed.category_id) {
+        toast('L\'IA n\'est pas sûre — aucune suggestion')
+        return
+      }
+      setIaSuggestions(prev => new Map(prev).set(chargeId, parsed.category_id!))
+    } finally {
+      setIaLoadingId(null)
+    }
   }
 
   const kpis = kpiSummary(rows)
@@ -334,6 +361,37 @@ export function Charges() {
                             </div>
                           )
                         })()}
+                        {/* IA en second : uniquement si non catégorisée ET sans suggestion F1. */}
+                        {!row.category_id && !suggestions.get(row.id) && (() => {
+                          const iaId = iaSuggestions.get(row.id)
+                          const iaCat = iaId ? categoryById.get(iaId) : null
+                          if (iaCat && iaId) {
+                            return (
+                              <div className="mt-1 flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
+                                <Sparkles size={10} className="text-[var(--brand)]" />
+                                <span>Catégorie suggérée (IA) : <strong className="text-[var(--text)]">{iaCat.name}</strong></span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCategoryChange(row.id, iaId)}
+                                  className="text-[var(--brand)] hover:underline"
+                                >
+                                  Appliquer
+                                </button>
+                              </div>
+                            )
+                          }
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleSuggestIa(row.id)}
+                              disabled={iaLoadingId === row.id}
+                              className="mt-1 text-[var(--fs-xs)] text-[var(--text-muted)] underline
+                                hover:text-[var(--brand)] transition-colors disabled:opacity-50"
+                            >
+                              {iaLoadingId === row.id ? 'Analyse du justificatif…' : 'Suggérer via IA'}
+                            </button>
+                          )
+                        })()}
                       </td>
                       <td className={`px-4 py-3 font-mono ${row.montant_ht_cts < 0 ? 'text-[var(--loss)]' : ''}`}>
                         {formatCents(row.montant_ht_cts)}
@@ -423,6 +481,33 @@ export function Charges() {
                           >
                             <Sparkles size={10} />
                             <span>Suggérée : {sCat.name}</span>
+                          </button>
+                        )
+                      })()}
+                      {/* IA en second (mobile) : non catégorisée, sans suggestion F1. */}
+                      {!row.category_id && !suggestions.get(row.id) && (() => {
+                        const iaId = iaSuggestions.get(row.id)
+                        const iaCat = iaId ? categoryById.get(iaId) : null
+                        if (iaCat && iaId) {
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleCategoryChange(row.id, iaId)}
+                              className="flex items-center gap-1 text-[var(--fs-xs)] text-[var(--brand)] hover:underline"
+                            >
+                              <Sparkles size={10} />
+                              <span>IA : {iaCat.name} — Appliquer</span>
+                            </button>
+                          )
+                        }
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => handleSuggestIa(row.id)}
+                            disabled={iaLoadingId === row.id}
+                            className="text-[var(--fs-xs)] text-[var(--text-muted)] underline disabled:opacity-50"
+                          >
+                            {iaLoadingId === row.id ? 'Analyse…' : 'Suggérer via IA'}
                           </button>
                         )
                       })()}
