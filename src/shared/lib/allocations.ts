@@ -10,9 +10,11 @@
 /** Forme minimale d'une ligne charge_allocations pour ces helpers. */
 export interface AllocationPick {
   amount_cts: number
-  /** Cible pour targetCouvertureCts (facultatif quand on filtre en amont). */
-  target_table?: 'qonto_transactions' | 'fuel_logs' | 'vehicle_maintenances'
-  target_id?: string
+  /** Cible pour targetCouvertureCts. NULL/absent = ventilation "pure" d'une
+   *  charge (décomposition en sous-lignes catégorisées, sans cible Qonto/fuel/
+   *  entretien — voir migration 20260723090000). */
+  target_table?: 'qonto_transactions' | 'fuel_logs' | 'vehicle_maintenances' | null
+  target_id?: string | null
   /** Catégorie analytique de cette part (null = hérite de la charge côté app).
    *  Non utilisée par les helpers reste/couverture (basés uniquement sur amount_cts),
    *  mais exposée pour la ventilation UI et les futurs agrégats. */
