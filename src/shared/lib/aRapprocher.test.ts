@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   countARapprocher,
   countChargesArapprocher,
+  countChargesAvoirs,
   countEncaissements,
   countTresorerie,
   type ChargePick,
@@ -73,13 +74,30 @@ describe('countChargesArapprocher', () => {
     const charges: ChargePick[] = [ch('c1', 1000), ch('c2', 1000), ch('c3', 500)]
     expect(countChargesArapprocher(txs, charges)).toBe(2)
   })
+
+  it('exclut les avoirs (montant négatif) même si le montant absolu matche un débit', () => {
+    const txs: TxPick[] = [debit(1000)]
+    const charges: ChargePick[] = [ch('c1', 1000), ch('c-avoir', -1000)]
+    expect(countChargesArapprocher(txs, charges)).toBe(1)
+  })
+})
+
+describe('countChargesAvoirs', () => {
+  it('cas vide → 0', () => {
+    expect(countChargesAvoirs([])).toBe(0)
+  })
+
+  it('compte uniquement les charges à montant négatif', () => {
+    const charges: ChargePick[] = [ch('c1', -1000), ch('c2', 2000), ch('c3', null)]
+    expect(countChargesAvoirs(charges)).toBe(1)
+  })
 })
 
 describe('countARapprocher — agrégation', () => {
   it('cas 0 partout → total 0 (état neutre)', () => {
     expect(countARapprocher([], [])).toEqual({
       tresorerie: 0, charges: 0, encaissements: 0, categorisation: 0,
-      pennylane_supprimees: 0, total: 0,
+      pennylane_supprimees: 0, avoirs: 0, total: 0,
     })
   })
 
@@ -103,6 +121,7 @@ describe('countARapprocher — agrégation', () => {
       encaissements: 1,
       categorisation: 0,        // toutes les charges du fixture ont category_id
       pennylane_supprimees: 0,  // aucun flag dans le fixture
+      avoirs: 0,                // aucun montant négatif dans le fixture
       total: 3,                 // 2 + 1 — charges NON additionné (miroir)
     })
   })

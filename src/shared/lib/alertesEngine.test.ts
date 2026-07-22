@@ -8,7 +8,7 @@ const TODAY = new Date(2026, 6, 21) // 2026-07-21 (mois 0-indexé)
 
 const emptyRapprocher: ARapprocherCounts = {
   tresorerie: 0, charges: 0, encaissements: 0, categorisation: 0,
-  pennylane_supprimees: 0, total: 0,
+  pennylane_supprimees: 0, avoirs: 0, total: 0,
 }
 
 describe('helpers dates', () => {
@@ -157,6 +157,16 @@ describe('rapprochement (aRapprocher) intégré', () => {
     expect(a.find(x => x.id === 'encaissements')?.severite).toBe('orange')
     expect(a.find(x => x.id === 'categorisation')?.severite).toBe('info')
     expect(a.find(x => x.id === 'pennylane-supprimees')?.severite).toBe('rouge')
+  })
+
+  it('avoirs fournisseur → alerte info, absente si 0', () => {
+    const sansAvoirs = buildAlertes({ aRapprocher: { ...emptyRapprocher } }, TODAY)
+    expect(sansAvoirs.find(x => x.id === 'avoirs')).toBeUndefined()
+
+    const avecAvoirs = buildAlertes({ aRapprocher: { ...emptyRapprocher, avoirs: 2 } }, TODAY)
+    const al = avecAvoirs.find(x => x.id === 'avoirs')!
+    expect(al.severite).toBe('info')
+    expect(al.count).toBe(2)
   })
 })
 

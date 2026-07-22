@@ -67,10 +67,13 @@ export interface ARapprocherCounts {
   categorisation: number
   /** Charges dont la facture a été supprimée côté Pennylane (action attendue). */
   pennylane_supprimees: number
+  /** Avoirs fournisseur (montant_ttc_cts < 0) — à vérifier, ne se rapprochent
+   *  jamais comme un débit Qonto. Purement informatif, PAS additionné au total. */
+  avoirs: number
   /**
    * Total à rapprocher affiché sur le badge = tresorerie + encaissements +
-   * categorisation + pennylane_supprimees. `charges` (miroir de tresorerie)
-   * n'est PAS additionné.
+   * categorisation + pennylane_supprimees. `charges` (miroir de tresorerie) et
+   * `avoirs` (informatif) ne sont PAS additionnés.
    */
   total: number
 }
@@ -115,6 +118,7 @@ export function countChargesArapprocher(txs: TxPick[], charges: ChargePick[]): n
   )
   return charges.filter(c =>
     c.montant_ttc_cts != null &&
+    c.montant_ttc_cts >= 0 &&                       // exclut les avoirs (jamais un débit Qonto)
     isChargeQonto(c) &&                             // exclut les canaux hors Qonto
     !linkedChargeIds.has(c.id) &&
     unreconciledDebitAmounts.has(c.montant_ttc_cts),
@@ -136,6 +140,12 @@ export function countChargesPennylaneSupprimees(charges: ChargePick[]): number {
   return charges.filter(c => c.pennylane_deleted_at != null).length
 }
 
+/** Avoirs fournisseur — charges à montant négatif (venant de Pennylane ou
+ *  saisies manuellement via le toggle "Avoir"). Jamais un débit Qonto. */
+export function countChargesAvoirs(charges: ChargePick[]): number {
+  return charges.filter(c => c.montant_ttc_cts != null && c.montant_ttc_cts < 0).length
+}
+
 /** Aggrégation complète — utilisée par le badge Dashboard + la cloche.
  *  `allocations` est optionnel (rétrocompat) : sans lui, comportement identique
  *  au pré-charge_allocations. */
@@ -148,12 +158,14 @@ export function countARapprocher(
   const encaissements = countEncaissements(txs)
   const categorisation = countChargesNonCategorisees(charges)
   const pennylane_supprimees = countChargesPennylaneSupprimees(charges)
+  const avoirs = countChargesAvoirs(charges)
   return {
     tresorerie,
     charges: countChargesArapprocher(txs, charges),
     encaissements,
     categorisation,
     pennylane_supprimees,
+    avoirs,
     total: tresorerie + encaissements + categorisation + pennylane_supprimees,
   }
 }
