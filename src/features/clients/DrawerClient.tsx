@@ -14,6 +14,8 @@ import {
   TARIFF_MODE_LABELS, computeEncours, paymentStatusOf,
 } from './clients.logic'
 import { formatMoney } from '../../shared/lib/money'
+import { normalizeClientName } from '../../shared/lib/normalizeClientName'
+import { PAYMENT_TERM_OPTIONS, paymentTermDays, resolvePaymentTermCode } from '../../shared/lib/paymentTerms'
 import type { Client, ClientInsert, DeliveryForEncours, TariffMode } from './clients.types'
 import { useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
@@ -29,7 +31,7 @@ interface DrawerClientProps {
 const EMPTY_FORM: Partial<ClientInsert> = {
   name: '', siret: '', tva_intra: '', address: '', city: '',
   postal_code: '', email: '', phone: '', type: null,
-  payment_terms: 30, notes: '', active: true,
+  payment_terms: 30, payment_terms_label: '30', notes: '', active: true,
   tariff_mode: 'manuel', tariff_rate_cts: null,
 }
 
@@ -57,7 +59,9 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
         name: client.name, siret: client.siret ?? '', tva_intra: client.tva_intra ?? '',
         address: client.address ?? '', city: client.city ?? '', postal_code: client.postal_code ?? '',
         email: client.email ?? '', phone: client.phone ?? '', type: client.type,
-        payment_terms: client.payment_terms, notes: client.notes ?? '', active: client.active,
+        payment_terms: client.payment_terms,
+        payment_terms_label: resolvePaymentTermCode(client.payment_terms_label, client.payment_terms),
+        notes: client.notes ?? '', active: client.active,
         tariff_mode: client.tariff_mode ?? 'manuel',
         tariff_rate_cts: client.tariff_rate_cts,
       })
@@ -93,13 +97,14 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
     setSiretError('')
     setSaving(true)
     try {
+      const payload = { ...form, name: normalizeClientName(form.name!) }
       if (isEdit && client) {
-        const { error } = await updateClient(client.id, form)
+        const { error } = await updateClient(client.id, payload)
         if (error) throw error
         toast('Client mis à jour')
       } else {
         if (!companyId) throw new Error('Profil non chargé')
-        const { error } = await createClient({ ...form, company_id: companyId } as ClientInsert)
+        const { error } = await createClient({ ...payload, company_id: companyId } as ClientInsert)
         if (error) throw error
         toast('Client créé')
       }
@@ -199,7 +204,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
                 {client!.active ? 'Actif' : 'Inactif'}
               </Badge>
               {client!.type && (
-                <Badge color={CLIENT_TYPE_COLORS[client!.type] as 'info' | 'success' | 'warning' | 'muted'}>
+                <Badge color={CLIENT_TYPE_COLORS[client!.type] as 'info' | 'success' | 'warning' | 'muted' | 'purple'}>
                   {CLIENT_TYPE_LABELS[client!.type]}
                 </Badge>
               )}
@@ -223,11 +228,20 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
                 ))}
               </select>
             </FieldGroup>
-            <FieldGroup label="Délai paiement (j)">
-              <Input
-                type="number" value={String(form.payment_terms ?? 30)}
-                onChange={v => set('payment_terms', parseInt(v) || 30)}
-              />
+            <FieldGroup label="Délai de paiement">
+              <select
+                value={form.payment_terms_label ?? '30'}
+                onChange={e => {
+                  const code = e.target.value
+                  set('payment_terms_label', code)
+                  set('payment_terms', paymentTermDays(code))
+                }}
+                className={inputClass}
+              >
+                {PAYMENT_TERM_OPTIONS.map(o => (
+                  <option key={o.code} value={o.code}>{o.label}</option>
+                ))}
+              </select>
             </FieldGroup>
           </div>
 
