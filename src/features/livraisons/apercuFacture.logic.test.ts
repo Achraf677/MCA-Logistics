@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildApercuFacture } from './apercuFacture.logic'
+import { buildApercuFacture, buildApercuPayload } from './apercuFacture.logic'
 import type { ApercuFactureRow } from './apercuFacture.logic'
 
 // Le spread final applique les overrides APRÈS les défauts : un `null` passé
@@ -160,5 +160,79 @@ describe('buildApercuFacture — cas limites', () => {
   it('extras null/undefined tolérés', () => {
     const r = buildApercuFacture([row({ extra_lines: null })])
     expect(r.extra_lines).toEqual([])
+  })
+})
+
+// ── buildApercuPayload — mirroir front de la validation pennylane-invoice ───────
+describe('buildApercuPayload', () => {
+  it('livraison sans extra_lines → une seule ligne (principale), aucun rejet', () => {
+    const r = buildApercuPayload(row({ amount_ht_cts: 10000, tva_cts: 2000, amount_ttc_cts: 12000, extra_lines: [] }))
+    expect(r.lines).toHaveLength(1)
+    expect(r.lines[0]).toEqual({
+      label: 'Transport palette', quantity: 1, amount_ht_cts: 10000, vat_rate_pct: 20,
+    })
+    expect(r.invalidExtras).toEqual([])
+  })
+
+  it('2 extra_lines valides → 3 lignes au total (principale + 2), aucun rejet', () => {
+    const r = buildApercuPayload(row({
+      amount_ht_cts: 10000, tva_cts: 2000, amount_ttc_cts: 12000,
+      extra_lines: [
+        { label: 'Attente 30 min', quantity: 1, amount_ht_cts: 3000, tva_rate: 20 },
+        { label: 'Retour à vide',  quantity: 2, amount_ht_cts: 1500, tva_rate: 10 },
+      ],
+    }))
+    expect(r.lines).toHaveLength(3)
+    expect(r.lines[1]).toEqual({ label: 'Attente 30 min', quantity: 1, amount_ht_cts: 3000, vat_rate_pct: 20 })
+    expect(r.lines[2]).toEqual({ label: 'Retour à vide', quantity: 2, amount_ht_cts: 1500, vat_rate_pct: 10 })
+    expect(r.invalidExtras).toEqual([])
+  })
+
+  it('1 extra invalide (taux TVA hors barème) → filtré et reporté dans invalidExtras', () => {
+    const r = buildApercuPayload(row({
+      amount_ht_cts: 10000, tva_cts: 2000, amount_ttc_cts: 12000,
+      extra_lines: [
+        { label: 'Attente 30 min', quantity: 1, amount_ht_cts: 3000, tva_rate: 20 },
+        { label: 'Forfait spécial', quantity: 1, amount_ht_cts: 1000, tva_rate: 8 },
+      ],
+    }))
+    // Principale + seulement l'extra valide → l'extra à 8% est exclu.
+    expect(r.lines).toHaveLength(2)
+    expect(r.lines.map(l => l.label)).toEqual(['Transport palette', 'Attente 30 min'])
+    expect(r.invalidExtras).toEqual([{ label: 'Forfait spécial', reason: 'Taux TVA non standard (8%)' }])
+  })
+
+  it('extra à HT ≤ 0 → filtré et reporté', () => {
+    const r = buildApercuPayload(row({
+      amount_ht_cts: 10000, tva_cts: 2000, amount_ttc_cts: 12000,
+      extra_lines: [{ label: 'Ligne à 0', quantity: 1, amount_ht_cts: 0, tva_rate: 20 }],
+    }))
+    expect(r.lines).toHaveLength(1)
+    expect(r.invalidExtras).toEqual([{ label: 'Ligne à 0', reason: 'Montant HT invalide' }])
+  })
+
+  it('taux TVA légaux acceptés : 0, 2.1, 5.5, 10, 20 %', () => {
+    for (const rate of [0, 2.1, 5.5, 10, 20]) {
+      const r = buildApercuPayload(row({
+        amount_ht_cts: 0, tva_cts: 0, amount_ttc_cts: 0,
+        extra_lines: [{ label: `Taux ${rate}`, quantity: 1, amount_ht_cts: 1000, tva_rate: rate }],
+      }))
+      expect(r.invalidExtras).toEqual([])
+      expect(r.lines).toHaveLength(1)
+    }
+  })
+
+  it('ligne principale HT ≤ 0 → absente du payload (pas de ligne à 0 envoyée)', () => {
+    const r = buildApercuPayload(row({ amount_ht_cts: 0, tva_cts: 0, amount_ttc_cts: 0, extra_lines: [] }))
+    expect(r.lines).toEqual([])
+  })
+
+  it('extraLines explicite prime sur delivery.extra_lines', () => {
+    const r = buildApercuPayload(
+      row({ amount_ht_cts: 0, tva_cts: 0, amount_ttc_cts: 0, extra_lines: [{ label: 'ignoré', quantity: 1, amount_ht_cts: 1, tva_rate: 20 }] }),
+      [{ label: 'utilisé', quantity: 1, amount_ht_cts: 500, tva_rate: 20 }],
+    )
+    expect(r.lines).toHaveLength(1)
+    expect(r.lines[0].label).toBe('utilisé')
   })
 })

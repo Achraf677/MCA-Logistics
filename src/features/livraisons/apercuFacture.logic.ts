@@ -172,3 +172,84 @@ export function rowHtTotalCts(row: ApercuFactureRow): number {
 export function rowTtcTotalCts(row: ApercuFactureRow): number {
   return effectiveTtcCts(row) + extraLinesTtcCts(row.extra_lines)
 }
+
+// ── Payload réel envoyé à Pennylane (mirroir front de pennylane-invoice) ────────
+//
+// buildApercuFacture (ci-dessus) affiche TOUT tel quel, y compris des lignes
+// supplémentaires que pennylane-invoke/index.ts REJETTERAIT (taux TVA non
+// standard, HT ≤ 0) — l'Edge répond alors 422 en pleine facturation, sans
+// que l'aperçu ait prévenu l'utilisateur. buildApercuPayload reproduit
+// exactement la validation de l'Edge (mêmes codes TVA légaux : 0, 2.1, 5.5,
+// 10, 20 %) pour filtrer ces lignes AVANT que l'utilisateur clique Facturer.
+
+/** Taux TVA légaux français acceptés par Pennylane (voir _shared/pennylane.ts::vatRateCode). */
+const STANDARD_VAT_RATES_PCT = [0, 2.1, 5.5, 10, 20]
+
+function isStandardVatRate(ratePct: number): boolean {
+  return STANDARD_VAT_RATES_PCT.some(r => Math.abs(r - ratePct) < 0.05)
+}
+
+export interface ApercuPayloadLine {
+  label: string
+  quantity: number
+  amount_ht_cts: number
+  vat_rate_pct: number
+}
+
+/** Ligne supplémentaire écartée du payload — libellé + raison lisible. */
+export interface ApercuInvalidExtra {
+  label: string
+  reason: string
+}
+
+export interface ApercuPayloadResult {
+  /** Lignes qui seraient effectivement envoyées à pennylane-invoice. */
+  lines: ApercuPayloadLine[]
+  /** Extras rejetés — ne seront JAMAIS acceptés par l'Edge en l'état. */
+  invalidExtras: ApercuInvalidExtra[]
+}
+
+/**
+ * Construit le payload de facturation d'UNE livraison — ligne principale
+ * (si HT > 0) + lignes supplémentaires valides. Toute ligne supplémentaire
+ * invalide (HT ≤ 0 ou taux TVA hors barème légal) est écartée de `lines` et
+ * reportée dans `invalidExtras` pour affichage d'un avertissement.
+ */
+export function buildApercuPayload(
+  delivery: ApercuFactureRow,
+  extraLines: DeliveryExtraLine[] = delivery.extra_lines ?? [],
+): ApercuPayloadResult {
+  const lines: ApercuPayloadLine[] = []
+  const invalidExtras: ApercuInvalidExtra[] = []
+
+  const ht = effectiveHtCts(delivery)
+  if (ht > 0) {
+    const ttc = effectiveTtcCts(delivery)
+    const tva = delivery.tva_cts != null ? delivery.tva_cts : Math.max(0, ttc - ht)
+    lines.push({
+      label: fallbackLabel(delivery),
+      quantity: 1,
+      amount_ht_cts: ht,
+      vat_rate_pct: derivedRatePct(ht, tva),
+    })
+  }
+
+  for (const l of extraLines ?? []) {
+    const label = (l.label ?? '').trim() || 'Ligne supplémentaire'
+    const extraHt = Number(l.amount_ht_cts) || 0
+    const extraRate = Number(l.tva_rate) || 0
+    const qty = Number.isFinite(l.quantity) && l.quantity > 0 ? l.quantity : 1
+
+    if (extraHt <= 0) {
+      invalidExtras.push({ label, reason: 'Montant HT invalide' })
+      continue
+    }
+    if (!isStandardVatRate(extraRate)) {
+      invalidExtras.push({ label, reason: `Taux TVA non standard (${extraRate}%)` })
+      continue
+    }
+    lines.push({ label, quantity: qty, amount_ht_cts: extraHt, vat_rate_pct: extraRate })
+  }
+
+  return { lines, invalidExtras }
+}
