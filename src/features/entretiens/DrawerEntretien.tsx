@@ -220,6 +220,7 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
               <VentilationFacture
                 chargeId={linkedCharge.id}
                 chargeAmountCts={linkedCharge.montant_ttc_cts}
+                categoryType="entretien"
                 onChanged={onSaved}
               />
             </div>

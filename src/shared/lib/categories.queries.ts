@@ -1,4 +1,5 @@
 import { supabase } from '../../app/providers'
+import { slugifyCategoryName } from './categories'
 import type { ChargeCategoryRow, ChargeCategoryWithCount } from '../types/categories'
 
 /** Retourne les catégories de la société, avec le nombre de charges liées. */
@@ -12,14 +13,13 @@ export async function getCategories(companyId: string): Promise<ChargeCategoryWi
   return (data ?? []) as unknown as ChargeCategoryWithCount[]
 }
 
-/** Crée une catégorie personnalisée. */
-export async function createCategory(companyId: string, name: string) {
-  const slug = name
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')  // supprime accents
-    .toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+/** Crée une catégorie personnalisée. `type` route le rapprochement (ex :
+ *  'entretien', 'carburant') — optionnel, null par défaut (catégorie générique). */
+export async function createCategory(companyId: string, name: string, type: string | null = null) {
+  const slug = slugifyCategoryName(name)
   return supabase
     .from('charge_categories')
-    .insert({ company_id: companyId, name, slug, is_system: false })
+    .insert({ company_id: companyId, name: name.trim(), slug, type, is_system: false })
     .select()
     .single()
 }
