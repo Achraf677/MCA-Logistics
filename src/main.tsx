@@ -12,6 +12,7 @@ import { Button } from './shared/ui/Button'
 import { AssistantProvider } from './features/assistant/AssistantContext'
 import { PermissionsProvider } from './shared/permissions/PermissionsProvider'
 import { ErrorBoundary } from './app/ErrorBoundary'
+import { SyncProvider } from './app/SyncProvider'
 
 // ── Garde profil ─────────────────────────────────────────────────────────────
 // Bloque l'app si l'utilisateur authentifié n'a pas encore de ligne en profiles
@@ -77,9 +78,11 @@ function AppCore() {
         {/* Conversation de l'assistant : état stable au-dessus du routeur,
             pour survivre aux changements d'onglet. */}
         <PermissionsProvider>
-          <AssistantProvider>
-            <AppRoutes />
-          </AssistantProvider>
+          <SyncProvider>
+            <AssistantProvider>
+              <AppRoutes />
+            </AssistantProvider>
+          </SyncProvider>
         </PermissionsProvider>
       </ProfileGate>
     </ProfileProvider>

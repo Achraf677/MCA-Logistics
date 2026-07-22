@@ -1,15 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CheckCheck, Euro, TrendingUp, Banknote } from 'lucide-react'
+import { Euro, TrendingUp, Banknote } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
-import { SyncButton } from '../../shared/ui/SyncButton'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
-import { getEncaissements, checkPayments, exportEncaissementsCSV, getAutresEntrees } from './encaissement.queries'
+import { useSync } from '../../app/SyncProvider'
+import { getEncaissements, exportEncaissementsCSV, getAutresEntrees } from './encaissement.queries'
 import { formatCents, buildEntreesUnifiees, kpiSummaryUnifie, natureBadge } from './encaissement.logic'
 import { downloadCSV } from '../../shared/lib/download'
 import type { EntreeUnifiee, EncaissementFilters } from './encaissement.types'
@@ -46,7 +46,9 @@ export function Encaissement() {
     setLoading(false)
   }, [filters])
 
-  useEffect(() => { load() }, [load])
+  const { syncState, syncIfStale } = useSync()
+  useEffect(() => { syncIfStale('paiements') }, [syncIfStale])
+  useEffect(() => { load() }, [load, syncState.paiements.lastSyncAt])
 
   const handleAction = async (key: ActionKey) => {
     if (key === 'export') {
@@ -66,24 +68,10 @@ export function Encaissement() {
     <Shell pageTitle="Encaissement" actions={['export']} onAction={handleAction}>
       <div className="flex flex-col gap-5">
 
-        {/* Note + SyncButton */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <p className="text-[var(--fs-xs)] text-[var(--text-muted)] flex-1">
-            Le statut payé provient de Pennylane&nbsp;; les crédits Qonto (apports, remboursements) sont affichés hors CA.
-          </p>
-          <SyncButton
-            label="Vérifier les paiements"
-            icon={<CheckCheck size={13} />}
-            onSync={async () => {
-              const { data, error } = await checkPayments()
-              if (error || data?.ok === false)
-                return { ok: false, message: error?.message ?? data?.error ?? 'Échec de la vérification' }
-              const marked = data?.data?.marked_payee ?? 0
-              await load()
-              return { ok: true, message: marked > 0 ? `${marked} livraison(s) marquée(s) payée(s)` : 'Aucun nouveau paiement détecté' }
-            }}
-          />
-        </div>
+        {/* Note */}
+        <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+          Le statut payé provient de Pennylane&nbsp;; les crédits Qonto (apports, remboursements) sont affichés hors CA.
+        </p>
 
         {/* KPIs */}
         {loading ? (

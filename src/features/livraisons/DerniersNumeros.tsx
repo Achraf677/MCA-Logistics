@@ -1,25 +1,21 @@
-import { useState, useEffect } from 'react'
-import { getDerniersNumeros } from './livraisons.queries'
+import { useEffect } from 'react'
+import { useSync } from '../../app/SyncProvider'
 
 export function DerniersNumeros() {
-  const [data, setData] = useState<{ invoice: string | null; quote: string | null } | null>(null)
+  const { syncIfStale, derniersNumeros } = useSync()
 
-  useEffect(() => {
-    getDerniersNumeros()
-      .then(setData)
-      .catch(() => setData({ invoice: null, quote: null }))
-  }, [])
+  useEffect(() => { syncIfStale('derniers_numeros') }, [syncIfStale])
 
-  if (data === null) return null
+  if (derniersNumeros === null) return null
 
   return (
     <div
       title="Derniers numéros émis (Pennylane)"
       className="hidden sm:flex items-center gap-2 text-[var(--fs-xs)] font-mono text-[var(--text-muted)]"
     >
-      <span>FA {data.invoice ?? '—'}</span>
+      <span>FA {derniersNumeros.invoice ?? '—'}</span>
       <span className="opacity-40">·</span>
-      <span>DE {data.quote ?? '—'}</span>
+      <span>DE {derniersNumeros.quote ?? '—'}</span>
     </div>
   )
 }

@@ -5,17 +5,15 @@ import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
-import { SyncButton } from '../../shared/ui/SyncButton'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
-import { TabActions } from '../../shared/ui/TabbedSection'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { DrawerCharge } from './DrawerCharge'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile, supabase } from '../../app/providers'
-import { getCharges, exportChargesCSV, syncPennylane, updateCharge, deleteCharge, ignorePennylaneDeletion } from './charges.queries'
+import { getCharges, exportChargesCSV, updateCharge, deleteCharge, ignorePennylaneDeletion } from './charges.queries'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
-import { getSyncState } from '../../shared/lib/syncState'
+import { useSync } from '../../app/SyncProvider'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatCents, categoryColor, kpiSummary } from './charges.logic'
 import { getCategories } from '../../shared/lib/categories.queries'
@@ -38,7 +36,7 @@ export function Charges() {
   const [filters, setFilters]         = useState<ChargeFilters>({})
   const [drawerOpen, setDrawerOpen]   = useState(false)
   const [selected, setSelected]       = useState<ChargeRow | null>(null)
-  const [lastSyncAt, setLastSyncAt]   = useState<string | null>(null)
+  const { syncState, syncIfStale } = useSync()
   // Suppression Pennylane : charge en attente de confirmation "Supprimer de l'app".
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [deletingFlagged, setDeletingFlagged] = useState(false)
@@ -60,13 +58,8 @@ export function Charges() {
     setLoading(false)
   }, [filters])
 
-  const fetchLastSync = useCallback(async () => {
-    const ts = await getSyncState('pennylane_charges')
-    setLastSyncAt(ts)
-  }, [])
-
-  useEffect(() => { load() }, [load])
-  useEffect(() => { fetchLastSync() }, [fetchLastSync])
+  useEffect(() => { syncIfStale('charges') }, [syncIfStale])
+  useEffect(() => { load() }, [load, syncState.charges.lastSyncAt])
 
   const handleAction = async (key: ActionKey) => {
     if (key === 'nouveau') { setSelected(null); setDrawerOpen(true) }
@@ -174,27 +167,6 @@ export function Charges() {
 
   return (
     <Shell pageTitle="Charges" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
-      <TabActions>
-        <SyncButton
-          label="Synchroniser Pennylane"
-          lastSyncAt={lastSyncAt}
-          onSync={async () => {
-            const { data, error } = await syncPennylane()
-            if (error || data?.ok === false) {
-              return { ok: false, message: error?.message ?? data?.error ?? 'Échec Pennylane' }
-            }
-            const errors: string[] = data?.data?.errors ?? []
-            if (errors.length > 0) {
-              return { ok: false, message: errors[0] }
-            }
-            const n = data?.data?.charges_upserts ?? 0
-            await load()
-            await fetchLastSync()
-            return { ok: true, message: n > 0 ? `${n} facture(s) synchronisée(s)` : 'Aucune nouvelle facture' }
-          }}
-        />
-      </TabActions>
-
       {/* KPIs */}
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">

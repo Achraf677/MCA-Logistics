@@ -12,6 +12,7 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
+import { useSync } from '../../app/SyncProvider'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { getSuppliers, createSupplier, updateSupplier, deactivateSupplier, deleteSupplier } from './fournisseurs.queries'
 import { CATEGORY_LABELS, getCategoryLabel, isTvaDeductible, countByCategory, normalizeSiren, validateSiren, findDuplicate } from './fournisseurs.logic'
@@ -59,7 +60,9 @@ export function Fournisseurs() {
     setLoading(false)
   }, [filters, search])
 
-  useEffect(() => { load() }, [load])
+  const { syncState, syncIfStale } = useSync()
+  useEffect(() => { syncIfStale('fournisseurs') }, [syncIfStale])
+  useEffect(() => { load() }, [load, syncState.fournisseurs.lastSyncAt])
 
   const openDrawer = (s?: Supplier) => {
     setSelected(s ?? null)

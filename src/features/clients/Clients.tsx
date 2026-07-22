@@ -4,14 +4,12 @@ import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
-import { SyncButton } from '../../shared/ui/SyncButton'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { SkeletonTable, SkeletonKpis } from '../../shared/ui/Skeleton'
-import { TabActions } from '../../shared/ui/TabbedSection'
 import { DrawerClient } from './DrawerClient'
 import { useToast } from '../../shared/ui/useToast'
-import { getClients, exportClientsCSV, getFacturedDeliveries, getDeliveriesForTiersColumns, syncPennylaneClients } from './clients.queries'
-import { getSyncState } from '../../shared/lib/syncState'
+import { getClients, exportClientsCSV, getFacturedDeliveries, getDeliveriesForTiersColumns } from './clients.queries'
+import { useSync } from '../../app/SyncProvider'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, countByType,
@@ -39,7 +37,7 @@ export function Clients() {
   const [search, setSearch] = useState('')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<Client | null>(null)
-  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null)
+  const { syncState, syncIfStale } = useSync()
 
   // Encours data: map clientId -> encours
   const [encoursByClient, setEncoursByClient] = useState<Map<string, ClientEncours>>(new Map())
@@ -107,13 +105,8 @@ export function Clients() {
     loadTiersColumns()
   }, [filters, search, loadEncours, loadTiersColumns])
 
-  const fetchLastSync = useCallback(async () => {
-    const ts = await getSyncState('pennylane_clients')
-    setLastSyncAt(ts)
-  }, [])
-
-  useEffect(() => { load() }, [load])
-  useEffect(() => { fetchLastSync() }, [fetchLastSync])
+  useEffect(() => { syncIfStale('clients') }, [syncIfStale])
+  useEffect(() => { load() }, [load, syncState.clients.lastSyncAt])
 
   const handleAction = async (key: ActionKey) => {
     if (key === 'nouveau') { setSelected(null); setDrawerOpen(true) }
@@ -144,27 +137,6 @@ export function Clients() {
 
   return (
     <Shell pageTitle="Clients" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
-      <TabActions>
-        <SyncButton
-          label="Synchroniser clients Pennylane"
-          lastSyncAt={lastSyncAt}
-          onSync={async () => {
-            const { data, error } = await syncPennylaneClients()
-            if (error || data?.ok === false) {
-              return { ok: false, message: error?.message ?? data?.error ?? 'Échec de la synchronisation clients' }
-            }
-            const errors: string[] = data?.data?.errors ?? []
-            if (errors.length > 0) {
-              return { ok: false, message: errors[0] }
-            }
-            const n = data?.data?.clients_upserts ?? 0
-            await load()
-            await fetchLastSync()
-            return { ok: true, message: n > 0 ? `${n} client(s) synchronisé(s)` : 'Aucun nouveau client' }
-          }}
-        />
-      </TabActions>
-
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-6 gap-5 mb-6 [&>*]:min-w-0">
         {loading
