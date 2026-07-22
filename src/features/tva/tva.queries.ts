@@ -11,7 +11,10 @@ export async function getTvaData(dateFrom: string, dateTo: string) {
       .in('statut', ['facturee', 'payee']),
     supabase.from('charges')
       .select('id, montant_ht_cts, tva_rate, tva_cts, tva_pays')
-      .gte('date', dateFrom).lte('date', dateTo),
+      .gte('date', dateFrom).lte('date', dateTo)
+      // Immobilisations (achat véhicule…) : pas une charge d'exploitation,
+      // exclues de la TVA déductible calculée ici (voir migration 20260724100000).
+      .eq('est_immobilisation', false),
     supabase.from('fuel_logs')
       .select('total_cts, tva_cts, tva_deductible_pct, tva_rate, charge_id')
       .gte('date', dateFrom).lte('date', dateTo),

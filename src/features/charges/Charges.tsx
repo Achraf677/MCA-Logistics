@@ -133,7 +133,7 @@ export function Charges() {
   const kpis = kpiSummary(rows)
   const hasFilters = !!(
     (filters.category_id && filters.category_id !== 'all') ||
-    filters.date_from || filters.date_to
+    filters.date_from || filters.date_to || filters.include_immobilisations
   )
 
   // Liste affichée : filtre "supprimées Pennylane" appliqué côté client.
@@ -206,6 +206,13 @@ export function Charges() {
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
+        <Button
+          variant={filters.include_immobilisations ? 'primary' : 'secondary'}
+          size="compact"
+          onClick={() => setFilters(f => ({ ...f, include_immobilisations: !f.include_immobilisations }))}
+        >
+          Afficher les immobilisations
+        </Button>
         {hasFilters && (
           <Button variant="ghost" size="compact" onClick={() => setFilters({})}>
             Réinitialiser
@@ -287,6 +294,7 @@ export function Charges() {
                       <td className="px-4 py-3 max-w-[260px]">
                         <div className="flex items-center gap-2">
                           <span title={row.label} className="font-medium text-[var(--text)] truncate">{row.label}</span>
+                          {row.est_immobilisation && <Badge color="purple">Immobilisation</Badge>}
                           {row.mode_paiement === 'note_de_frais' && !row.rembourse_le && (
                             <Badge color="warning">À rembourser</Badge>
                           )}
@@ -439,6 +447,7 @@ export function Charges() {
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span title={row.label} className="font-medium text-[var(--text)] truncate">{row.label}</span>
+                      {row.est_immobilisation && <Badge color="purple">Immobilisation</Badge>}
                       {row.mode_paiement === 'note_de_frais' && !row.rembourse_le && (
                         <Badge color="warning">À rembourser</Badge>
                       )}

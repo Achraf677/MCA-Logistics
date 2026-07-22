@@ -31,6 +31,9 @@ export async function getChargesForRapprochement(): Promise<ChargePick[]> {
       'suppliers!supplier_id(name)',
       'charge_categories!category_id(name, slug, type)',
     ].join(', '))
+    // Immobilisations exclues : un achat d'investissement n'est pas une
+    // charge candidate au rapprochement Qonto (voir migration 20260724100000).
+    .eq('est_immobilisation', false)
     .order('date', { ascending: false })
   return (data ?? []) as unknown as ChargePick[]
 }

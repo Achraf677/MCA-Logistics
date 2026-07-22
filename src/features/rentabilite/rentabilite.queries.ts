@@ -10,7 +10,8 @@ export async function getRentabiliteData(year: number) {
       .gte('date', start).lte('date', end).neq('statut', 'annulee'),
     supabase.from('charges')
       .select('date, montant_ht_cts, tva_cts')
-      .gte('date', start).lte('date', end),
+      .gte('date', start).lte('date', end)
+      .eq('est_immobilisation', false),
     supabase.from('fuel_logs')
       .select('date, total_cts')
       .gte('date', start).lte('date', end),

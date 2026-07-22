@@ -203,6 +203,17 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
           </div>
         )}
 
+        {/* Immobilisation — jamais modifiable ici (posée par migration/pennylane-sync) */}
+        {charge?.est_immobilisation && (
+          <div className="flex items-start gap-2 px-3 py-2.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--fs-sm)]">
+            <Badge color="purple">Immobilisation</Badge>
+            <span className="text-[var(--text-muted)] text-[var(--fs-xs)]">
+              Cette facture est comptabilisée en immobilisation dans Pennylane — elle n'est pas
+              incluse dans les charges d'exploitation.
+            </span>
+          </div>
+        )}
+
         {isEdit && currentCat && (
           <div className="flex items-center gap-2 mb-1">
             <Badge color={categoryColor(currentCat.slug)}>{currentCat.name}</Badge>

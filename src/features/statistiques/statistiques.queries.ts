@@ -16,7 +16,8 @@ export async function getStatistiquesData() {
       .from('charges')
       .select('date, montant_ht_cts, charge_categories!category_id(name, slug, type)')
       .gte('date', yearStart)
-      .lte('date', yearEnd),
+      .lte('date', yearEnd)
+      .eq('est_immobilisation', false),
     supabase
       .from('fuel_logs')
       .select('date, total_cts, liters')

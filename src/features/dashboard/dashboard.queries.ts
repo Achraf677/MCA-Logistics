@@ -82,7 +82,7 @@ export async function getActionItems(): Promise<ActionItems> {
     qontoDebitsRes,
   ] = await Promise.all([
     supabase.from('deliveries').select('amount_ht_cts').eq('statut', 'facturee'),
-    supabase.from('charges').select('id', { count: 'exact', head: true }).is('category_id', null),
+    supabase.from('charges').select('id', { count: 'exact', head: true }).is('category_id', null).eq('est_immobilisation', false),
     supabase.from('charge_categories').select('id').eq('type', 'carburant'),
     supabase.from('charge_categories').select('id').eq('type', 'entretien'),
     supabase.from('fuel_logs').select('charge_id').not('charge_id', 'is', null),
@@ -107,10 +107,10 @@ export async function getActionItems(): Promise<ActionItems> {
   // Vague 2 : charges par catégorie (dépend des catIds)
   const [carburantChargesRes, entretienChargesRes] = await Promise.all([
     carburantCatIds.length
-      ? supabase.from('charges').select('id').in('category_id', carburantCatIds)
+      ? supabase.from('charges').select('id').in('category_id', carburantCatIds).eq('est_immobilisation', false)
       : Promise.resolve({ data: [] as { id: string }[] }),
     entretienCatIds.length
-      ? supabase.from('charges').select('id').in('category_id', entretienCatIds)
+      ? supabase.from('charges').select('id').in('category_id', entretienCatIds).eq('est_immobilisation', false)
       : Promise.resolve({ data: [] as { id: string }[] }),
   ])
 
@@ -172,7 +172,8 @@ export async function getMonthlyTrend(period: TrendPeriod = '6m') {
         .from('charges')
         .select('montant_ht_cts')
         .gte('date', start)
-        .lte('date', end),
+        .lte('date', end)
+        .eq('est_immobilisation', false),
     ])
     const rows = delivRes.data ?? []
     const caHtCts = rows.reduce((s, d) => s + effectiveHtCts(d), 0)

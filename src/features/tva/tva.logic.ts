@@ -29,6 +29,10 @@ export interface TvaCharge {
   tva_cts:     number | null
   tva_pays:    string | null
   linkedToFuel: boolean
+  /** Immobilisation (migration 20260724100000) — jamais une charge d'exploitation,
+   *  donc jamais de TVA déductible ici. Déjà filtrée côté requête (getTvaData) ;
+   *  re-vérifiée ici en défense en profondeur. Absent = false (rétrocompat). */
+  est_immobilisation?: boolean
 }
 export interface TvaFuel {
   tva_cts:            number | null
@@ -61,7 +65,8 @@ export function computeTva(raw: TvaRaw): TvaResult {
   let tvaAllemandeCts = 0
 
   for (const c of raw.charges) {
-    if (c.linkedToFuel) continue  // déjà comptée via le fuel_log lié
+    if (c.linkedToFuel) continue      // déjà comptée via le fuel_log lié
+    if (c.est_immobilisation) continue // investissement, pas une charge d'exploitation
     const tva = c.tva_cts ?? 0
     if (c.tva_pays === 'DE') {
       tvaAllemandeCts += tva
