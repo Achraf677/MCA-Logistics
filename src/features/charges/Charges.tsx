@@ -203,7 +203,11 @@ export function Charges() {
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">
           <KpiCard label="Charges"   value={kpis.nb} tone="info" icon={<Receipt size={18} />} />
-          <KpiCard label="Total HT"  value={formatCents(kpis.totalHtCts)} tone="warning" icon={<Euro size={18} />} />
+          <KpiCard label="Total HT"  value={formatCents(kpis.totalHtCts)} tone="warning" icon={<Euro size={18} />}
+            sub={kpis.nbAvoirs > 0
+              ? `dont ${kpis.nbAvoirs} avoir${kpis.nbAvoirs > 1 ? 's' : ''} ${formatCents(kpis.avoirsHtCts)}`
+              : undefined}
+          />
           <KpiCard label="Total TTC" value={formatCents(kpis.totalTtcCts)} tone="warning" icon={<Wallet size={18} />} />
         </div>
       )}
@@ -293,6 +297,7 @@ export function Charges() {
               <tbody>
                 {displayRows.map((row, i) => {
                   const isPennylane = !!row.pennylane_id
+                  const isAvoir = row.montant_ht_cts < 0
                   return (
                     <tr
                       key={row.id}
@@ -393,12 +398,15 @@ export function Charges() {
                           )
                         })()}
                       </td>
-                      <td className={`px-4 py-3 font-mono ${row.montant_ht_cts < 0 ? 'text-[var(--loss)]' : ''}`}>
-                        {formatCents(row.montant_ht_cts)}
+                      <td className="px-4 py-3 font-mono">
+                        <div className="flex items-center gap-1.5">
+                          {formatCents(Math.abs(row.montant_ht_cts))}
+                          {isAvoir && <Badge color="info">Avoir</Badge>}
+                        </div>
                       </td>
-                      <td className="px-4 py-3 font-mono">{row.tva_cts != null ? formatCents(row.tva_cts) : '—'}</td>
-                      <td className={`px-4 py-3 font-mono font-semibold ${row.montant_ttc_cts != null && row.montant_ttc_cts < 0 ? 'text-[var(--loss)]' : 'text-[var(--text)]'}`}>
-                        {row.montant_ttc_cts ? formatCents(row.montant_ttc_cts) : '—'}
+                      <td className="px-4 py-3 font-mono">{row.tva_cts != null ? formatCents(Math.abs(row.tva_cts)) : '—'}</td>
+                      <td className="px-4 py-3 font-mono font-semibold text-[var(--text)]">
+                        {row.montant_ttc_cts ? formatCents(Math.abs(row.montant_ttc_cts)) : '—'}
                       </td>
                       <td className="px-4 py-3">
                         <FacturePdfLink pennylane_id={row.pennylane_id} receipt_url={row.receipt_url} />
@@ -425,6 +433,7 @@ export function Charges() {
           <div className="md:hidden flex flex-col gap-3">
             {displayRows.map(row => {
               const isPennylane = !!row.pennylane_id
+              const isAvoir = row.montant_ht_cts < 0
               const cat = row.charge_categories
               return (
                 <div
@@ -524,8 +533,9 @@ export function Charges() {
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <span className={`font-mono font-semibold ${row.montant_ht_cts < 0 ? 'text-[var(--loss)]' : 'text-[var(--text)]'}`}>
-                        {formatCents(row.montant_ht_cts)} HT
+                      <span className="font-mono font-semibold text-[var(--text)] flex items-center gap-1.5">
+                        {formatCents(Math.abs(row.montant_ht_cts))} HT
+                        {isAvoir && <Badge color="info">Avoir</Badge>}
                       </span>
                       <FacturePdfLink
                         pennylane_id={row.pennylane_id}

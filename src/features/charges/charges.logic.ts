@@ -15,5 +15,10 @@ export function kpiSummary(rows: ChargeRow[]) {
     acc[key] = (acc[key] ?? 0) + r.montant_ht_cts
     return acc
   }, {})
-  return { totalHtCts, totalTtcCts, nb: rows.length, byCategory }
+  // Avoirs (montant_ht_cts < 0) — visibilité sur la réduction qu'ils apportent
+  // aux totaux ci-dessus, sans les exclure du calcul (le signe fait foi).
+  const avoirs = rows.filter(r => r.montant_ht_cts < 0)
+  const nbAvoirs = avoirs.length
+  const avoirsHtCts = avoirs.reduce((s, r) => s + r.montant_ht_cts, 0)
+  return { totalHtCts, totalTtcCts, nb: rows.length, byCategory, nbAvoirs, avoirsHtCts }
 }

@@ -263,6 +263,11 @@ function fromARapprocher(c: ARapprocherCounts): AlerteMetier[] {
     label: `${c.pennylane_supprimees} facture${c.pennylane_supprimees > 1 ? 's' : ''} supprimée${c.pennylane_supprimees > 1 ? 's' : ''} dans Pennylane`,
     count: c.pennylane_supprimees, severite: 'rouge', lien: '/charges?filtre=pennylane_supprimees',
   })
+  if (c.avoirs > 0) out.push({
+    id: 'avoirs', domaine: 'charges',
+    label: `${c.avoirs} avoir${c.avoirs > 1 ? 's' : ''} fournisseur à vérifier`,
+    count: c.avoirs, severite: 'info', lien: '/charges',
+  })
   return out
 }
 
