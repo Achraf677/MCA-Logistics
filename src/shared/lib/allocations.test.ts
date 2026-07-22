@@ -44,6 +44,16 @@ describe('chargeResteCts', () => {
     ]
     expect(chargeResteCts(2000, bad)).toBe(1500)
   })
+
+  it('ventilation "pure" (sans cible) : chaque ligne garde sa propre catégorie', () => {
+    // Éléphant Bleu 30 € = 10 € AdBlue + 20 € lave-glace, target_table/target_id absents.
+    const lignes: AllocationPick[] = [
+      { amount_cts: 1000, category_id: 'cat-adblue' },
+      { amount_cts: 2000, category_id: 'cat-laveglace' },
+    ]
+    expect(chargeResteCts(3000, lignes)).toBe(0)
+    expect(lignes.map(l => l.category_id)).toEqual(['cat-adblue', 'cat-laveglace'])
+  })
 })
 
 describe('targetCouvertureCts', () => {

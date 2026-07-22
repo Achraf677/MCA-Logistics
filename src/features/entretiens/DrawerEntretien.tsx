@@ -9,6 +9,7 @@ import { supabase, useProfile } from '../../app/providers'
 import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
 import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
 import { PanneauVentilation } from '../../shared/ui/PanneauVentilation'
+import { VentilationFacture } from '../../shared/ui/VentilationFacture'
 import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import { createMaintenance, updateMaintenance, deleteMaintenance } from './entretiens.queries'
 import {
@@ -208,6 +209,20 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
               <Link2 size={14} />
               Rapprocher une facture
             </button>
+          )}
+
+          {/* ── Ventilation de la facture (décompose LA charge liée en sous-lignes) */}
+          {linkedCharge && linkedCharge.montant_ttc_cts != null && linkedCharge.montant_ttc_cts > 0 && (
+            <div className="rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3">
+              <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+                Ventilation de la facture
+              </span>
+              <VentilationFacture
+                chargeId={linkedCharge.id}
+                chargeAmountCts={linkedCharge.montant_ttc_cts}
+                onChanged={onSaved}
+              />
+            </div>
           )}
 
           {/* ── Ventilation partielle (édition uniquement — cible = cet entretien) */}

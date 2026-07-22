@@ -8,6 +8,7 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
 import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
 import { normalizeClientName } from '../_shared/normalizeClientName.ts';
+import { mergeClientEnrichedFields } from '../_shared/clientSyncMerge.ts';
 
 // ── Types Pennylane V2 — GET /customers ───────────────────────────────────────
 // L'adresse de facturation est un objet imbriqué { address, postal_code, city, country_alpha2 }.
@@ -86,31 +87,56 @@ Deno.serve(async (req) => {
         debugFirstCustomer = customers[0];
       }
 
-      const clientRows = customers
-        .filter((c) => {
-          // GARDE-FOU : id manquant → skip + warning
-          if (c.id == null) {
-            errors.push(`warn: customer sans id — skippé`);
-            return false;
-          }
-          return true;
-        })
-        .map((c) => ({
+      const validCustomers = customers.filter((c) => {
+        // GARDE-FOU : id manquant → skip + warning
+        if (c.id == null) {
+          errors.push(`warn: customer sans id — skippé`);
+          return false;
+        }
+        return true;
+      });
+
+      // "Local wins" : les enrichissements saisis à la main (email, téléphone,
+      // adresse…) ne doivent jamais être écrasés par un null/vide côté
+      // Pennylane. On charge les valeurs locales existantes AVANT l'upsert
+      // pour pouvoir fusionner champ par champ (voir _shared/clientSyncMerge.ts).
+      const pageIds = validCustomers.map((c) => String(c.id));
+      const { data: existingRows } = pageIds.length > 0
+        ? await supabase
+            .from('clients')
+            .select('pennylane_id, email, phone, address, city, postal_code')
+            .eq('company_id', companyId)
+            .in('pennylane_id', pageIds)
+        : { data: [] as { pennylane_id: string }[] };
+      const existingByPennylaneId = new Map(
+        (existingRows ?? []).map((r) => [r.pennylane_id as string, r]),
+      );
+
+      const clientRows = validCustomers.map((c) => {
+        const pennylaneId = String(c.id);
+        const merged = mergeClientEnrichedFields(
+          {
+            email:       firstEmail(c.emails),
+            phone:       c.phone ?? null,
+            address:     c.billing_address?.address ?? null,
+            city:        c.billing_address?.city ?? null,
+            postal_code: c.billing_address?.postal_code ?? null,
+          },
+          existingByPennylaneId.get(pennylaneId),
+        );
+        return {
           company_id:   companyId,
-          pennylane_id: String(c.id),
+          pennylane_id: pennylaneId,
           name:         normalizeClientName(c.name ?? `Client Pennylane #${c.id}`),
           // reg_no = SIREN (9 chiffres) — seul identifiant dispo dans Pennylane V2
           siret:        c.reg_no ?? null,
           tva_intra:    c.vat_number ?? null,
-          address:      c.billing_address?.address ?? null,
-          city:         c.billing_address?.city ?? null,
-          postal_code:  c.billing_address?.postal_code ?? null,
-          email:        firstEmail(c.emails),
-          phone:        c.phone ?? null,
+          ...merged,
           // `type` non importé : contrainte DB ('medical','ecommerce','retail','particulier')
-          // `tariff_mode`, `payment_terms`, `notes` préservés (non touchés).
+          // `tariff_mode`, `payment_terms`, `payment_terms_label`, `notes` préservés (non touchés).
           active: true,
-        }));
+        };
+      });
 
       if (clientRows.length > 0) {
         const { data: upserted, error: uErr } = await supabase

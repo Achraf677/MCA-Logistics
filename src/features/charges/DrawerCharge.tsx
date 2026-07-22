@@ -276,6 +276,11 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
 
         {form.mode_paiement === 'note_de_frais' && (
           <div className="grid grid-cols-2 gap-3">
+            {!form.rembourse_le && (
+              <div className="col-span-2 -mb-1">
+                <Badge color="warning">À rembourser</Badge>
+              </div>
+            )}
             <Field label="Avancé par">
               <select
                 value={form.avance_par}

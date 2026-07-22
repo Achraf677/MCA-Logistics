@@ -10,6 +10,7 @@ import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { DrawerEntretien } from './DrawerEntretien'
 import { supabase } from '../../app/providers'
 import { getMaintenances } from './entretiens.queries'
+import { listAllocationsForCharges, type AllocationRow } from '../../shared/lib/allocations.queries'
 import {
   MAINTENANCE_TYPE_LABELS, MAINTENANCE_TYPE_COLOR, formatCents, formatMileage, kpiSummary,
 } from './entretiens.logic'
@@ -26,6 +27,9 @@ export function Entretiens() {
   const [filters, setFilters]   = useState<MaintenanceFilters>({})
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<MaintenanceRow | null>(null)
+  // Sous-lignes de ventilation "pure" par charge_id — remplace l'affichage du
+  // montant brut quand la facture liée a été décomposée (voir DrawerEntretien).
+  const [ventilationByCharge, setVentilationByCharge] = useState<Map<string, AllocationRow[]>>(new Map())
 
   useEffect(() => {
     supabase.from('vehicles').select('id, label').order('label')
@@ -35,9 +39,20 @@ export function Entretiens() {
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     const { data, error } = await getMaintenances(filters)
-    if (error) setError(error.message)
-    else setRows((data ?? []) as unknown as MaintenanceRow[])
+    if (error) { setError(error.message); setLoading(false); return }
+    const maintenanceRows = (data ?? []) as unknown as MaintenanceRow[]
+    setRows(maintenanceRows)
     setLoading(false)
+
+    const chargeIds = maintenanceRows.map(r => r.charges?.id).filter((id): id is string => !!id)
+    const { data: ventilation } = await listAllocationsForCharges(chargeIds)
+    const byCharge = new Map<string, AllocationRow[]>()
+    for (const l of ventilation ?? []) {
+      const arr = byCharge.get(l.charge_id) ?? []
+      arr.push(l)
+      byCharge.set(l.charge_id, arr)
+    }
+    setVentilationByCharge(byCharge)
   }, [filters])
 
   useEffect(() => { load() }, [load])
@@ -130,6 +145,7 @@ export function Entretiens() {
               <tbody>
                 {rows.map((row, i) => {
                   const isOverdue = row.next_due_date != null && row.next_due_date < new Date().toISOString().slice(0, 10)
+                  const ventilation = row.charges ? ventilationByCharge.get(row.charges.id) : undefined
                   return (
                     <tr
                       key={row.id}
@@ -157,7 +173,20 @@ export function Entretiens() {
                         {row.description ?? '—'}
                       </td>
                       <td className="px-4 py-3 font-mono">
-                        {row.cost_cts != null ? formatCents(row.cost_cts) : '—'}
+                        {ventilation && ventilation.length > 0 ? (
+                          <div className="flex flex-col gap-0.5">
+                            {ventilation.map(l => (
+                              <div key={l.id} className="flex items-center gap-1.5 text-[var(--fs-xs)]">
+                                <span className="text-[var(--text-muted)] truncate max-w-[100px]">
+                                  {l.charge_categories?.name ?? l.note ?? 'Sans catégorie'}
+                                </span>
+                                <span className="text-[var(--text)]">{formatCents(l.amount_cts)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          row.cost_cts != null ? formatCents(row.cost_cts) : '—'
+                        )}
                       </td>
                       <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
                         {row.mileage_km != null ? formatMileage(row.mileage_km) : '—'}
@@ -199,6 +228,7 @@ export function Entretiens() {
           <div className="md:hidden flex flex-col gap-3">
             {rows.map(row => {
               const isOverdue = row.next_due_date != null && row.next_due_date < new Date().toISOString().slice(0, 10)
+              const ventilation = row.charges ? ventilationByCharge.get(row.charges.id) : undefined
               return (
                 <button
                   key={row.id}
@@ -223,9 +253,17 @@ export function Entretiens() {
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      <span className="font-mono font-semibold text-[var(--text)]">
-                        {row.cost_cts != null ? formatCents(row.cost_cts) : '—'}
-                      </span>
+                      {ventilation && ventilation.length > 0 ? (
+                        ventilation.map(l => (
+                          <span key={l.id} className="text-[var(--fs-xs)] text-[var(--text)]">
+                            {l.charge_categories?.name ?? l.note ?? 'Sans catégorie'} · {formatCents(l.amount_cts)}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="font-mono font-semibold text-[var(--text)]">
+                          {row.cost_cts != null ? formatCents(row.cost_cts) : '—'}
+                        </span>
+                      )}
                       <FacturePdfLink
                         pennylane_id={row.charges?.pennylane_id}
                         receipt_url={row.charges?.receipt_url}
