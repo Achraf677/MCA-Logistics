@@ -105,7 +105,7 @@ export type LvSignatures = {
 
 export interface DeliveryRow extends Delivery {
   clients: { name: string; tariff_mode: string; tariff_rate_cts: number | null; email: string | null } | null
-  vehicles: { label: string } | null
+  vehicles: { label: string; plate: string } | null
   team_members: { full_name: string } | null
 }
 

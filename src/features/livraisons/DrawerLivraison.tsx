@@ -36,14 +36,16 @@ import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraison
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
 
+type Tab = 'detail' | 'montant' | 'suivi' | 'documents' | 'pod' | 'lv'
+
 interface Props {
   open: boolean
   onClose: () => void
   delivery?: DeliveryRow | null
   onSaved: () => void
+  /** Onglet pré-sélectionné à l'ouverture (ex 'lv' depuis la liste Bons de livraison). Défaut 'detail'. */
+  initialTab?: Tab
 }
-
-type Tab = 'detail' | 'montant' | 'suivi' | 'documents' | 'pod' | 'lv'
 
 interface ClientLookup extends ClientTariff {
   id: string
@@ -78,7 +80,7 @@ const EMPTY_FORM = {
 
 // ── Composant ─────────────────────────────────────────────────────────────────
 
-export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
+export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab = 'detail' }: Props) {
   const { companyId } = useProfile()
   const { toast }     = useToast()
   const isEdit        = !!delivery
@@ -245,8 +247,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved }: Props) {
     }
     setSaveAsTplOpen(false)
     setTplLabel('')
-    setTab('detail')
-  }, [delivery, open])
+    setTab(initialTab)
+  }, [delivery, open, initialTab])
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
 

@@ -120,7 +120,7 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
         address:           company.address,
         licence_transport: company.licence_transport,
       },
-      vehicle: delivery.vehicles ? { label: delivery.vehicles.label } : null,
+      vehicle: delivery.vehicles ? { label: delivery.vehicles.label, plate: delivery.vehicles.plate } : null,
       driver:  chauffeurLabel ? { full_name: chauffeurLabel } : null,
       client:  delivery.clients ? { name: delivery.clients.name } : null,
     })
