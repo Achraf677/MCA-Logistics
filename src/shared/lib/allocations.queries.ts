@@ -116,10 +116,10 @@ export async function listAllocationsForCharges(
 }
 
 /** Catégories de charges (pour le select de ventilation). */
-export async function listChargeCategories(): Promise<{ id: string; name: string }[]> {
+export async function listChargeCategories(): Promise<{ id: string; name: string; slug: string }[]> {
   const { data } = await supabase
     .from('charge_categories')
-    .select('id, name')
+    .select('id, name, slug')
     .order('name')
-  return (data ?? []) as { id: string; name: string }[]
+  return (data ?? []) as { id: string; name: string; slug: string }[]
 }

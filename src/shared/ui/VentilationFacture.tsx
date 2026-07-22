@@ -10,23 +10,32 @@ import { Plus, X, Loader2, CheckCircle2 } from 'lucide-react'
 import { formatMoney } from '../lib/money'
 import { chargeResteCts } from '../lib/allocations'
 import { validerMontantAllocation } from '../lib/ventilation'
+import { prepareCategorieCreation } from '../lib/categories'
+import { createCategory } from '../lib/categories.queries'
 import {
   listAllocationsForCharge, addAllocation, removeAllocation, listChargeCategories,
   type AllocationRow,
 } from '../lib/allocations.queries'
 import { useToast } from './useToast'
+import { useProfile } from '../../app/providers'
+
+/** Sentinelle du select — jamais un id réel de charge_categories. */
+const NOUVELLE_CATEGORIE = '__nouvelle__'
 
 interface Props {
   chargeId: string
   /** Montant total de la charge en centimes (ex : montant_ttc_cts). */
   chargeAmountCts: number
+  /** Type pré-rempli pour une catégorie créée depuis ce contexte (ex : 'entretien'). */
+  categoryType?: string
   onChanged?: () => void
 }
 
-export function VentilationFacture({ chargeId, chargeAmountCts, onChanged }: Props) {
+export function VentilationFacture({ chargeId, chargeAmountCts, categoryType, onChanged }: Props) {
   const { toast } = useToast()
+  const { companyId } = useProfile()
   const [lignes, setLignes]         = useState<AllocationRow[]>([])
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([])
+  const [categories, setCategories] = useState<{ id: string; name: string; slug: string }[]>([])
   const [loading, setLoading]       = useState(true)
   const [busy, setBusy]             = useState(false)
 
@@ -36,6 +45,13 @@ export function VentilationFacture({ chargeId, chargeAmountCts, onChanged }: Pro
   const [draftCategorie, setDraftCategorie] = useState('')
   const [draftLabel, setDraftLabel] = useState('')
   const [draftError, setDraftError] = useState('')
+
+  // Création de catégorie inline depuis le select ("+ Nouvelle catégorie…").
+  const [creatingCategorie, setCreatingCategorie] = useState(false)
+  const [newCategorieName, setNewCategorieName] = useState('')
+  const [newCategorieType, setNewCategorieType] = useState(categoryType ?? '')
+  const [newCategorieError, setNewCategorieError] = useState('')
+  const [creatingBusy, setCreatingBusy] = useState(false)
 
   const reste = chargeResteCts(chargeAmountCts, lignes)
   const complete = reste === 0 && lignes.length > 0
@@ -55,6 +71,33 @@ export function VentilationFacture({ chargeId, chargeAmountCts, onChanged }: Pro
 
   const resetDraft = () => {
     setAdding(false); setDraftMontant(''); setDraftCategorie(''); setDraftLabel(''); setDraftError('')
+    resetNewCategorie()
+  }
+
+  const resetNewCategorie = () => {
+    setCreatingCategorie(false); setNewCategorieName(''); setNewCategorieType(categoryType ?? ''); setNewCategorieError('')
+  }
+
+  const handleCategorieSelectChange = (value: string) => {
+    if (value === NOUVELLE_CATEGORIE) { setCreatingCategorie(true); return }
+    setDraftCategorie(value)
+  }
+
+  const handleCreateCategorie = async () => {
+    const check = prepareCategorieCreation({ name: newCategorieName, type: newCategorieType || null }, categories)
+    if (!check.ok) { setNewCategorieError(check.error ?? 'Nom invalide'); return }
+    if (!companyId) { setNewCategorieError('Profil non chargé'); return }
+
+    setCreatingBusy(true)
+    const { data, error } = await createCategory(companyId, check.name!, newCategorieType || null)
+    setCreatingBusy(false)
+    if (error) { setNewCategorieError(error.message); return }
+
+    const created = { id: data.id as string, name: data.name as string, slug: data.slug as string }
+    setCategories(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
+    setDraftCategorie(created.id)
+    resetNewCategorie()
+    toast(`Catégorie « ${created.name} » créée`)
   }
 
   const handleAdd = async () => {
@@ -166,12 +209,49 @@ export function VentilationFacture({ chargeId, chargeAmountCts, onChanged }: Pro
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-[var(--fs-xs)] text-[var(--text-muted)] uppercase tracking-wide">Catégorie</span>
-                <select value={draftCategorie} onChange={e => setDraftCategorie(e.target.value)} className={inputCls}>
+                <select
+                  value={draftCategorie}
+                  onChange={e => handleCategorieSelectChange(e.target.value)}
+                  className={inputCls}
+                  disabled={creatingCategorie}
+                >
                   <option value="">— Aucune —</option>
                   {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <option value={NOUVELLE_CATEGORIE}>+ Nouvelle catégorie…</option>
                 </select>
               </label>
             </div>
+
+            {creatingCategorie && (
+              <div className="rounded-[var(--r-md)] border border-dashed border-[var(--brand)] p-2.5 flex flex-col gap-2">
+                <label className="flex flex-col gap-1">
+                  <span className="text-[var(--fs-xs)] text-[var(--text-muted)] uppercase tracking-wide">Nom de la catégorie</span>
+                  <input
+                    type="text" value={newCategorieName}
+                    onChange={e => { setNewCategorieName(e.target.value); setNewCategorieError('') }}
+                    placeholder="Ex. AdBlue" className={inputCls} autoFocus
+                  />
+                </label>
+                {newCategorieError && <p className="text-[var(--danger)] text-[var(--fs-xs)]">{newCategorieError}</p>}
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button" onClick={handleCreateCategorie} disabled={creatingBusy}
+                    className="px-3 py-1.5 rounded-[var(--r-md)] bg-[var(--brand)] text-white text-[var(--fs-xs)]
+                      font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+                  >
+                    {creatingBusy ? 'Création…' : 'Créer'}
+                  </button>
+                  <button
+                    type="button" onClick={resetNewCategorie} disabled={creatingBusy}
+                    className="px-3 py-1.5 rounded-[var(--r-md)] border border-[var(--border)] text-[var(--fs-xs)]
+                      text-[var(--text-muted)] hover:text-[var(--text)] transition-colors disabled:opacity-40"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            )}
+
             <label className="flex flex-col gap-1">
               <span className="text-[var(--fs-xs)] text-[var(--text-muted)] uppercase tracking-wide">Libellé</span>
               <input
@@ -182,7 +262,7 @@ export function VentilationFacture({ chargeId, chargeAmountCts, onChanged }: Pro
             {draftError && <p className="text-[var(--danger)] text-[var(--fs-xs)]">{draftError}</p>}
             <div className="flex items-center gap-2">
               <button
-                type="button" onClick={handleAdd} disabled={busy}
+                type="button" onClick={handleAdd} disabled={busy || creatingCategorie}
                 className="px-3 py-1.5 rounded-[var(--r-md)] bg-[var(--brand)] text-white text-[var(--fs-xs)]
                   font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
               >
