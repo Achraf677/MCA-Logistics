@@ -30,7 +30,7 @@ const baseCompany = (over: Partial<LvCompanyInput> = {}): LvCompanyInput => ({
   ...over,
 })
 
-const veh: LvVehicleInput = { label: 'FT-123-AB' }
+const veh: LvVehicleInput = { label: 'MOVANO', plate: 'FT-123-AB' }
 const drv: LvDriverInput = { full_name: 'Achraf Chikri' }
 const cli: LvClientInput = { name: 'Restaurant Le Kléber' }
 
@@ -51,9 +51,44 @@ describe('buildLettreVoiture', () => {
     expect(data.marchandise.poids_kg).toBe(45.5)
     // Fallback description quand marchandise_desc absent
     expect(data.marchandise.description).toBe('Cartons de vin')
+    expect(data.vehicule_nom).toBe('MOVANO')
     expect(data.vehicule_immat).toBe('FT-123-AB')
     expect(data.chauffeur).toBe('Achraf Chikri')
     expect(data.prix_ttc_formate).toBeTruthy()
+  })
+
+  it('immatriculation : utilise vehicle.plate, jamais vehicle.label', () => {
+    const { data } = buildLettreVoiture({
+      delivery: baseDelivery(),
+      company: baseCompany(),
+      vehicle: { label: 'MOVANO', plate: 'EB-612-SK' },
+      driver: drv, client: cli,
+    })
+    expect(data.vehicule_immat).toBe('EB-612-SK')
+    expect(data.vehicule_nom).toBe('MOVANO')
+  })
+
+  it('vehicle.plate manquant (mais label présent) → mention manquante, vehicule_immat vide', () => {
+    const { data, missing } = buildLettreVoiture({
+      delivery: baseDelivery(),
+      company: baseCompany(),
+      vehicle: { label: 'MOVANO', plate: null },
+      driver: drv, client: cli,
+    })
+    expect(missing).toContain('Immatriculation du véhicule')
+    expect(data.vehicule_immat).toBe('')
+    expect(data.vehicule_nom).toBe('MOVANO')
+  })
+
+  it('véhicule absent (vehicle_id null) → mention manquante, vehicule_nom null', () => {
+    const { data, missing } = buildLettreVoiture({
+      delivery: baseDelivery(),
+      company: baseCompany(),
+      vehicle: null, driver: drv, client: cli,
+    })
+    expect(missing).toContain('Immatriculation du véhicule')
+    expect(data.vehicule_immat).toBe('')
+    expect(data.vehicule_nom).toBeNull()
   })
 
   it('destinataire_nom vide → fallback sur nom client', () => {

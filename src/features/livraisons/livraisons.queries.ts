@@ -6,7 +6,7 @@ import type { DeliveryFilters, DeliveryInsert, DeliveryStatus } from './livraiso
 const WITH_JOINS = `
   *,
   clients!client_id(name, tariff_mode, tariff_rate_cts, email),
-  vehicles!vehicle_id(label),
+  vehicles!vehicle_id(label, plate),
   team_members!driver_id(full_name)
 `.trim()
 
@@ -28,6 +28,21 @@ export async function getDeliveries(filters: DeliveryFilters = {}) {
   if (filters.driver_id)  q = q.eq('driver_id', filters.driver_id)
   if (filters.date_from)  q = q.gte('date', filters.date_from)
   if (filters.date_to)    q = q.lte('date', filters.date_to)
+
+  return q
+}
+
+/** Livraisons ayant un bon de livraison (lv_numero attribué) — alimente l'onglet
+ *  "Bons de livraison". Aucune nouvelle table/colonne : filtre sur deliveries. */
+export async function getDeliveriesWithLv(filters: Pick<DeliveryFilters, 'date_from' | 'date_to'> = {}) {
+  let q = supabase
+    .from('deliveries')
+    .select(WITH_JOINS)
+    .not('lv_numero', 'is', null)
+    .order('date', { ascending: false })
+
+  if (filters.date_from) q = q.gte('date', filters.date_from)
+  if (filters.date_to)   q = q.lte('date', filters.date_to)
 
   return q
 }

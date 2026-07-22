@@ -105,7 +105,8 @@ export function buildLettreVoiturePdf({ data, signatures, fileName }: BuildOptio
   ])
 
   y = drawSection(doc, y, 'VÉHICULE / CHAUFFEUR', [
-    [`Immatriculation`, data.vehicule_immat],
+    ...(data.vehicule_nom ? [[`Véhicule`, data.vehicule_nom] as [string, string]] : []),
+    [`Plaque d'immatriculation`, data.vehicule_immat],
     [`Chauffeur`, data.chauffeur],
     ...(data.prix_ttc_formate
       ? [[`Prix du transport (TTC)`, data.prix_ttc_formate] as [string, string]]

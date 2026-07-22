@@ -43,8 +43,10 @@ export interface LvCompanyInput {
 }
 
 export interface LvVehicleInput {
-  /** Immatriculation — label du véhicule (le label est utilisé comme n° d'immat côté MCA). */
+  /** Nom/modèle du véhicule (ex "MOVANO") — affiché à côté de la plaque, jamais utilisé comme immat. */
   label: string | null
+  /** Immatriculation réelle (ex "EB-612-SK") — seul champ utilisé comme n° d'immat sur la LV. */
+  plate: string | null
 }
 
 export interface LvDriverInput {
@@ -81,6 +83,8 @@ export interface LettreVoitureData {
     nb_colis: number
     poids_kg: number
   }
+  /** Nom/modèle du véhicule (ex "MOVANO") — affichage seulement, jamais l'immat. */
+  vehicule_nom: string | null
   vehicule_immat: string
   chauffeur: string
   prix_ttc_formate: string | null
@@ -133,8 +137,10 @@ export function buildLettreVoiture(inputs: {
   need('Nombre de colis (> 0)', nb_colis > 0)
   need('Poids réel en kg (> 0)', poids_kg > 0)
 
-  // Véhicule + chauffeur.
-  const immat = (vehicle?.label ?? '').trim()
+  // Véhicule + chauffeur. L'immatriculation vient TOUJOURS de `plate` — le
+  // `label` (nom/modèle, ex "MOVANO") n'est qu'un complément d'affichage.
+  const vehicule_nom = (vehicle?.label ?? '').trim() || null
+  const immat = (vehicle?.plate ?? '').trim()
   const chauffeur = (driver?.full_name ?? '').trim()
   need('Immatriculation du véhicule', immat.length > 0)
   need('Nom du chauffeur', chauffeur.length > 0)
@@ -168,6 +174,7 @@ export function buildLettreVoiture(inputs: {
       nb_colis,
       poids_kg,
     },
+    vehicule_nom,
     vehicule_immat: immat,
     chauffeur,
     prix_ttc_formate,
