@@ -6,21 +6,20 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { SyncButton } from '../../shared/ui/SyncButton'
 import { EmptyState } from '../../shared/ui/EmptyState'
-import { ContactLinks } from '../../shared/ui/ContactLinks'
 import { SkeletonTable, SkeletonKpis } from '../../shared/ui/Skeleton'
 import { TabActions } from '../../shared/ui/TabbedSection'
 import { DrawerClient } from './DrawerClient'
 import { useToast } from '../../shared/ui/useToast'
-import { getClients, exportClientsCSV, getFacturedDeliveries, syncPennylaneClients } from './clients.queries'
+import { getClients, exportClientsCSV, getFacturedDeliveries, getDeliveriesForTiersColumns, syncPennylaneClients } from './clients.queries'
 import { getSyncState } from '../../shared/lib/syncState'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, countByType,
-  computeEncours, getTariffLabel,
+  computeEncours, computeCaFactureCts, lastDeliveryDate,
 } from './clients.logic'
 import { formatMoney } from '../../shared/lib/money'
 import { downloadCSV } from '../../shared/lib/download'
-import type { Client, ClientFilters, DeliveryForEncours } from './clients.types'
+import type { Client, ClientFilters, DeliveryForEncours, DeliveryForTiersColumns } from './clients.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
 interface ClientEncours {
@@ -45,6 +44,9 @@ export function Clients() {
   // Encours data: map clientId -> encours
   const [encoursByClient, setEncoursByClient] = useState<Map<string, ClientEncours>>(new Map())
   const [encoursLoading, setEncoursLoading] = useState(true)
+  // Colonnes Tiers (CA facturé + dernière livraison) — Σ deliveries livrées/facturées/payées.
+  const [caByClient, setCaByClient] = useState<Map<string, number>>(new Map())
+  const [lastDeliveryByClient, setLastDeliveryByClient] = useState<Map<string, string | null>>(new Map())
 
   const loadEncours = useCallback(async (clientList: Client[]) => {
     setEncoursLoading(true)
@@ -72,6 +74,28 @@ export function Clients() {
     setEncoursLoading(false)
   }, [])
 
+  const loadTiersColumns = useCallback(async () => {
+    const { data } = await getDeliveriesForTiersColumns()
+    if (!data) return
+
+    const byClient = new Map<string, DeliveryForTiersColumns[]>()
+    for (const d of data) {
+      if (!d.client_id) continue
+      const arr = byClient.get(d.client_id) ?? []
+      arr.push(d)
+      byClient.set(d.client_id, arr)
+    }
+
+    const ca = new Map<string, number>()
+    const lastDate = new Map<string, string | null>()
+    for (const [clientId, deliveries] of byClient) {
+      ca.set(clientId, computeCaFactureCts(deliveries))
+      lastDate.set(clientId, lastDeliveryDate(deliveries))
+    }
+    setCaByClient(ca)
+    setLastDeliveryByClient(lastDate)
+  }, [])
+
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     const { data, error } = await getClients({ ...filters, search: search || undefined })
@@ -80,7 +104,8 @@ export function Clients() {
     setClients(clientList)
     setLoading(false)
     loadEncours(clientList)
-  }, [filters, search, loadEncours])
+    loadTiersColumns()
+  }, [filters, search, loadEncours, loadTiersColumns])
 
   const fetchLastSync = useCallback(async () => {
     const ts = await getSyncState('pennylane_clients')
@@ -218,7 +243,7 @@ export function Clients() {
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['Nom', 'Type', 'Tarif', 'Délai', 'Encours', 'Statut paiement', ''].map(h => (
+                  {['Nom', 'Type', 'CA facturé', 'Encours', 'Dernière livraison', 'Statut paiement', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -237,23 +262,25 @@ export function Clients() {
                       className={`border-t border-[var(--border)] cursor-pointer transition-colors hover:bg-[var(--bg-card-hover)]
                         ${i % 2 === 0 ? 'bg-[var(--bg)]' : 'bg-[var(--bg-card)]/40'}`}
                     >
-                      <td className="px-4 py-3 font-medium text-[var(--text)]">
+                      <td className="px-4 py-3 font-medium text-[var(--text)] uppercase">
                         {c.name}
-                        {!c.active && <span className="ml-2 text-[var(--text-disabled)] text-[var(--fs-xs)]">(inactif)</span>}
+                        {!c.active && <span className="ml-2 text-[var(--text-disabled)] text-[var(--fs-xs)] normal-case">(inactif)</span>}
                       </td>
                       <td className="px-4 py-3">
                         {c.type
-                          ? <Badge color={CLIENT_TYPE_COLORS[c.type] as 'info' | 'success' | 'warning' | 'muted'}>
+                          ? <Badge color={CLIENT_TYPE_COLORS[c.type] as 'info' | 'success' | 'warning' | 'muted' | 'purple'}>
                               {CLIENT_TYPE_LABELS[c.type]}
                             </Badge>
                           : <span className="text-[var(--text-disabled)]">—</span>}
                       </td>
-                      <td className="px-4 py-3 text-[var(--text-muted)] text-[var(--fs-xs)]">
-                        {getTariffLabel(c)}
+                      <td className="px-4 py-3 text-[var(--text-muted)]">
+                        {formatMoney(caByClient.get(c.id) ?? 0)}
                       </td>
-                      <td className="px-4 py-3 text-[var(--text-muted)]">{c.payment_terms} j</td>
                       <td className="px-4 py-3 font-medium text-[var(--text)]">
                         {encoursLoading ? '…' : enc ? formatMoney(enc.total_cts) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-[var(--text-muted)] text-[var(--fs-xs)]">
+                        {formatDeliveryDate(lastDeliveryByClient.get(c.id))}
                       </td>
                       <td className="px-4 py-3">
                         {encoursLoading ? '…' : <PaymentStatusBadge status={payStatus} hasEncours={!!enc && enc.count > 0} />}
@@ -281,16 +308,15 @@ export function Clients() {
                   className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 hover:bg-[var(--bg-card-hover)] transition-colors"
                 >
                   <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className="font-medium text-[var(--text)]">{c.name}</span>
-                    {c.type && (
-                      <Badge color={CLIENT_TYPE_COLORS[c.type] as 'info' | 'success' | 'warning' | 'muted'}>
-                        {CLIENT_TYPE_LABELS[c.type]}
-                      </Badge>
-                    )}
+                    <span className="font-medium text-[var(--text)] uppercase">{c.name}</span>
+                    {encoursLoading
+                      ? <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">…</span>
+                      : <PaymentStatusBadge
+                          status={!enc || enc.count === 0 ? 'a_jour' : (enc.overdue_cts ?? 0) > 0 ? 'en_retard' : 'du'}
+                          hasEncours={!!enc && enc.count > 0}
+                        />}
                   </div>
                   <div className="flex flex-col gap-1 text-[var(--fs-xs)] text-[var(--text-muted)]">
-                    <ContactLinks phone={c.phone} email={c.email} />
-                    <span>Délai : {c.payment_terms} j · {getTariffLabel(c)}</span>
                     {enc && enc.count > 0 && (
                       <span className={enc.overdue_cts > 0 ? 'text-[var(--danger)]' : ''}>
                         Encours : {formatMoney(enc.total_cts)}
@@ -320,4 +346,9 @@ function PaymentStatusBadge({ status, hasEncours }: { status: 'a_jour' | 'du' | 
   if (status === 'en_retard') return <Badge color="danger">En retard</Badge>
   if (status === 'du') return <Badge color="warning">Dû</Badge>
   return <Badge color="success">À jour</Badge>
+}
+
+function formatDeliveryDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }

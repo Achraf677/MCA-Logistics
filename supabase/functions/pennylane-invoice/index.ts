@@ -5,6 +5,7 @@ import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { ExternalApiError } from '../_shared/http.ts';
 import { centimesToEuros } from '../_shared/money.ts';
+import { computeDeadline } from '../_shared/paymentTerms.ts';
 import type { InvoiceLine } from '../_shared/pennylane.ts';
 import {
   createCompanyCustomer,
@@ -172,7 +173,7 @@ Deno.serve(async (req: Request) => {
   // ── Client Pennylane (créé/récupéré une seule fois) ──────────────────────────
   const { data: client, error: cErr } = await supabase
     .from('clients')
-    .select('id, name, email, pennylane_id, address, postal_code, city, payment_terms')
+    .select('id, name, email, pennylane_id, address, postal_code, city, payment_terms, payment_terms_label')
     .eq('id', uniqueClientIds[0])
     .single();
 
@@ -203,10 +204,10 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── Date et échéance ─────────────────────────────────────────────────────
+    // payment_terms_label (select façon Pennylane) prime si renseigné — gère
+    // notamment "30 jours fin de mois", indiscernable du seul entier payment_terms.
     const invoiceDate = new Date().toISOString().slice(0, 10);
-    const deadlineObj = new Date(`${invoiceDate}T00:00:00Z`);
-    deadlineObj.setUTCDate(deadlineObj.getUTCDate() + (client.payment_terms ?? 30));
-    const deadlineDate = deadlineObj.toISOString().slice(0, 10);
+    const deadlineDate = computeDeadline(client.payment_terms_label, invoiceDate, client.payment_terms ?? 30);
 
     // ── Lignes de facture : une par livraison + N par ligne supplémentaire ───
     const invoiceLines: InvoiceLine[] = validatedLines.map((ln) => ({

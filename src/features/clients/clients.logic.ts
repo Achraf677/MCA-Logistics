@@ -1,18 +1,20 @@
-import type { Client, DeliveryForEncours, TariffMode } from './clients.types'
-import { formatMoney } from '../../shared/lib/money'
+import type { Client, DeliveryForEncours, DeliveryForTiersColumns, TariffMode } from './clients.types'
+import { formatMoney, deliveryTotalTtcCts } from '../../shared/lib/money'
 
 export const CLIENT_TYPE_LABELS: Record<NonNullable<Client['type']>, string> = {
-  medical:    'Médical',
-  ecommerce:  'E-commerce',
-  retail:     'Retail / Palettes',
-  particulier:'Particulier',
+  medical:      'Médical',
+  ecommerce:    'E-commerce',
+  retail:       'Retail / Palettes',
+  particulier:  'Particulier',
+  professionnel:'Professionnel',
 }
 
 export const CLIENT_TYPE_COLORS: Record<NonNullable<Client['type']>, string> = {
-  medical:    'info',
-  ecommerce:  'success',
-  retail:     'warning',
-  particulier:'muted',
+  medical:      'info',
+  ecommerce:    'success',
+  retail:       'warning',
+  particulier:  'muted',
+  professionnel:'purple',
 }
 
 export const TARIFF_MODE_LABELS: Record<TariffMode, string> = {
@@ -58,6 +60,22 @@ export function paymentStatusOf(
   const due = new Date(delivery.invoiced_at)
   due.setDate(due.getDate() + delivery.payment_terms)
   return today <= due ? 'du' : 'en_retard'
+}
+
+/** CA facturé — Σ deliveryTotalTtcCts des livraisons facturées OU payées
+ *  (l'encours, lui, ne compte que 'facturee' — voir computeEncours). */
+export function computeCaFactureCts(deliveries: DeliveryForTiersColumns[]): number {
+  return deliveries
+    .filter(d => d.statut === 'facturee' || d.statut === 'payee')
+    .reduce((s, d) => s + deliveryTotalTtcCts(d), 0)
+}
+
+/** Date de la livraison la plus récente (livree/facturee/payee), ou null si aucune. */
+export function lastDeliveryDate(deliveries: DeliveryForTiersColumns[]): string | null {
+  return deliveries.reduce<string | null>(
+    (max, d) => (max === null || d.date > max ? d.date : max),
+    null,
+  )
 }
 
 export function computeEncours(

@@ -11,9 +11,12 @@ export interface Client {
   postal_code: string | null
   email: string | null
   phone: string | null
-  type: 'medical' | 'ecommerce' | 'retail' | 'particulier' | null
+  type: 'medical' | 'ecommerce' | 'retail' | 'particulier' | 'professionnel' | null
   pennylane_id: string | null
   payment_terms: number
+  /** Code du select façon Pennylane (migration 20260722100000). NULL = legacy,
+   *  dérivé de `payment_terms` (voir shared/lib/paymentTerms.ts). */
+  payment_terms_label: string | null
   notes: string | null
   active: boolean
   tariff_mode: TariffMode
@@ -43,4 +46,13 @@ export interface DeliveryForEncours {
   invoiced_at: string | null
   /** client payment_terms in days — provided by caller */
   payment_terms: number
+}
+
+/** Livraison utilisée pour la liste Tiers (CA facturé + dernière livraison) —
+ *  aucune import de features/livraisons (règle d'or archi), forme minimale. */
+export interface DeliveryForTiersColumns extends DeliveryForEncours {
+  client_id: string
+  date: string
+  /** Requis par deliveryTotalTtcCts (shared/lib/money.ts) pour le CA facturé. */
+  extra_lines?: { label: string; quantity: number; amount_ht_cts: number; tva_rate: number }[] | null
 }

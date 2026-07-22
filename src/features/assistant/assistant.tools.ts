@@ -6,6 +6,8 @@
 
 import { supabase } from '../../app/providers'
 import { deliveryTotalTtcCts, effectiveHtCts, centimesToEuros } from '../../shared/lib/money'
+import { normalizeClientName } from '../../shared/lib/normalizeClientName'
+import { defaultPaymentTermCode } from '../../shared/lib/paymentTerms'
 import type { PendingAction } from './AssistantContext'
 // Queries LOCALES à l'assistant (étanchéité) pour la modification de client.
 import { findClientsByName, updateClient, updateDelivery } from './assistant.queries'
@@ -906,7 +908,7 @@ export interface CreateClientArgs {
   delai_paiement_jours?: number
 }
 
-const CLIENT_TYPES = ['medical', 'ecommerce', 'retail', 'particulier']
+const CLIENT_TYPES = ['medical', 'ecommerce', 'retail', 'particulier', 'professionnel']
 
 export async function prepareCreateClient(args: CreateClientArgs): Promise<PrepareResult> {
   const nom = (args.nom ?? '').trim()
@@ -922,7 +924,7 @@ export async function prepareCreateClient(args: CreateClientArgs): Promise<Prepa
   // (et non ''), pour un insert propre. Mapping confirmé : ville→city, telephone→phone.
   const payload: ClientInsert = {
     company_id: companyId,
-    name: nom,
+    name: normalizeClientName(nom),
     siret: null,
     tva_intra: null,
     address: null,
@@ -932,6 +934,7 @@ export async function prepareCreateClient(args: CreateClientArgs): Promise<Prepa
     phone: args.telephone?.trim() || null,
     type,
     payment_terms,
+    payment_terms_label: defaultPaymentTermCode(payment_terms),
     notes: null,
     active: true,
     tariff_mode: 'manuel',
@@ -1526,9 +1529,9 @@ const normName = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u030
 
 function clientPayloadFromName(companyId: string, name: string): ClientInsert {
   return {
-    company_id: companyId, name,
+    company_id: companyId, name: normalizeClientName(name),
     siret: null, tva_intra: null, address: null, city: null, postal_code: null,
-    email: null, phone: null, type: null, payment_terms: 30, notes: null,
+    email: null, phone: null, type: null, payment_terms: 30, payment_terms_label: '30', notes: null,
     active: true, tariff_mode: 'manuel', tariff_rate_cts: null,
   }
 }

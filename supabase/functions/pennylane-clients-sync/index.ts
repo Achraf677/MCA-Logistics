@@ -7,6 +7,7 @@ import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
 import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
+import { normalizeClientName } from '../_shared/normalizeClientName.ts';
 
 // ── Types Pennylane V2 — GET /customers ───────────────────────────────────────
 // L'adresse de facturation est un objet imbriqué { address, postal_code, city, country_alpha2 }.
@@ -97,7 +98,7 @@ Deno.serve(async (req) => {
         .map((c) => ({
           company_id:   companyId,
           pennylane_id: String(c.id),
-          name:         c.name ?? `Client Pennylane #${c.id}`,
+          name:         normalizeClientName(c.name ?? `Client Pennylane #${c.id}`),
           // reg_no = SIREN (9 chiffres) — seul identifiant dispo dans Pennylane V2
           siret:        c.reg_no ?? null,
           tva_intra:    c.vat_number ?? null,

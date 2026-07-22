@@ -1,5 +1,5 @@
 import { supabase } from '../../app/providers'
-import type { ClientFilters, ClientInsert, ClientUpdate, DeliveryForEncours } from './clients.types'
+import type { ClientFilters, ClientInsert, ClientUpdate, DeliveryForEncours, DeliveryForTiersColumns } from './clients.types'
 
 export async function getClients(filters: ClientFilters = {}) {
   let q = supabase.from('clients').select('*').order('name')
@@ -65,6 +65,20 @@ export async function getFacturedDeliveries(): Promise<{ data: DeliveryForEncour
     .eq('statut', 'facturee')
 
   return { data: data as DeliveryForEncours[] | null, error }
+}
+
+/**
+ * Read-only : livraisons livrées/facturées/payées, toutes clients confondues —
+ * alimente la liste Tiers (colonnes CA facturé + dernière livraison). Statuts
+ * antérieurs (planifiee/en_cours) exclus : pas encore "livré".
+ */
+export async function getDeliveriesForTiersColumns(): Promise<{ data: DeliveryForTiersColumns[] | null; error: unknown }> {
+  const { data, error } = await supabase
+    .from('deliveries')
+    .select('id, client_id, statut, date, amount_ttc_cts, montant_ttc_cts, invoiced_at, extra_lines')
+    .in('statut', ['livree', 'facturee', 'payee'])
+
+  return { data: data as DeliveryForTiersColumns[] | null, error }
 }
 
 /** Read-only: fetches deliveries for a single client (all statuts) — used in the DrawerClient tabs */
