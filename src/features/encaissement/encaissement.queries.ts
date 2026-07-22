@@ -61,10 +61,6 @@ export async function getAutresEntrees(
   return { data: data as AutreEntreeRow[], error: null }
 }
 
-export async function checkPayments() {
-  return supabase.functions.invoke('pennylane-payment-check', { body: {} })
-}
-
 export async function exportEncaissementsCSV(filters: EncaissementFilters = {}) {
   const { data } = await getEncaissements(filters)
   if (!data) return ''

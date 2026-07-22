@@ -12,6 +12,7 @@ import type { ActionKey } from '../shared/actions/ActionBar'
 import { AssistantWidget } from '../features/assistant/AssistantWidget'
 import { AlertesBell } from '../features/alertes/AlertesBell'
 import { TabActions } from '../shared/ui/TabbedSection'
+import { SyncIndicator } from '../shared/ui/SyncIndicator'
 import { supabase, useProfile } from './providers'
 import { usePermissions } from '../shared/permissions/usePermissions'
 
@@ -230,6 +231,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
           </div>
           <div className="flex items-center gap-2 ml-auto shrink-0">
             <ActionBar actions={actions} onAction={onAction} />
+            <SyncIndicator />
             <AlertesBell />
             {profile && (
               <div

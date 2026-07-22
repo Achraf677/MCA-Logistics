@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { CheckCircle, AlertTriangle, FileText, Users, CheckCheck, ExternalLink } from 'lucide-react'
+import { CheckCircle, AlertTriangle, FileText, Users, ExternalLink } from 'lucide-react'
 import { Shell }        from '../../app/Shell'
 import { KpiCard }      from '../../shared/ui/KpiCard'
 import { Badge }        from '../../shared/ui/Badge'
 import { EmptyState }   from '../../shared/ui/EmptyState'
 import { SkeletonTable } from '../../shared/ui/Skeleton'
-import { SyncButton }   from '../../shared/ui/SyncButton'
 import { formatMoney }  from '../../shared/lib/money'
-import { getOverdueInvoices, checkPayments } from './relances.queries'
+import { useSync } from '../../app/SyncProvider'
+import { getOverdueInvoices } from './relances.queries'
 import type { RelanceRow, Palier } from './relances.types'
 
 const PALIER_COLOR: Record<Palier, 'muted' | 'warning' | 'danger'> = {
@@ -37,7 +37,9 @@ export function Relances() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { load() }, [load])
+  const { syncState, syncIfStale } = useSync()
+  useEffect(() => { syncIfStale('paiements') }, [syncIfStale])
+  useEffect(() => { load() }, [load, syncState.paiements.lastSyncAt])
 
   const totalCts      = useMemo(() => rows.reduce((s, r) => s + r.effective_ttc_cts, 0), [rows])
   const uniqueClients = useMemo(() => new Set(rows.map(r => r.client_id)).size, [rows])
@@ -46,24 +48,10 @@ export function Relances() {
     <Shell pageTitle="Relances impayées">
       <div className="flex flex-col gap-5">
 
-        {/* Note + SyncButton */}
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-          <p className="text-[var(--fs-xs)] text-[var(--text-muted)] flex-1">
-            Les relances sont gérées dans Pennylane (séquences automatiques). Cette vue est un radar des impayés.
-          </p>
-          <SyncButton
-            label="Vérifier les paiements"
-            icon={<CheckCheck size={13} />}
-            onSync={async () => {
-              const { data, error } = await checkPayments()
-              if (error || data?.ok === false)
-                return { ok: false, message: error?.message ?? data?.error ?? 'Échec de la vérification' }
-              const marked = data?.data?.marked_payee ?? 0
-              await load()
-              return { ok: true, message: marked > 0 ? `${marked} livraison(s) marquée(s) payée(s)` : 'Aucun nouveau paiement détecté' }
-            }}
-          />
-        </div>
+        {/* Note */}
+        <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+          Les relances sont gérées dans Pennylane (séquences automatiques). Cette vue est un radar des impayés.
+        </p>
 
         {/* KPIs */}
         <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 [&>*]:min-w-0">

@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronDown, Wallet, CheckCheck } from 'lucide-react'
+import { ChevronDown, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
-import { SyncButton } from '../../shared/ui/SyncButton'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
@@ -17,7 +16,7 @@ import {
 } from '../../shared/lib/rapprochementQonto'
 import type { JustifType, CreditTag } from '../../shared/lib/rapprochementQonto'
 import {
-  getLatestSnapshot, getTransactions, syncQonto, checkPayments,
+  getLatestSnapshot, getTransactions,
   getChargesForRapprochement, linkChargeToTransaction, unlinkChargeFromTransaction,
   setJustifType, clearJustifType, getTeamMemberNames, getClientNames,
 } from './tresorerie.queries'
@@ -26,6 +25,7 @@ import {
 } from './tresorerie.logic'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
+import { useSync } from '../../app/SyncProvider'
 import type { TreasurySnapshot, QontoTx } from './tresorerie.types'
 import type { ChargePick } from '../../shared/types/charges'
 
@@ -77,7 +77,9 @@ export function Tresorerie() {
     setLoading(false)
   }, [])
 
-  useEffect(() => { load() }, [load])
+  const { syncState, syncIfStale } = useSync()
+  useEffect(() => { syncIfStale('qonto'); syncIfStale('paiements') }, [syncIfStale])
+  useEffect(() => { load() }, [load, syncState.qonto.lastSyncAt, syncState.paiements.lastSyncAt])
 
   // ── Dérivés rapprochement ──────────────────────────────────────────────────
   const associeNames = [
@@ -344,34 +346,6 @@ export function Tresorerie() {
           <KpiCard label="Transactions"   value={txs.length} />
         </div>
       )}
-
-      {/* Sync */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        <SyncButton
-          label="Synchroniser Qonto"
-          variant="primary"
-          lastSyncAt={snapshot?.fetched_at ?? null}
-          onSync={async () => {
-            const { data, error } = await syncQonto()
-            if (error || data?.ok === false)
-              return { ok: false, message: error?.message ?? data?.error ?? 'Échec de la synchronisation Qonto' }
-            await load()
-            return { ok: true, message: 'Solde mis à jour' }
-          }}
-        />
-        <SyncButton
-          label="Vérifier les paiements"
-          icon={<CheckCheck size={13} />}
-          onSync={async () => {
-            const { data, error } = await checkPayments()
-            if (error || data?.ok === false)
-              return { ok: false, message: error?.message ?? data?.error ?? 'Échec de la vérification des paiements' }
-            const marked = data?.data?.marked_payee ?? 0
-            await load()
-            return { ok: true, message: marked > 0 ? `${marked} livraison(s) marquée(s) payée(s)` : 'Aucun nouveau paiement détecté' }
-          }}
-        />
-      </div>
 
       {/* Stats discrètes */}
       {!loading && (debitsSansJustif.length > 0 || creditsNonIdentifies.length > 0) && (

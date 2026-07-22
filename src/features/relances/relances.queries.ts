@@ -58,7 +58,3 @@ export async function getOverdueInvoices(): Promise<{ data: RelanceRow[] | null;
   return { data: result, error: null }
 }
 
-export async function checkPayments() {
-  return supabase.functions.invoke('pennylane-payment-check', { body: {} })
-}
-
