@@ -46,6 +46,12 @@ export interface ChargePick {
    * (supprimer de l'app ou conserver). Absent = non compté (rétrocompat).
    */
   pennylane_deleted_at?: string | null
+  /**
+   * Immobilisation (migration 20260724100000) — un achat d'investissement
+   * (véhicule…), jamais un débit Qonto "à rapprocher" au sens charge
+   * d'exploitation. Absent (`undefined`) = considéré false (rétrocompat).
+   */
+  est_immobilisation?: boolean
 }
 
 /** Une charge est "candidate au rapprochement Qonto" uniquement si elle a été
@@ -120,6 +126,7 @@ export function countChargesArapprocher(txs: TxPick[], charges: ChargePick[]): n
     c.montant_ttc_cts != null &&
     c.montant_ttc_cts >= 0 &&                       // exclut les avoirs (jamais un débit Qonto)
     isChargeQonto(c) &&                             // exclut les canaux hors Qonto
+    !c.est_immobilisation &&                        // une immobilisation n'est pas "à rapprocher"
     !linkedChargeIds.has(c.id) &&
     unreconciledDebitAmounts.has(c.montant_ttc_cts),
   ).length

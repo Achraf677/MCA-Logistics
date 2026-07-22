@@ -35,7 +35,8 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
       .from('charges')
       .select('id, mode_paiement, rembourse_le, montant_ttc_cts')
       .eq('mode_paiement', 'note_de_frais')
-      .is('rembourse_le', null),
+      .is('rembourse_le', null)
+      .eq('est_immobilisation', false),
     // Livrées/facturées/payées — candidates au contrôle "sans justificatif".
     supabase
       .from('deliveries')

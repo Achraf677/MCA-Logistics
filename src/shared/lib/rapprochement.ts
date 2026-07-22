@@ -27,6 +27,8 @@ export async function getUnlinkedChargesFor(target: RapprochementTarget): Promis
   let q = supabase
     .from('charges')
     .select('id, date, label, montant_ht_cts, montant_ttc_cts, tva_cts, tva_rate, receipt_url, pennylane_id, supplier_id, category_id, charge_categories!category_id(name, slug, type), suppliers!supplier_id(name)')
+    // Immobilisations exclues : jamais candidates au rattachement carburant/entretien.
+    .eq('est_immobilisation', false)
     .order('date', { ascending: false })
     .limit(200)
 

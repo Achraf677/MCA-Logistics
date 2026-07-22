@@ -80,6 +80,17 @@ describe('countChargesArapprocher', () => {
     const charges: ChargePick[] = [ch('c1', 1000), ch('c-avoir', -1000)]
     expect(countChargesArapprocher(txs, charges)).toBe(1)
   })
+
+  it('exclut les immobilisations (achat véhicule) même si le montant matche un débit', () => {
+    // Cas Movano : montant identique à un débit Qonto non rapproché, mais
+    // une immobilisation n'a pas à apparaître comme "charge à rapprocher".
+    const txs: TxPick[] = [debit(860000)]
+    const charges: ChargePick[] = [
+      { id: 'movano', montant_ttc_cts: 860000, category_id: 'cat-x', est_immobilisation: true },
+      ch('c-normale', 860000),
+    ]
+    expect(countChargesArapprocher(txs, charges)).toBe(1)
+  })
 })
 
 describe('countChargesAvoirs', () => {

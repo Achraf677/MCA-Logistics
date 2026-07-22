@@ -27,6 +27,10 @@ export interface Charge {
   /** Migration 20260721120000. Non-null = la facture a disparu de Pennylane
    *  (détectée par pennylane-sync). Jamais de suppression automatique. */
   pennylane_deleted_at: string | null
+  /** Migration 20260724100000. true = investissement (PCG 20x/21x/23x/24x),
+   *  pas une charge d'exploitation — exclue de tous les totaux/compteurs,
+   *  conservée en base pour la traçabilité Pennylane/Qonto. */
+  est_immobilisation: boolean
   created_at: string
   updated_at: string
 }
@@ -40,12 +44,15 @@ export type ChargeInsert = Omit<Charge,
   | 'id' | 'created_at' | 'updated_at' | 'pennylane_id' | 'pennylane_synced_at'
   // Posé uniquement par l'Edge pennylane-sync, jamais à l'insert.
   | 'pennylane_deleted_at'
-  // Champs optionnels à l'insert (défaut DB pour mode_paiement, NULL pour les autres).
-  | 'mode_paiement' | 'avance_par' | 'rembourse_le'
+  // Champs optionnels à l'insert (défaut DB pour mode_paiement, NULL pour les autres,
+  // false pour est_immobilisation — une charge saisie à la main n'est jamais
+  // une immobilisation par défaut).
+  | 'mode_paiement' | 'avance_par' | 'rembourse_le' | 'est_immobilisation'
 > & {
   mode_paiement?: ChargeModePaiement
   avance_par?: string | null
   rembourse_le?: string | null
+  est_immobilisation?: boolean
 }
 export type ChargeUpdate = Partial<Omit<Charge, 'id' | 'company_id' | 'created_at'>>
 
@@ -53,4 +60,6 @@ export interface ChargeFilters {
   category_id?: string | 'all'
   date_from?: string
   date_to?: string
+  /** Défaut false : les immobilisations sont masquées de la liste Charges. */
+  include_immobilisations?: boolean
 }

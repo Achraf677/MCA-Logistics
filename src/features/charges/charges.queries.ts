@@ -17,6 +17,9 @@ export async function getCharges(filters: ChargeFilters = {}) {
   if (filters.category_id && filters.category_id !== 'all') q = q.eq('category_id', filters.category_id)
   if (filters.date_from) q = q.gte('date', filters.date_from)
   if (filters.date_to)   q = q.lte('date', filters.date_to)
+  // Immobilisations (achat véhicule…) masquées par défaut — pas des charges
+  // d'exploitation. Visibles uniquement via le filtre "Afficher les immobilisations".
+  if (!filters.include_immobilisations) q = q.eq('est_immobilisation', false)
 
   return q
 }

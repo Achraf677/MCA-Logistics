@@ -18,6 +18,7 @@ function charge(p: Partial<TvaCharge>): TvaCharge {
     tva_cts:      'tva_cts' in p ? p.tva_cts! : 0,
     tva_pays:     p.tva_pays     ?? null,   // null → FR par défaut
     linkedToFuel: p.linkedToFuel ?? false,
+    est_immobilisation: p.est_immobilisation ?? false,
   }
 }
 function fuel(p: Partial<TvaFuel>): TvaFuel {
@@ -101,6 +102,16 @@ describe('computeTva — déductible chargesFR = Σ(tva_cts) charges non liées,
       charge({ tva_cts: 5000, linkedToFuel: true }),   // LECLERC → ignorée
     ]}))
     expect(r.tvaDeductibleChargesFR).toBe(1000)        // 5000 non comptée
+  })
+
+  it('immobilisation (achat véhicule) exclue de la TVA déductible', () => {
+    // Ex. AC Automobiles / Opel Movano : 1433,33 € de TVA qui NE DOIT PAS
+    // réduire le solde CA3 — ce n'est pas une charge d'exploitation.
+    const r = computeTva(raw({ charges: [
+      charge({ tva_cts: 2000 }),                                    // charge normale
+      charge({ tva_cts: 143333, est_immobilisation: true }),        // Movano → exclue
+    ]}))
+    expect(r.tvaDeductibleChargesFR).toBe(2000)
   })
 
   it('charge DE (JET KEHL) → poche allemande, pas dans chargesFR', () => {
