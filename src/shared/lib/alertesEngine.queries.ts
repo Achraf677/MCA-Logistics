@@ -8,7 +8,7 @@ import {
 } from './alertesEngine'
 
 export async function getAlertesMetier(today: Date = new Date()): Promise<AlerteMetier[]> {
-  const [aRapprocher, facturesRes, livreesRes, devisRes, vehiculesRes, notesRes] = await Promise.all([
+  const [aRapprocher, facturesRes, livreesRes, devisRes, vehiculesRes, notesRes, sansJustifRes, docsLivraisonRes] = await Promise.all([
     getARapprocherCounts().catch(() => null),
     // Factures émises non payées (encours) — avec délai de paiement du client.
     supabase
@@ -36,6 +36,16 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
       .select('id, mode_paiement, rembourse_le, montant_ttc_cts')
       .eq('mode_paiement', 'note_de_frais')
       .is('rembourse_le', null),
+    // Livrées/facturées/payées — candidates au contrôle "sans justificatif".
+    supabase
+      .from('deliveries')
+      .select('id, statut, pod_captured_at, lv_pdf_url')
+      .in('statut', ['livree', 'facturee', 'payee']),
+    // Documents liés à une livraison (POD ou autre pièce jointe).
+    supabase
+      .from('documents')
+      .select('entity_type, entity_id')
+      .eq('entity_type', 'delivery'),
   ])
 
   const input: AlertesEngineInput = {
@@ -61,6 +71,12 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
     notesDeFrais: (notesRes.data ?? []).map(c => ({
       id: c.id, mode_paiement: c.mode_paiement,
       rembourse_le: c.rembourse_le, montant_ttc_cts: c.montant_ttc_cts,
+    })),
+    livraisonsPourJustif: (sansJustifRes.data ?? []).map(d => ({
+      id: d.id, statut: d.statut, pod_captured_at: d.pod_captured_at, lv_pdf_url: d.lv_pdf_url,
+    })),
+    documentsLivraison: (docsLivraisonRes.data ?? []).map(d => ({
+      entity_type: d.entity_type, entity_id: d.entity_id,
     })),
   }
 
