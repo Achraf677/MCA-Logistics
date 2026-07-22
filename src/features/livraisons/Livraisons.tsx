@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Package, RefreshCw, Loader2, Trash2, FileText, Euro, Clock, Mail } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
 import { KpiCard }     from '../../shared/ui/KpiCard'
@@ -19,6 +20,8 @@ import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
   kpiSummary, formatCents, deliveryTotalHtCts, deliveryTotalTtcCts,
 } from './livraisons.logic'
+import { listDocuments } from '../../shared/lib/documents.queries'
+import { isLivraisonSansJustif } from '../../shared/lib/livraisonsSansJustif'
 import type { DeliveryRow, DeliveryFilters, DeliveryStatus } from './livraisons.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
@@ -65,6 +68,10 @@ export function Livraisons() {
   const [emailConfirm, setEmailConfirm]     = useState<DeliveryRow | null>(null)
   const [emailSendingId, setEmailSendingId] = useState<string | null>(null)
 
+  // Filtre spécial via URL (?filtre=sans_justif) — clic depuis la cloche/dashboard.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filtreSansJustif = searchParams.get('filtre') === 'sans_justif'
+
   // ── Chargement ─────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -83,8 +90,16 @@ export function Livraisons() {
     setPendingSync((data as unknown[] | null)?.length ?? 0)
   }, [])
 
+  // Documents liés aux livraisons — utilisés uniquement pour le filtre "sans justificatif".
+  const [documentsLivraison, setDocumentsLivraison] = useState<{ entity_type: string | null; entity_id: string | null }[]>([])
+  const loadDocumentsLivraison = useCallback(async () => {
+    const { data } = await listDocuments({ entity_type: 'delivery' })
+    setDocumentsLivraison((data ?? []).map(d => ({ entity_type: d.entity_type, entity_id: d.entity_id })))
+  }, [])
+
   useEffect(() => { load() }, [load])
   useEffect(() => { loadPendingSync() }, [loadPendingSync])
+  useEffect(() => { loadDocumentsLivraison() }, [loadDocumentsLivraison])
 
   // ── Resync Pennylane ────────────────────────────────────────────────────────
   const handleResync = async () => {
@@ -199,6 +214,11 @@ export function Livraisons() {
     (filters.status && filters.status !== 'all')
   )
 
+  // Liste affichée : filtre "sans justificatif" appliqué côté client (clic cloche/dashboard).
+  const displayRows = filtreSansJustif
+    ? rows.filter(r => isLivraisonSansJustif(r, documentsLivraison))
+    : rows
+
   const kpis = kpiSummary(rows)
 
   return (
@@ -237,6 +257,19 @@ export function Livraisons() {
               ? <Loader2 size={14} className="animate-spin" />
               : <RefreshCw size={14} />}
             Resynchroniser
+          </Button>
+        </div>
+      )}
+
+      {/* Bandeau filtre "sans justificatif" (clic depuis la cloche/dashboard) */}
+      {filtreSansJustif && (
+        <div className="flex flex-wrap items-center gap-3 mb-4 px-4 py-3 rounded-[var(--r-xl)]
+          border border-[var(--warning)]/30 bg-[var(--warning)]/10 text-[var(--fs-sm)]">
+          <span className="text-[var(--text)] flex-1">
+            {displayRows.length} livraison{displayRows.length > 1 ? 's' : ''} sans justificatif.
+          </span>
+          <Button variant="ghost" size="compact" onClick={() => setSearchParams({})}>
+            Voir toutes les livraisons
           </Button>
         </div>
       )}
@@ -340,14 +373,14 @@ export function Livraisons() {
           <p className="text-[var(--danger)] text-[var(--fs-sm)]">{error}</p>
           <Button variant="secondary" onClick={load}>Réessayer</Button>
         </div>
-      ) : rows.length === 0 ? (
+      ) : displayRows.length === 0 ? (
         <EmptyState
           icon={<Package size={48} />}
           title="Aucune livraison"
-          description={hasFilters
+          description={hasFilters || filtreSansJustif
             ? 'Aucune livraison ne correspond aux filtres.'
             : 'Commencez par saisir votre première course.'}
-          action={!hasFilters && canCreate
+          action={!hasFilters && !filtreSansJustif && canCreate
             ? { label: '+ Nouvelle livraison', onClick: () => { setSelected(null); setDrawerOpen(true) } }
             : undefined}
         />
@@ -386,7 +419,7 @@ export function Livraisons() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => {
+                {displayRows.map((row, i) => {
                   const invoiceable = isInvoiceable(row)
                   const invoiceBlocked = invoiceable && invoiceClientId !== null && row.client_id !== invoiceClientId
                   return (
@@ -500,7 +533,7 @@ export function Livraisons() {
 
           {/* Mobile : cartes */}
           <div className="md:hidden flex flex-col gap-3">
-            {rows.map(row => {
+            {displayRows.map(row => {
               const invoiceable = isInvoiceable(row)
               const invoiceBlocked = invoiceable && invoiceClientId !== null && row.client_id !== invoiceClientId
               return (

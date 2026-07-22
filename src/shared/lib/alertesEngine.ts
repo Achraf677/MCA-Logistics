@@ -8,6 +8,9 @@
 // 'info' (visibilité, n'incrémente PAS le badge global).
 
 import type { ARapprocherCounts } from './aRapprocher'
+import {
+  countLivraisonsSansJustif, type DeliveryForJustif, type DocumentForJustif,
+} from './livraisonsSansJustif'
 
 export type AlerteSeverite = 'rouge' | 'orange' | 'info'
 
@@ -79,6 +82,8 @@ export interface AlertesEngineInput {
   devisEnAttente?: DevisEnAttenteRow[]
   vehicules?: VehiculeEcheanceRow[]
   notesDeFrais?: NoteFraisRow[]
+  livraisonsPourJustif?: DeliveryForJustif[]
+  documentsLivraison?: DocumentForJustif[]
 }
 
 export interface AlertesEngineOptions {
@@ -219,6 +224,22 @@ function detectNotesDeFrais(rows: NoteFraisRow[]): AlerteMetier | null {
   }
 }
 
+/** Livraisons livrée/facturée/payée sans aucun justificatif (POD, document, LV). Orange. */
+function detectLivraisonsSansJustif(
+  deliveries: DeliveryForJustif[],
+  documents: DocumentForJustif[],
+): AlerteMetier | null {
+  const count = countLivraisonsSansJustif(deliveries, documents)
+  if (count === 0) return null
+  return {
+    id: 'livraisons-sans-justif',
+    domaine: 'facturation',
+    label: `${count} livraison${count > 1 ? 's' : ''} sans justificatif`,
+    count, severite: 'orange',
+    lien: '/livraisons?filtre=sans_justif',
+  }
+}
+
 /** Alertes issues des compteurs de rapprochement (source existante aRapprocher). */
 function fromARapprocher(c: ARapprocherCounts): AlerteMetier[] {
   const out: AlerteMetier[] = []
@@ -272,6 +293,9 @@ export function buildAlertes(
 
   const nf = detectNotesDeFrais(input.notesDeFrais ?? [])
   if (nf) alertes.push(nf)
+
+  const sansJustif = detectLivraisonsSansJustif(input.livraisonsPourJustif ?? [], input.documentsLivraison ?? [])
+  if (sansJustif) alertes.push(sansJustif)
 
   // Tri : rouge → orange → info, puis par count décroissant.
   return alertes.sort((a, b) =>
