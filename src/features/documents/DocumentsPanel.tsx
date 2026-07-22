@@ -8,7 +8,7 @@ import {
   uploadDocument, listDocuments, getDownloadUrl, deleteDocument,
 } from '../../shared/lib/documents.queries'
 import {
-  DOCUMENT_CATEGORIES, formatBytes, fileLabel,
+  DOCUMENT_CATEGORIES, formatBytes, fileLabel, summarizeUploadBatch,
 } from '../../shared/lib/documents.logic'
 import type { DocumentRow, DocumentCategory } from '../../shared/lib/documents.types'
 
@@ -37,9 +37,10 @@ export function DocumentsPanel({ entityType, entityId }: DocumentsPanelProps) {
 
   const [docs, setDocs]           = useState<DocumentRow[]>([])
   const [loading, setLoading]     = useState(false)
-  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [category, setCategory]   = useState<DocumentCategory>('Autre')
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DocumentRow | null>(null)
   const [deleting, setDeleting]   = useState(false)
 
@@ -66,28 +67,38 @@ export function DocumentsPanel({ entityType, entityId }: DocumentsPanelProps) {
   }
 
   // ── Upload ────────────────────────────────────────────────────────────────────
+  // Upload multiple : les fichiers sont envoyés SÉQUENTIELLEMENT (un échec sur un
+  // fichier n'interrompt pas les suivants) avec une progression "X / N fichiers".
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setPendingFile(e.target.files?.[0] ?? null)
+    setPendingFiles(Array.from(e.target.files ?? []))
   }
 
   const handleUpload = async () => {
-    if (!pendingFile || !companyId) return
+    if (pendingFiles.length === 0 || !companyId) return
     setUploading(true)
-    const { data, error } = await uploadDocument(pendingFile, companyId, {
-      category,
-      entity_type: entityType,
-      entity_id: entityId,
-    })
-    setUploading(false)
-    if (error) {
-      toast(error.message, 'error')
-    } else if (data) {
-      toast(`${pendingFile.name} ajouté`)
-      setPendingFile(null)
-      if (fileRef.current) fileRef.current.value = ''
-      await load()
+    const total = pendingFiles.length
+    const failed: string[] = []
+    let ok = 0
+    for (let i = 0; i < total; i++) {
+      const file = pendingFiles[i]
+      setUploadProgress({ current: i + 1, total })
+      const { error } = await uploadDocument(file, companyId, {
+        category,
+        entity_type: entityType,
+        entity_id: entityId,
+      })
+      if (error) failed.push(file.name)
+      else ok++
     }
+    setUploading(false)
+    setUploadProgress(null)
+    setPendingFiles([])
+    if (fileRef.current) fileRef.current.value = ''
+    if (ok > 0) await load()
+
+    const summary = summarizeUploadBatch(ok, failed)
+    toast(summary.message, summary.variant)
   }
 
   // ── Téléchargement ────────────────────────────────────────────────────────────
@@ -126,6 +137,7 @@ export function DocumentsPanel({ entityType, entityId }: DocumentsPanelProps) {
             ref={fileRef}
             id={inputId}
             type="file"
+            multiple
             onChange={handleFileChange}
             className="hidden"
           />
@@ -135,7 +147,9 @@ export function DocumentsPanel({ entityType, entityId }: DocumentsPanelProps) {
           >
             <Upload size={12} className="shrink-0 text-[var(--text-muted)]" />
             <span className="truncate text-[var(--fs-sm)] text-[var(--text-muted)]">
-              {pendingFile ? pendingFile.name : 'Choisir un fichier…'}
+              {pendingFiles.length > 0
+                ? `${pendingFiles.length} fichier${pendingFiles.length > 1 ? 's' : ''} sélectionné${pendingFiles.length > 1 ? 's' : ''}`
+                : 'Choisir un ou plusieurs fichiers…'}
             </span>
           </label>
         </div>
@@ -152,16 +166,17 @@ export function DocumentsPanel({ entityType, entityId }: DocumentsPanelProps) {
           variant="primary"
           size="compact"
           onClick={handleUpload}
-          disabled={!pendingFile || uploading || !companyId}
+          disabled={pendingFiles.length === 0 || uploading || !companyId}
         >
           <Upload size={12} />
-          {uploading ? '…' : 'Ajouter'}
+          {uploadProgress ? `${uploadProgress.current} / ${uploadProgress.total}` : 'Ajouter'}
         </Button>
       </div>
 
-      {pendingFile && pendingFile.type.startsWith('image/') && (
+      {pendingFiles.length > 0 && (
         <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-          {formatBytes(pendingFile.size)} — compression auto activée
+          {pendingFiles.map(f => f.name).join(', ')}
+          {pendingFiles.some(f => f.type.startsWith('image/')) && ' — compression auto activée pour les images'}
         </p>
       )}
 

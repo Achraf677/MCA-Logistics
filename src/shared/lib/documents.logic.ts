@@ -29,3 +29,19 @@ export function sanitizeFileName(name: string): string {
 export function fileLabel(fileName: string): string {
   return fileName.split('.').pop()?.toUpperCase() ?? '?'
 }
+
+export interface UploadBatchSummary {
+  message: string
+  variant: 'success' | 'error'
+}
+
+/** Récap textuel d'un upload multiple séquentiel (succès + échecs par fichier). */
+export function summarizeUploadBatch(okCount: number, failedFileNames: string[]): UploadBatchSummary {
+  if (okCount === 0) {
+    return { message: `Échec de l'upload : ${failedFileNames.join(', ')}`, variant: 'error' }
+  }
+  const message =
+    `${okCount} justificatif${okCount > 1 ? 's' : ''} ajouté${okCount > 1 ? 's' : ''}`
+    + (failedFileNames.length > 0 ? ` — échec : ${failedFileNames.join(', ')}` : '')
+  return { message, variant: failedFileNames.length > 0 ? 'error' : 'success' }
+}
