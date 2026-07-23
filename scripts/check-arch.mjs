@@ -37,13 +37,14 @@ function walk(dir, filterExt) {
   return out
 }
 
-/** Retire les commentaires de ligne (--) et de bloc pour l'analyse SQL. */
+/** Retire les commentaires de ligne (--) et de bloc pour l'analyse SQL.
+ *  [^\n]* (pas .*$) : sur CRLF (Windows), `.` n'inclut jamais \r, donc `--.*$`
+ *  ne pouvait pas atteindre la fin de ligne réelle et ne retirait rien —
+ *  faux positifs sur tout DROP commenté dans un fichier CRLF. */
 function stripSqlComments(sql) {
   return sql
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')      // blocs /* … */
-    .split('\n')
-    .map(line => line.replace(/--.*$/, '')) // ligne -- …
-    .join('\n')
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')    // blocs /* … */
+    .replace(/--[^\n]*/g, '')             // ligne -- … (jusqu'à \n ou \r\n, peu importe)
 }
 
 // ── 1. Imports cross-feature ──────────────────────────────────────────────────
