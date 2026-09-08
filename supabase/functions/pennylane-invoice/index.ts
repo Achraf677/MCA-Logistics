@@ -21,7 +21,13 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return optionsResponse();
 
   // ── Normalise body → liste d'ids (rétrocompat delivery_id seul) ─────────────
+  // `invoice_date` et `deadline` (optionnels, AAAA-MM-JJ) forcent les dates au
+  // lieu du jour courant + délai de paiement du client. Nécessaires pour refléter
+  // une auto-facture (transport : le donneur d'ordre émet la facture pour nous,
+  // à SES dates) — sinon la copie dans Pennylane ne correspond pas à l'original.
   let ids: string[];
+  let invoiceDateOverride: string | null = null;
+  let deadlineOverride: string | null = null;
   try {
     const body = await req.json();
     if (typeof body?.delivery_id === 'string' && body.delivery_id.length > 0) {
@@ -32,6 +38,21 @@ Deno.serve(async (req: Request) => {
       );
     } else {
       ids = [];
+    }
+    const isIsoDay = (v: unknown): v is string =>
+      typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+    if (body?.invoice_date != null) {
+      if (!isIsoDay(body.invoice_date)) {
+        return jsonResponse({ ok: false, error: 'invoice_date invalide (attendu AAAA-MM-JJ)' }, 400);
+      }
+      invoiceDateOverride = body.invoice_date;
+    }
+    if (body?.deadline != null) {
+      if (!isIsoDay(body.deadline)) {
+        return jsonResponse({ ok: false, error: 'deadline invalide (attendu AAAA-MM-JJ)' }, 400);
+      }
+      deadlineOverride = body.deadline;
     }
   } catch {
     return jsonResponse({ ok: false, error: 'invalid JSON body' }, 400);
@@ -206,8 +227,9 @@ Deno.serve(async (req: Request) => {
     // ── Date et échéance ─────────────────────────────────────────────────────
     // payment_terms_label (select façon Pennylane) prime si renseigné — gère
     // notamment "30 jours fin de mois", indiscernable du seul entier payment_terms.
-    const invoiceDate = new Date().toISOString().slice(0, 10);
-    const deadlineDate = computeDeadline(client.payment_terms_label, invoiceDate, client.payment_terms ?? 30);
+    const invoiceDate = invoiceDateOverride ?? new Date().toISOString().slice(0, 10);
+    const deadlineDate = deadlineOverride
+      ?? computeDeadline(client.payment_terms_label, invoiceDate, client.payment_terms ?? 30);
 
     // ── Lignes de facture : une par livraison + N par ligne supplémentaire ───
     const invoiceLines: InvoiceLine[] = validatedLines.map((ln) => ({
