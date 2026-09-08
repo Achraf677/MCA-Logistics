@@ -1,7 +1,7 @@
 import type { ChargeRow } from './charges.types'
 
 export { formatCents } from '../../shared/lib/money'
-export { categoryColor } from '../../shared/lib/categories.queries'
+export { categoryColor } from '../../shared/lib/categories'
 
 export function computeTtcCts(htCts: number, tvaRate: number): number {
   return htCts + Math.round((htCts * tvaRate) / 100)
