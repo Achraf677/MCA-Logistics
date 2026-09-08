@@ -931,6 +931,13 @@ function MontantTab({
           <span className="text-[var(--text-muted)]">Pennylane sera synchronisé dès que possible.</span>
         </div>
       )}
+      {delivery?.sync_error && (
+        <div className="flex items-start gap-2 px-3 py-2 rounded-[var(--r-md)]
+          bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-[var(--fs-xs)]">
+          <Badge color="danger">Anomalie</Badge>
+          <span className="text-[var(--text-muted)]">{delivery.sync_error}</span>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
         {!isReadOnly && canMontant && (
