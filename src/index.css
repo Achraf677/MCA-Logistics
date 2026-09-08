@@ -89,12 +89,23 @@ html, body, #root {
   font-family: var(--font-body);
   font-size: var(--fs-body);
   background-color: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Halo de fond sur une couche fixe dédiée, peinte une seule fois.
+   Avant : les deux dégradés étaient posés sur html + body + #root avec
+   `background-attachment: fixed`, ce qui interdit le scroll composité et forçait
+   le navigateur à les redessiner à chaque frame. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background-image:
     radial-gradient(900px 500px at 12% -8%, var(--glow-1), transparent 60%),
     radial-gradient(800px 460px at 100% -5%, var(--glow-2), transparent 62%);
-  background-attachment: fixed;
-  color: var(--text);
-  -webkit-font-smoothing: antialiased;
 }
 
 /* ── Scrollbar sobres ───────────────────────────────────── */
