@@ -72,7 +72,7 @@ export function Relances() {
             description="Toutes les factures sont dans les délais ou déjà payées."
           />
         ) : (
-          <div className="overflow-x-auto glass rounded-[var(--r-xl)]">
+          <div className="overflow-x-auto panel rounded-[var(--r-xl)]">
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">

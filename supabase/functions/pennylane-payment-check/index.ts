@@ -1,11 +1,13 @@
 // Edge Function `pennylane-payment-check`
-// Marque `payee` les livraisons dont la facture Pennylane est rapprochée à un paiement.
+// Aligne les livraisons facturées sur l'état réel de leur facture Pennylane :
+// - facture annulée par un avoir  → livraison `annulee` (sort de l'encours et du CA) ;
+// - facture rapprochée à un paiement → livraison `payee`.
 // Gère les factures groupées : un seul UPDATE par invoice_id passe TOUT le groupe d'un coup.
 // N'écrit RIEN chez Pennylane et ne touche AUCUNE autre table que `deliveries`.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
-import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders, getInvoiceNumber } from '../_shared/pennylane.ts';
+import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
 
 /** Règle v1 : liste de transactions rapprochées non vide ⇒ facture payée. */
 async function isInvoicePaid(token: string, invoiceId: string): Promise<boolean> {
@@ -17,6 +19,26 @@ async function isInvoicePaid(token: string, invoiceId: string): Promise<boolean>
     data.matched_transactions ?? data.items ?? (Array.isArray(data) ? data : [])
   ) as unknown[];
   return items.length > 0;
+}
+
+/** Numéro + statut en un seul appel. Null si la facture est illisible (ex. supprimée). */
+async function fetchInvoice(
+  token: string,
+  invoiceId: string,
+): Promise<{ invoice_number: string | null; status: string | null } | null> {
+  try {
+    const data = await fetchJson<Record<string, unknown>>(
+      `${PENNYLANE_BASE}/customer_invoices/${invoiceId}`,
+      { headers: pennylaneHeaders(token) },
+    );
+    const inv = (data.invoice ?? data.customer_invoice ?? data) as Record<string, unknown>;
+    return {
+      invoice_number: (inv.invoice_number as string) ?? null,
+      status: (inv.status as string) ?? null,
+    };
+  } catch {
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -43,21 +65,37 @@ Deno.serve(async (req) => {
   const uniqueInvoiceIds = [...new Set(deliveryList.map((d) => d.pennylane_invoice_id as string))];
 
   let markedPayee = 0;
+  let markedAnnulee = 0;
 
   try {
     for (const invoiceId of uniqueInvoiceIds) {
-      // ── Rattrapage invoice_number manquant (coût quasi nul si déjà renseigné) ──
+      const invoice = await fetchInvoice(token, invoiceId);
+
+      // ── Rattrapage invoice_number manquant (coût nul : déjà lu ci-dessus) ─────
       const needsNumber = deliveryList.some(
         (d) => d.pennylane_invoice_id === invoiceId && !d.pennylane_invoice_number,
       );
-      if (needsNumber) {
-        const invoiceNumber = await getInvoiceNumber(token, Number(invoiceId));
-        if (invoiceNumber) {
-          await supabase
-            .from('deliveries')
-            .update({ pennylane_invoice_number: invoiceNumber })
-            .eq('pennylane_invoice_id', invoiceId);
-        }
+      if (needsNumber && invoice?.invoice_number) {
+        await supabase
+          .from('deliveries')
+          .update({ pennylane_invoice_number: invoice.invoice_number })
+          .eq('pennylane_invoice_id', invoiceId);
+      }
+
+      // ── Facture annulée par un avoir ─────────────────────────────────────────
+      // Testé AVANT le paiement : une facture soldée par un avoir peut porter
+      // `paid: true` chez Pennylane, ce qui la ferait basculer à tort en `payee`.
+      if (invoice?.status === 'cancelled') {
+        const { error: cErr } = await supabase
+          .from('deliveries')
+          .update({ statut: 'annulee' })
+          .eq('pennylane_invoice_id', invoiceId)
+          .eq('statut', 'facturee');
+
+        if (cErr) return jsonResponse({ ok: false, error: cErr.message }, 500);
+
+        markedAnnulee += deliveryList.filter((d) => d.pennylane_invoice_id === invoiceId).length;
+        continue;
       }
 
       const paid = await isInvoicePaid(token, invoiceId);
@@ -88,6 +126,11 @@ Deno.serve(async (req) => {
   const checked = deliveryList.length;
   return jsonResponse({
     ok: true,
-    data: { checked, marked_payee: markedPayee, still_unpaid: checked - markedPayee },
+    data: {
+      checked,
+      marked_payee: markedPayee,
+      marked_annulee: markedAnnulee,
+      still_unpaid: checked - markedPayee - markedAnnulee,
+    },
   });
 });

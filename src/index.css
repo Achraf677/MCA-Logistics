@@ -89,12 +89,23 @@ html, body, #root {
   font-family: var(--font-body);
   font-size: var(--fs-body);
   background-color: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Halo de fond sur une couche fixe dédiée, peinte une seule fois.
+   Avant : les deux dégradés étaient posés sur html + body + #root avec
+   `background-attachment: fixed`, ce qui interdit le scroll composité et forçait
+   le navigateur à les redessiner à chaque frame. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background-image:
     radial-gradient(900px 500px at 12% -8%, var(--glow-1), transparent 60%),
     radial-gradient(800px 460px at 100% -5%, var(--glow-2), transparent 62%);
-  background-attachment: fixed;
-  color: var(--text);
-  -webkit-font-smoothing: antialiased;
 }
 
 /* ── Scrollbar sobres ───────────────────────────────────── */
@@ -109,6 +120,12 @@ html, body, #root {
 
 /* ── Glass morphism ─────────────────────────────────────── */
 .glass{ background:color-mix(in srgb, var(--bg-card) 72%, transparent); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border:1px solid var(--border); box-shadow:0 24px 50px -28px rgba(0,0,0,.85); }
+
+/* Même habillage que .glass (bordure, ombre, fond de carte) mais SANS
+   backdrop-filter : à utiliser sur les conteneurs qui défilent. Un flou d'arrière-plan
+   sur un élément scrollable force le navigateur à recapturer le fond à chaque frame,
+   ce qui saccade le scroll des grands tableaux. */
+.panel{ background:var(--bg-card); border:1px solid var(--border); box-shadow:0 24px 50px -28px rgba(0,0,0,.85); }
 
 /* ── Line chart animations ──────────────────────────────── */
 /* pathLength="1" sur le path SVG normalise l'offset : dasharray/dashoffset en fraction de 1 */

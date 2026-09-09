@@ -29,22 +29,9 @@ export async function deleteCategory(id: string) {
   return supabase.from('charge_categories').delete().eq('id', id)
 }
 
-/** Couleur de badge selon le slug. Fallback 'muted' pour les catégories perso. */
-export function categoryColor(slug: string): 'muted' | 'info' | 'warning' | 'danger' | 'success' {
-  const map: Record<string, 'muted' | 'info' | 'warning' | 'danger' | 'success'> = {
-    carburant:       'warning',
-    assurance:       'info',
-    entretien:       'warning',
-    salaire:         'danger',
-    logiciel:        'muted',
-    telecom:         'muted',
-    loyer:           'muted',
-    frais_bancaires: 'muted',
-    comptabilite:    'muted',
-    publicite:       'muted',
-    autre:           'muted',
-  }
-  return map[slug] ?? 'muted'
-}
+// categoryColor est pur : il vit dans categories.ts et n'est ré-exporté ici que
+// pour les appelants existants. Ne jamais l'importer depuis un *.logic.ts —
+// ce module charge le client Supabase, ce qui casse les tests purs.
+export { categoryColor } from './categories'
 
 export type { ChargeCategoryRow, ChargeCategoryWithCount }

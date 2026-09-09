@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Package, RefreshCw, Loader2, Trash2, FileText, Euro, Clock, Mail } from 'lucide-react'
+import { Package, RefreshCw, Loader2, FileText, Euro, Clock, Mail } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
 import { KpiCard }     from '../../shared/ui/KpiCard'
 import { Badge }       from '../../shared/ui/Badge'
@@ -15,7 +15,7 @@ import { useToast }    from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { downloadCSV } from '../../shared/lib/download'
-import { getDeliveries, exportDeliveriesCSV, getPendingSyncDeliveries, resyncPending, deleteDeliveries, sendClientEmail } from './livraisons.queries'
+import { getDeliveries, exportDeliveriesCSV, getPendingSyncDeliveries, resyncPending, sendClientEmail } from './livraisons.queries'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
   kpiSummary, formatCents, deliveryTotalHtCts, deliveryTotalTtcCts,
@@ -26,9 +26,6 @@ import type { DeliveryRow, DeliveryFilters, DeliveryStatus } from './livraisons.
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
 const V2_STATUSES: DeliveryStatus[] = ['planifiee', 'en_cours', 'livree', 'facturee', 'payee', 'annulee']
-
-// Supprimable = jamais facturée ni payée (lien Pennylane)
-const isDeletable = (row: DeliveryRow) => !['facturee', 'payee'].includes(row.statut)
 
 // Facturable via la sélection multiple : livrée, non encore synchro Pennylane, montant saisi
 const isInvoiceable = (row: DeliveryRow) =>
@@ -41,7 +38,6 @@ export function Livraisons() {
 
   const { can } = usePermissions()
   const canCreate = can('livraisons.livraisons', 'create')
-  const canDelete = can('livraisons.livraisons', 'delete')
 
   // ── État principal ─────────────────────────────────────────────────────────
   const [rows, setRows]         = useState<DeliveryRow[]>([])
@@ -52,11 +48,6 @@ export function Livraisons() {
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
   const [pendingSync, setPendingSync] = useState(0)
   const [resyncing, setResyncing] = useState(false)
-
-  // ── Sélection suppression (président) ─────────────────────────────────────
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [confirmBulk, setConfirmBulk] = useState(false)
-  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   // ── Sélection facturation (tous rôles, lignes facturables) ─────────────────
   const [invoiceIds, setInvoiceIds]         = useState<Set<string>>(new Set())
@@ -75,8 +66,6 @@ export function Livraisons() {
   // ── Chargement ─────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     setLoading(true); setError(null)
-    // Vide les deux sélections à chaque rechargement
-    setSelectedIds(new Set())
     setInvoiceIds(new Set())
     setInvoiceClientId(null)
     const { data, error: err } = await getDeliveries(filters)
@@ -123,32 +112,6 @@ export function Livraisons() {
   }
 
   const openRow = (row: DeliveryRow) => { setSelected(row); setDrawerOpen(true) }
-
-  // ── Suppression multiple (président) ──────────────────────────────────────
-  const deletableRows = rows.filter(isDeletable)
-  const allDeletableSelected = deletableRows.length > 0 && deletableRows.every(r => selectedIds.has(r.id))
-
-  const toggleOne = (id: string) => setSelectedIds(prev => {
-    const next = new Set(prev)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    return next
-  })
-
-  const toggleAll = () => setSelectedIds(
-    allDeletableSelected ? new Set() : new Set(deletableRows.map(r => r.id)),
-  )
-
-  const handleBulkDelete = async () => {
-    const ids = deletableRows.filter(r => selectedIds.has(r.id)).map(r => r.id)
-    if (ids.length === 0) { setConfirmBulk(false); return }
-    setBulkDeleting(true)
-    const { error } = await deleteDeliveries(ids)
-    setBulkDeleting(false)
-    if (error) { toast(error.message, 'error'); return }
-    setConfirmBulk(false)
-    await load()
-    toast(`${ids.length} livraison(s) supprimée(s)`)
-  }
 
   // ── Facturation groupée ────────────────────────────────────────────────────
   const invoiceSelectedRows = rows.filter(r => invoiceIds.has(r.id))
@@ -350,21 +313,6 @@ export function Livraisons() {
         loading={emailSendingId !== null}
       />
 
-      {/* Barre d'action suppression (≥ 1 sélectionnée, si droit delete) */}
-      {canDelete && selectedIds.size > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 px-4 py-2.5
-          rounded-[var(--r-xl)] border border-[var(--danger)]/30 bg-[var(--danger)]/10">
-          <span className="text-[var(--fs-sm)] text-[var(--text)]">
-            {selectedIds.size} sélectionnée(s)
-          </span>
-          <Button variant="primary" size="compact" onClick={() => setConfirmBulk(true)}
-            className="!bg-[var(--danger)] hover:!bg-[var(--danger)]/90">
-            <Trash2 size={14} />
-            Supprimer la sélection
-          </Button>
-        </div>
-      )}
-
       {/* ── Contenu principal ───────────────────────────────────────────────── */}
       {loading ? (
         <SkeletonTable rows={6} />
@@ -387,7 +335,7 @@ export function Livraisons() {
       ) : (
         <>
           {/* Desktop : tableau */}
-          <div className="hidden md:block overflow-x-auto glass rounded-[var(--r-xl)]">
+          <div className="hidden md:block overflow-x-auto panel rounded-[var(--r-xl)]">
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
@@ -398,20 +346,6 @@ export function Livraisons() {
                       <span className="text-[var(--fs-xs)] text-[var(--brand)] font-semibold">✓</span>
                     )}
                   </th>
-
-                  {/* Colonne case suppression (si droit delete) */}
-                  {canDelete && (
-                    <th className="px-3 py-2.5 w-9">
-                      <input
-                        type="checkbox"
-                        checked={allDeletableSelected}
-                        onChange={toggleAll}
-                        disabled={deletableRows.length === 0}
-                        aria-label="Tout sélectionner"
-                        className="accent-[var(--brand)] w-4 h-4 cursor-pointer disabled:cursor-not-allowed"
-                      />
-                    </th>
-                  )}
 
                   {['Date', 'N° facture', 'Client', 'Chauffeur', 'Montant TTC', 'km', 'Statut', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
@@ -446,21 +380,6 @@ export function Livraisons() {
                           />
                         )}
                       </td>
-
-                      {/* Case à cocher suppression */}
-                      {canDelete && (
-                        <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
-                          {isDeletable(row) && (
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.has(row.id)}
-                              onChange={() => toggleOne(row.id)}
-                              aria-label="Sélectionner pour supprimer"
-                              className="accent-[var(--brand)] w-4 h-4 cursor-pointer"
-                            />
-                          )}
-                        </td>
-                      )}
 
                       <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
                         {new Date(row.date).toLocaleDateString('fr-FR')}
@@ -549,18 +468,7 @@ export function Livraisons() {
                       className="accent-[var(--brand)] w-4 h-4 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 shrink-0"
                     />
                   ) : (
-                    /* Case suppression si pas facturable et droit delete */
-                    canDelete && isDeletable(row) ? (
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(row.id)}
-                        onChange={() => toggleOne(row.id)}
-                        aria-label="Sélectionner pour supprimer"
-                        className="accent-[var(--brand)] w-4 h-4 cursor-pointer shrink-0"
-                      />
-                    ) : (
-                      <span className="w-4 shrink-0" />
-                    )
+                    <span className="w-4 shrink-0" />
                   )}
 
                   <button onClick={() => openRow(row)}
@@ -605,15 +513,6 @@ export function Livraisons() {
         onClose={() => setDrawerOpen(false)}
         delivery={selected}
         onSaved={load}
-      />
-
-      <ConfirmDialog
-        open={confirmBulk}
-        title={`Supprimer ${selectedIds.size} livraison(s) ?`}
-        message="Action irréversible."
-        onConfirm={handleBulkDelete}
-        onCancel={() => setConfirmBulk(false)}
-        loading={bulkDeleting}
       />
 
       {/* ── Modal de confirmation facturation groupée ──────────────────────── */}

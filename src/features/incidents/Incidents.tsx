@@ -108,7 +108,7 @@ export function Incidents() {
       ) : (
         <>
           {/* Desktop */}
-          <div className="hidden md:block overflow-x-auto glass rounded-[var(--r-xl)]">
+          <div className="hidden md:block overflow-x-auto panel rounded-[var(--r-xl)]">
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">

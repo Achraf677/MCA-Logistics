@@ -35,9 +35,11 @@ export function Drawer({ open, onClose, title, children, width = 'max-w-lg' }: D
       aria-modal="true"
       aria-label={title}
     >
-      {/* Backdrop */}
+      {/* Backdrop — volontairement SANS backdrop-blur : flouter tout l'arrière-plan
+          force le navigateur à re-rasteriser la page entière à chaque repaint,
+          donc à chaque frappe dans le formulaire du drawer. */}
       <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/60"
         onClick={onClose}
         aria-hidden="true"
       />

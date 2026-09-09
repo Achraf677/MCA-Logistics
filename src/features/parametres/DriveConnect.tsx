@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react'
 import { CheckCircle2, HardDrive } from 'lucide-react'
 import { supabase } from '../../app/providers'
 import { Button } from '../../shared/ui/Button'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 
 export function DriveConnect() {
   const [loading, setLoading] = useState(true)
   const [connected, setConnected] = useState(false)
   const [email, setEmail] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false)
+  const [disconnecting, setDisconnecting] = useState(false)
 
   async function refreshStatus() {
     setLoading(true)
@@ -45,6 +48,19 @@ export function DriveConnect() {
     window.location.href = data.url
   }
 
+  async function disconnect() {
+    setError(null)
+    setDisconnecting(true)
+    const { data, error: invokeError } = await supabase.functions.invoke('drive-disconnect')
+    setDisconnecting(false)
+    if (invokeError || !data?.ok) {
+      setError('Déconnexion Drive impossible')
+      return
+    }
+    setConfirmDisconnect(false)
+    await refreshStatus()
+  }
+
   if (loading) {
     return (
       <p className="text-[var(--fs-sm)] text-[var(--text-muted)]">Vérification…</p>
@@ -64,13 +80,29 @@ export function DriveConnect() {
               )}
             </div>
           </div>
-          <Button variant="secondary" size="compact" onClick={connect}>
-            Reconnecter
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button variant="secondary" size="compact" onClick={connect}>
+              Reconnecter
+            </Button>
+            <Button variant="ghost" size="compact" onClick={() => setConfirmDisconnect(true)}
+              className="text-[var(--danger)]">
+              Se déconnecter
+            </Button>
+          </div>
         </div>
         {error && (
           <p className="text-[var(--fs-xs)] text-[var(--danger,#dc2626)]">{error}</p>
         )}
+
+        <ConfirmDialog
+          open={confirmDisconnect}
+          title="Se déconnecter de Google Drive ?"
+          message={'L\'accès sera révoqué pour toute la société : plus aucun document ne pourra être envoyé sur ce Drive tant qu\'il n\'est pas reconnecté. Les fichiers déjà présents dans le Drive ne sont pas supprimés.'}
+          confirmLabel="Se déconnecter"
+          onConfirm={disconnect}
+          onCancel={() => setConfirmDisconnect(false)}
+          loading={disconnecting}
+        />
       </div>
     )
   }

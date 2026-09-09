@@ -21,7 +21,13 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return optionsResponse();
 
   // ── Normalise body → liste d'ids (rétrocompat delivery_id seul) ─────────────
+  // `invoice_date` et `deadline` (optionnels, AAAA-MM-JJ) forcent les dates au
+  // lieu du jour courant + délai de paiement du client. Nécessaires pour refléter
+  // une auto-facture (transport : le donneur d'ordre émet la facture pour nous,
+  // à SES dates) — sinon la copie dans Pennylane ne correspond pas à l'original.
   let ids: string[];
+  let invoiceDateOverride: string | null = null;
+  let deadlineOverride: string | null = null;
   try {
     const body = await req.json();
     if (typeof body?.delivery_id === 'string' && body.delivery_id.length > 0) {
@@ -32,6 +38,21 @@ Deno.serve(async (req: Request) => {
       );
     } else {
       ids = [];
+    }
+    const isIsoDay = (v: unknown): v is string =>
+      typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+    if (body?.invoice_date != null) {
+      if (!isIsoDay(body.invoice_date)) {
+        return jsonResponse({ ok: false, error: 'invoice_date invalide (attendu AAAA-MM-JJ)' }, 400);
+      }
+      invoiceDateOverride = body.invoice_date;
+    }
+    if (body?.deadline != null) {
+      if (!isIsoDay(body.deadline)) {
+        return jsonResponse({ ok: false, error: 'deadline invalide (attendu AAAA-MM-JJ)' }, 400);
+      }
+      deadlineOverride = body.deadline;
     }
   } catch {
     return jsonResponse({ ok: false, error: 'invalid JSON body' }, 400);
@@ -206,8 +227,9 @@ Deno.serve(async (req: Request) => {
     // ── Date et échéance ─────────────────────────────────────────────────────
     // payment_terms_label (select façon Pennylane) prime si renseigné — gère
     // notamment "30 jours fin de mois", indiscernable du seul entier payment_terms.
-    const invoiceDate = new Date().toISOString().slice(0, 10);
-    const deadlineDate = computeDeadline(client.payment_terms_label, invoiceDate, client.payment_terms ?? 30);
+    const invoiceDate = invoiceDateOverride ?? new Date().toISOString().slice(0, 10);
+    const deadlineDate = deadlineOverride
+      ?? computeDeadline(client.payment_terms_label, invoiceDate, client.payment_terms ?? 30);
 
     // ── Lignes de facture : une par livraison + N par ligne supplémentaire ───
     const invoiceLines: InvoiceLine[] = validatedLines.map((ln) => ({
@@ -228,6 +250,31 @@ Deno.serve(async (req: Request) => {
     await finalizeInvoice(token, draftInvoiceId);
     const invoiceNumber = await getInvoiceNumber(token, draftInvoiceId);
 
+    // ── Garde-fou : numéro déjà utilisé ─────────────────────────────────────
+    // Pennylane numérote lui-même (on ne lui envoie jamais d'invoice_number) et
+    // peut réattribuer un numéro existant, typiquement quand une facture
+    // antidatée est créée à la main dans l'UI et s'insère après coup dans la
+    // séquence. Une facture finalisée n'étant plus renumérotable, on signale au
+    // lieu d'enregistrer le doublon en silence.
+    // Le contrôle ne doit JAMAIS faire échouer l'enregistrement : la facture
+    // existe déjà chez Pennylane à ce stade, et une livraison laissée non
+    // facturée serait refacturée au prochain essai — donc un vrai doublon.
+    let numberConflict: string | null = null;
+    if (invoiceNumber) {
+      try {
+        const { data: clash } = await supabase
+          .from('deliveries')
+          .select('pennylane_invoice_id')
+          .eq('pennylane_invoice_number', invoiceNumber)
+          .neq('pennylane_invoice_id', String(draftInvoiceId))
+          .limit(1);
+        if (clash && clash.length > 0) {
+          numberConflict = `Numéro ${invoiceNumber} déjà porté par la facture Pennylane ` +
+            `${clash[0].pennylane_invoice_id} — doublon à régler chez Pennylane.`;
+        }
+      } catch { /* contrôle best-effort */ }
+    }
+
     // ── invoice_group_id uniquement si N > 1 ─────────────────────────────────
     const invoiceGroupId = ids.length > 1 ? crypto.randomUUID() : null;
     const now = new Date().toISOString();
@@ -242,7 +289,7 @@ Deno.serve(async (req: Request) => {
         invoiced_at: now,
         pennylane_synced_at: now,
         sync_pending: false,
-        sync_error: null,
+        sync_error: numberConflict,
       })
       .in('id', ids);
 
@@ -252,6 +299,7 @@ Deno.serve(async (req: Request) => {
         pennylane_invoice_id: String(draftInvoiceId),
         invoice_group_id: invoiceGroupId,
         count: ids.length,
+        number_conflict: numberConflict,
       },
     });
   } catch (err) {

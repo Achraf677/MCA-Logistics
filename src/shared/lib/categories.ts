@@ -13,6 +13,24 @@ export function slugifyCategoryName(name: string): string {
     .replace(/^_+|_+$/g, '')
 }
 
+/** Couleur de badge selon le slug. Fallback 'muted' pour les catégories perso. */
+export function categoryColor(slug: string): 'muted' | 'info' | 'warning' | 'danger' | 'success' {
+  const map: Record<string, 'muted' | 'info' | 'warning' | 'danger' | 'success'> = {
+    carburant:       'warning',
+    assurance:       'info',
+    entretien:       'warning',
+    salaire:         'danger',
+    logiciel:        'muted',
+    telecom:         'muted',
+    loyer:           'muted',
+    frais_bancaires: 'muted',
+    comptabilite:    'muted',
+    publicite:       'muted',
+    autre:           'muted',
+  }
+  return map[slug] ?? 'muted'
+}
+
 /** true si `slug` existe déjà parmi les catégories fournies. */
 export function isDuplicateCategorySlug(
   slug: string,
