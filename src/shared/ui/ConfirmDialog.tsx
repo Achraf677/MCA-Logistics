@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Button } from './Button'
 
 interface ConfirmDialogProps {
@@ -20,6 +21,12 @@ interface ConfirmDialogProps {
 /**
  * Modale de confirmation réutilisable (à utiliser pour toute action destructive/irréversible).
  * Bouton de confirmation en rouge (danger) + Annuler. Pas de saisie texte.
+ *
+ * Rendue dans un portail vers <body> : un ancêtre portant `backdrop-filter`,
+ * `transform` ou `filter` (la classe `.glass`, par exemple) devient le référentiel
+ * des enfants en `position: fixed`. La modale se retrouverait alors dimensionnée
+ * dans la carte au lieu de l'écran, et rognée par son `overflow: hidden` — boutons
+ * inaccessibles. Le portail rend ce cas impossible, quel que soit l'appelant.
  */
 export function ConfirmDialog({
   open, title, message, confirmLabel = 'Supprimer', acknowledgeLabel,
@@ -42,7 +49,7 @@ export function ConfirmDialog({
 
   const confirmDisabled = loading || (!!acknowledgeLabel && !acked)
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center p-4"
       role="alertdialog"
@@ -88,6 +95,7 @@ export function ConfirmDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
