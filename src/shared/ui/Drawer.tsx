@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 
@@ -28,7 +29,9 @@ export function Drawer({ open, onClose, title, children, width = 'max-w-lg' }: D
 
   if (!open) return null
 
-  return (
+  // Portail vers <body> : même raison que ConfirmDialog — un ancêtre en
+  // `backdrop-filter` / `transform` capturerait le positionnement `fixed`.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex justify-end"
       role="dialog"
@@ -68,6 +71,7 @@ export function Drawer({ open, onClose, title, children, width = 'max-w-lg' }: D
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
