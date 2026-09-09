@@ -1,15 +1,19 @@
-import React from 'react'
+import React, { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { features } from '../features.config'
 import { AuthCallback } from './AuthCallback'
-import { PilotageSection }    from './sections/PilotageSection'
-import { LivraisonsSection }  from './sections/LivraisonsSection'
-import { FinanceSection }     from './sections/FinanceSection'
-import { FlotteSection }   from './sections/FlotteSection'
-import { PlanningSection } from './sections/PlanningSection'
-import { TiersSection }    from './sections/TiersSection'
-import { EquipeSection }   from './sections/EquipeSection'
-import { SystemeSection }  from './sections/SystemeSection'
+
+// Sections chargées à la demande : chacune tire toutes les features de son domaine.
+// En import statique, les 8 sections partaient dans un seul bundle chargé au
+// démarrage, alors qu'on n'en affiche qu'une à la fois.
+const PilotageSection   = lazy(() => import('./sections/PilotageSection').then(m => ({ default: m.PilotageSection })))
+const LivraisonsSection = lazy(() => import('./sections/LivraisonsSection').then(m => ({ default: m.LivraisonsSection })))
+const FinanceSection    = lazy(() => import('./sections/FinanceSection').then(m => ({ default: m.FinanceSection })))
+const FlotteSection     = lazy(() => import('./sections/FlotteSection').then(m => ({ default: m.FlotteSection })))
+const PlanningSection   = lazy(() => import('./sections/PlanningSection').then(m => ({ default: m.PlanningSection })))
+const TiersSection      = lazy(() => import('./sections/TiersSection').then(m => ({ default: m.TiersSection })))
+const EquipeSection     = lazy(() => import('./sections/EquipeSection').then(m => ({ default: m.EquipeSection })))
+const SystemeSection    = lazy(() => import('./sections/SystemeSection').then(m => ({ default: m.SystemeSection })))
 
 function guard(enabled: boolean, element: React.ReactElement) {
   return enabled ? element : <Navigate to="/" replace />
@@ -17,6 +21,7 @@ function guard(enabled: boolean, element: React.ReactElement) {
 
 export function AppRoutes() {
   return (
+    <Suspense fallback={<div className="p-8 text-[var(--fs-sm)] text-[var(--text-muted)]">Chargement…</div>}>
     <Routes>
       {/* Pilotage à sous-onglets ; "/" rend la section (1er onglet = Dashboard) → l'app ouvre sur le Dashboard.
           /pilotage ≠ paths redirigés → aucune boucle. */}
@@ -67,5 +72,6 @@ export function AppRoutes() {
       <Route path="/auth/callback"  element={<AuthCallback />} />
       <Route path="*"              element={<Navigate to="/" replace />} />
     </Routes>
+    </Suspense>
   )
 }

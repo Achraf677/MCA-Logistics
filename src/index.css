@@ -121,6 +121,12 @@ body::before {
 /* ── Glass morphism ─────────────────────────────────────── */
 .glass{ background:color-mix(in srgb, var(--bg-card) 72%, transparent); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border:1px solid var(--border); box-shadow:0 24px 50px -28px rgba(0,0,0,.85); }
 
+/* Même habillage que .glass (bordure, ombre, fond de carte) mais SANS
+   backdrop-filter : à utiliser sur les conteneurs qui défilent. Un flou d'arrière-plan
+   sur un élément scrollable force le navigateur à recapturer le fond à chaque frame,
+   ce qui saccade le scroll des grands tableaux. */
+.panel{ background:var(--bg-card); border:1px solid var(--border); box-shadow:0 24px 50px -28px rgba(0,0,0,.85); }
+
 /* ── Line chart animations ──────────────────────────────── */
 /* pathLength="1" sur le path SVG normalise l'offset : dasharray/dashoffset en fraction de 1 */
 .lc-line{ stroke-dasharray:1; stroke-dashoffset:1; animation:lcDraw 1.2s var(--ease) .1s forwards }
