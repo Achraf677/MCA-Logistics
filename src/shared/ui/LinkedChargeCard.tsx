@@ -6,9 +6,18 @@ import type { ChargePick } from '../types/charges'
 interface Props {
   charge: ChargePick
   onDetach: () => void
+  /**
+   * Reste dû de la facture APRÈS imputation de tous les débits rattachés,
+   * celui de cette transaction compris. `0` = soldée, `> 0` = règlement
+   * fractionné en cours (assurance annuelle prélevée mensuellement, par ex.).
+   * Omis = on n'affiche aucun solde.
+   */
+  resteCts?: number | null
 }
 
-export function LinkedChargeCard({ charge, onDetach }: Props) {
+export function LinkedChargeCard({ charge, onDetach, resteCts }: Props) {
+  const totalCts = charge.montant_ttc_cts
+  const fractionne = resteCts != null && totalCts != null && resteCts > 0
   return (
     <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] px-4 py-3 flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
@@ -37,6 +46,15 @@ export function LinkedChargeCard({ charge, onDetach }: Props) {
           className="inline-flex items-center gap-1 text-[var(--fs-xs)] text-[var(--brand)] hover:underline disabled:opacity-50"
         />
       </div>
+
+      {fractionne ? (
+        <p className="text-[var(--fs-xs)] text-[var(--gold)]">
+          Reste dû <span className="font-mono">{formatCents(resteCts)}</span> sur{' '}
+          <span className="font-mono">{formatCents(totalCts)}</span>
+        </p>
+      ) : resteCts === 0 ? (
+        <p className="text-[var(--fs-xs)] text-[var(--success)]">Facture soldée</p>
+      ) : null}
     </div>
   )
 }

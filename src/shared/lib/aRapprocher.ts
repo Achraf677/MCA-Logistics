@@ -108,28 +108,38 @@ export function countEncaissements(txs: TxPick[]): number {
 
 /**
  * Charges candidates au rapprochement — angle charge :
- * - non déjà liées à une qonto_transaction (id absent de l'ensemble des charge_id)
- * - de montant_ttc_cts égal à un débit à rapprocher
+ * - dont le RESTE DÛ (montant TTC − débits déjà rattachés) est encore > 0
+ * - et dont ce reste tombe exactement sur un débit non rapproché
+ *
+ * On raisonne en reste dû et non en « liée / pas liée » : une facture réglée en
+ * plusieurs fois (assurance annuelle prélevée mensuellement) reste à rapprocher
+ * tant qu'elle n'est pas soldée. Même règle que l'écran Trésorerie, pour que le
+ * compteur et l'écran ne racontent jamais deux histoires différentes.
  *
  * Renvoyer le nombre de charges (pas de débits) — l'utilisateur voit combien
  * de factures achat attendent d'être rattachées à un mouvement bancaire.
  */
 export function countChargesArapprocher(txs: TxPick[], charges: ChargePick[]): number {
-  const linkedChargeIds = new Set(
-    txs.map(t => t.charge_id).filter((id): id is string => !!id),
-  )
+  const imputeParCharge = new Map<string, number>()
+  for (const t of txs) {
+    if (!t.charge_id || t.side !== 'debit') continue
+    const n = Number(t.amount_cts)
+    if (!Number.isFinite(n) || n <= 0) continue
+    imputeParCharge.set(t.charge_id, (imputeParCharge.get(t.charge_id) ?? 0) + n)
+  }
+
   const unreconciledDebitAmounts = new Set(
     txs.filter(t => t.side === 'debit' && !t.charge_id && !t.justif_type)
        .map(t => t.amount_cts),
   )
-  return charges.filter(c =>
-    c.montant_ttc_cts != null &&
-    c.montant_ttc_cts >= 0 &&                       // exclut les avoirs (jamais un débit Qonto)
-    isChargeQonto(c) &&                             // exclut les canaux hors Qonto
-    !c.est_immobilisation &&                        // une immobilisation n'est pas "à rapprocher"
-    !linkedChargeIds.has(c.id) &&
-    unreconciledDebitAmounts.has(c.montant_ttc_cts),
-  ).length
+
+  return charges.filter(c => {
+    if (c.montant_ttc_cts == null || c.montant_ttc_cts < 0) return false // avoirs exclus
+    if (!isChargeQonto(c)) return false                                  // canaux hors Qonto
+    if (c.est_immobilisation) return false                               // pas « à rapprocher »
+    const reste = c.montant_ttc_cts - (imputeParCharge.get(c.id) ?? 0)
+    return reste > 0 && unreconciledDebitAmounts.has(reste)
+  }).length
 }
 
 /** Charges dont `category_id` est explicitement null — indépendant du

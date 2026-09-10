@@ -54,6 +54,20 @@ describe('countChargesArapprocher', () => {
     expect(countChargesArapprocher([], [])).toBe(0)
   })
 
+  it('compte une facture partiellement réglée dont le SOLDE tombe sur un débit', () => {
+    // Assurance 635 € déjà réglée à hauteur de 100 € ; un débit de 535 € attend
+    // d'être rapproché. L'ancienne règle « charge déjà liée » l'aurait écartée.
+    const charges = [ch('assurance', 63500)]
+    const txs = [debit(10000, { charge_id: 'assurance' }), debit(53500)]
+    expect(countChargesArapprocher(txs, charges)).toBe(1)
+  })
+
+  it('ne compte plus une facture soldée', () => {
+    const charges = [ch('assurance', 63500)]
+    const txs = [debit(63500, { charge_id: 'assurance' }), debit(63500)]
+    expect(countChargesArapprocher(txs, charges)).toBe(0)
+  })
+
   it('ne compte que les charges non liées ET dont montant matche un débit à rapprocher', () => {
     const txs: TxPick[] = [
       debit(1000),                                 // ✅ à rapprocher (matche c1)
