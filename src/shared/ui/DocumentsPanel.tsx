@@ -1,16 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Upload, Download, Trash2, FileText } from 'lucide-react'
-import { Button } from '../../shared/ui/Button'
-import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
-import { useToast } from '../../shared/ui/useToast'
+import { Button } from './Button'
+import { ConfirmDialog } from './ConfirmDialog'
+import { useToast } from './useToast'
 import { useProfile } from '../../app/providers'
 import {
   uploadDocument, listDocuments, getDownloadUrl, deleteDocument,
-} from '../../shared/lib/documents.queries'
+} from '../lib/documents.queries'
 import {
   DOCUMENT_CATEGORIES, formatBytes, fileLabel, summarizeUploadBatch,
-} from '../../shared/lib/documents.logic'
-import type { DocumentRow, DocumentCategory } from '../../shared/lib/documents.types'
+} from '../lib/documents.logic'
+import type { DocumentRow, DocumentCategory } from '../lib/documents.types'
 
 export type DocumentEntityType = 'vehicle' | 'team_member' | 'client' | 'delivery'
 

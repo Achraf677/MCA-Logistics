@@ -58,7 +58,6 @@ export function AppRoutes() {
       <Route path="/relances"      element={<Navigate to="/finance?tab=relances"    replace />} />
       <Route path="/devis"         element={<Navigate to="/livraisons?tab=devis"    replace />} />
       <Route path="/modeles"       element={<Navigate to="/livraisons?tab=modeles"  replace />} />
-      <Route path="/documents"     element={<Navigate to="/systeme?tab=documents"   replace />} />
       {/* Domaine Équipe à sous-onglets (path /equipe-hub) ; anciennes routes → redirection.
           /equipe redirige vers /equipe-hub?tab=membres : pas de boucle (section ≠ path redirigé). */}
       <Route path="/equipe-hub"    element={guard(features.equipeHub,    <EquipeSection />)} />

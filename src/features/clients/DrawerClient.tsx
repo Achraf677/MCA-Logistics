@@ -19,7 +19,7 @@ import { PAYMENT_TERM_OPTIONS, paymentTermDays, resolvePaymentTermCode } from '.
 import type { Client, ClientInsert, DeliveryForEncours, TariffMode } from './clients.types'
 import { useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
-import { DocumentsPanel } from '../documents/DocumentsPanel'
+import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 
 interface DrawerClientProps {
   open: boolean

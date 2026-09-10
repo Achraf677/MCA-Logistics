@@ -6,7 +6,7 @@ import { createVehicle, updateVehicle, deleteVehicle } from './vehicules.queries
 import { validatePtac, STATUS_LABELS, FUEL_LABELS, vehicleEcheances } from './vehicules.logic'
 import type { Vehicle, VehicleInsert } from './vehicules.types'
 import { useProfile, supabase } from '../../app/providers'
-import { DocumentsPanel } from '../documents/DocumentsPanel'
+import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { DeleteButton } from '../../shared/ui/DeleteButton'
 
 interface DrawerVehiculeProps {

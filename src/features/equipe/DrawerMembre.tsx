@@ -3,7 +3,7 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
-import { DocumentsPanel } from '../documents/DocumentsPanel'
+import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { useProfile } from '../../app/providers'
 import { createTeamMember, updateTeamMember, deactivateTeamMember, getMemberRecentDeliveries } from './equipe.queries'
 import {

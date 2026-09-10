@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import { Trash2, Loader2, Camera, Plus, X, Mail } from 'lucide-react'
-import { DocumentsPanel } from '../documents/DocumentsPanel'
+import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { LettreVoitureTab } from './LettreVoitureTab'
 import { ApercuFacture } from './ApercuFacture'
 import { uploadDocument, listDocuments, getDownloadUrl } from '../../shared/lib/documents.queries'
