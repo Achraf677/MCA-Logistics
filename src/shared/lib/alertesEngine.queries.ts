@@ -40,7 +40,7 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
     // Livrées/facturées/payées — candidates au contrôle "sans justificatif".
     supabase
       .from('deliveries')
-      .select('id, statut, pod_captured_at, lv_pdf_url')
+      .select('id, statut, pod_captured_at, lv_pdf_url, justif_non_requis')
       .in('statut', ['livree', 'facturee', 'payee']),
     // Documents liés à une livraison (POD ou autre pièce jointe).
     supabase
@@ -75,6 +75,7 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
     })),
     livraisonsPourJustif: (sansJustifRes.data ?? []).map(d => ({
       id: d.id, statut: d.statut, pod_captured_at: d.pod_captured_at, lv_pdf_url: d.lv_pdf_url,
+      justif_non_requis: d.justif_non_requis,
     })),
     documentsLivraison: (docsLivraisonRes.data ?? []).map(d => ({
       entity_type: d.entity_type, entity_id: d.entity_id,

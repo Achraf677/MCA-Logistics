@@ -65,6 +65,12 @@ export interface Delivery {
   /** Preuve de livraison (POD) */
   pod_recipient_name: string | null
   pod_captured_at: string | null
+  /**
+   * Cette course n'appelle aucun justificatif : elle est écartée de l'alerte
+   * « livraison sans justificatif » (migration 20260910210000). Décision
+   * explicite de l'utilisateur — jamais positionnée automatiquement.
+   */
+  justif_non_requis: boolean
   /** Lignes supplémentaires (attente, retour à vide, forfait…). */
   extra_lines: DeliveryExtraLine[]
   // ── Lettre de voiture nationale (migration 20260719120000) ─────────────────
@@ -123,6 +129,8 @@ export type DeliveryInsert = Omit<
   | 'relance_count' | 'last_relance_at'
   // POD : mis à jour via savePod(), pas lors du create.
   | 'pod_recipient_name' | 'pod_captured_at'
+  // justif_non_requis : NOT NULL DEFAULT false en base, coché après coup.
+  | 'justif_non_requis'
   // extra_lines : optionnel à l'insert (default DB '[]'), écrit via updateDelivery.
   | 'extra_lines'
   // Lettre de voiture : tous optionnels à l'insert (nullable/DEFAULT côté DB).
@@ -133,6 +141,8 @@ export type DeliveryInsert = Omit<
 > & {
   extra_lines?: DeliveryExtraLine[]
   // Ré-exposés comme optionnels pour rester écrivables via updateDelivery(Partial).
+  /** Coché après coup depuis l'onglet POD — jamais à la création. */
+  justif_non_requis?: boolean
   expediteur_nom?: string | null
   expediteur_siren?: string | null
   destinataire_nom?: string | null

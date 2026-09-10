@@ -1151,6 +1151,26 @@ function PodTab({
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving]       = useState(false)
 
+  // « Aucun justificatif requis » — état local pour un retour immédiat, la
+  // valeur de référence restant celle de la base après rechargement.
+  const [nonRequis, setNonRequis] = useState(delivery?.justif_non_requis ?? false)
+  const [savingNonRequis, setSavingNonRequis] = useState(false)
+
+  async function handleToggleNonRequis(coche: boolean) {
+    if (!delivery) return
+    setNonRequis(coche)          // optimiste
+    setSavingNonRequis(true)
+    const { error } = await updateDelivery(delivery.id, { justif_non_requis: coche })
+    setSavingNonRequis(false)
+    if (error) {
+      setNonRequis(!coche)       // rollback : ne jamais laisser l'écran mentir
+      toast(error.message, 'error')
+      return
+    }
+    toast(coche ? 'Livraison retirée de l’alerte' : 'Livraison remise dans l’alerte')
+    onSaved()
+  }
+
   // Charge la photo POD la plus récente pour cette livraison
   useEffect(() => {
     if (!delivery) return
@@ -1356,6 +1376,28 @@ function PodTab({
         >
           {saving ? 'Enregistrement…' : 'Enregistrer la preuve'}
         </Button>
+      )}
+
+      {/* Échappatoire à l'alerte : certaines courses n'appellent aucun
+          justificatif. Sans cette case, l'alerte reste allumée indéfiniment et
+          finit par être ignorée en bloc — ce qui lui fait rater les vrais oublis. */}
+      {!isReadOnly && delivery && (
+        <label className="flex items-start gap-2 pt-3 border-t border-[var(--border)]
+          text-[var(--fs-sm)] text-[var(--text)] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={nonRequis}
+            onChange={e => handleToggleNonRequis(e.target.checked)}
+            disabled={savingNonRequis}
+            className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer"
+          />
+          <span>
+            Aucun justificatif requis pour cette course
+            <span className="block text-[var(--fs-xs)] text-[var(--text-muted)]">
+              Retire cette livraison de l'alerte « sans justificatif ».
+            </span>
+          </span>
+        </label>
       )}
     </div>
   )

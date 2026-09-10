@@ -8,6 +8,24 @@ const livree = (over: Partial<DeliveryForJustif> = {}): DeliveryForJustif => ({
   id: 'd1', statut: 'livree', pod_captured_at: null, lv_pdf_url: null, ...over,
 })
 
+describe('justif_non_requis', () => {
+  it('écarte une livraison explicitement marquée « justificatif non requis »', () => {
+    expect(isLivraisonSansJustif(livree({ justif_non_requis: true }), [])).toBe(false)
+  })
+
+  it('ne change rien quand le champ est absent (données antérieures) ou false', () => {
+    expect(isLivraisonSansJustif(livree(), [])).toBe(true)
+    expect(isLivraisonSansJustif(livree({ justif_non_requis: false }), [])).toBe(true)
+    expect(isLivraisonSansJustif(livree({ justif_non_requis: null }), [])).toBe(true)
+  })
+
+  it('n’est pas comptée dans le total', () => {
+    const deliveries = [livree({ id: 'd1' }), livree({ id: 'd2', justif_non_requis: true })]
+    expect(countLivraisonsSansJustif(deliveries, [])).toBe(1)
+    expect(filterLivraisonsSansJustif(deliveries, []).map(d => d.id)).toEqual(['d1'])
+  })
+})
+
 describe('countLivraisonsSansJustif', () => {
   it('retourne 0 quand aucune livraison', () => {
     expect(countLivraisonsSansJustif([], [])).toBe(0)
