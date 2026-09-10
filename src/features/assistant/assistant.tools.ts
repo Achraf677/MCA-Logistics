@@ -1460,9 +1460,13 @@ export async function runGenererMail(
 
   if (error || res?.ok === false) {
     const raw = error?.message ?? res?.error ?? 'Échec de la génération.'
-    const msg = /rate|429|trop de demandes/i.test(String(raw))
-      ? '⏳ L’assistant reçoit trop de demandes à la fois — patiente quelques secondes et réessaie.'
-      : `❌ Génération impossible : ${raw}.`
+    // 403 ≠ 429 : un modèle hors abonnement ne se débloque pas en patientant.
+    const text = String(raw)
+    const msg = /403|tier_not_allowed|model_unavailable/i.test(text)
+      ? '🔒 Génération impossible : le modèle d’IA configuré n’est pas inclus dans l’abonnement Mistral.'
+      : /rate_limited|429/i.test(text)
+        ? '⏳ L’assistant reçoit trop de demandes à la fois — patiente quelques secondes et réessaie.'
+        : `❌ Génération impossible : ${raw}.`
     return { ok: false, message: msg }
   }
 

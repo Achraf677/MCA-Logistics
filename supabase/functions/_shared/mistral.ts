@@ -5,7 +5,14 @@
 import { fetchJson } from './http.ts';
 
 const BASE = 'https://api.mistral.ai/v1';
-const MODEL = 'mistral-large-latest';
+// Modele pilote par le secret Supabase `MISTRAL_MODEL`, pour pouvoir changer
+// d'abonnement Mistral SANS redeployer les 5 fonctions qui appellent l'IA.
+// Defaut = ministral-14b-2512 : sur le forfait gratuit du compte, les modeles
+// « premier » (small/medium/large) repondent 403 tier_not_allowed ou 429 ;
+// seule la famille ministral + codestral repond reellement (verifie par appel
+// le 10/09/2026). Passer le secret a `mistral-large-latest` si un forfait
+// payant est active — aucun deploiement necessaire.
+const MODEL = Deno.env.get('MISTRAL_MODEL') || 'ministral-14b-2512';
 
 interface MistralResponse {
   choices?: Array<{ message?: { content?: string } }>;
