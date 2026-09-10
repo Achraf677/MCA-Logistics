@@ -100,17 +100,16 @@ Deno.serve(async (req: Request) => {
     .order('created_at')
     .limit(batch);
 
-  const aTraiter = docs ?? [];
   const migres: string[] = [];
-  const echecs: Array<{ id: string; raison: string }> = [];
+  const echecs: Array<{ nom: string; raison: string }> = [];
 
-  for (const doc of aTraiter) {
+  for (const doc of docs ?? []) {
     try {
       const dl = await fetch(
         `https://www.googleapis.com/drive/v3/files/${doc.drive_file_id}?alt=media&supportsAllDrives=true`,
         { headers: { Authorization: `Bearer ${accessToken}` } },
       );
-      if (!dl.ok) { echecs.push({ id: doc.id, raison: `drive_${dl.status}` }); continue; }
+      if (!dl.ok) { echecs.push({ nom: doc.file_name ?? doc.id, raison: `drive_${dl.status}` }); continue; }
 
       const bytes = new Uint8Array(await dl.arrayBuffer());
       const path = chemin(companyId, doc.id, doc.file_name ?? '');
@@ -119,7 +118,7 @@ Deno.serve(async (req: Request) => {
         contentType: doc.mime_type ?? 'application/octet-stream',
         upsert: true,
       });
-      if (upErr) { echecs.push({ id: doc.id, raison: `storage: ${upErr.message}` }); continue; }
+      if (upErr) { echecs.push({ nom: doc.file_name ?? doc.id, raison: `stockage : ${upErr.message}` }); continue; }
 
       // `drive_file_id` / `drive_link` sont conservés : tant que la migration
       // n'est pas verifiee de bout en bout, on ne detruit aucun pointeur.
@@ -127,11 +126,11 @@ Deno.serve(async (req: Request) => {
         .from('documents')
         .update({ storage_path: path, size_bytes: bytes.byteLength })
         .eq('id', doc.id);
-      if (updErr) { echecs.push({ id: doc.id, raison: `db: ${updErr.message}` }); continue; }
+      if (updErr) { echecs.push({ nom: doc.file_name ?? doc.id, raison: `base : ${updErr.message}` }); continue; }
 
-      migres.push(doc.id);
+      migres.push(doc.file_name ?? doc.id);
     } catch (e) {
-      echecs.push({ id: doc.id, raison: (e as Error).message });
+      echecs.push({ nom: doc.file_name ?? doc.id, raison: (e as Error).message });
     }
   }
 
@@ -142,5 +141,5 @@ Deno.serve(async (req: Request) => {
     .is('storage_path', null)
     .not('drive_file_id', 'is', null);
 
-  return json({ ok: true, migres: migres.length, echecs, restants: restants ?? 0 });
+  return json({ ok: true, migres: migres.length, noms: migres, echecs, restants: restants ?? 0 });
 });

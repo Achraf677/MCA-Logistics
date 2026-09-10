@@ -11,6 +11,7 @@ import { getCompany, updateCompany } from './parametres.queries'
 import type { CompanyData } from './parametres.queries'
 import { ThemeSelector } from '../../shared/theme/ThemeSelector'
 import { GestionCategories } from './GestionCategories'
+import { MigrationDrive } from './MigrationDrive'
 
 const EMPTY: Omit<CompanyData, 'id'> = {
   name: '', siren: '', siret: '', tva_intra: '',
@@ -264,6 +265,11 @@ export function Parametres() {
                   className={inputCls}
                 />
               </Field>
+            </Section>
+
+            {/* Rapatriement des anciens justificatifs Drive — disparaît une fois fini */}
+            <Section title="Anciens justificatifs Google Drive">
+              <MigrationDrive />
             </Section>
 
             {/* Section Catégories de charges */}
