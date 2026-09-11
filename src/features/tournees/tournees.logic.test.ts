@@ -5,13 +5,15 @@ import {
   isDelivered, deliveredProgress, hasUndeliveredStops,
   canStartTour, canFinishTour,
   geocodedPool, canDispatch, groupToursWithStops, totalsAcrossTours,
+  googleMapsAdresseUrl, wazeAdresseUrl, deplacerArret,
 } from './tournees.logic'
 import type { Tour, TourDelivery } from './tournees.types'
 
 function mk(partial: Partial<TourDelivery>): TourDelivery {
   return {
     id: 'x', date: '2026-06-07', statut: 'planifiee',
-    description: null, delivery_address: null,
+    description: null, pickup_address: null, retrait_a_faire: false,
+    delivery_address: null,
     delivery_lat: null, delivery_lng: null,
     tour_id: null, stop_order: null, arrival_time: null,
     delivered_at: null, clients: null,
@@ -232,5 +234,65 @@ describe('totalsAcrossTours', () => {
   })
   it('liste vide → zéros', () => {
     expect(totalsAcrossTours([])).toEqual({ totalKm: 0, totalMin: 0 })
+  })
+})
+
+
+describe('liens de navigation sur une adresse ecrite', () => {
+  it('encode l adresse, espaces et virgules compris', () => {
+    expect(googleMapsAdresseUrl('8 rue Turenne, 67000 Strasbourg'))
+      .toBe('https://www.google.com/maps/dir/?api=1&destination=8%20rue%20Turenne%2C%2067000%20Strasbourg')
+  })
+
+  it('ajoute l evitement des peages quand il est demande', () => {
+    expect(googleMapsAdresseUrl('Nantes', { eviterPeages: true }))
+      .toBe('https://www.google.com/maps/dir/?api=1&destination=Nantes&avoid=tolls')
+  })
+
+  it('ignore les espaces autour de l adresse', () => {
+    expect(googleMapsAdresseUrl('  Nantes  ')).toContain('destination=Nantes')
+  })
+
+  it('Waze : recherche par adresse, sans parametre de peage', () => {
+    const url = wazeAdresseUrl('8 rue Turenne, 67000 Strasbourg')
+    expect(url).toBe('https://waze.com/ul?q=8%20rue%20Turenne%2C%2067000%20Strasbourg&navigate=yes')
+    // Waze n'applique pas avoid_tolls a une recherche par adresse : ne pas le
+    // mettre vaut mieux que de faire croire que la consigne est passee.
+    expect(url).not.toContain('avoid_tolls')
+  })
+})
+
+describe('deplacerArret', () => {
+  const ids = ['a', 'b', 'c']
+
+  it('monte un arret d un cran', () => {
+    expect(deplacerArret(ids, 'b', 'haut')).toEqual(['b', 'a', 'c'])
+  })
+
+  it('descend un arret d un cran', () => {
+    expect(deplacerArret(ids, 'b', 'bas')).toEqual(['a', 'c', 'b'])
+  })
+
+  it('le premier ne peut pas monter', () => {
+    expect(deplacerArret(ids, 'a', 'haut')).toEqual(ids)
+  })
+
+  it('le dernier ne peut pas descendre', () => {
+    expect(deplacerArret(ids, 'c', 'bas')).toEqual(ids)
+  })
+
+  it('un identifiant inconnu ne change rien', () => {
+    expect(deplacerArret(ids, 'zzz', 'haut')).toEqual(ids)
+  })
+
+  it('ne modifie pas le tableau recu', () => {
+    const entree = ['a', 'b', 'c']
+    deplacerArret(entree, 'b', 'haut')
+    expect(entree).toEqual(['a', 'b', 'c'])
+  })
+
+  it('liste d un seul arret : rien ne bouge', () => {
+    expect(deplacerArret(['a'], 'a', 'haut')).toEqual(['a'])
+    expect(deplacerArret(['a'], 'a', 'bas')).toEqual(['a'])
   })
 })

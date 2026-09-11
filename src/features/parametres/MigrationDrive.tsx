@@ -25,6 +25,26 @@ interface Reponse {
   restants?: number
 }
 
+/**
+ * Extrait la vraie raison d'un echec de fonction Edge.
+ *
+ * supabase-js expose la reponse HTTP dans `error.context` pour un
+ * `FunctionsHttpError`. On y lit `message` puis `error` — les deux champs que
+ * renvoie la fonction — et on ne retombe sur le message generique que si le
+ * corps est reellement vide ou illisible.
+ */
+async function raisonLisible(error: unknown): Promise<string> {
+  const contexte = (error as { context?: unknown }).context
+  if (contexte instanceof Response) {
+    try {
+      const corps = await contexte.clone().json()
+      const raison = corps?.message ?? corps?.error
+      if (typeof raison === 'string' && raison.trim()) return raison
+    } catch { /* corps non-JSON : on garde le message generique */ }
+  }
+  return (error as Error).message
+}
+
 export function MigrationDrive() {
   const { toast } = useToast()
   const [restants, setRestants] = useState<number | null>(null)
@@ -55,7 +75,13 @@ export function MigrationDrive() {
         const { data, error } = await supabase.functions.invoke('drive-migrate-to-storage', {
           body: { batch: TAILLE_LOT },
         })
-        if (error) throw new Error(error.message)
+        // `functions.invoke` transforme tout code non-2xx en erreur GENERIQUE
+        // (« Edge Function returned a non-2xx status code ») et jette le corps
+        // de la reponse. Or c'est justement la que se trouve la raison :
+        // « jeton Drive revoque », « reserve au president »… L'utilisateur ne
+        // voyait donc qu'« erreur », sans rien pour agir. On va rechercher le
+        // message dans la reponse avant d'abandonner.
+        if (error) throw new Error(await raisonLisible(error))
 
         const res = data as Reponse
         if (!res?.ok) throw new Error(res?.message ?? res?.error ?? 'Migration impossible')

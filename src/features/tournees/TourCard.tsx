@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Route, Navigation2, ExternalLink, Check, Clock, Fuel, Truck, User } from 'lucide-react'
+import { Route, Navigation2, ExternalLink, Check, Clock, Fuel, Truck, User, ArrowUp, ArrowDown, PackageOpen } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -8,9 +8,10 @@ import { useToast } from '../../shared/ui/useToast'
 import { formatMoney } from '../../shared/lib/money'
 // Machine d'états unique (réutilisée, pas dupliquée).
 import { canTransition } from '../livraisons/livraisons.logic'
-import { markDelivered, setTourStatus, updateTour } from './tournees.queries'
+import { markDelivered, setTourStatus, updateTour, setRetraitAFaire, enregistrerOrdreArrets } from './tournees.queries'
 import {
   estimateFuelCostCts, googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
+  googleMapsAdresseUrl, wazeAdresseUrl, deplacerArret,
   type NavOptions,
   isDelivered, deliveredProgress, hasUndeliveredStops, canStartTour, canFinishTour,
 } from './tournees.logic'
@@ -45,6 +46,36 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
   const [stopBusy, setStopBusy] = useState<string | null>(null)
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
   const [confirmFinish, setConfirmFinish] = useState(false)
+  const [ordreBusy, setOrdreBusy] = useState(false)
+
+  /**
+   * Remonte ou descend un arret, puis enregistre l'ordre complet.
+   *
+   * L'optimisation calcule le trajet le plus court ; elle ignore les
+   * contraintes du terrain — un client qui n'ouvre qu'a 14 h, un chargement a
+   * prendre avant une livraison, un acces interdit le matin. Cet ordre-la,
+   * c'est l'humain qui le pose.
+   */
+  const deplacer = async (id: string, sens: 'haut' | 'bas') => {
+    const ids = stops.map(s => s.id)
+    const nouveau = deplacerArret(ids, id, sens)
+    // `deplacerArret` renvoie le tableau inchange quand le mouvement est
+    // impossible : on ne va pas ecrire en base pour rien.
+    if (nouveau.every((v, i) => v === ids[i])) return
+    setOrdreBusy(true)
+    const { error } = await enregistrerOrdreArrets(nouveau)
+    setOrdreBusy(false)
+    if (error) { toast(error.message, 'error'); return }
+    await onChanged()
+  }
+
+  const basculerRetrait = async (s: TourDelivery) => {
+    setStopBusy(s.id)
+    const { error } = await setRetraitAFaire(s.id, !s.retrait_a_faire)
+    setStopBusy(null)
+    if (error) { toast(error.message, 'error'); return }
+    await onChanged()
+  }
 
   const depotGeocoded = tour.depot_lat != null && tour.depot_lng != null
   const fuelCts = estimateFuelCostCts(tour.total_km)
@@ -192,6 +223,14 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
           </span>
         </label>
 
+        {/* Deux limites qu'il vaut mieux lire ici que decouvrir en route. */}
+        {stops.length > 1 && (
+          <p className="text-[var(--fs-xs)] text-[var(--text-disabled)]">
+            Les flèches imposent ton ordre. Relancer l'optimisation le remplacera.
+            {stops.some(s => s.retrait_a_faire) && " Les retraits ne figurent pas dans « Itinéraire complet » : ils n'ont pas de coordonnées, seulement une adresse."}
+          </p>
+        )}
+
         {/* Liste ordonnée — mobile-first */}
         <ol className="flex flex-col">
           {stops.map((s, i) => {
@@ -200,6 +239,36 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
             return (
               <li key={s.id}
                 className={`flex flex-col gap-2 py-3 border-b border-[var(--border)] last:border-0 ${delivered ? 'opacity-60' : ''}`}>
+
+                {/* Arret de RETRAIT, quand la course en demande un. Affiche
+                    AVANT la livraison parce que c'est l'ordre du terrain : on
+                    charge, puis on livre. Pas de coordonnees pour un retrait —
+                    `deliveries` ne geocode que l'adresse de livraison — donc
+                    les liens partent sur l'adresse ecrite. */}
+                {s.retrait_a_faire && s.pickup_address && (
+                  <div className="flex items-start gap-3 pb-2">
+                    <span className="flex items-center justify-center w-7 h-7 rounded-full shrink-0
+                      bg-[var(--warning)]/15 text-[var(--warning)]">
+                      <PackageOpen size={14} />
+                    </span>
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-[var(--fs-xs)] font-medium text-[var(--warning)]">Retrait</span>
+                      <span className="text-[var(--fs-sm)] text-[var(--text)] break-words">{s.pickup_address}</span>
+                      <div className="flex items-center gap-2 mt-1">
+                        <a href={googleMapsAdresseUrl(s.pickup_address, navOpts)}
+                          target="_blank" rel="noopener noreferrer" className={linkBtnCls}>
+                          <Navigation2 size={14} /> Naviguer
+                        </a>
+                        <a href={wazeAdresseUrl(s.pickup_address)}
+                          target="_blank" rel="noopener noreferrer"
+                          className="text-[var(--fs-xs)] text-[var(--text-muted)] underline px-1 py-2">
+                          Waze
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-start gap-3">
                   <span className={`flex items-center justify-center w-7 h-7 rounded-full shrink-0 text-[var(--fs-xs)] font-bold
                     ${delivered ? 'bg-[var(--success)] text-white' : 'bg-[var(--brand-soft)] text-[var(--brand)]'}`}>
@@ -221,7 +290,46 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
                   </div>
                 </div>
 
+                {/* Case de retrait : seulement s'il y a une adresse ou aller.
+                    Cochee a la main et jamais deduite — une adresse de retrait
+                    renseignee ne dit pas si la marchandise est encore la-bas
+                    ou deja chargee au depot. */}
+                {!delivered && s.pickup_address && (
+                  <label className="flex items-center gap-2 pl-10 cursor-pointer">
+                    <input type="checkbox" checked={s.retrait_a_faire}
+                      onChange={() => basculerRetrait(s)}
+                      disabled={stopBusy === s.id}
+                      className="accent-[var(--brand)] w-4 h-4 cursor-pointer" />
+                    <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                      Passer par l'adresse de retrait
+                    </span>
+                  </label>
+                )}
+
                 <div className="flex items-center gap-2 pl-10">
+                  {/* Ordre impose a la main. Une re-optimisation l'ecrasera :
+                      c'est voulu, sinon « optimiser » ne voudrait plus rien
+                      dire. L'en-tete de la liste le rappelle. */}
+                  {!delivered && stops.length > 1 && (
+                    <span className="flex items-center gap-1">
+                      <button onClick={() => deplacer(s.id, 'haut')}
+                        disabled={ordreBusy || i === 0}
+                        aria-label="Monter cet arrêt"
+                        className="p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
+                          hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
+                          disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                        <ArrowUp size={15} />
+                      </button>
+                      <button onClick={() => deplacer(s.id, 'bas')}
+                        disabled={ordreBusy || i === stops.length - 1}
+                        aria-label="Descendre cet arrêt"
+                        className="p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
+                          hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
+                          disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                        <ArrowDown size={15} />
+                      </button>
+                    </span>
+                  )}
                   {geo && (
                     <>
                       <a href={googleMapsStopUrl(s.delivery_lat as number, s.delivery_lng as number, navOpts)}

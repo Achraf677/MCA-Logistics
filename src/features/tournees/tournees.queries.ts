@@ -35,7 +35,7 @@ export async function getActiveDrivers() {
 // ── Livraisons d'une journée (statuts éligibles) ──────────────────────────────
 
 const DELIVERY_COLS =
-  'id, date, statut, description, delivery_address, delivery_lat, delivery_lng, tour_id, stop_order, arrival_time, delivered_at, clients!client_id(name)'
+  'id, date, statut, description, pickup_address, retrait_a_faire, delivery_address, delivery_lat, delivery_lng, tour_id, stop_order, arrival_time, delivered_at, clients!client_id(name)'
 
 export async function getDeliveriesForDate(companyId: string, date: string) {
   return supabase
@@ -196,3 +196,33 @@ export async function fetchPlannableDeliveries(companyId: string, date: string) 
 }
 
 export type { TourDelivery }
+
+/** Coche ou décoche l'arrêt de retrait d'une course. */
+export async function setRetraitAFaire(deliveryId: string, valeur: boolean) {
+  return supabase
+    .from('deliveries')
+    .update({ retrait_a_faire: valeur })
+    .eq('id', deliveryId)
+}
+
+/**
+ * Enregistre l'ordre manuel des arrêts d'une tournée.
+ *
+ * `stop_order` part de 1 et suit l'ordre du tableau reçu. Les écritures
+ * partent en parallèle : sur une tournée de vingt arrêts, les faire en série
+ * ferait attendre le chauffeur sans raison — aucune ne dépend d'une autre.
+ *
+ * Ce que l'appelant doit savoir : cet ordre est celui que l'humain impose. Une
+ * ré-optimisation l'écrasera, puisqu'elle recalcule `stop_order`. C'est
+ * volontaire — sinon « optimiser » ne voudrait plus rien dire — et l'écran le
+ * dit avant de lancer une optimisation.
+ */
+export async function enregistrerOrdreArrets(idsDansLOrdre: string[]) {
+  const resultats = await Promise.all(
+    idsDansLOrdre.map((id, i) =>
+      supabase.from('deliveries').update({ stop_order: i + 1 }).eq('id', id),
+    ),
+  )
+  const echec = resultats.find(r => r.error)
+  return { error: echec?.error ?? null }
+}

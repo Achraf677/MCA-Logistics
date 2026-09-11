@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera, ShieldCheck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -8,16 +8,16 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { deposerTicket } from '../../shared/lib/receiptsInbox.queries'
-import { uploadDocument } from '../../shared/lib/documents.queries'
+import { uploadDocument, getDownloadUrl } from '../../shared/lib/documents.queries'
 import { enregistrerPod } from '../../shared/lib/pod.queries'
 import { canTransition } from '../../shared/lib/livraisonStatuts'
-import { getMesCourses, avancerCourse } from './mescourses.queries'
+import { getMesCourses, avancerCourse, getDocumentsDesCourses } from './mescourses.queries'
 import {
   bornesPeriode, decalerPeriode, libellePeriode,
   grouperParJour, estAFaire, resteAFaire,
   type ModePeriode,
 } from './mescourses.logic'
-import type { CourseChauffeur } from './mescourses.types'
+import type { CourseChauffeur, DocumentCourse } from './mescourses.types'
 
 const MODES: Array<{ key: ModePeriode; label: string }> = [
   { key: 'jour',    label: 'Jour' },
@@ -45,6 +45,10 @@ export function MesCourses() {
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur]   = useState<string | null>(null)
   const [busyId, setBusyId]   = useState<string | null>(null)
+  // Documents regroupés par course. Chargés à part des courses : ils ne
+  // conditionnent pas l'affichage de la liste, qui doit s'afficher tout de
+  // suite même si le réseau traîne sur les pièces jointes.
+  const [documents, setDocuments] = useState<Map<string, DocumentCourse[]>>(new Map())
 
   const { debut, fin } = bornesPeriode(ancre, mode)
 
@@ -57,6 +61,22 @@ export function MesCourses() {
   }, [debut, fin])
 
   useEffect(() => { charger() }, [charger])
+
+  useEffect(() => {
+    if (courses.length === 0) { setDocuments(new Map()); return }
+    let annule = false
+    getDocumentsDesCourses(courses.map(c => c.id)).then(({ data }) => {
+      if (annule) return
+      const par = new Map<string, DocumentCourse[]>()
+      for (const d of (data ?? []) as DocumentCourse[]) {
+        const liste = par.get(d.entity_id) ?? []
+        liste.push(d)
+        par.set(d.entity_id, liste)
+      }
+      setDocuments(par)
+    })
+    return () => { annule = true }
+  }, [courses])
 
   const groupes = grouperParJour(courses)
   const { reste, total } = resteAFaire(courses)
@@ -203,6 +223,7 @@ export function MesCourses() {
                   key={c.id}
                   course={c}
                   busy={busyId === c.id}
+                  documents={documents.get(c.id) ?? []}
                   onDemarrer={() => demarrer(c)}
                   onLivrer={recipient => livrer(c, recipient)}
                 />
@@ -216,10 +237,11 @@ export function MesCourses() {
 }
 
 function CarteCourse({
-  course: c, busy, onDemarrer, onLivrer,
+  course: c, busy, documents, onDemarrer, onLivrer,
 }: {
   course: CourseChauffeur
   busy: boolean
+  documents: DocumentCourse[]
   onDemarrer: () => void
   onLivrer: (recipient: string | null) => void
 }) {
@@ -299,6 +321,10 @@ function CarteCourse({
           ].filter(Boolean).join(' · ')}
         </p>
       )}
+
+      {/* Pièces jointes de la course. Placées AVANT les boutons d'action : on
+          les consulte en préparant la course, pas après l'avoir close. */}
+      {documents.length > 0 && <PiecesJointes documents={documents} />}
 
       <div className="flex items-center gap-2 flex-wrap">
         {geo && (
@@ -474,6 +500,72 @@ function ScannerTicket() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * Pièces jointes d'une course, ouvrables depuis le téléphone.
+ *
+ * Ce que le chauffeur avait demandé : retrouver sur le terrain les documents
+ * déposés depuis le bureau — bon de commande, étiquette, consignes du client —
+ * plus les photos de preuve déjà prises. Ils existaient en base et n'étaient
+ * visibles que dans le grand tiroir de gestion.
+ *
+ * L'URL est signée AU MOMENT DU CLIC, pas au chargement de la liste : une URL
+ * signée expire au bout d'une heure, et en signer vingt d'avance pour n'en
+ * ouvrir aucune serait à la fois lent et inutile.
+ */
+function PiecesJointes({ documents }: { documents: DocumentCourse[] }) {
+  const { toast } = useToast()
+  const [ouverture, setOuverture] = useState<string | null>(null)
+
+  const ouvrir = async (d: DocumentCourse) => {
+    setOuverture(d.id)
+    const url = await getDownloadUrl(d as never)
+    setOuverture(null)
+    if (!url) {
+      toast("Ce fichier est introuvable — il n'a peut-être pas encore été rapatrié.", 'error')
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="inline-flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
+        <Paperclip size={13} />
+        {documents.length > 1 ? `${documents.length} documents` : '1 document'}
+      </span>
+
+      <div className="flex flex-col gap-1">
+        {documents.map(d => {
+          const estImage = (d.mime_type ?? '').startsWith('image/')
+          return (
+            <button
+              key={d.id}
+              onClick={() => ouvrir(d)}
+              disabled={ouverture === d.id}
+              className="flex items-center gap-2 min-h-[44px] px-3 rounded-[var(--r-md)] text-left
+                border border-[var(--border)] bg-[var(--bg-deep)]
+                hover:border-[var(--brand)] transition-colors disabled:opacity-50"
+            >
+              <span className="text-[var(--text-disabled)] shrink-0">
+                {estImage ? <ImageIcon size={15} /> : <FileText size={15} />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[var(--fs-sm)] text-[var(--text)] truncate">{d.file_name}</span>
+                {d.category && (
+                  <span className="block text-[var(--fs-xs)] text-[var(--text-disabled)]">{d.category}</span>
+                )}
+              </span>
+              {ouverture === d.id && (
+                <span className="text-[var(--fs-xs)] text-[var(--text-muted)] shrink-0">Ouverture…</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

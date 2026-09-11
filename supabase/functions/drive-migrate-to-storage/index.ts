@@ -73,23 +73,38 @@ Deno.serve(async (req: Request) => {
   const { data: profile } = await service
     .from('profiles').select('company_id, role').eq('id', user.id).single();
   if (!profile?.company_id) return json({ ok: false, error: 'société introuvable' }, 400);
-  if (profile.role !== 'president') return json({ ok: false, error: 'réservé au président' }, 403);
+  if (profile.role !== 'president') {
+    return json({ ok: false, error: 'reserve_president', message: 'Seul le président peut lancer le rapatriement.' });
+  }
   const companyId = profile.company_id as string;
 
   const { data: tok } = await service
     .from('google_drive_tokens').select('refresh_token').eq('company_id', companyId).maybeSingle();
+  // NOTE SUR LE CODE HTTP : les refus PREVISIBLES repondent 200 avec
+  // `ok: false`, pas 409. Raison : `supabase.functions.invoke` transforme tout
+  // code non-2xx en erreur generique cote navigateur et jette le corps de la
+  // reponse — donc le message explicatif ci-dessous n'arrivait jamais jusqu'a
+  // l'utilisateur, qui ne voyait qu'« erreur ». Meme choix que `assistant-chat`.
   if (!tok?.refresh_token) {
     return json({
       ok: false,
       error: 'drive_non_connecte',
-      message: 'Aucune connexion Google Drive enregistrée. Reconnecte Drive le temps de la migration : '
-        + 'sans jeton, Google refuse le téléchargement des fichiers.',
-    }, 409);
+      message: 'Aucune connexion Google Drive enregistrée. Reconnecte Drive dans Paramètres le '
+        + 'temps de la migration : sans jeton, Google refuse le téléchargement des fichiers.',
+    });
   }
 
   let accessToken: string;
   try { accessToken = await getAccessToken(tok.refresh_token); }
-  catch { return json({ ok: false, error: 'refresh_failed', message: 'Le jeton Drive est invalide ou révoqué.' }, 409); }
+  catch (e) {
+    return json({
+      ok: false,
+      error: 'refresh_failed',
+      message: 'Google a refusé de renouveler l\'accès à Drive (' + (e as Error).message + '). '
+        + 'Le plus souvent : l\'autorisation a été révoquée depuis le compte Google. '
+        + 'Va dans Paramètres, déconnecte puis reconnecte Google Drive, et relance le rapatriement.',
+    });
+  }
 
   const { data: docs } = await service
     .from('documents')
