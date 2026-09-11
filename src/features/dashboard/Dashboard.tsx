@@ -119,7 +119,7 @@ export function Dashboard() {
         </div>
 
         {/* ── Graphe + Référentiels ── */}
-        <div className="grid lg:grid-cols-[1.6fr_1fr] gap-5 [&>*]:min-w-0">
+        <div className="grid lg:grid-cols-[1.6fr_1fr] gap-5 stagger [&>*]:min-w-0">
 
           {/* Courbe CA */}
           <div className="glass rounded-[var(--r-xl)] p-6">

@@ -251,11 +251,53 @@ body::before {
   animation-delay: calc(min(var(--i, 0), 8) * 45ms);
 }
 
+/* `stagger` fait la meme chose SANS avoir a numeroter chaque enfant a la
+   main : on la pose sur la grille, les cartes arrivent l'une apres l'autre.
+   Au-dela du 8e enfant le decalage est fige, sinon une longue liste ferait
+   attendre. `backwards` garde l'etat initial (invisible) pendant le delai,
+   sinon les cartes clignoteraient avant de partir.
+   L'animation ne se rejoue PAS a chaque rendu : React reutilise les noeuds
+   du DOM. Elle se rejoue quand le squelette de chargement laisse la place
+   aux vraies cartes — c'est exactement le moment ou on la veut. */
+.stagger > * { animation: riseIn var(--dur-3) var(--ease-out) backwards; }
+.stagger > *:nth-child(1) { animation-delay:   0ms; }
+.stagger > *:nth-child(2) { animation-delay:  45ms; }
+.stagger > *:nth-child(3) { animation-delay:  90ms; }
+.stagger > *:nth-child(4) { animation-delay: 135ms; }
+.stagger > *:nth-child(5) { animation-delay: 180ms; }
+.stagger > *:nth-child(6) { animation-delay: 225ms; }
+.stagger > *:nth-child(7) { animation-delay: 270ms; }
+.stagger > *:nth-child(n+8) { animation-delay: 315ms; }
+
+/* ── Ouverture des panneaux et des modales ───────────────────────────
+   Ces animations remplacent `animate-in slide-in-from-right`,
+   `fade-in`, `zoom-in-95` : ces classes viennent du plugin
+   `tailwindcss-animate`, QUI N'A JAMAIS ETE INSTALLE dans ce projet.
+   Verifie dans le CSS compile : elles ne produisaient pas une seule regle.
+   Le drawer, les deux modales et le panneau de l'assistant apparaissaient
+   donc d'un coup, sans transition — c'est la principale source du « trop
+   sec » ressenti. On les ecrit ici plutot que d'ajouter une dependance
+   pour quatre animations.
+
+   Toutes sur `opacity` + `transform` uniquement. */
+@keyframes fadeIn      { from { opacity: 0; }                                      to { opacity: 1; } }
+@keyframes slideRight  { from { opacity: 0; transform: translateX(28px); }         to { opacity: 1; transform: none; } }
+@keyframes popIn       { from { opacity: 0; transform: scale(.96) translateY(6px);} to { opacity: 1; transform: none; } }
+@keyframes slideUp     { from { opacity: 0; transform: translateY(16px); }         to { opacity: 1; transform: none; } }
+
+.anim-backdrop { animation: fadeIn     var(--dur-2) var(--ease-out); }
+.anim-drawer   { animation: slideRight var(--dur-4) var(--ease-out); }
+/* Courbe `spring` : la modale depasse d'un cheveu sa taille finale avant de
+   se poser. C'est ce leger rebond qui donne l'impression d'un objet pose et
+   non d'une image collee. */
+.anim-dialog   { animation: popIn      var(--dur-3) var(--ease-spring); }
+.anim-sheet    { animation: slideUp    var(--dur-3) var(--ease-out); }
+
 /* ── Accessibilite ───────────────────────────────────────────────────
    Un seul interrupteur pour tout ce qui precede. Sans lui, chaque
    animation ajoutee plus tard devrait penser a son propre garde-fou. */
 @media (prefers-reduced-motion: reduce) {
-  .rise { animation: none; opacity: 1; }
+  .rise, .stagger > * { animation: none; opacity: 1; }
   .lift:hover, .press:active { transform: none; }
   *, *::before, *::after {
     animation-duration: .01ms !important;

@@ -138,7 +138,7 @@ export function Clients() {
   return (
     <Shell pageTitle="Clients" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-5 mb-6 [&>*]:min-w-0">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-5 mb-6 stagger [&>*]:min-w-0">
         {loading
           ? <SkeletonKpis count={5} />
           : <>

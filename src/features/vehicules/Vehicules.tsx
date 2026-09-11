@@ -132,7 +132,7 @@ export function Vehicules() {
           />
         ) : (
           /* Vue garage — cartes (desktop ET mobile) */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 [&>*]:min-w-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 stagger [&>*]:min-w-0">
             {displayedVehicles.map(v => (
               <button
                 key={v.id}

@@ -97,7 +97,7 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
         aria-hidden="true"
       />
 
-      <div className="relative w-full max-w-md bg-[var(--bg-elevated)] border border-[var(--border)] rounded-[var(--r-lg)] shadow-lg flex flex-col gap-0 animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
+      <div className="relative w-full max-w-md bg-[var(--bg-elevated)] border border-[var(--border)] rounded-[var(--r-lg)] shadow-lg flex flex-col gap-0 anim-dialog overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <h2 className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">

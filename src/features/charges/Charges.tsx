@@ -195,7 +195,7 @@ export function Charges() {
           {[0,1,2].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Charges"   value={kpis.nb} tone="info" icon={<Receipt size={18} />} />
           <KpiCard label="Total HT"  value={formatCents(kpis.totalHtCts)} tone="warning" icon={<Euro size={18} />}
             sub={kpis.nbAvoirs > 0

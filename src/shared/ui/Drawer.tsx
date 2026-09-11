@@ -42,7 +42,7 @@ export function Drawer({ open, onClose, title, children, width = 'max-w-lg' }: D
           force le navigateur à re-rasteriser la page entière à chaque repaint,
           donc à chaque frappe dans le formulaire du drawer. */}
       <div
-        className="absolute inset-0 bg-black/60"
+        className="absolute inset-0 bg-black/60 anim-backdrop"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -51,8 +51,7 @@ export function Drawer({ open, onClose, title, children, width = 'max-w-lg' }: D
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={`relative flex flex-col w-full ${width} bg-[var(--bg-elevated)] border-l border-[var(--border)] h-full overflow-hidden outline-none
-          animate-in slide-in-from-right duration-200`}
+        className={`relative flex flex-col w-full ${width} bg-[var(--bg-elevated)] border-l border-[var(--border)] h-full overflow-hidden outline-none anim-drawer`}
       >
         {/* Header */}
         <div className="flex items-center justify-between h-[var(--topbar-h)] px-5 border-b border-[var(--border)] shrink-0">

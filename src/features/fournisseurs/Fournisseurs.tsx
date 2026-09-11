@@ -149,7 +149,7 @@ export function Fournisseurs() {
   return (
     <Shell pageTitle="Fournisseurs" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
         {loading ? <SkeletonKpis count={4} /> : <>
           <KpiCard label="Actifs" value={actifs} />
           <KpiCard label="Carburant" value={byCategory.carburant ?? 0} />

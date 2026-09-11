@@ -86,7 +86,7 @@ export function Tva() {
             {[0,1,2,3].map(i => <Skeleton key={i} className="h-[72px]" />)}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-5 [&>*]:min-w-0">
+          <div className="grid grid-cols-2 gap-5 stagger [&>*]:min-w-0">
             <KpiCard label="TVA collectée" value={fmt(result!.tvaCollecteeCts)} accent />
             <KpiCard label="TVA déductible charges" value={fmt(result!.tvaDeductibleChargesCts)} />
             <KpiCard label="TVA déductible carburant" value={fmt(result!.tvaDeductibleCarburantCts)} />

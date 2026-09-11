@@ -193,7 +193,7 @@ export function Livraisons() {
           {[0,1,2,3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Ce mois"          value={kpis.nbMois} tone="info" icon={<Package size={18} />} />
           {/* CA en HT (convention comptable) ; TVA + TTC en sous-ligne pour info. */}
           <KpiCard

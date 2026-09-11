@@ -287,7 +287,7 @@ export function AssistantWidget() {
             sm:w-[400px] sm:h-[600px] sm:max-h-[calc(100vh-2rem)]
             bg-[var(--bg-elevated)] border border-[var(--border)] sm:rounded-[var(--r-lg)]
             shadow-2xl flex flex-col overflow-hidden
-            animate-in fade-in slide-in-from-bottom-4 duration-200"
+            anim-sheet"
         >
           {/* En-tête */}
           <header className="flex items-center gap-2 px-4 h-[var(--topbar-h)] shrink-0

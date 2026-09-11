@@ -63,7 +63,7 @@ export function Inspections() {
           {[0,1,2,3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Inspections" value={kpis.nb} />
           <KpiCard label="Conformes" value={kpis.ok} accent={kpis.ok === kpis.nb && kpis.nb > 0} />
           <KpiCard label="Avec défauts" value={kpis.defauts} accent={kpis.defauts > 0} />

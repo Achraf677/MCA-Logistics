@@ -79,7 +79,7 @@ export function Encaissement() {
             {[0, 1].map(i => <Skeleton key={i} className="h-20" />)}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-5 [&>*]:min-w-0">
+          <div className="grid grid-cols-2 gap-5 stagger [&>*]:min-w-0">
             <KpiCard
               label="Encaissé clients"
               value={formatCents(kpis.totalClientsCts)}

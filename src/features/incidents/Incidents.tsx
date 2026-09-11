@@ -53,7 +53,7 @@ export function Incidents() {
           {[0,1,2,3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Incidents"  value={kpis.nb} tone="info" icon={<AlertTriangle size={18} />} />
           <KpiCard label="Ouverts"    value={kpis.ouverts} tone={kpis.ouverts > 0 ? 'danger' : 'neutral'} icon={<AlertCircle size={18} />} />
           <KpiCard label="En cours"   value={kpis.enCours} tone="warning" icon={<Clock size={18} />} />

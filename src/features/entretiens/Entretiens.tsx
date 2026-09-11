@@ -78,7 +78,7 @@ export function Entretiens() {
           {[0,1,2,3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Opérations"          value={kpis.nb} tone="info" icon={<Wrench size={18} />} />
           <KpiCard label="Coût total"          value={formatCents(kpis.totalCostCts)} tone="warning" icon={<Euro size={18} />} />
           <KpiCard label="Avec échéance"       value={kpis.withNextDue} tone="info" icon={<Calendar size={18} />} />
