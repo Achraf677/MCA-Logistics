@@ -109,6 +109,8 @@ Deno.serve(async (req) => {
     let pages = 0;
     let suppliersUpserts = 0;
     let chargesUpserts = 0;
+    // Charges saisies a la main que la synchro a reconnues chez Pennylane.
+    let adoptions = 0;
     const errors: string[] = [];
     // Tous les pennylane_id vus dans CE sync — sert à détecter les factures
     // supprimées côté Pennylane (absentes de la liste courante).
@@ -204,6 +206,91 @@ Deno.serve(async (req) => {
         });
       }
 
+      // ── 4 bis. Adoption des charges saisies a la main ─────────────────────
+      //
+      // Probleme resolu ici : une charge saisie dans le site n'a pas de
+      // `pennylane_id`. Le jour ou la meme facture est saisie chez Pennylane,
+      // l'upsert ci-dessous ne la reconnait pas et cree une SECONDE ligne. On
+      // se retrouve avec un doublon a supprimer a la main, et deux fois le
+      // montant dans les totaux tant qu'on ne l'a pas vu.
+      //
+      // On rattache donc la facture Pennylane a la charge locale qui lui
+      // correspond, AVANT l'upsert : celui-ci met alors a jour la ligne
+      // existante au lieu d'en creer une.
+      //
+      // TROIS GARDE-FOUS, parce qu'un mauvais rattachement fusionnerait deux
+      // factures differentes et que personne ne le verrait :
+      //   1. montant TTC EXACTEMENT identique, au centime. Aucune tolerance ;
+      //   2. date a 7 jours ou moins — une facture peut etre datee du jour de
+      //      l'achat ici et du jour de reception chez le comptable ;
+      //   3. UN SEUL candidat. Si deux charges locales collent, on ne touche a
+      //      rien : une ambiguite ne se tranche pas en devinant. Le doublon
+      //      sera cree, et l'alerte « charges absentes de Pennylane » le
+      //      signalera — c'est moins grave que de fusionner a tort.
+      //
+      // Chaque adoption laisse une trace dans les notes de la charge : un
+      // rattachement silencieux serait impossible a auditer ou a defaire.
+      if (chargeRows.length > 0) {
+        // Chaque synchro relit TOUTES les factures, y compris celles deja en
+        // base. Sans ce filtre, on tenterait de rattacher une charge locale a
+        // une facture qui a deja sa ligne — l'ecriture echouerait sur la
+        // contrainte d'unicite (company_id, pennylane_id) et remplirait le
+        // rapport d'avertissements sans aucun effet utile.
+        const idsDeLaPage = chargeRows.map((r) => r.pennylane_id as string);
+        const { data: dejaLa } = await supabase
+          .from('charges')
+          .select('pennylane_id')
+          .eq('company_id', companyId)
+          .in('pennylane_id', idsDeLaPage);
+        const connues = new Set((dejaLa ?? []).map((c) => c.pennylane_id as string));
+
+        const { data: orphelines } = await supabase
+          .from('charges')
+          .select('id, date, montant_ttc_cts, notes')
+          .eq('company_id', companyId)
+          .is('pennylane_id', null)
+          .eq('est_immobilisation', false);
+
+        // Retirees du vivier au fur et a mesure : deux factures Pennylane ne
+        // peuvent pas revendiquer la meme charge locale.
+        const vivier = [...(orphelines ?? [])] as Array<
+          { id: string; date: string; montant_ttc_cts: number | null; notes: string | null }
+        >;
+
+        const JOUR = 86_400_000;
+        for (const row of chargeRows) {
+          if (connues.has(row.pennylane_id as string)) continue; // facture deja en base
+          const ttc = row.montant_ttc_cts as number;
+          const dateFacture = Date.parse(`${row.date as string}T00:00:00Z`);
+          if (!Number.isFinite(ttc) || Number.isNaN(dateFacture)) continue;
+
+          const candidats = vivier.filter((o) => {
+            if (o.montant_ttc_cts !== ttc) return false;
+            const d = Date.parse(`${o.date}T00:00:00Z`);
+            return !Number.isNaN(d) && Math.abs(d - dateFacture) <= 7 * JOUR;
+          });
+          if (candidats.length !== 1) continue;
+
+          const adoptee = candidats[0];
+          const trace = `Rattachée automatiquement à la facture Pennylane #${row.pennylane_id} le ${new Date().toISOString().slice(0, 10)}.`;
+          const { error: adoptErr } = await supabase
+            .from('charges')
+            .update({
+              pennylane_id: row.pennylane_id,
+              notes: adoptee.notes ? `${adoptee.notes}\n${trace}` : trace,
+            })
+            .eq('id', adoptee.id)
+            .is('pennylane_id', null); // course : ne rattache pas deux fois
+
+          if (adoptErr) {
+            errors.push(`warn: rattachement charge ${adoptee.id} echoue: ${adoptErr.message}`);
+            continue;
+          }
+          adoptions += 1;
+          vivier.splice(vivier.indexOf(adoptee), 1);
+        }
+      }
+
       if (chargeRows.length > 0) {
         const { data: upsertedCharges, error: chErr } = await supabase
           .from('charges')
@@ -214,7 +301,7 @@ Deno.serve(async (req) => {
           return jsonResponse({
             ok:    false,
             error: `charges upsert p${pages}: ${chErr.message}`,
-            data:  { suppliers_upserts: suppliersUpserts, charges_upserts: chargesUpserts, pages, errors },
+            data:  { suppliers_upserts: suppliersUpserts, charges_upserts: chargesUpserts, adoptions, pages, errors },
           }, 500);
         }
         chargesUpserts += (upsertedCharges?.length ?? 0);
@@ -261,7 +348,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       ok:   true,
-      data: { suppliers_upserts: suppliersUpserts, charges_upserts: chargesUpserts, pages, deleted_flagged, errors },
+      data: { suppliers_upserts: suppliersUpserts, charges_upserts: chargesUpserts, adoptions, pages, deleted_flagged, errors },
     });
 
   } catch (err) {
