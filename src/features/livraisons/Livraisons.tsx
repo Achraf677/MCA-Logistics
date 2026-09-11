@@ -347,7 +347,7 @@ export function Livraisons() {
                     )}
                   </th>
 
-                  {['Date', 'N° facture', 'Client', 'Chauffeur', 'Montant TTC', 'km', 'Statut', ''].map(h => (
+                  {['Date', 'N° facture', 'Client', 'Chauffeur', 'Montant HT', 'km', 'Statut', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -402,8 +402,21 @@ export function Livraisons() {
                             </span>
                           : '—'}
                       </td>
+                      {/* HT en principal (demande du president : « je veux juste
+                          les montants hors taxes »). Le TTC reste en dessous, en
+                          petit : c'est lui qui figure sur la facture envoyee au
+                          client, et c'est lui que le client paie. */}
                       <td className="px-4 py-3 font-mono text-[var(--text)]">
-                        {deliveryTotalTtcCts(row) > 0 ? formatCents(deliveryTotalTtcCts(row)) : '—'}
+                        {deliveryTotalHtCts(row) > 0 ? (
+                          <>
+                            {formatCents(deliveryTotalHtCts(row))}
+                            {deliveryTotalTtcCts(row) !== deliveryTotalHtCts(row) && (
+                              <span className="block text-[var(--fs-xs)] text-[var(--text-disabled)]">
+                                {formatCents(deliveryTotalTtcCts(row))} TTC
+                              </span>
+                            )}
+                          </>
+                        ) : '—'}
                       </td>
                       <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
                         {row.km != null ? `${row.km} km` : '—'}
@@ -496,7 +509,7 @@ export function Livraisons() {
                         )}
                       </div>
                       <span className="font-mono font-semibold text-[var(--text)]">
-                        {deliveryTotalTtcCts(row) > 0 ? formatCents(deliveryTotalTtcCts(row)) : '—'}
+                        {deliveryTotalHtCts(row) > 0 ? formatCents(deliveryTotalHtCts(row)) : '—'}
                       </span>
                     </div>
                   </button>
@@ -532,7 +545,7 @@ export function Livraisons() {
             <div className="rounded-[var(--r-lg)] overflow-hidden border border-[var(--border)]">
               <div className="bg-[var(--bg-elevated)] px-4 py-2 text-[var(--fs-xs)] uppercase tracking-wide
                 text-[var(--text-muted)] grid grid-cols-[80px_1fr_auto] gap-3">
-                <span>Date</span><span>Description</span><span>TTC</span>
+                <span>Date</span><span>Description</span><span>HT</span>
               </div>
               <div className="max-h-52 overflow-y-auto divide-y divide-[var(--border)]">
                 {invoiceSelectedRows.map(row => (
@@ -545,7 +558,7 @@ export function Livraisons() {
                       {row.description?.trim() || row.delivery_address || '—'}
                     </span>
                     <span className="font-mono text-[var(--text)] text-right self-center">
-                      {formatCents(deliveryTotalTtcCts(row))}
+                      {formatCents(deliveryTotalHtCts(row))}
                     </span>
                   </div>
                 ))}

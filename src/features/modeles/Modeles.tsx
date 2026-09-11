@@ -7,16 +7,17 @@ import { SkeletonTable } from '../../shared/ui/Skeleton'
 import { useToast }    from '../../shared/ui/useToast'
 import { formatMoney } from '../../shared/lib/money'
 import { listTemplates } from './modeles.queries'
-import { tripSummary, ttcFromHt } from './modeles.logic'
+import { tripSummary } from './modeles.logic'
 import { DrawerModele } from './DrawerModele'
 import type { DeliveryTemplate } from './modeles.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function ttcOf(t: DeliveryTemplate): number | null {
-  if (t.amount_ht_cts == null) return null
-  return ttcFromHt(t.amount_ht_cts, t.tva_rate ?? 20)
+// Un modele sert a preparer une course en interne, pas a facturer : c'est le
+// HT qui s'y lit. Le TTC apparaitra sur la facture, au moment ou il compte.
+function htOf(t: DeliveryTemplate): number | null {
+  return t.amount_ht_cts ?? null
 }
 
 // ── Composant principal ────────────────────────────────────────────────────────
@@ -88,7 +89,7 @@ export function Modeles() {
               <table className="w-full text-[var(--fs-sm)]">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
-                    {['Libellé', 'Client', 'Trajet', 'TTC', ''].map(h => (
+                    {['Libellé', 'Client', 'Trajet', 'HT', ''].map(h => (
                       <th key={h} className="px-4 py-2.5 text-left font-medium text-[var(--text-muted)] text-[var(--fs-xs)] uppercase tracking-wide whitespace-nowrap">
                         {h}
                       </th>
@@ -98,7 +99,7 @@ export function Modeles() {
                 <tbody className="divide-y divide-[var(--border)]">
                   {templates.map(t => {
                     const trip = tripSummary(t.pickup_address, t.delivery_address)
-                    const ttc = ttcOf(t)
+                    const ht = htOf(t)
                     return (
                       <tr key={t.id}
                         className="hover:bg-[var(--bg-card-hover)] transition-colors cursor-pointer"
@@ -113,7 +114,7 @@ export function Modeles() {
                           {trip ?? '—'}
                         </td>
                         <td className="px-4 py-3 font-mono font-medium whitespace-nowrap">
-                          {ttc != null ? formatMoney(ttc) : '—'}
+                          {ht != null ? formatMoney(ht) : '—'}
                         </td>
                         <td className="px-4 py-3">
                           <Button size="compact" variant="secondary"
@@ -132,7 +133,7 @@ export function Modeles() {
             <div className="flex flex-col gap-3 md:hidden">
               {templates.map(t => {
                 const trip = tripSummary(t.pickup_address, t.delivery_address)
-                const ttc = ttcOf(t)
+                const ht = htOf(t)
                 return (
                   <div key={t.id}
                     className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)] p-4 flex flex-col gap-2 cursor-pointer hover:border-[var(--brand)]/40 transition-colors"
@@ -140,7 +141,7 @@ export function Modeles() {
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-medium text-[var(--text)]">{t.label}</span>
                       <span className="font-mono font-semibold text-[var(--text)] shrink-0">
-                        {ttc != null ? formatMoney(ttc) : '—'}
+                        {ht != null ? formatMoney(ht) : '—'}
                       </span>
                     </div>
                     <p className="text-[var(--fs-sm)] text-[var(--text-muted)] truncate">

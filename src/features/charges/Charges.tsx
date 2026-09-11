@@ -207,7 +207,8 @@ export function Charges() {
               ? `dont ${kpis.nbAvoirs} avoir${kpis.nbAvoirs > 1 ? 's' : ''} ${formatCents(kpis.avoirsHtCts)}`
               : undefined}
           />
-          <KpiCard label="Total TTC" value={formatCents(kpis.totalTtcCts)} tone="warning" icon={<Wallet size={18} />} />
+          <KpiCard label="Total TTC" value={formatCents(kpis.totalTtcCts)} tone="warning" icon={<Wallet size={18} />}
+            sub="somme réellement débitée" />
         </div>
       )}
 
