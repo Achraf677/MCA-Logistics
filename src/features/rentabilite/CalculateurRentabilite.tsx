@@ -911,7 +911,7 @@ export function CalculateurRentabilite() {
         <div className="px-5 py-4 border-b border-[var(--border)]">
           <h2 className="font-semibold text-[var(--text)]">Simulateur de course (go / no-go)</h2>
           <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mt-0.5">
-            Calcule si une course est rentable · coûts issus des hypothèses ci-dessus, mis à jour en direct
+            Coûts repris des hypothèses ci-dessus.
           </p>
         </div>
 

@@ -129,10 +129,13 @@ export function Tva() {
           )}
         </div>
 
+        {/* Deux informations seulement, et chacune évite une erreur réelle :
+            le périmètre du calcul, et le fait qu'il ne remplace pas un
+            comptable. La mention des `fuel_logs` a été retirée — un nom de
+            table en base n'apprend rien à qui lit cet écran. */}
         <p className="text-[var(--fs-xs)] text-[var(--text-disabled)]">
-          * TVA calculée sur les livraisons au statut "Facturée" ou "Payée".
-          Les charges liées à un plein carburant sont exclues (déjà comptées via les fuel_logs).
-          Vérifiez auprès de votre comptable avant toute déclaration.
+          Calcul basé sur les livraisons facturées ou payées. À vérifier avec ton comptable
+          avant toute déclaration.
         </p>
       </div>
     </Shell>

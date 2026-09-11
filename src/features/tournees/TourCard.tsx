@@ -247,7 +247,7 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
           })}
         </ol>
         <p className="text-[var(--fs-xs)] text-[var(--text-disabled)] mt-3">
-          Estimation carburant indicative (0,15 €/km).
+          Estimation à 0,15 €/km.
         </p>
       </div>
 

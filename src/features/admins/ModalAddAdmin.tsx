@@ -172,7 +172,7 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
                 </select>
               </Field>
               <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-                Un email d'invitation sera envoyé. Requiert un SMTP configuré dans Supabase Auth.
+                Un e-mail d'invitation sera envoyé.
               </p>
               {inviteWarning && (
                 <p className="text-[var(--fs-xs)] text-[var(--danger,#dc2626)] bg-[var(--danger,#dc2626)]/10 px-3 py-2 rounded-[var(--r-md)]">

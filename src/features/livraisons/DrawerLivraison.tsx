@@ -1287,7 +1287,7 @@ function PodTab({
         {!isReadOnly && (
           <div className="pt-2 border-t border-[var(--border)]">
             <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mb-2">
-              Remplacer la photo (l'ancienne reste dans Documents) :
+              Remplacer la photo :
             </p>
             <input
               ref={fileRef}

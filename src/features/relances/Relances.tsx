@@ -50,7 +50,7 @@ export function Relances() {
 
         {/* Note */}
         <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-          Les relances sont gérées dans Pennylane (séquences automatiques). Cette vue est un radar des impayés.
+          Les relances partent depuis Pennylane. Cette vue sert à repérer les impayés.
         </p>
 
         {/* KPIs */}

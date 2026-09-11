@@ -356,7 +356,6 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-[var(--fs-sm)] font-medium text-[var(--text)]">Rôle</p>
-                    <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">Définit le libellé du compte</p>
                   </div>
                   <select
                     value={roleValue}

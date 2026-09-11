@@ -176,7 +176,7 @@ export function DocumentsPanel({ entityType, entityId }: DocumentsPanelProps) {
       {pendingFiles.length > 0 && (
         <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
           {pendingFiles.map(f => f.name).join(', ')}
-          {pendingFiles.some(f => f.type.startsWith('image/')) && ' — compression auto activée pour les images'}
+          
         </p>
       )}
 

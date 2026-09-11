@@ -324,7 +324,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
             </div>
             {form.tariff_mode === 'manuel' && (
               <p className="text-[var(--fs-xs)] text-[var(--text-disabled)] mt-1">
-                En mode manuel, le montant de chaque livraison est saisi à la main.
+                Montant saisi course par course.
               </p>
             )}
           </div>
