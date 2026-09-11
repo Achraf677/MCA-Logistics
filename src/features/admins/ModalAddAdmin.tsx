@@ -5,6 +5,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { Button } from '../../shared/ui/Button'
 import { ROLE_OPTIONS } from './admins.types'
 import type { AdminRole } from './admins.types'
+import { Field } from '../../shared/ui/Field'
 
 interface Props {
   open: boolean
@@ -197,13 +198,3 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-        {label}
-      </label>
-      {children}
-    </div>
-  )
-}

@@ -29,6 +29,7 @@ import { buildLettreVoiture, lvNumero } from './lettreVoiture.logic'
 import { buildLettreVoiturePdf } from './lettreVoiture.pdf'
 import { updateDelivery, getLvNumerosForYear } from './livraisons.queries'
 import type { DeliveryRow, LvSignatures, LvSignatureData } from './livraisons.types'
+import { Field } from '../../shared/ui/Field'
 
 interface Props {
   delivery: DeliveryRow | null
@@ -387,16 +388,6 @@ function SignatureBlock({
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-        {label}
-      </label>
-      {children}
-    </div>
-  )
-}
 
 const inputCls = 'field'
 function roleLabel(r: keyof LvSignatures): string {

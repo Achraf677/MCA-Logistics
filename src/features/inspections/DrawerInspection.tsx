@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import type { ReactNode } from 'react'
 import { CheckCircle, XCircle } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
@@ -12,6 +11,7 @@ import {
 } from './inspections.logic'
 import type { InspectionRow, InspectionInsert, InspectionType, InspectionStatus } from './inspections.types'
 import { DeleteButton } from '../../shared/ui/DeleteButton'
+import { Field } from '../../shared/ui/Field'
 
 interface Props {
   open: boolean
@@ -284,11 +284,3 @@ function Input({ type = 'text', value, onChange, placeholder }: {
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
-      {children}
-    </div>
-  )
-}

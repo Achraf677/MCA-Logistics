@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import type { ReactNode } from 'react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -12,6 +11,7 @@ import {
   TYPE_LABELS, TYPE_COLOR, STATUS_LABELS, STATUS_COLOR, formatCents,
 } from './incidents.logic'
 import type { IncidentRow, IncidentInsert, IncidentType, IncidentStatus } from './incidents.types'
+import { Field } from '../../shared/ui/Field'
 
 interface Props {
   open: boolean
@@ -260,11 +260,3 @@ function Input({ type = 'text', value, onChange, placeholder }: {
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
-      {children}
-    </div>
-  )
-}

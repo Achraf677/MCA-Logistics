@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import type { ReactNode } from 'react'
 import { Trash2, Lock } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
@@ -15,6 +14,7 @@ import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { VentilationFacture } from '../../shared/ui/VentilationFacture'
 import type { ChargeRow, ChargeInsert, ChargeCategoryRow } from './charges.types'
+import { Field } from '../../shared/ui/Field'
 
 interface Props {
   open: boolean
@@ -419,13 +419,3 @@ function Input({ type = 'text', value, onChange, placeholder, disabled }: {
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-        {label}
-      </label>
-      {children}
-    </div>
-  )
-}

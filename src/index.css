@@ -293,11 +293,31 @@ body::before {
 .anim-dialog   { animation: popIn      var(--dur-3) var(--ease-spring); }
 .anim-sheet    { animation: slideUp    var(--dur-3) var(--ease-out); }
 
+/* ── Onglets ─────────────────────────────────────────────────────────
+   Avant : le trait rouge sous l'onglet actif sautait d'un onglet a
+   l'autre et le contenu se remplacait sans transition. Maintenant le
+   trait se deploie depuis son centre et le contenu arrive en fondu.
+   Le trait passe d'une `border-bottom` a un `::after` : une bordure ne
+   peut pas etre animee en `transform`, un pseudo-element si. */
+@keyframes growX { from { transform: scaleX(.25); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+.tab-active { position: relative; }
+.tab-active::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--brand);
+  animation: growX var(--dur-3) var(--ease-out);
+}
+.anim-tab { animation: fadeIn var(--dur-2) var(--ease-out); }
+
 /* ── Accessibilite ───────────────────────────────────────────────────
    Un seul interrupteur pour tout ce qui precede. Sans lui, chaque
    animation ajoutee plus tard devrait penser a son propre garde-fou. */
 @media (prefers-reduced-motion: reduce) {
   .rise, .stagger > * { animation: none; opacity: 1; }
+  .tab-active::after { animation: none; }
   .lift:hover, .press:active { transform: none; }
   *, *::before, *::after {
     animation-duration: .01ms !important;

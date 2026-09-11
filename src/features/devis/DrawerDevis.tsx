@@ -18,6 +18,7 @@ import {
 } from './devis.queries'
 import type { Quote, QuoteStatus } from './devis.types'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
+import { Field } from '../../shared/ui/Field'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -485,16 +486,6 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
 // ── Sous-composants ───────────────────────────────────────────────────────────
 
 const inputCls = 'field'
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-        {label}
-      </label>
-      {children}
-    </div>
-  )
-}
 
 function InfoRow({ label, children }: { label: string; children: ReactNode }) {
   return (

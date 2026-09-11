@@ -12,6 +12,7 @@ import type { CompanyData } from './parametres.queries'
 import { ThemeSelector } from '../../shared/theme/ThemeSelector'
 import { GestionCategories } from './GestionCategories'
 import { MigrationDrive } from './MigrationDrive'
+import { Field } from '../../shared/ui/Field'
 
 const EMPTY: Omit<CompanyData, 'id'> = {
   name: '', siren: '', siret: '', tva_intra: '',
@@ -315,14 +316,6 @@ function Input({ type = 'text', value, onChange, placeholder }: {
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
-      {children}
-    </div>
-  )
-}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (

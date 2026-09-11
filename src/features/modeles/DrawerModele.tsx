@@ -14,6 +14,7 @@ import {
   listClientsLight, listVehiclesLight, listDriversLight,
 } from './modeles.queries'
 import type { DeliveryTemplate } from './modeles.types'
+import { Field } from '../../shared/ui/Field'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -319,16 +320,6 @@ export function DrawerModele({ open, onClose, template, onSaved }: Props) {
 // ── Sous-composants ───────────────────────────────────────────────────────────
 
 const inputCls = 'field'
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-        {label}
-      </label>
-      {children}
-    </div>
-  )
-}
 
 function InfoRow({ label, children }: { label: string; children: ReactNode }) {
   return (

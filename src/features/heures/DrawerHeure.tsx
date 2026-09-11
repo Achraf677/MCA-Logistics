@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import type { ReactNode } from 'react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { useToast } from '../../shared/ui/useToast'
@@ -7,6 +6,7 @@ import { supabase, useProfile } from '../../app/providers'
 import { createWorkHour, updateWorkHour } from './heures.queries'
 import { formatMinutes } from './heures.logic'
 import type { WorkHourRow, WorkHourInsert } from './heures.types'
+import { Field } from '../../shared/ui/Field'
 
 interface Props {
   open: boolean
@@ -201,11 +201,3 @@ function Input({ type = 'text', value, onChange, placeholder }: {
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
-      {children}
-    </div>
-  )
-}
