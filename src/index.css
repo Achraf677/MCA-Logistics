@@ -312,11 +312,38 @@ body::before {
 }
 .anim-tab { animation: fadeIn var(--dur-2) var(--ease-out); }
 
+/* ── Squelettes de chargement ────────────────────────────────────────
+   `animate-pulse` fait clignoter l'opacite de tout le bloc : ca signale
+   l'attente, mais ca ne suggere aucune direction. Un reflet qui balaie le
+   bloc de gauche a droite se lit comme « ca arrive », pas comme « ca
+   clignote ».
+
+   Le reflet est un pseudo-element deplace en `translateX` : c'est le
+   compositeur qui le bouge, la carte en dessous n'est jamais repeinte.
+   Anime `background-position` a la place aurait redessine le fond a
+   chaque frame — exactement le genre de detail qui avait fait tomber
+   l'interface a 10 fps. */
+@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.skeleton { position: relative; overflow: hidden; }
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--text) 6%, transparent),
+    transparent
+  );
+  animation: shimmer 1.6s var(--ease-in-out) infinite;
+}
+
 /* ── Accessibilite ───────────────────────────────────────────────────
    Un seul interrupteur pour tout ce qui precede. Sans lui, chaque
    animation ajoutee plus tard devrait penser a son propre garde-fou. */
 @media (prefers-reduced-motion: reduce) {
   .rise, .stagger > * { animation: none; opacity: 1; }
+  .skeleton::after { animation: none; }
   .tab-active::after { animation: none; }
   .lift:hover, .press:active { transform: none; }
   *, *::before, *::after {

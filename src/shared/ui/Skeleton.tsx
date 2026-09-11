@@ -6,7 +6,7 @@ interface SkeletonProps {
 export function Skeleton({ className = '' }: { className?: string }) {
   return (
     <div
-      className={`rounded-[var(--r-md)] bg-[var(--bg-card)] animate-pulse ${className}`}
+      className={`skeleton rounded-[var(--r-md)] bg-[var(--bg-card)] ${className}`}
       aria-hidden="true"
     />
   )
