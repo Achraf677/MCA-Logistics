@@ -12,6 +12,7 @@ import type { CompanyData } from './parametres.queries'
 import { ThemeSelector } from '../../shared/theme/ThemeSelector'
 import { GestionCategories } from './GestionCategories'
 import { MigrationDrive } from './MigrationDrive'
+import { TestLectureAuto } from './TestLectureAuto'
 import { Field } from '../../shared/ui/Field'
 
 const EMPTY: Omit<CompanyData, 'id'> = {
@@ -266,6 +267,10 @@ export function Parametres() {
                   className={inputCls}
                 />
               </Field>
+            </Section>
+
+            <Section title="Lecture automatique des documents">
+              <TestLectureAuto />
             </Section>
 
             {/* Rapatriement des anciens justificatifs Drive.
