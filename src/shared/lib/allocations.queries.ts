@@ -53,6 +53,32 @@ export async function listAllocationsForTarget(
   }
 }
 
+/**
+ * Ventilations d'un lot de charges, réduites à ce qu'il faut pour agréger les
+ * dépenses par catégorie. Distincte de `listAllocationsForCharges` sur deux
+ * points volontaires :
+ *   - elle ne filtre PAS sur `target_table IS NULL` : une part allouée à un
+ *     entretien ou à un plein consomme aussi du montant de la facture et doit
+ *     compter dans son poste ;
+ *   - elle ne ramène ni jointure ni libellé, seulement les trois colonnes du
+ *     calcul, l'écran Charges en listant des dizaines d'un coup.
+ *
+ * `charge_ids` vide → aucune requête (un `in()` vide ramènerait tout).
+ */
+export async function listAllocationsCategoriesForCharges(
+  charge_ids: string[],
+): Promise<{ data: Array<{ charge_id: string; category_id: string | null; amount_cts: number }>; error: Error | null }> {
+  if (charge_ids.length === 0) return { data: [], error: null }
+  const { data, error } = await supabase
+    .from('charge_allocations')
+    .select('charge_id, category_id, amount_cts')
+    .in('charge_id', charge_ids)
+  return {
+    data: (data ?? []) as Array<{ charge_id: string; category_id: string | null; amount_cts: number }>,
+    error: error ? new Error(error.message) : null,
+  }
+}
+
 /** Ajoute une allocation. category_id par défaut = catégorie de la charge
  *  choisie (résolue par l'appelant — le picker connaît la charge). */
 export async function addAllocation(payload: AllocationInsert) {

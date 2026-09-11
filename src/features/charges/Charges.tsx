@@ -17,6 +17,8 @@ import { useSync } from '../../app/SyncProvider'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatCents, categoryColor, kpiSummary } from './charges.logic'
 import { getCategories } from '../../shared/lib/categories.queries'
+import { listAllocationsCategoriesForCharges } from '../../shared/lib/allocations.queries'
+import { TotauxParCategorie } from '../../shared/ui/TotauxParCategorie'
 import { downloadCSV } from '../../shared/lib/download'
 import { suggestCategory } from '../../shared/lib/suggestCategorie'
 import { parseSuggestionIa } from '../../shared/lib/suggestionIa'
@@ -39,6 +41,9 @@ export function Charges() {
   const { syncState, syncIfStale } = useSync()
   // Suppression Pennylane : charge en attente de confirmation "Supprimer de l'app".
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  // Ventilations des charges affichees, pour repartir une facture entre
+  // plusieurs categories (lave-glace + AdBlue sur une meme facture).
+  const [allocations, setAllocations] = useState<Array<{ charge_id: string; category_id: string | null; amount_cts: number }>>([])
   const [deletingFlagged, setDeletingFlagged] = useState(false)
   // Filtre spécial via URL (?filtre=pennylane_supprimees) — clic depuis la cloche.
   const [searchParams, setSearchParams] = useSearchParams()
@@ -53,10 +58,26 @@ export function Charges() {
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     const { data, error } = await getCharges(filters)
-    if (error) setError(error.message)
-    else setRows((data ?? []) as unknown as ChargeRow[])
+    if (error) {
+      setError(error.message)
+      setRows([]); setAllocations([])
+    } else {
+      const charges = (data ?? []) as unknown as ChargeRow[]
+      setRows(charges)
+      // Une seule requete pour toutes les ventilations du lot affiche : en faire
+      // une par charge ferait des dizaines d'aller-retours a chaque chargement.
+      const { data: allocs } = await listAllocationsCategoriesForCharges(charges.map(c => c.id))
+      setAllocations(allocs)
+    }
     setLoading(false)
   }, [filters])
+
+  // id -> nom, pour afficher « AdBlue » plutot qu'un identifiant. Memoise :
+  // recreer la Map a chaque rendu ferait recalculer les totaux pour rien.
+  const nomsParCategorie = useMemo(
+    () => new Map(categories.map(c => [c.id, c.name])),
+    [categories],
+  )
 
   useEffect(() => { syncIfStale('charges') }, [syncIfStale])
   useEffect(() => { load() }, [load, syncState.charges.lastSyncAt])
@@ -181,6 +202,21 @@ export function Charges() {
               : undefined}
           />
           <KpiCard label="Total TTC" value={formatCents(kpis.totalTtcCts)} tone="warning" icon={<Wallet size={18} />} />
+        </div>
+      )}
+
+      {/* Répartition par catégorie — répond à « combien d'AdBlue ai-je acheté ».
+          Suit les filtres de la liste : changer la période change la répartition. */}
+      {!loading && rows.length > 0 && (
+        <div className="mb-6 glass rounded-[var(--r-xl)] px-4 py-4">
+          <span className="block mb-3 text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+            Dépenses par catégorie
+          </span>
+          <TotauxParCategorie
+            charges={rows}
+            allocations={allocations}
+            nomsParCategorie={nomsParCategorie}
+          />
         </div>
       )}
 

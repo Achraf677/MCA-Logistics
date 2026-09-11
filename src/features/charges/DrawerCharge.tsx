@@ -13,6 +13,7 @@ import { categoryColor, formatCents } from './charges.logic'
 import { fromHtAndRate, fromHtAndManualTva } from '../../shared/lib/montants'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
+import { VentilationFacture } from '../../shared/ui/VentilationFacture'
 import type { ChargeRow, ChargeInsert, ChargeCategoryRow } from './charges.types'
 
 interface Props {
@@ -355,6 +356,29 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
             className={`${inputCls} resize-none`}
           />
         </Field>
+
+        {/* Ventilation : découpe la facture en lignes, chacune avec sa catégorie.
+            Le mécanisme existait mais n'était branché que dans Entretiens — d'où
+            l'impression qu'une facture ne pouvait porter qu'une seule catégorie.
+            Réservée à l'édition : il faut une charge enregistrée pour y rattacher
+            des lignes. */}
+        {isEdit && charge && charge.montant_ttc_cts != null && charge.montant_ttc_cts > 0 && (
+          <div className="rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+                Ventilation par catégorie
+              </span>
+              <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                Pour une facture qui couvre plusieurs postes (lave-glace et AdBlue, par exemple).
+              </span>
+            </div>
+            <VentilationFacture
+              chargeId={charge.id}
+              chargeAmountCts={charge.montant_ttc_cts}
+              onChanged={onSaved}
+            />
+          </div>
+        )}
 
         <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
           {!isPennylane && can('finance.charges', isEdit ? 'update' : 'create') && (
