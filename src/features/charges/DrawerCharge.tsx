@@ -23,6 +23,13 @@ interface Props {
   charge?: ChargeRow | null
   onSaved: () => void
   categories: ChargeCategoryRow[]
+  /** Valeurs de depart pour une creation (ex. un ticket chauffeur). Elles
+   *  remplissent le formulaire et restent entierement modifiables : le
+   *  pre-remplissage propose, il n'impose pas. */
+  prefill?: { date?: string; label?: string; notes?: string } | null
+  /** Appele apres une CREATION reussie, avec l'identifiant de la charge.
+   *  Permet a l'appelant de rattacher ce qui doit l'etre (ticket, piece). */
+  onCreated?: (chargeId: string) => void | Promise<void>
 }
 
 type Lookup = { id: string; label: string }
@@ -50,7 +57,7 @@ const MODE_PAIEMENT_LABELS: Record<string, string> = {
   autre:         'Autre canal',
 }
 
-export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Props) {
+export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefill, onCreated }: Props) {
   const { companyId } = useProfile()
   const { toast } = useToast()
   const isEdit = !!charge
@@ -63,6 +70,15 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  // `prefill` arrive sous forme d'objet litteral, donc RECREE a chaque rendu
+  // du parent. Le mettre tel quel dans les dependances de l'effet de
+  // pre-remplissage le ferait rejouer a CHAQUE rendu, ce qui effacerait la
+  // saisie en cours. On depend donc des trois valeurs elles-memes, qui sont
+  // des chaines : elles ne changent que si le ticket source change.
+  const prefillDate  = prefill?.date
+  const prefillLabel = prefill?.label
+  const prefillNotes = prefill?.notes
+
   const [doublons, setDoublons] = useState<Doublon[]>([])
   const [doublonsAcceptes, setDoublonsAcceptes] = useState(false)
   const [nomsFournisseurs, setNomsFournisseurs] = useState<Record<string, string>>({})
@@ -99,9 +115,14 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
     } else {
       setIsAvoir(false)
       setTvaTouched(false)
-      setForm({ ...EMPTY_FORM, date: new Date().toISOString().slice(0, 10) })
+      setForm({
+        ...EMPTY_FORM,
+        date:  prefillDate  ?? new Date().toISOString().slice(0, 10),
+        label: prefillLabel ?? '',
+        notes: prefillNotes ?? '',
+      })
     }
-  }, [charge, open])
+  }, [charge, open, prefillDate, prefillLabel, prefillNotes])
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
 
@@ -209,9 +230,10 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
         toast('Charge mise à jour')
       } else {
         if (!companyId) throw new Error('Profil non chargé')
-        const { error } = await createCharge({ ...payload, company_id: companyId })
+        const { data: creee, error } = await createCharge({ ...payload, company_id: companyId })
         if (error) throw error
         toast('Charge créée')
+        if (creee?.id) await onCreated?.(creee.id)
       }
       onSaved()
       onClose()

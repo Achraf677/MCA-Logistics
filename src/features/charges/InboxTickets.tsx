@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Inbox, ExternalLink, Check, X } from 'lucide-react'
+import { Inbox, ExternalLink, Check, X, FilePlus2 } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { useToast } from '../../shared/ui/useToast'
 import {
@@ -10,14 +10,20 @@ import {
 /**
  * Tickets envoyés par les chauffeurs, en attente de traitement.
  *
- * Deux issues seulement, et c'est volontaire : « Traité » quand la charge
- * correspondante a été saisie, « Ignorer » pour un doublon, un ticket illisible
- * ou hors activité. Pas de troisième voie du genre « plus tard » : une file
- * d'attente qui autorise à repousser indéfiniment cesse d'être une file.
+ * Trois issues, et pas une de plus : « Créer la charge » (le cas normal, qui
+ * ouvre le formulaire pré-rempli et classe le ticket tout seul), « Traité »
+ * quand la charge a déjà été saisie ailleurs, et « Ignorer » pour un doublon,
+ * un ticket illisible ou hors activité. Pas de quatrième voie du genre
+ * « plus tard » : une file d'attente qui autorise à repousser indéfiniment
+ * cesse d'être une file.
  *
  * Le panneau disparaît quand la boîte est vide — il n'a rien à dire dans ce cas.
  */
-export function InboxTickets({ onChanged }: { onChanged?: () => void }) {
+export function InboxTickets({ onChanged, onCreerCharge }: {
+  onChanged?: () => void
+  /** Ouvre le formulaire de charge pre-rempli a partir de ce ticket. */
+  onCreerCharge?: (t: TicketInbox) => void
+}) {
   const { toast } = useToast()
   const [tickets, setTickets] = useState<TicketInbox[]>([])
   const [loading, setLoading] = useState(true)
@@ -80,6 +86,21 @@ export function InboxTickets({ onChanged }: { onChanged?: () => void }) {
             >
               <ExternalLink size={13} /> Voir
             </button>
+
+            {/* Chemin principal : on ne relit pas le ticket pour retaper ce
+                qu'il contient, on ouvre directement la charge avec ce qu'on
+                sait deja. Le classement en « traite » et le rattachement du
+                justificatif se font tout seuls a l'enregistrement. */}
+            {onCreerCharge && (
+              <Button
+                variant="primary"
+                size="compact"
+                onClick={() => onCreerCharge(t)}
+                disabled={busyId === t.id}
+              >
+                <FilePlus2 size={13} /> Créer la charge
+              </Button>
+            )}
 
             <Button
               variant="secondary"

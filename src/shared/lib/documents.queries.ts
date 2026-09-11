@@ -87,6 +87,46 @@ export async function uploadDocument(
   return { data: row as DocumentRow, error: null }
 }
 
+/**
+ * Inscrit au registre des documents un fichier DEJA present dans le bucket.
+ *
+ * Sert au passage « ticket chauffeur -> charge » : le chauffeur a envoye la
+ * photo, elle est deja stockee. La recopier produirait deux fois le meme
+ * octet pour rien. On cree donc seulement la ligne d'index qui la rattache a
+ * la charge.
+ *
+ * CONSEQUENCE A CONNAITRE : la ligne `receipts_inbox` et la ligne `documents`
+ * pointent sur le MEME fichier. Supprimer le document cote charge efface donc
+ * aussi la piece que le chauffeur avait envoyee. C'est acceptable — a ce
+ * stade le ticket est classe « traite », son role est termine — mais ce n'est
+ * pas anodin, d'ou ce commentaire.
+ */
+export async function indexerFichierExistant(params: {
+  companyId: string
+  storagePath: string
+  fileName: string
+  mimeType: string | null
+  sizeBytes: number | null
+  entityType: string
+  entityId: string
+  category?: string | null
+  notes?: string | null
+}) {
+  const { data: { user } } = await supabase.auth.getUser()
+  return supabase.from('documents').insert({
+    company_id:   params.companyId,
+    storage_path: params.storagePath,
+    file_name:    params.fileName,
+    mime_type:    params.mimeType,
+    size_bytes:   params.sizeBytes,
+    category:     params.category ?? null,
+    entity_type:  params.entityType,
+    entity_id:    params.entityId,
+    uploaded_by:  user?.id ?? null,
+    notes:        params.notes ?? null,
+  }).select().single()
+}
+
 export interface ListDocumentsOptions {
   entity_type?: string
   entity_id?: string

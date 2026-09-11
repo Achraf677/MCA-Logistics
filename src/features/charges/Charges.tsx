@@ -20,6 +20,8 @@ import { getCategories } from '../../shared/lib/categories.queries'
 import { listAllocationsCategoriesForCharges } from '../../shared/lib/allocations.queries'
 import { TotauxParCategorie } from '../../shared/ui/TotauxParCategorie'
 import { InboxTickets } from './InboxTickets'
+import { classerTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
+import { indexerFichierExistant } from '../../shared/lib/documents.queries'
 import { downloadCSV } from '../../shared/lib/download'
 import { suggestCategory } from '../../shared/lib/suggestCategorie'
 import { parseSuggestionIa } from '../../shared/lib/suggestionIa'
@@ -39,6 +41,9 @@ export function Charges() {
   const [filters, setFilters]         = useState<ChargeFilters>({})
   const [drawerOpen, setDrawerOpen]   = useState(false)
   const [selected, setSelected]       = useState<ChargeRow | null>(null)
+  // Ticket chauffeur en cours de transformation en charge. Non nul = le
+  // formulaire ouvert vient d'un ticket, et il faudra le classer a la fin.
+  const [ticketSource, setTicketSource] = useState<TicketInbox | null>(null)
   const { syncState, syncIfStale } = useSync()
   // Suppression Pennylane : charge en attente de confirmation "Supprimer de l'app".
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -207,7 +212,10 @@ export function Charges() {
       )}
 
       {/* Tickets envoyes par les chauffeurs — le panneau disparait s'il n'y en a pas */}
-      <InboxTickets onChanged={load} />
+      <InboxTickets
+        onChanged={load}
+        onCreerCharge={t => { setSelected(null); setTicketSource(t); setDrawerOpen(true) }}
+      />
 
       {/* Répartition par catégorie — répond à « combien d'AdBlue ai-je acheté ».
           Suit les filtres de la liste : changer la période change la répartition. */}
@@ -582,10 +590,36 @@ export function Charges() {
 
       <DrawerCharge
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => { setDrawerOpen(false); setTicketSource(null) }}
         charge={selected}
         onSaved={load}
         categories={categories}
+        prefill={ticketSource ? {
+          // Ce qu'on sait VRAIMENT du ticket : ce que le chauffeur a tape, et
+          // le jour ou il l'a envoye. Le montant n'est pas devine — mieux vaut
+          // un champ vide qu'un chiffre faux dans une comptabilite.
+          date:  ticketSource.created_at.slice(0, 10),
+          label: ticketSource.note ?? '',
+          notes: `Ticket chauffeur : ${ticketSource.file_name}`,
+        } : null}
+        onCreated={async chargeId => {
+          if (!ticketSource || !companyId) return
+          // La photo est deja dans le bucket : on ne la recopie pas, on
+          // l'inscrit au registre des documents de la charge.
+          await indexerFichierExistant({
+            companyId,
+            storagePath: ticketSource.storage_path,
+            fileName:    ticketSource.file_name,
+            mimeType:    ticketSource.mime_type,
+            sizeBytes:   ticketSource.size_bytes,
+            entityType:  'charge',
+            entityId:    chargeId,
+            category:    'Justificatif',
+            notes:       ticketSource.note,
+          })
+          await classerTicket(ticketSource.id, 'traite', chargeId)
+          setTicketSource(null)
+        }}
       />
 
       {/* Confirmation "Supprimer de l'app" (charge dont la facture Pennylane a disparu) */}
