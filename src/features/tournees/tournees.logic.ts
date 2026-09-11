@@ -79,6 +79,56 @@ export function wazeUrl(lat: number, lng: number, opts: NavOptions = {}): string
 }
 
 /**
+ * Lien Google Maps vers une adresse ECRITE, pas des coordonnees.
+ *
+ * Necessaire pour les adresses de RETRAIT : `deliveries` porte
+ * `pickup_address` en texte mais n'a pas de `pickup_lat`/`pickup_lng` — seule
+ * l'adresse de livraison est geocodee. Google resout l'adresse de son cote ;
+ * c'est moins precis qu'un point, et c'est la seule option disponible.
+ */
+export function googleMapsAdresseUrl(adresse: string, opts: NavOptions = {}): string {
+  const base = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(adresse.trim())}`
+  return opts.eviterPeages ? `${base}&avoid=tolls` : base
+}
+
+/**
+ * Lien Waze vers une adresse ecrite.
+ *
+ * Waze n'a PAS de parametre d'evitement des peages sur une recherche par
+ * adresse : `avoid_tolls` ne s'applique qu'a une navigation lancee sur des
+ * coordonnees. On l'omet donc plutot que d'ajouter un parametre ignore qui
+ * laisserait croire que la consigne est passee.
+ */
+export function wazeAdresseUrl(adresse: string): string {
+  return `https://waze.com/ul?q=${encodeURIComponent(adresse.trim())}&navigate=yes`
+}
+
+/**
+ * Deplace un arret d'un cran dans la liste, et renvoie le nouvel ordre des
+ * identifiants.
+ *
+ * Pourquoi manuellement : l'optimisation calcule le trajet le plus court, mais
+ * elle ignore les contraintes du terrain — un client qui n'ouvre qu'a partir de
+ * 14 h, un chargement a prendre avant une livraison, un acces interdit aux
+ * poids lourds le matin. Le chauffeur doit pouvoir imposer son ordre.
+ *
+ * Renvoie le tableau INCHANGE (meme contenu) si le deplacement est impossible :
+ * premier arret vers le haut, dernier vers le bas, ou identifiant inconnu.
+ * L'appelant peut donc appeler sans verifier, et comparer pour savoir s'il doit
+ * enregistrer.
+ */
+export function deplacerArret(ids: string[], id: string, sens: 'haut' | 'bas'): string[] {
+  const i = ids.indexOf(id)
+  if (i === -1) return ids
+  const j = sens === 'haut' ? i - 1 : i + 1
+  if (j < 0 || j >= ids.length) return ids
+  const copie = [...ids]
+  copie[i] = ids[j]
+  copie[j] = ids[i]
+  return copie
+}
+
+/**
  * Itinéraire complet Google Maps : dépôt en origine ET destination,
  * arrêts géocodés en waypoints dans l'ordre stop_order. null si pas de dépôt.
  * Le séparateur waypoints « | » et les virgules sont encodés (encodeURIComponent).

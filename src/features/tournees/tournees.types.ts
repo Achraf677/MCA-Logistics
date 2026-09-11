@@ -32,6 +32,12 @@ export interface TourDelivery {
   date: string
   statut: string
   description: string | null
+  pickup_address: string | null
+  /**
+   * true = la tournée inclut un arrêt de retrait avant la livraison
+   * (migration 20260911200000). Coché à la main, jamais déduit.
+   */
+  retrait_a_faire: boolean
   delivery_address: string | null
   delivery_lat: number | null
   delivery_lng: number | null
