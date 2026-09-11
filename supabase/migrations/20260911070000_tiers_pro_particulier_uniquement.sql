@@ -12,6 +12,9 @@
 -- Données au moment de l'écriture (comptées en base, pas supposées) :
 --   clients    : 14 particulier · 5 professionnel · 4 NULL · 3 ecommerce
 --   deliveries : 18 NULL · 9 particulier · 3 ecommerce
+-- Résultat réel après application le 11/09/2026 :
+--   clients    : 8 professionnel (5 + 3 convertis) · 14 particulier · 4 NULL
+--   deliveries : 3 professionnel (convertis) · 9 particulier · 18 NULL
 -- Aucune ligne en 'medical' ni 'retail'. La conversion se limite donc en
 -- pratique à 3 clients et 3 livraisons, mais les trois valeurs sont traitées
 -- pour que la migration reste correcte si elle est rejouée sur une autre base.
@@ -20,8 +23,21 @@
 -- forcer une valeur inventerait une donnée que personne n'a saisie.
 
 -- UP -------------------------------------------------------------------------
+--
+-- ORDRE DES TROIS ÉTAPES : il n'est pas négociable, et la première version de
+-- cette migration se trompait. Elle convertissait AVANT de retirer les
+-- contraintes, en croyant qu'il fallait « nettoyer avant de resserrer ».
+-- C'était impossible : l'ancienne contrainte de `deliveries` n'acceptait PAS
+-- la valeur 'professionnel' (elle listait medical/ecommerce/retail/particulier
+-- — c'est d'ailleurs la désynchronisation que cette migration corrige). Le
+-- premier UPDATE échouait donc sur la contrainte qu'il s'apprêtait à
+-- remplacer. Erreur constatée à l'application réelle le 11/09/2026.
 
--- 1) Convertir AVANT de resserrer la contrainte, sinon l'ALTER échoue.
+-- 1) Retirer les deux contraintes d'abord.
+alter table public.clients    drop constraint if exists clients_type_check;
+alter table public.deliveries drop constraint if exists deliveries_type_check;
+
+-- 2) Convertir, contraintes levées.
 update public.clients
    set type = 'professionnel'
  where type in ('medical', 'ecommerce', 'retail');
@@ -30,14 +46,12 @@ update public.deliveries
    set type = 'professionnel'
  where type in ('medical', 'ecommerce', 'retail');
 
--- 2) Resserrer les deux contraintes sur la même liste, pour qu'elles ne
+-- 3) Poser les deux nouvelles contraintes, sur la même liste, pour qu'elles ne
 --    puissent plus diverger.
-alter table public.clients   drop constraint if exists clients_type_check;
 alter table public.clients
   add constraint clients_type_check
   check (type is null or type in ('particulier', 'professionnel'));
 
-alter table public.deliveries drop constraint if exists deliveries_type_check;
 alter table public.deliveries
   add constraint deliveries_type_check
   check (type is null or type in ('particulier', 'professionnel'));
