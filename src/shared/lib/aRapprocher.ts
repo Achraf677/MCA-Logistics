@@ -47,6 +47,14 @@ export interface ChargePick {
    */
   pennylane_deleted_at?: string | null
   /**
+   * Identifiant de la facture chez Pennylane. `null` = la charge a été saisie
+   * ici et n'existe pas chez le comptable. Absent (`undefined`) = l'appelant
+   * n'a pas selectionné la colonne, donc non compté (rétrocompat).
+   */
+  pennylane_id?: string | null
+  /** Date de la charge, 'AAAA-MM-JJ'. Sert au délai de grâce ci-dessous. */
+  date?: string
+  /**
    * Immobilisation (migration 20260724100000) — un achat d'investissement
    * (véhicule…), jamais un débit Qonto "à rapprocher" au sens charge
    * d'exploitation. Absent (`undefined`) = considéré false (rétrocompat).
@@ -73,13 +81,15 @@ export interface ARapprocherCounts {
   categorisation: number
   /** Charges dont la facture a été supprimée côté Pennylane (action attendue). */
   pennylane_supprimees: number
+  /** Charges qui n'existent QUE dans le site — jamais vues chez Pennylane. */
+  hors_pennylane: number
   /** Avoirs fournisseur (montant_ttc_cts < 0) — à vérifier, ne se rapprochent
    *  jamais comme un débit Qonto. Purement informatif, PAS additionné au total. */
   avoirs: number
   /**
    * Total à rapprocher affiché sur le badge = tresorerie + encaissements +
-   * categorisation + pennylane_supprimees. `charges` (miroir de tresorerie) et
-   * `avoirs` (informatif) ne sont PAS additionnés.
+   * categorisation + pennylane_supprimees + hors_pennylane. `charges` (miroir
+   * de tresorerie) et `avoirs` (informatif) ne sont PAS additionnés.
    */
   total: number
 }
@@ -108,28 +118,38 @@ export function countEncaissements(txs: TxPick[]): number {
 
 /**
  * Charges candidates au rapprochement — angle charge :
- * - non déjà liées à une qonto_transaction (id absent de l'ensemble des charge_id)
- * - de montant_ttc_cts égal à un débit à rapprocher
+ * - dont le RESTE DÛ (montant TTC − débits déjà rattachés) est encore > 0
+ * - et dont ce reste tombe exactement sur un débit non rapproché
+ *
+ * On raisonne en reste dû et non en « liée / pas liée » : une facture réglée en
+ * plusieurs fois (assurance annuelle prélevée mensuellement) reste à rapprocher
+ * tant qu'elle n'est pas soldée. Même règle que l'écran Trésorerie, pour que le
+ * compteur et l'écran ne racontent jamais deux histoires différentes.
  *
  * Renvoyer le nombre de charges (pas de débits) — l'utilisateur voit combien
  * de factures achat attendent d'être rattachées à un mouvement bancaire.
  */
 export function countChargesArapprocher(txs: TxPick[], charges: ChargePick[]): number {
-  const linkedChargeIds = new Set(
-    txs.map(t => t.charge_id).filter((id): id is string => !!id),
-  )
+  const imputeParCharge = new Map<string, number>()
+  for (const t of txs) {
+    if (!t.charge_id || t.side !== 'debit') continue
+    const n = Number(t.amount_cts)
+    if (!Number.isFinite(n) || n <= 0) continue
+    imputeParCharge.set(t.charge_id, (imputeParCharge.get(t.charge_id) ?? 0) + n)
+  }
+
   const unreconciledDebitAmounts = new Set(
     txs.filter(t => t.side === 'debit' && !t.charge_id && !t.justif_type)
        .map(t => t.amount_cts),
   )
-  return charges.filter(c =>
-    c.montant_ttc_cts != null &&
-    c.montant_ttc_cts >= 0 &&                       // exclut les avoirs (jamais un débit Qonto)
-    isChargeQonto(c) &&                             // exclut les canaux hors Qonto
-    !c.est_immobilisation &&                        // une immobilisation n'est pas "à rapprocher"
-    !linkedChargeIds.has(c.id) &&
-    unreconciledDebitAmounts.has(c.montant_ttc_cts),
-  ).length
+
+  return charges.filter(c => {
+    if (c.montant_ttc_cts == null || c.montant_ttc_cts < 0) return false // avoirs exclus
+    if (!isChargeQonto(c)) return false                                  // canaux hors Qonto
+    if (c.est_immobilisation) return false                               // pas « à rapprocher »
+    const reste = c.montant_ttc_cts - (imputeParCharge.get(c.id) ?? 0)
+    return reste > 0 && unreconciledDebitAmounts.has(reste)
+  }).length
 }
 
 /** Charges dont `category_id` est explicitement null — indépendant du
@@ -147,6 +167,52 @@ export function countChargesPennylaneSupprimees(charges: ChargePick[]): number {
   return charges.filter(c => c.pennylane_deleted_at != null).length
 }
 
+/**
+ * Charges qui n'existent QUE dans le site.
+ *
+ * Demande du président : « Je veux que ce qui se passe sur mon site soit la
+ * copie parfaite en terme de saisie chez Pennylane. » Une charge sans
+ * `pennylane_id` est précisément le contraire : elle est dans le site, elle
+ * n'est pas chez le comptable, et rien ne le signalait jusqu'ici.
+ *
+ * DÉLAI DE GRÂCE de 14 jours, et il est indispensable : une facture arrive
+ * chez Pennylane avec plusieurs jours de décalage (réception, traitement,
+ * puis synchronisation). Sans ce délai, toute charge saisie le matin même
+ * s'afficherait en écart l'après-midi, et le compteur crierait au loup en
+ * permanence — on finirait par ne plus le regarder.
+ *
+ * Les immobilisations sont exclues : un achat de véhicule suit un circuit
+ * comptable à part.
+ *
+ * `pennylane_id` absent (`undefined`) = colonne non sélectionnée par
+ * l'appelant → non compté, comme les autres compteurs de ce module.
+ */
+export const DELAI_GRACE_PENNYLANE_JOURS = 14
+
+/**
+ * Le test unitaire, exporte a part.
+ *
+ * L'ecran Charges s'en sert pour filtrer la liste, ce module pour compter.
+ * S'ils appliquaient chacun leur copie de la regle, le bandeau annoncerait un
+ * nombre et la liste en montrerait un autre des que l'un des deux evoluerait.
+ */
+export function estChargeHorsPennylane(c: ChargePick, aujourdhui: Date): boolean {
+  if (c.pennylane_id === undefined) return false   // colonne non selectionnee
+  if (c.pennylane_id !== null) return false        // vient de Pennylane
+  if (c.est_immobilisation) return false           // circuit comptable a part
+  if (!c.date) return false                        // anciennete indeterminable
+  const limite = new Date(aujourdhui.getTime() - DELAI_GRACE_PENNYLANE_JOURS * 86_400_000)
+    .toISOString().slice(0, 10)
+  return c.date <= limite
+}
+
+export function countChargesHorsPennylane(
+  charges: ChargePick[],
+  aujourdhui: Date = new Date(),
+): number {
+  return charges.filter(c => estChargeHorsPennylane(c, aujourdhui)).length
+}
+
 /** Avoirs fournisseur — charges à montant négatif (venant de Pennylane ou
  *  saisies manuellement via le toggle "Avoir"). Jamais un débit Qonto. */
 export function countChargesAvoirs(charges: ChargePick[]): number {
@@ -160,19 +226,22 @@ export function countARapprocher(
   txs: TxPick[],
   charges: ChargePick[],
   allocations: AllocationPick[] = [],
+  aujourdhui: Date = new Date(),
 ): ARapprocherCounts {
   const tresorerie = countTresorerie(txs, allocations)
   const encaissements = countEncaissements(txs)
   const categorisation = countChargesNonCategorisees(charges)
   const pennylane_supprimees = countChargesPennylaneSupprimees(charges)
   const avoirs = countChargesAvoirs(charges)
+  const hors_pennylane = countChargesHorsPennylane(charges, aujourdhui)
   return {
     tresorerie,
     charges: countChargesArapprocher(txs, charges),
     encaissements,
     categorisation,
     pennylane_supprimees,
+    hors_pennylane,
     avoirs,
-    total: tresorerie + encaissements + categorisation + pennylane_supprimees,
+    total: tresorerie + encaissements + categorisation + pennylane_supprimees + hors_pennylane,
   }
 }

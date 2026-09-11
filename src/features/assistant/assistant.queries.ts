@@ -97,11 +97,23 @@ interface AssistantResponse {
   ok?: boolean
   error?: string
   rate_limited?: boolean
+  model_unavailable?: boolean
+  upstream_status?: number
   data?: AssistantData
 }
 
 const RATE_LIMIT_MESSAGE =
   "⏳ L'assistant reçoit trop de demandes à la fois. Patiente quelques secondes et réessaie."
+
+/**
+ * Refus 403 de Mistral : le modèle n'est pas inclus dans le palier d'abonnement.
+ * Réessayer n'y changera rien — il faut changer de modèle ou de forfait. Ce cas
+ * était auparavant affiché comme un rate-limit, ce qui envoyait l'utilisateur
+ * attendre indéfiniment pour un problème qui ne se résout pas tout seul.
+ */
+const MODEL_UNAVAILABLE_MESSAGE =
+  "🔒 L'assistant est indisponible : le modèle d'IA configuré n'est pas inclus dans " +
+  "l'abonnement Mistral. Réessayer ne changera rien — il faut changer de modèle ou de forfait."
 
 const SMOOTHING_MS = 350
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
@@ -155,6 +167,7 @@ export async function runAssistantTurn(
     if (!res?.ok) {
       // L'Edge renvoie les erreurs en HTTP 200 ; le rate-limit n'est pas une vraie erreur.
       if (res?.rate_limited) return { kind: 'text', text: RATE_LIMIT_MESSAGE }
+      if (res?.model_unavailable) return { kind: 'text', text: MODEL_UNAVAILABLE_MESSAGE }
       throw new Error(res?.error ?? 'Assistant indisponible')
     }
 

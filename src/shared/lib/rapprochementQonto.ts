@@ -15,26 +15,84 @@ export type DebitStatus =
   | 'a_rapprocher'       // charge au même montant disponible, non encore liée
   | 'sans_justificatif'  // aucune piste
 
+/** Forme minimale d'une transaction Qonto pour le calcul du reste dû. */
+export interface TxPick {
+  charge_id: string | null
+  amount_cts: number
+  side: string
+}
+
 /**
- * Charges disponibles pour rapprocher un débit donné :
- * même montant TTC exact, non déjà liées à une autre transaction.
+ * Reste dû de chaque charge : montant TTC − somme des DÉBITS déjà rattachés.
+ *
+ * Une facture peut être réglée en plusieurs fois (assurance annuelle prélevée
+ * mensuellement, échéancier fournisseur…). Rien en base ne l'empêchait —
+ * `qonto_transactions.charge_id` n'a pas de contrainte d'unicité — mais l'écran
+ * écartait toute charge déjà liée, ce qui rendait le 2ᵉ prélèvement
+ * irrattachable. On raisonne donc en reste dû, pas en « liée / pas liée ».
+ *
+ * Seuls les débits comptent : un crédit ne règle pas une charge.
+ * Le reste est plafonné à 0 (une sur-imputation ne rouvre pas la facture).
+ */
+export function resteDuParCharge(
+  allCharges: ChargePick[],
+  txs: TxPick[],
+): Map<string, number> {
+  const impute = new Map<string, number>()
+  for (const t of txs) {
+    if (!t.charge_id || t.side !== 'debit') continue
+    const n = Number(t.amount_cts)
+    if (!Number.isFinite(n) || n <= 0) continue
+    impute.set(t.charge_id, (impute.get(t.charge_id) ?? 0) + n)
+  }
+
+  const reste = new Map<string, number>()
+  for (const c of allCharges) {
+    const total = Number(c.montant_ttc_cts) || 0
+    const r = total - (impute.get(c.id) ?? 0)
+    reste.set(c.id, r > 0 ? r : 0)
+  }
+  return reste
+}
+
+/** Trie une liste de charges par proximité de date avec le débit. */
+function trierParProximite(charges: ChargePick[], settledAt?: string | null): ChargePick[] {
+  if (!settledAt) return charges
+  const ref = new Date(settledAt).getTime()
+  return [...charges].sort((a, b) =>
+    Math.abs(new Date(a.date).getTime() - ref) -
+    Math.abs(new Date(b.date).getTime() - ref)
+  )
+}
+
+/**
+ * Charges proposées d'office pour un débit : celles dont le RESTE DÛ tombe
+ * exactement sur le montant du débit. Couvre le cas courant (une facture, un
+ * prélèvement) comme la dernière échéance d'un échéancier.
  * Triées par proximité de date avec le débit (settledAt optionnel).
  */
 export function getMatchingChargesForDebit(
   amountCts: number,
   allCharges: ChargePick[],
-  linkedChargeIds: Set<string>,
+  resteParCharge: Map<string, number>,
   settledAt?: string | null,
 ): ChargePick[] {
-  const matches = allCharges.filter(
-    c => c.montant_ttc_cts === amountCts && !linkedChargeIds.has(c.id)
-  )
-  if (!settledAt) return matches
-  const ref = new Date(settledAt).getTime()
-  return [...matches].sort((a, b) =>
-    Math.abs(new Date(a.date).getTime() - ref) -
-    Math.abs(new Date(b.date).getTime() - ref)
-  )
+  const matches = allCharges.filter(c => (resteParCharge.get(c.id) ?? 0) === amountCts)
+  return trierParProximite(matches, settledAt)
+}
+
+/**
+ * Toutes les charges encore ouvertes (reste dû > 0), pour le rattachement
+ * manuel d'un montant qui ne tombe pas juste — typiquement une échéance
+ * intermédiaire. Une charge soldée disparaît d'elle-même de la liste.
+ */
+export function getChargesOuvertes(
+  allCharges: ChargePick[],
+  resteParCharge: Map<string, number>,
+  settledAt?: string | null,
+): ChargePick[] {
+  const ouvertes = allCharges.filter(c => (resteParCharge.get(c.id) ?? 0) > 0)
+  return trierParProximite(ouvertes, settledAt)
 }
 
 /** Classement d'un débit selon son état de rapprochement. */

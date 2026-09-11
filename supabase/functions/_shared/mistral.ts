@@ -5,7 +5,22 @@
 import { fetchJson } from './http.ts';
 
 const BASE = 'https://api.mistral.ai/v1';
-const MODEL = 'mistral-large-latest';
+// Modele pilote par le secret Supabase `MISTRAL_MODEL`, pour pouvoir changer
+// d'abonnement Mistral SANS redeployer les 5 fonctions qui appellent l'IA.
+// Defaut = ministral-14b-2512 : sur le forfait gratuit du compte, les modeles
+// « premier » (small/medium/large) repondent 403 tier_not_allowed ou 429 ;
+// seule la famille ministral + codestral repond reellement (verifie par appel
+// le 10/09/2026). Passer le secret a `mistral-large-latest` si un forfait
+// payant est active — aucun deploiement necessaire.
+const MODEL = Deno.env.get('MISTRAL_MODEL') || 'ministral-14b-2512';
+
+// Modele de LECTURE D'IMAGE (OCR), pilote separement : ce n'est pas le meme
+// point d'appel ni la meme grille d'abonnement que la generation de texte.
+// Il etait code en dur, ce qui interdisait d'en changer sans redeployer.
+// `mistral-ocr-latest` n'apparaissait PAS dans la liste des modeles autorises
+// relevee sur le compte le 11/09/2026 — son acces reste donc a verifier par un
+// appel reel (action `ping_ocr` de la fonction ai-extract-deliveries).
+export const OCR_MODEL = Deno.env.get('MISTRAL_OCR_MODEL') || 'mistral-ocr-latest';
 
 interface MistralResponse {
   choices?: Array<{ message?: { content?: string } }>;
@@ -53,7 +68,7 @@ export async function ocrDocument(
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
     body: {
-      model: 'mistral-ocr-latest',
+      model: OCR_MODEL,
       document: isPdf
         ? { type: 'document_url', document_url: dataUrl }
         : { type: 'image_url', image_url: dataUrl },

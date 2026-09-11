@@ -9,8 +9,12 @@
 //   - null compté comme 0 ;
 //   - tva_deductible_pct absent = 100 ;
 //   - carburant FR : Math.round(tva_cts × pct / 100) par ligne ;
-//   - charge liée à un fuel_log (linkedToFuel) → ignorée (déjà comptée côté carburant) ;
-//   - TVA DE (charges tva_pays='DE' ou fuel tva_rate=19) → poche séparée, hors solde CA3.
+//   - charge liée à un fuel_log (linkedToFuel) → ignorée (déjà comptée côté carburant).
+//
+// La poche « TVA allemande » (8e directive) a été retirée le 11/09/2026 : aucune
+// charge n'était concernée (116 charges, toutes en FR) et aucun plein n'était à
+// 19 %. Elle encombrait l'écran pour un cas qui n'existe pas dans l'activité.
+// La colonne `charges.tva_pays` est supprimée par la migration 20260911071000.
 
 import {
   deliveryTotalHtCts, deliveryTotalTtcCts, type DeliveryExtraLine,
@@ -27,7 +31,6 @@ export interface TvaDelivery {
 }
 export interface TvaCharge {
   tva_cts:     number | null
-  tva_pays:    string | null
   linkedToFuel: boolean
   /** Immobilisation (migration 20260724100000) — jamais une charge d'exploitation,
    *  donc jamais de TVA déductible ici. Déjà filtrée côté requête (getTvaData) ;
@@ -37,7 +40,6 @@ export interface TvaCharge {
 export interface TvaFuel {
   tva_cts:            number | null
   tva_deductible_pct: number | null
-  tva_rate:           number | null
 }
 
 export interface TvaRaw {
@@ -47,11 +49,10 @@ export interface TvaRaw {
 }
 
 export interface TvaResult {
-  tvaCollecteeCts:         number
-  tvaDeductibleChargesFR:  number  // charges non liées, tva_pays ≠ 'DE' → CA3
-  tvaDeductibleCarburantFR: number // fuel tva_rate ≠ 19 : Σ round(tva_cts × pct/100) → CA3
-  tvaAllemandeCts:         number  // charges DE non liées + fuel tva_rate=19 → 8e directive
-  soldeCts:                number  // collectée − chargesFR − carburantFR  (DE exclue)
+  tvaCollecteeCts:          number
+  tvaDeductibleChargesCts:  number // charges non liées, hors immobilisations → CA3
+  tvaDeductibleCarburantCts: number // Σ round(tva_cts × pct/100) → CA3
+  soldeCts:                 number // collectée − charges − carburant
 }
 
 // ── Calcul TVA ──────────────────────────────────────────────────────────────────
@@ -61,38 +62,25 @@ export function computeTva(raw: TvaRaw): TvaResult {
     (s, d) => s + (deliveryTotalTtcCts(d) - deliveryTotalHtCts(d)), 0
   )
 
-  let tvaDeductibleChargesFR = 0
-  let tvaAllemandeCts = 0
-
+  let tvaDeductibleChargesCts = 0
   for (const c of raw.charges) {
-    if (c.linkedToFuel) continue      // déjà comptée via le fuel_log lié
+    if (c.linkedToFuel) continue       // déjà comptée via le fuel_log lié
     if (c.est_immobilisation) continue // investissement, pas une charge d'exploitation
-    const tva = c.tva_cts ?? 0
-    if (c.tva_pays === 'DE') {
-      tvaAllemandeCts += tva
-    } else {
-      tvaDeductibleChargesFR += tva
-    }
+    tvaDeductibleChargesCts += c.tva_cts ?? 0
   }
 
-  let tvaDeductibleCarburantFR = 0
+  let tvaDeductibleCarburantCts = 0
   for (const f of raw.fuel) {
-    const tvaCts = f.tva_cts ?? 0
-    if (f.tva_rate === 19) {
-      tvaAllemandeCts += tvaCts  // plein : récupération via règles DE
-    } else {
-      const pct = f.tva_deductible_pct ?? 100
-      tvaDeductibleCarburantFR += Math.round(tvaCts * pct / 100)
-    }
+    const pct = f.tva_deductible_pct ?? 100
+    tvaDeductibleCarburantCts += Math.round((f.tva_cts ?? 0) * pct / 100)
   }
 
-  const soldeCts = tvaCollecteeCts - tvaDeductibleChargesFR - tvaDeductibleCarburantFR
+  const soldeCts = tvaCollecteeCts - tvaDeductibleChargesCts - tvaDeductibleCarburantCts
 
   return {
     tvaCollecteeCts,
-    tvaDeductibleChargesFR,
-    tvaDeductibleCarburantFR,
-    tvaAllemandeCts,
+    tvaDeductibleChargesCts,
+    tvaDeductibleCarburantCts,
     soldeCts,
   }
 }

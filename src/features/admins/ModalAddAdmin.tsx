@@ -5,6 +5,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { Button } from '../../shared/ui/Button'
 import { ROLE_OPTIONS } from './admins.types'
 import type { AdminRole } from './admins.types'
+import { Field } from '../../shared/ui/Field'
 
 interface Props {
   open: boolean
@@ -14,10 +15,7 @@ interface Props {
 
 type Tab = 'create' | 'invite'
 
-const inputCls = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)]
-  transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
-
+const inputCls = 'field'
 export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
   const { toast } = useToast()
   const [tab, setTab] = useState<Tab>('create')
@@ -100,7 +98,7 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
         aria-hidden="true"
       />
 
-      <div className="relative w-full max-w-md bg-[var(--bg-elevated)] border border-[var(--border)] rounded-[var(--r-lg)] shadow-lg flex flex-col gap-0 animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
+      <div className="relative w-full max-w-md bg-[var(--bg-elevated)] border border-[var(--border)] rounded-[var(--r-lg)] shadow-lg flex flex-col gap-0 anim-dialog overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <h2 className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">
@@ -172,7 +170,7 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
                 </select>
               </Field>
               <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-                Un email d'invitation sera envoyé. Requiert un SMTP configuré dans Supabase Auth.
+                Un e-mail d'invitation sera envoyé.
               </p>
               {inviteWarning && (
                 <p className="text-[var(--fs-xs)] text-[var(--danger,#dc2626)] bg-[var(--danger,#dc2626)]/10 px-3 py-2 rounded-[var(--r-md)]">
@@ -200,13 +198,3 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-        {label}
-      </label>
-      {children}
-    </div>
-  )
-}

@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { Search, X, FileText, ChevronLeft } from 'lucide-react'
 import type { ChargePick } from '../types/charges'
+
+const euros = (cts: number | null | undefined) =>
+  cts == null
+    ? '—'
+    : (cts / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
 
 interface Props {
   open: boolean
@@ -10,9 +16,17 @@ interface Props {
   fetchCharges: () => Promise<ChargePick[]>
   /** Toutes les charges non liées (mode "autre montant"). Optionnel. */
   fetchAllCharges?: () => Promise<ChargePick[]>
+  /**
+   * Reste dû par charge (id → centimes). Quand il diffère du montant total,
+   * la facture est réglée en plusieurs fois : on affiche le solde, car c'est
+   * lui qui décide si le débit courant la solde ou non.
+   */
+  resteParCharge?: Map<string, number>
 }
 
-export function SelecteurCharge({ open, onClose, onSelect, fetchCharges, fetchAllCharges }: Props) {
+export function SelecteurCharge({
+  open, onClose, onSelect, fetchCharges, fetchAllCharges, resteParCharge,
+}: Props) {
   const [charges, setCharges]       = useState<ChargePick[]>([])
   const [allCharges, setAllCharges] = useState<ChargePick[]>([])
   const [search, setSearch]         = useState('')
@@ -54,7 +68,11 @@ export function SelecteurCharge({ open, onClose, onSelect, fetchCharges, fetchAl
     (c.suppliers?.name ?? '').toLowerCase().includes(q)
   )
 
-  return (
+  // Portail vers <body> : même raison que ConfirmDialog et Drawer — un ancêtre
+  // portant `backdrop-filter` / `transform` deviendrait le référentiel de ce
+  // `position: fixed`, et la fenêtre serait dimensionnée dans la carte au lieu
+  // de l'écran, puis rognée. Le portail rend ce cas impossible.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className="relative z-10 w-full max-w-lg bg-[var(--bg-card)] border border-[var(--border)] rounded-[var(--r-xl)] shadow-2xl flex flex-col max-h-[78vh]">
@@ -82,9 +100,9 @@ export function SelecteurCharge({ open, onClose, onSelect, fetchCharges, fetchAl
               className="flex items-center gap-1 text-[var(--fs-xs)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
             >
               <ChevronLeft size={12} />
-              Même montant uniquement
+              Solde exact uniquement
             </button>
-            <span className="text-[var(--fs-xs)] text-[var(--warn)] ml-auto">Toutes les charges</span>
+            <span className="text-[var(--fs-xs)] text-[var(--warn)] ml-auto">Factures non soldées</span>
           </div>
         )}
 
@@ -99,8 +117,8 @@ export function SelecteurCharge({ open, onClose, onSelect, fetchCharges, fetchAl
               {search
                 ? 'Aucun résultat pour cette recherche.'
                 : showAll
-                  ? 'Toutes les charges sont déjà rapprochées.'
-                  : 'Aucune charge au même montant — essayez « Autre montant ».'}
+                  ? 'Toutes les factures sont soldées.'
+                  : 'Aucune facture dont le solde tombe sur ce montant — voir « Autre montant » pour un règlement partiel.'}
             </div>
           ) : (
             filtered.map(c => (
@@ -120,11 +138,20 @@ export function SelecteurCharge({ open, onClose, onSelect, fetchCharges, fetchAl
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   {c.receipt_url && <FileText size={13} className="text-[var(--text-muted)]" />}
-                  <span className="font-mono text-[var(--fs-sm)] font-semibold text-[var(--text)]">
-                    {c.montant_ttc_cts != null
-                      ? (c.montant_ttc_cts / 100).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €'
-                      : '—'}
-                  </span>
+                  <div className="flex flex-col items-end">
+                    <span className="font-mono text-[var(--fs-sm)] font-semibold text-[var(--text)]">
+                      {euros(c.montant_ttc_cts)}
+                    </span>
+                    {(() => {
+                      const reste = resteParCharge?.get(c.id)
+                      if (reste == null || reste === c.montant_ttc_cts) return null
+                      return (
+                        <span className="font-mono text-[var(--fs-xs)] text-[var(--gold)]">
+                          reste {euros(reste)}
+                        </span>
+                      )
+                    })()}
+                  </div>
                 </div>
               </button>
             ))
@@ -144,6 +171,7 @@ export function SelecteurCharge({ open, onClose, onSelect, fetchCharges, fetchAl
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

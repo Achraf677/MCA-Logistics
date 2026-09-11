@@ -1,20 +1,31 @@
 import type { Client, DeliveryForEncours, DeliveryForTiersColumns, TariffMode } from './clients.types'
 import { formatMoney, deliveryTotalTtcCts } from '../../shared/lib/money'
 
+// Deux natures de tiers, et deux seulement. Les anciens segments sectoriels
+// (medical / ecommerce / retail) ont ete convertis en 'professionnel' par la
+// migration 20260911070000 : ne pas les reintroduire.
 export const CLIENT_TYPE_LABELS: Record<NonNullable<Client['type']>, string> = {
-  medical:      'Médical',
-  ecommerce:    'E-commerce',
-  retail:       'Retail / Palettes',
   particulier:  'Particulier',
   professionnel:'Professionnel',
 }
 
 export const CLIENT_TYPE_COLORS: Record<NonNullable<Client['type']>, string> = {
-  medical:      'info',
-  ecommerce:    'success',
-  retail:       'warning',
   particulier:  'muted',
   professionnel:'purple',
+}
+
+/** Ordre d'affichage des choix — identique partout dans le site. */
+export const CLIENT_TYPES: NonNullable<Client['type']>[] = ['professionnel', 'particulier']
+
+/**
+ * SIREN, TVA intracommunautaire et delai de paiement ne concernent qu'un
+ * professionnel. Pour un particulier ces champs sont masques : les afficher
+ * grises laisserait croire qu'ils sont attendus.
+ * Type non renseigne (null) : on les affiche, sinon on empecherait de saisir
+ * un professionnel dont la nature n'a pas encore ete precisee.
+ */
+export function champsProfessionnels(type: Client['type']): boolean {
+  return type !== 'particulier'
 }
 
 export const TARIFF_MODE_LABELS: Record<TariffMode, string> = {

@@ -1,5 +1,5 @@
 // Edge Function `assistant-chat` — cerveau conversationnel de l'assistant MCA.
-// Modèle : mistral-small-latest. 18 outils LECTURE + 8 outils ÉCRITURE + 1 outil RÉDACTION (generer_mail).
+// Modèle : ministral-14b-2512 (cf. _shared/mistral.ts pour le pourquoi). 18 outils LECTURE + 8 outils ÉCRITURE + 1 outil RÉDACTION (generer_mail).
 // L'Edge NE TOUCHE JAMAIS la base : elle propose des OUTILS à Mistral. Le front exécute les lectures,
 // affiche une carte de CONFIRMATION pour les écritures, et délègue la rédaction à brouillons-generate.
 // Clé jamais logguée. verify_jwt = true. Retry/backoff sur 429/5xx.
@@ -7,7 +7,8 @@ import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { ExternalApiError } from '../_shared/http.ts';
 
 const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions';
-const MODEL = 'mistral-small-latest';
+// Pilote par le secret `MISTRAL_MODEL` (cf. _shared/mistral.ts).
+const MODEL = Deno.env.get('MISTRAL_MODEL') || 'ministral-14b-2512';
 const MAX_HISTORY = 40;
 const MAX_RETRIES = 2;
 
@@ -115,7 +116,7 @@ const TOOLS = [
         client: { type: 'string', description: 'Nom du client de la livraison.' },
         date: { type: 'string', description: 'Date de la livraison, format YYYY-MM-DD.' },
         montant_ht_eur: { type: 'number', description: 'Montant HT en euros. Optionnel.' },
-        type: { type: 'string', enum: ['medical', 'ecommerce', 'retail', 'particulier'], description: 'Type de livraison. Optionnel.' },
+        type: { type: 'string', enum: ['professionnel', 'particulier'], description: 'Type de livraison. Optionnel.' },
         adresse: { type: 'string', description: 'Adresse de livraison. Optionnel.' },
         ville: { type: 'string', description: 'Ville de livraison. Optionnel.' },
       }, required: ['client', 'date'] } } },
@@ -140,7 +141,7 @@ const TOOLS = [
       description: "Crée un nouveau client. Carte de confirmation avant enregistrement : ne confirme pas toi-même. Demande au moins le nom.",
       parameters: { type: 'object', properties: {
         nom: { type: 'string', description: 'Nom du client.' },
-        type: { type: 'string', enum: ['medical', 'ecommerce', 'retail', 'particulier'], description: 'Type de client. Optionnel.' },
+        type: { type: 'string', enum: ['professionnel', 'particulier'], description: 'Type de client. Optionnel.' },
         ville: { type: 'string', description: 'Ville. Optionnel.' },
         email: { type: 'string', description: 'Email. Optionnel.' },
         telephone: { type: 'string', description: 'Téléphone. Optionnel.' },
@@ -190,7 +191,7 @@ const TOOLS = [
         email: { type: 'string', description: 'Nouvel email. Optionnel.' },
         telephone: { type: 'string', description: 'Nouveau téléphone. Optionnel.' },
         delai_paiement_jours: { type: 'number', description: 'Nouveau délai de paiement (jours). Optionnel.' },
-        type: { type: 'string', enum: ['medical','ecommerce','retail','particulier'], description: 'Nouveau type. Optionnel.' },
+        type: { type: 'string', enum: ['professionnel','particulier'], description: 'Nouveau type. Optionnel.' },
       }, required: ['nom'] } } },
 
   { type: 'function', function: { name: 'modifier_livraison',
@@ -200,7 +201,7 @@ const TOOLS = [
         date: { type: 'string', description: "Date actuelle de la livraison (YYYY-MM-DD), pour l'identifier si plusieurs." },
         nouvelle_date: { type: 'string', description: 'Nouvelle date (YYYY-MM-DD). Optionnel.' },
         montant_ht_eur: { type: 'number', description: 'Nouveau montant HT en euros (TVA et TTC recalculés). Optionnel.' },
-        type: { type: 'string', enum: ['medical','ecommerce','retail','particulier'], description: 'Nouveau type. Optionnel.' },
+        type: { type: 'string', enum: ['professionnel','particulier'], description: 'Nouveau type. Optionnel.' },
         description: { type: 'string', description: 'Nouvelle description. Optionnel.' },
         adresse_livraison: { type: 'string', description: 'Nouvelle adresse de livraison. Optionnel.' },
         adresse_retrait: { type: 'string', description: 'Nouvelle adresse de retrait. Optionnel.' },
@@ -331,8 +332,21 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ ok: true, data: { type: 'message', content: msg?.content ?? '' } });
   } catch (err) {
     if (err instanceof ExternalApiError) {
+      // On distingue les deux refus de Mistral, qui n'ont pas le meme remede :
+      //   429 = plafond de debit atteint -> reessayer plus tard a du sens ;
+      //   403 = le modele n'est pas dans le palier d'abonnement -> reessayer
+      //         ne servira JAMAIS a rien, il faut changer de modele ou de forfait.
+      // Les confondre a fait perdre des jours : le site affichait « trop de
+      // demandes » alors que Mistral refusait le modele.
       const rateLimited = err.status === 429;
-      return jsonResponse({ ok: false, error: rateLimited ? 'rate_limited' : err.message, rate_limited: rateLimited });
+      const modelUnavailable = err.status === 403;
+      return jsonResponse({
+        ok: false,
+        error: rateLimited ? 'rate_limited' : modelUnavailable ? 'model_unavailable' : err.message,
+        rate_limited: rateLimited,
+        model_unavailable: modelUnavailable,
+        upstream_status: err.status,
+      });
     }
     return jsonResponse({ ok: false, error: (err as Error).message });
   }

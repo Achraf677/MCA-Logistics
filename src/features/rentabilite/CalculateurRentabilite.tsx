@@ -627,7 +627,7 @@ export function CalculateurRentabilite() {
       </div>
 
       {/* ── 2. 6 KpiCards ──────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 [&>*]:min-w-0">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 stagger [&>*]:min-w-0">
         <KpiCard label="CA mensuel"     value={eur0(r.CA)}        sub={`${eur0(r.rJour)}/jour`}          tone="success" icon={<Euro size={18}/>} />
         <KpiCard label="Charges"        value={eur0(r.chargesTot)} sub={`fixes ${eur0(r.F)}`}            tone="danger"  icon={<TrendingDown size={18}/>} />
         <KpiCard label="Résultat/mois"  value={eur0(r.resultat)}  sub={pct1(r.margeNettePct)}            tone={positive ? 'success' : 'danger'} icon={<TrendingUp size={18}/>} />
@@ -637,7 +637,7 @@ export function CalculateurRentabilite() {
       </div>
 
       {/* ── 3. Deux colonnes ───────────────────────────────── */}
-      <div className="grid lg:grid-cols-[1.6fr_1fr] gap-5 items-start [&>*]:min-w-0">
+      <div className="grid lg:grid-cols-[1.6fr_1fr] gap-5 items-start stagger [&>*]:min-w-0">
 
         {/* ── Colonne gauche : saisie ─────────────────────── */}
         <div className="flex flex-col gap-5">
@@ -770,7 +770,7 @@ export function CalculateurRentabilite() {
               <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">/ {num(r.jours)} jours</span>
             </div>
             <div className="h-2 rounded-full overflow-hidden mb-2" style={{ background: 'var(--bg-deep)' }}>
-              <div className="h-full rounded-full transition-all"
+              <div className="h-full rounded-full transition-[width] duration-[var(--dur-4)] ease-[var(--ease-out)]"
                 style={{
                   width: `${Math.min(100, seuilPct)}%`,
                   background: positive ? 'var(--profit)' : 'var(--loss)',
@@ -911,7 +911,7 @@ export function CalculateurRentabilite() {
         <div className="px-5 py-4 border-b border-[var(--border)]">
           <h2 className="font-semibold text-[var(--text)]">Simulateur de course (go / no-go)</h2>
           <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mt-0.5">
-            Calcule si une course est rentable · coûts issus des hypothèses ci-dessus, mis à jour en direct
+            Coûts repris des hypothèses ci-dessus.
           </p>
         </div>
 

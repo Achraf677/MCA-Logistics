@@ -2,13 +2,20 @@
 //
 // "Sans justificatif" = livraison statut ∈ {livree, facturee, payee} SANS POD
 // (pod_captured_at) ET SANS document lié (documents.entity_type='delivery')
-// ET SANS lettre de voiture archivée (lv_pdf_url).
+// ET SANS lettre de voiture archivée (lv_pdf_url) ET non marquée
+// "justificatif non requis" par l'utilisateur.
 
 export interface DeliveryForJustif {
   id: string
   statut: string
   pod_captured_at: string | null
   lv_pdf_url: string | null
+  /**
+   * Écartée manuellement de l'alerte (course sans justificatif attendu).
+   * Optionnel : absent sur les données legacy = false, l'alerte se comporte
+   * comme avant pour tout ce qui n'a pas été explicitement marqué.
+   */
+  justif_non_requis?: boolean | null
 }
 
 export interface DocumentForJustif {
@@ -18,12 +25,16 @@ export interface DocumentForJustif {
 
 const STATUTS_CONCERNES = new Set(['livree', 'facturee', 'payee'])
 
-/** Une livraison a un justificatif si POD capturé, document lié, ou LV archivée. */
+/**
+ * Une livraison a un justificatif si POD capturé, document lié ou LV archivée —
+ * ou si l'utilisateur a déclaré qu'aucun justificatif n'était attendu.
+ */
 export function isLivraisonSansJustif(
   delivery: DeliveryForJustif,
   documents: DocumentForJustif[],
 ): boolean {
   if (!STATUTS_CONCERNES.has(delivery.statut)) return false
+  if (delivery.justif_non_requis) return false
   if (delivery.pod_captured_at) return false
   if (delivery.lv_pdf_url) return false
   const aUnDocument = documents.some(

@@ -293,6 +293,4 @@ export function VentilationFacture({ chargeId, chargeAmountCts, categoryType, on
   )
 }
 
-const inputCls = `w-full h-8 px-2.5 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)]
-  transition-colors disabled:opacity-50`
+const inputCls = 'field field-sm'

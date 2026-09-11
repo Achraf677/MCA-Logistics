@@ -6,7 +6,7 @@ import { createVehicle, updateVehicle, deleteVehicle } from './vehicules.queries
 import { validatePtac, STATUS_LABELS, FUEL_LABELS, vehicleEcheances } from './vehicules.logic'
 import type { Vehicle, VehicleInsert } from './vehicules.types'
 import { useProfile, supabase } from '../../app/providers'
-import { DocumentsPanel } from '../documents/DocumentsPanel'
+import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { DeleteButton } from '../../shared/ui/DeleteButton'
 
 interface DrawerVehiculeProps {
@@ -16,9 +16,7 @@ interface DrawerVehiculeProps {
   onSaved: () => void
 }
 
-const inputClass = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)] transition-colors`
-
+const inputClass = 'field'
 function FieldGroup({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
   return (
     <div className="flex flex-col gap-1">
@@ -247,7 +245,7 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
         </div>
 
         <FieldGroup label="Notes">
-          <textarea value={form.notes ?? ''} onChange={e => set('notes', e.target.value)} rows={2} className={`${inputClass} h-auto resize-none`} />
+          <textarea value={form.notes ?? ''} onChange={e => set('notes', e.target.value)} rows={2} className={`${inputClass} field-area resize-none`} />
         </FieldGroup>
 
         <div className="flex items-center gap-2 pt-2 border-t border-[var(--border)]">

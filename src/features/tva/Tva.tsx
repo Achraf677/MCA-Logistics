@@ -86,34 +86,15 @@ export function Tva() {
             {[0,1,2,3].map(i => <Skeleton key={i} className="h-[72px]" />)}
           </div>
         ) : (
-          <div className="grid grid-cols-2 gap-5 [&>*]:min-w-0">
+          <div className="grid grid-cols-2 gap-5 stagger [&>*]:min-w-0">
             <KpiCard label="TVA collectée" value={fmt(result!.tvaCollecteeCts)} accent />
-            <KpiCard label="TVA déductible charges (FR)" value={fmt(result!.tvaDeductibleChargesFR)} />
-            <KpiCard label="TVA déductible carburant (FR)" value={fmt(result!.tvaDeductibleCarburantFR)} />
+            <KpiCard label="TVA déductible charges" value={fmt(result!.tvaDeductibleChargesCts)} />
+            <KpiCard label="TVA déductible carburant" value={fmt(result!.tvaDeductibleCarburantCts)} />
             <KpiCard
               label="Solde CA3 à déclarer"
               value={fmt(result!.soldeCts)}
               accent={result!.soldeCts > 0}
             />
-          </div>
-        )}
-
-        {/* ── 8e directive — TVA allemande ──────────────────────────────────── */}
-        {loading ? (
-          <Skeleton className="h-[72px]" />
-        ) : (
-          <div className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] p-4 flex items-start justify-between gap-4">
-            <div className="space-y-0.5">
-              <p className="text-[var(--fs-sm)] font-medium text-[var(--text)]">
-                TVA allemande à récupérer — 8e directive (compte 467)
-              </p>
-              <p className="text-[var(--fs-xs)] text-[var(--text-disabled)]">
-                Récupérable annuellement via procédure 8e directive — hors CA3
-              </p>
-            </div>
-            <span className="font-mono font-bold text-lg text-[var(--brand)] whitespace-nowrap">
-              {fmt(result!.tvaAllemandeCts)}
-            </span>
           </div>
         )}
 
@@ -133,10 +114,10 @@ export function Tva() {
             <div className="divide-y divide-[var(--border)]">
               <Row label="TVA collectée sur ventes" value={result!.tvaCollecteeCts} positive />
               <div className="px-4 py-2 text-[var(--fs-xs)] text-[var(--text-muted)] bg-[var(--bg-elevated)]/50 uppercase tracking-wide font-medium">
-                TVA déductible (France)
+                TVA déductible
               </div>
-              <Row label="→ Charges générales (FR)" value={result!.tvaDeductibleChargesFR} negative />
-              <Row label="→ Carburant (FR)" value={result!.tvaDeductibleCarburantFR} negative />
+              <Row label="→ Charges générales" value={result!.tvaDeductibleChargesCts} negative />
+              <Row label="→ Carburant" value={result!.tvaDeductibleCarburantCts} negative />
               <div className="px-4 py-3 flex items-center justify-between bg-[var(--bg-elevated)]">
                 <span className="font-semibold text-[var(--text)]">TVA nette à déclarer (CA3)</span>
                 <span className={`font-mono font-bold text-lg
@@ -144,22 +125,17 @@ export function Tva() {
                   {fmt(result!.soldeCts)}
                 </span>
               </div>
-              {result!.tvaAllemandeCts > 0 && (
-                <>
-                  <div className="px-4 py-2 text-[var(--fs-xs)] text-[var(--text-muted)] bg-[var(--bg-elevated)]/50 uppercase tracking-wide font-medium">
-                    Hors CA3 — 8e directive
-                  </div>
-                  <Row label="TVA allemande (compte 467)" value={result!.tvaAllemandeCts} />
-                </>
-              )}
             </div>
           )}
         </div>
 
+        {/* Deux informations seulement, et chacune évite une erreur réelle :
+            le périmètre du calcul, et le fait qu'il ne remplace pas un
+            comptable. La mention des `fuel_logs` a été retirée — un nom de
+            table en base n'apprend rien à qui lit cet écran. */}
         <p className="text-[var(--fs-xs)] text-[var(--text-disabled)]">
-          * TVA calculée sur les livraisons au statut "Facturée" ou "Payée".
-          Les charges liées à un plein carburant sont exclues (déjà comptées via les fuel_logs).
-          Vérifiez auprès de votre comptable avant toute déclaration.
+          Calcul basé sur les livraisons facturées ou payées. À vérifier avec ton comptable
+          avant toute déclaration.
         </p>
       </div>
     </Shell>
@@ -178,5 +154,4 @@ function Row({ label, value, positive, negative }: { label: string; value: numbe
   )
 }
 
-const selCls = `h-8 px-3 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] transition-colors`
+const selCls = 'field field-sm'

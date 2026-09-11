@@ -17,6 +17,12 @@ import { useSync } from '../../app/SyncProvider'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatCents, categoryColor, kpiSummary } from './charges.logic'
 import { getCategories } from '../../shared/lib/categories.queries'
+import { listAllocationsCategoriesForCharges } from '../../shared/lib/allocations.queries'
+import { TotauxParCategorie } from '../../shared/ui/TotauxParCategorie'
+import { InboxTickets } from './InboxTickets'
+import { classerTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
+import { indexerFichierExistant } from '../../shared/lib/documents.queries'
+import { estChargeHorsPennylane } from '../../shared/lib/aRapprocher'
 import { downloadCSV } from '../../shared/lib/download'
 import { suggestCategory } from '../../shared/lib/suggestCategorie'
 import { parseSuggestionIa } from '../../shared/lib/suggestionIa'
@@ -36,13 +42,41 @@ export function Charges() {
   const [filters, setFilters]         = useState<ChargeFilters>({})
   const [drawerOpen, setDrawerOpen]   = useState(false)
   const [selected, setSelected]       = useState<ChargeRow | null>(null)
+  // Ticket chauffeur en cours de transformation en charge. Non nul = le
+  // formulaire ouvert vient d'un ticket, et il faudra le classer a la fin.
+  const [ticketSource, setTicketSource] = useState<TicketInbox | null>(null)
+  // Compteur de rafraichissement de la boite de tickets. Voir InboxTickets.
+  const [ticketsVersion, setTicketsVersion] = useState(0)
   const { syncState, syncIfStale } = useSync()
   // Suppression Pennylane : charge en attente de confirmation "Supprimer de l'app".
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  // Ventilations des charges affichees, pour repartir une facture entre
+  // plusieurs categories (lave-glace + AdBlue sur une meme facture).
+  const [allocations, setAllocations] = useState<Array<{ charge_id: string; category_id: string | null; amount_cts: number }>>([])
   const [deletingFlagged, setDeletingFlagged] = useState(false)
   // Filtre spécial via URL (?filtre=pennylane_supprimees) — clic depuis la cloche.
   const [searchParams, setSearchParams] = useSearchParams()
   const filtreSupprimees = searchParams.get('filtre') === 'pennylane_supprimees'
+  const filtreHorsPennylane = searchParams.get('filtre') === 'hors_pennylane'
+
+  /**
+   * Pose ou retire le filtre spécial SANS toucher au reste de l'URL.
+   *
+   * `setSearchParams({ filtre })` remplaçait la totalité des paramètres, donc
+   * effaçait `tab=charges`. `TabbedSection` retombait alors sur son premier
+   * onglet et cet écran disparaissait : cliquer « Voir la liste » renvoyait
+   * l'utilisateur dans Trésorerie.
+   */
+  const poseFiltre = (valeur: string | null) => {
+    const suivant = new URLSearchParams(searchParams)
+    if (valeur) suivant.set('filtre', valeur)
+    else suivant.delete('filtre')
+    setSearchParams(suivant)
+  }
+  // Fige l'instant a l'ouverture de l'ecran. Lire l'heure a chaque rendu
+  // rendrait le filtrage instable : deux rendus successifs pourraient classer
+  // differemment une charge pile a la limite des 14 jours.
+  const [maintenant] = useState(() => new Date())
 
   // Chargement des catégories (une fois par companyId)
   useEffect(() => {
@@ -53,10 +87,26 @@ export function Charges() {
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     const { data, error } = await getCharges(filters)
-    if (error) setError(error.message)
-    else setRows((data ?? []) as unknown as ChargeRow[])
+    if (error) {
+      setError(error.message)
+      setRows([]); setAllocations([])
+    } else {
+      const charges = (data ?? []) as unknown as ChargeRow[]
+      setRows(charges)
+      // Une seule requete pour toutes les ventilations du lot affiche : en faire
+      // une par charge ferait des dizaines d'aller-retours a chaque chargement.
+      const { data: allocs } = await listAllocationsCategoriesForCharges(charges.map(c => c.id))
+      setAllocations(allocs)
+    }
     setLoading(false)
   }, [filters])
+
+  // id -> nom, pour afficher « AdBlue » plutot qu'un identifiant. Memoise :
+  // recreer la Map a chaque rendu ferait recalculer les totaux pour rien.
+  const nomsParCategorie = useMemo(
+    () => new Map(categories.map(c => [c.id, c.name])),
+    [categories],
+  )
 
   useEffect(() => { syncIfStale('charges') }, [syncIfStale])
   useEffect(() => { load() }, [load, syncState.charges.lastSyncAt])
@@ -136,11 +186,19 @@ export function Charges() {
     filters.date_from || filters.date_to || filters.include_immobilisations
   )
 
-  // Liste affichée : filtre "supprimées Pennylane" appliqué côté client.
+  // Liste affichée : les deux filtres spéciaux Pennylane s'appliquent côté
+  // client, sur les lignes déjà chargées. La règle elle-même vient de
+  // `aRapprocher.ts` — la même que celle qui alimente le compteur, pour que le
+  // bandeau et la liste ne racontent jamais deux histoires différentes.
+  const estHorsPennylane = (r: ChargeRow) => estChargeHorsPennylane(r, maintenant)
+
   const displayRows = filtreSupprimees
     ? rows.filter(r => r.pennylane_deleted_at != null)
-    : rows
+    : filtreHorsPennylane
+      ? rows.filter(estHorsPennylane)
+      : rows
   const nbSupprimees = rows.filter(r => r.pennylane_deleted_at != null).length
+  const nbHorsPennylane = rows.filter(estHorsPennylane).length
 
   // Suggestions déterministes de catégorie par fournisseur — calculées 1 fois
   // par rendu de rows. Historique = TOUTES les rows chargées (`getCharges` ne
@@ -173,14 +231,37 @@ export function Charges() {
           {[0,1,2].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Charges"   value={kpis.nb} tone="info" icon={<Receipt size={18} />} />
           <KpiCard label="Total HT"  value={formatCents(kpis.totalHtCts)} tone="warning" icon={<Euro size={18} />}
             sub={kpis.nbAvoirs > 0
               ? `dont ${kpis.nbAvoirs} avoir${kpis.nbAvoirs > 1 ? 's' : ''} ${formatCents(kpis.avoirsHtCts)}`
               : undefined}
           />
-          <KpiCard label="Total TTC" value={formatCents(kpis.totalTtcCts)} tone="warning" icon={<Wallet size={18} />} />
+          <KpiCard label="Total TTC" value={formatCents(kpis.totalTtcCts)} tone="warning" icon={<Wallet size={18} />}
+            sub="somme réellement débitée" />
+        </div>
+      )}
+
+      {/* Tickets envoyes par les chauffeurs — le panneau disparait s'il n'y en a pas */}
+      <InboxTickets
+        onChanged={load}
+        rafraichir={ticketsVersion}
+        onCreerCharge={t => { setSelected(null); setTicketSource(t); setDrawerOpen(true) }}
+      />
+
+      {/* Répartition par catégorie — répond à « combien d'AdBlue ai-je acheté ».
+          Suit les filtres de la liste : changer la période change la répartition. */}
+      {!loading && rows.length > 0 && (
+        <div className="mb-6 glass rounded-[var(--r-xl)] px-4 py-4">
+          <span className="block mb-3 text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+            Dépenses par catégorie
+          </span>
+          <TotauxParCategorie
+            charges={rows}
+            allocations={allocations}
+            nomsParCategorie={nomsParCategorie}
+          />
         </div>
       )}
 
@@ -230,12 +311,35 @@ export function Charges() {
             à traiter (supprimer de l'app ou conserver).
           </span>
           {filtreSupprimees ? (
-            <Button variant="ghost" size="compact" onClick={() => setSearchParams({})}>
+            <Button variant="ghost" size="compact" onClick={() => poseFiltre(null)}>
               Voir toutes les charges
             </Button>
           ) : (
             <Button variant="secondary" size="compact"
-              onClick={() => setSearchParams({ filtre: 'pennylane_supprimees' })}>
+              onClick={() => poseFiltre('pennylane_supprimees')}>
+              Voir la liste
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Ecart de « copie parfaite » avec Pennylane. Orange et non rouge : rien
+          n'est casse, c'est une saisie qui reste a faire chez le comptable. */}
+      {!loading && nbHorsPennylane > 0 && (
+        <div className="mb-4 flex items-center gap-2 flex-wrap rounded-[var(--r-lg)] border border-[var(--warning)]/50 bg-[var(--warning)]/10 px-4 py-3 text-[var(--fs-sm)]">
+          <AlertTriangle size={16} className="text-[var(--warning)] shrink-0" />
+          <span className="text-[var(--text)] flex-1">
+            {nbHorsPennylane > 1
+              ? `${nbHorsPennylane} charges n'existent que dans le site`
+              : "1 charge n'existe que dans le site"} — Pennylane ne l'a jamais vue passer.
+          </span>
+          {filtreHorsPennylane ? (
+            <Button variant="ghost" size="compact" onClick={() => poseFiltre(null)}>
+              Voir toutes les charges
+            </Button>
+          ) : (
+            <Button variant="secondary" size="compact"
+              onClick={() => poseFiltre('hors_pennylane')}>
               Voir la liste
             </Button>
           )}
@@ -542,10 +646,37 @@ export function Charges() {
 
       <DrawerCharge
         open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
+        onClose={() => { setDrawerOpen(false); setTicketSource(null) }}
         charge={selected}
         onSaved={load}
         categories={categories}
+        prefill={ticketSource ? {
+          // Ce qu'on sait VRAIMENT du ticket : ce que le chauffeur a tape, et
+          // le jour ou il l'a envoye. Le montant n'est pas devine — mieux vaut
+          // un champ vide qu'un chiffre faux dans une comptabilite.
+          date:  ticketSource.created_at.slice(0, 10),
+          label: ticketSource.note ?? '',
+          notes: `Ticket chauffeur : ${ticketSource.file_name}`,
+        } : null}
+        onCreated={async chargeId => {
+          if (!ticketSource || !companyId) return
+          // La photo est deja dans le bucket : on ne la recopie pas, on
+          // l'inscrit au registre des documents de la charge.
+          await indexerFichierExistant({
+            companyId,
+            storagePath: ticketSource.storage_path,
+            fileName:    ticketSource.file_name,
+            mimeType:    ticketSource.mime_type,
+            sizeBytes:   ticketSource.size_bytes,
+            entityType:  'charge',
+            entityId:    chargeId,
+            category:    'Justificatif',
+            notes:       ticketSource.note,
+          })
+          await classerTicket(ticketSource.id, 'traite', chargeId)
+          setTicketSource(null)
+          setTicketsVersion(v => v + 1)
+        }}
       />
 
       {/* Confirmation "Supprimer de l'app" (charge dont la facture Pennylane a disparu) */}

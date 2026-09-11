@@ -50,11 +50,11 @@ export function Relances() {
 
         {/* Note */}
         <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-          Les relances sont gérées dans Pennylane (séquences automatiques). Cette vue est un radar des impayés.
+          Les relances partent depuis Pennylane. Cette vue sert à repérer les impayés.
         </p>
 
         {/* KPIs */}
-        <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 stagger [&>*]:min-w-0">
           <KpiCard label="Total en retard"   value={formatMoney(totalCts)} tone="danger"  icon={<AlertTriangle size={18} />} />
           <KpiCard label="Factures échues"   value={rows.length} sub="en attente de paiement" tone="warning" icon={<FileText size={18} />} />
           <KpiCard label="Clients concernés" value={uniqueClients} tone="info" icon={<Users size={18} />} />

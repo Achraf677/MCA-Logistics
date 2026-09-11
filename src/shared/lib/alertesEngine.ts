@@ -82,6 +82,8 @@ export interface AlertesEngineInput {
   devisEnAttente?: DevisEnAttenteRow[]
   vehicules?: VehiculeEcheanceRow[]
   notesDeFrais?: NoteFraisRow[]
+  /** Nombre de tickets chauffeurs en attente de traitement. */
+  ticketsATraiter?: number
   livraisonsPourJustif?: DeliveryForJustif[]
   documentsLivraison?: DocumentForJustif[]
 }
@@ -224,6 +226,24 @@ function detectNotesDeFrais(rows: NoteFraisRow[]): AlerteMetier | null {
   }
 }
 
+/**
+ * Tickets photographiés par les chauffeurs et pas encore traités. Orange.
+ *
+ * Orange et non info : un justificatif qui dort dans la boîte n'est ni
+ * comptabilisé ni récupéré en TVA, et le chauffeur qui l'a envoyé croit, lui,
+ * avoir fait le nécessaire.
+ */
+function detectTicketsInbox(count: number): AlerteMetier | null {
+  if (count <= 0) return null
+  return {
+    id: 'tickets-inbox',
+    domaine: 'charges',
+    label: `${count} ticket${count > 1 ? 's' : ''} chauffeur à traiter`,
+    count, severite: 'orange',
+    lien: '/finance?tab=charges',
+  }
+}
+
 /** Livraisons livrée/facturée/payée sans aucun justificatif (POD, document, LV). Orange. */
 function detectLivraisonsSansJustif(
   deliveries: DeliveryForJustif[],
@@ -263,6 +283,16 @@ function fromARapprocher(c: ARapprocherCounts): AlerteMetier[] {
     label: `${c.pennylane_supprimees} facture${c.pennylane_supprimees > 1 ? 's' : ''} supprimée${c.pennylane_supprimees > 1 ? 's' : ''} dans Pennylane`,
     count: c.pennylane_supprimees, severite: 'rouge', lien: '/charges?filtre=pennylane_supprimees',
   })
+  // Ecart de « copie parfaite » avec Pennylane : ces charges sont dans le site
+  // et nulle part chez le comptable. Orange et non rouge : ce n'est pas une
+  // anomalie de donnees, c'est une saisie qui reste a faire de l'autre cote.
+  if (c.hors_pennylane > 0) out.push({
+    id: 'hors-pennylane', domaine: 'charges',
+    label: c.hors_pennylane > 1
+      ? `${c.hors_pennylane} charges absentes de Pennylane`
+      : '1 charge absente de Pennylane',
+    count: c.hors_pennylane, severite: 'orange', lien: '/charges?filtre=hors_pennylane',
+  })
   if (c.avoirs > 0) out.push({
     id: 'avoirs', domaine: 'charges',
     label: `${c.avoirs} avoir${c.avoirs > 1 ? 's' : ''} fournisseur à vérifier`,
@@ -301,6 +331,9 @@ export function buildAlertes(
 
   const sansJustif = detectLivraisonsSansJustif(input.livraisonsPourJustif ?? [], input.documentsLivraison ?? [])
   if (sansJustif) alertes.push(sansJustif)
+
+  const tickets = detectTicketsInbox(input.ticketsATraiter ?? 0)
+  if (tickets) alertes.push(tickets)
 
   // Tri : rouge → orange → info, puis par count décroissant.
   return alertes.sort((a, b) =>

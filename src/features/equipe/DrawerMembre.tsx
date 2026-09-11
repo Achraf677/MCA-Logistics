@@ -3,7 +3,7 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
-import { DocumentsPanel } from '../documents/DocumentsPanel'
+import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { useProfile } from '../../app/providers'
 import { createTeamMember, updateTeamMember, deactivateTeamMember, getMemberRecentDeliveries } from './equipe.queries'
 import {
@@ -19,9 +19,7 @@ interface DrawerMembreProps {
   onSaved: () => void
 }
 
-const inputClass = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)] transition-colors`
-
+const inputClass = 'field'
 function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">

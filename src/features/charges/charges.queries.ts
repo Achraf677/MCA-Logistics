@@ -48,6 +48,29 @@ export async function ignorePennylaneDeletion(id: string) {
     .eq('id', id)
 }
 
+/**
+ * Charges venues de Pennylane susceptibles d'etre le meme document que celui
+ * qu'on est en train de saisir.
+ *
+ * La requete est volontairement etroite — montant TTC exact, fenetre de
+ * quelques jours — pour deux raisons : elle reste rapide meme avec des
+ * milliers de lignes, et elle ne rapatrie pas la comptabilite entiere dans le
+ * navigateur a chaque frappe. Le tri fin et la decision appartiennent a
+ * `doublons.logic.ts`, qui est pur et teste.
+ */
+export async function getChargesPennylaneProches(
+  ttcCts: number, dateDebut: string, dateFin: string,
+) {
+  return supabase
+    .from('charges')
+    .select('id, date, montant_ttc_cts, supplier_id, label, pennylane_id, suppliers!supplier_id(name)')
+    .not('pennylane_id', 'is', null)
+    .eq('montant_ttc_cts', ttcCts)
+    .gte('date', dateDebut)
+    .lte('date', dateFin)
+    .limit(20)
+}
+
 export async function syncPennylane() {
   return supabase.functions.invoke('pennylane-sync', { body: {} })
 }

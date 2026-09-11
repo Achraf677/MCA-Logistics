@@ -16,7 +16,6 @@ function deliv(p: Partial<TvaDelivery>): TvaDelivery {
 function charge(p: Partial<TvaCharge>): TvaCharge {
   return {
     tva_cts:      'tva_cts' in p ? p.tva_cts! : 0,
-    tva_pays:     p.tva_pays     ?? null,   // null → FR par défaut
     linkedToFuel: p.linkedToFuel ?? false,
     est_immobilisation: p.est_immobilisation ?? false,
   }
@@ -25,7 +24,6 @@ function fuel(p: Partial<TvaFuel>): TvaFuel {
   return {
     tva_cts:            'tva_cts' in p ? p.tva_cts! : 0,
     tva_deductible_pct: 'tva_deductible_pct' in p ? p.tva_deductible_pct! : null,
-    tva_rate:           p.tva_rate ?? null,
   }
 }
 function raw(p: Partial<TvaRaw>): TvaRaw {
@@ -79,13 +77,13 @@ describe('computeTva — TVA collectée = Σ(ttc − ht)', () => {
 })
 
 // ── TVA déductible — charges FR ──────────────────────────────────────────────────
-describe('computeTva — déductible chargesFR = Σ(tva_cts) charges non liées, tva_pays ≠ DE', () => {
+describe('computeTva — déductible charges = Σ(tva_cts) des charges non liées', () => {
   it('somme la TVA des charges françaises', () => {
     const r = computeTva(raw({ charges: [
       charge({ tva_cts: 2000 }),
       charge({ tva_cts: 500 }),
     ]}))
-    expect(r.tvaDeductibleChargesFR).toBe(2500)
+    expect(r.tvaDeductibleChargesCts).toBe(2500)
   })
 
   it('compte un tva_cts null comme 0', () => {
@@ -93,7 +91,7 @@ describe('computeTva — déductible chargesFR = Σ(tva_cts) charges non liées,
       charge({ tva_cts: 1000 }),
       charge({ tva_cts: null }),
     ]}))
-    expect(r.tvaDeductibleChargesFR).toBe(1000)
+    expect(r.tvaDeductibleChargesCts).toBe(1000)
   })
 
   it('anti double-compte : charge linkedToFuel ignorée (déjà comptée via fuel_log)', () => {
@@ -101,7 +99,7 @@ describe('computeTva — déductible chargesFR = Σ(tva_cts) charges non liées,
       charge({ tva_cts: 1000, linkedToFuel: false }),
       charge({ tva_cts: 5000, linkedToFuel: true }),   // LECLERC → ignorée
     ]}))
-    expect(r.tvaDeductibleChargesFR).toBe(1000)        // 5000 non comptée
+    expect(r.tvaDeductibleChargesCts).toBe(1000)        // 5000 non comptée
   })
 
   it('immobilisation (achat véhicule) exclue de la TVA déductible', () => {
@@ -111,84 +109,61 @@ describe('computeTva — déductible chargesFR = Σ(tva_cts) charges non liées,
       charge({ tva_cts: 2000 }),                                    // charge normale
       charge({ tva_cts: 143333, est_immobilisation: true }),        // Movano → exclue
     ]}))
-    expect(r.tvaDeductibleChargesFR).toBe(2000)
+    expect(r.tvaDeductibleChargesCts).toBe(2000)
   })
 
-  it('charge DE (JET KEHL) → poche allemande, pas dans chargesFR', () => {
+  it('toutes les charges non liées comptent, sans distinction de pays', () => {
+    // La poche « TVA allemande » a été retirée : plus aucune charge n'est mise
+    // à part sur un critère de pays.
     const r = computeTva(raw({ charges: [
-      charge({ tva_cts: 2267, tva_pays: 'DE' }),  // JET KEHL
-      charge({ tva_cts: 1000, tva_pays: null  }),  // charge FR
+      charge({ tva_cts: 2267 }),
+      charge({ tva_cts: 1000 }),
     ]}))
-    expect(r.tvaDeductibleChargesFR).toBe(1000)
-    expect(r.tvaAllemandeCts).toBe(2267)
+    expect(r.tvaDeductibleChargesCts).toBe(3267)
   })
 })
 
 // ── TVA déductible — carburant FR ────────────────────────────────────────────────
-describe('computeTva — déductible carburantFR = Σ round(tva_cts × pct/100), tva_rate ≠ 19', () => {
+describe('computeTva — déductible carburant = Σ round(tva_cts × pct/100)', () => {
   it('pct absent ⇒ 100 % (déductible intégral)', () => {
     const r = computeTva(raw({ fuel: [
       fuel({ tva_cts: 3000 }), // pct absent → 100 % → 3000
     ]}))
-    expect(r.tvaDeductibleCarburantFR).toBe(3000)
+    expect(r.tvaDeductibleCarburantCts).toBe(3000)
   })
 
   it('applique un pct < 100 (gazole 80 %)', () => {
     const r = computeTva(raw({ fuel: [
       fuel({ tva_cts: 1000, tva_deductible_pct: 80 }), // 800
     ]}))
-    expect(r.tvaDeductibleCarburantFR).toBe(800)
+    expect(r.tvaDeductibleCarburantCts).toBe(800)
   })
 
   it('arrondit chaque ligne (999 × 80 % = 799,2 → 799)', () => {
     const r = computeTva(raw({ fuel: [
       fuel({ tva_cts: 999, tva_deductible_pct: 80 }),
     ]}))
-    expect(r.tvaDeductibleCarburantFR).toBe(799)
+    expect(r.tvaDeductibleCarburantCts).toBe(799)
   })
 
   it('compte un tva_cts null comme 0', () => {
     const r = computeTva(raw({ fuel: [
       fuel({ tva_cts: null, tva_deductible_pct: 80 }),
     ]}))
-    expect(r.tvaDeductibleCarburantFR).toBe(0)
+    expect(r.tvaDeductibleCarburantCts).toBe(0)
   })
 
-  it('fuel tva_rate=19 (JET KEHL plein DE) → poche allemande, pas dans carburantFR', () => {
+  it('tous les pleins comptent, quel que soit leur taux', () => {
     const r = computeTva(raw({ fuel: [
-      fuel({ tva_cts: 2267, tva_rate: 19 }),   // plein DE
-      fuel({ tva_cts: 833,  tva_rate: 20 }),   // plein FR
+      fuel({ tva_cts: 2267 }),
+      fuel({ tva_cts: 833 }),
     ]}))
-    expect(r.tvaDeductibleCarburantFR).toBe(833)
-    expect(r.tvaAllemandeCts).toBe(2267)
-  })
-})
-
-// ── TVA allemande ────────────────────────────────────────────────────────────────
-describe('computeTva — tvaAllemandeCts (8e directive, hors CA3)', () => {
-  it('cumule charges DE et fuel DE', () => {
-    const r = computeTva(raw({
-      charges: [charge({ tva_cts: 1000, tva_pays: 'DE' })],
-      fuel:    [fuel({ tva_cts: 500, tva_rate: 19 })],
-    }))
-    expect(r.tvaAllemandeCts).toBe(1500)
-  })
-
-  it("solde CA3 n'inclut pas la TVA allemande", () => {
-    const r = computeTva(raw({
-      deliveries: [deliv({ montant_ht_cts: 10000, montant_ttc_cts: 12000 })], // collectée 2000
-      charges:    [
-        charge({ tva_cts: 500, tva_pays: null }),   // FR → dans solde
-        charge({ tva_cts: 2267, tva_pays: 'DE' }),  // DE → hors solde
-      ],
-    }))
-    expect(r.soldeCts).toBe(2000 - 500)  // 1500, pas 2000 - 500 - 2267
-    expect(r.tvaAllemandeCts).toBe(2267)
+    expect(r.tvaDeductibleCarburantCts).toBe(3100)
   })
 })
 
 // ── Solde ────────────────────────────────────────────────────────────────────────
-describe('computeTva — solde = collectée − chargesFR − carburantFR', () => {
+describe('computeTva — solde = collectée − charges − carburant', () => {
   it('calcule un solde à payer (collectée > déductible)', () => {
     const r = computeTva(raw({
       deliveries: [deliv({ montant_ht_cts: 10000, montant_ttc_cts: 12000 })], // collectée 2000
@@ -214,9 +189,8 @@ describe('computeTva — tableaux vides ⇒ 0 partout', () => {
     const r = computeTva(raw({}))
     expect(r).toEqual({
       tvaCollecteeCts:          0,
-      tvaDeductibleChargesFR:   0,
-      tvaDeductibleCarburantFR: 0,
-      tvaAllemandeCts:          0,
+      tvaDeductibleChargesCts:   0,
+      tvaDeductibleCarburantCts: 0,
       soldeCts:                 0,
     })
   })

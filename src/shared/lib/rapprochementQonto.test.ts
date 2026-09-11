@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { getMatchingChargesForDebit, classifyDebit, suggestJustifType, classifyCredit, suggestCreditTag } from './rapprochementQonto'
+import {
+  getMatchingChargesForDebit, getChargesOuvertes, resteDuParCharge,
+  classifyDebit, suggestJustifType, classifyCredit, suggestCreditTag,
+} from './rapprochementQonto'
+import type { TxPick } from './rapprochementQonto'
 import type { ChargePick } from '../types/charges'
 
 function charge(id: string, ttc: number, date = '2026-06-01'): ChargePick {
@@ -20,36 +24,97 @@ function charge(id: string, ttc: number, date = '2026-06-01'): ChargePick {
   }
 }
 
+function debit(chargeId: string | null, amount: number): TxPick {
+  return { charge_id: chargeId, amount_cts: amount, side: 'debit' }
+}
+
+describe('resteDuParCharge', () => {
+  it('sans transaction, le reste vaut le montant TTC', () => {
+    const reste = resteDuParCharge([charge('a', 63500)], [])
+    expect(reste.get('a')).toBe(63500)
+  })
+
+  it('cumule plusieurs débits sur la même charge', () => {
+    // Cas Helvetia : 635 € annuels prélevés en plusieurs fois.
+    const charges = [charge('assurance', 63500)]
+    expect(resteDuParCharge(charges, [debit('assurance', 10000)]).get('assurance')).toBe(53500)
+    expect(resteDuParCharge(charges, [
+      debit('assurance', 10000), debit('assurance', 10000),
+    ]).get('assurance')).toBe(43500)
+  })
+
+  it('tombe à zéro une fois soldée, et n’est jamais négatif', () => {
+    const charges = [charge('a', 10000)]
+    expect(resteDuParCharge(charges, [debit('a', 10000)]).get('a')).toBe(0)
+    expect(resteDuParCharge(charges, [debit('a', 15000)]).get('a')).toBe(0)
+  })
+
+  it('ignore les crédits : un encaissement ne règle pas une charge', () => {
+    const reste = resteDuParCharge(
+      [charge('a', 10000)],
+      [{ charge_id: 'a', amount_cts: 4000, side: 'credit' }],
+    )
+    expect(reste.get('a')).toBe(10000)
+  })
+
+  it('ignore les transactions non rattachées et les montants aberrants', () => {
+    const reste = resteDuParCharge([charge('a', 10000)], [
+      debit(null, 5000), debit('a', 0), debit('a', -300), debit('a', Number.NaN),
+    ])
+    expect(reste.get('a')).toBe(10000)
+  })
+})
+
 describe('getMatchingChargesForDebit', () => {
-  it('retourne les charges au montant TTC exact', () => {
+  const reste = (charges: ChargePick[], txs: TxPick[] = []) => resteDuParCharge(charges, txs)
+
+  it('retourne les charges dont le reste dû tombe sur le montant', () => {
     const charges = [charge('a', 10000), charge('b', 12000), charge('c', 10000)]
-    const result = getMatchingChargesForDebit(10000, charges, new Set())
+    const result = getMatchingChargesForDebit(10000, charges, reste(charges))
     expect(result.map(c => c.id)).toEqual(['a', 'c'])
   })
 
-  it('exclut les charges déjà liées (linkedChargeIds)', () => {
+  it('exclut les charges soldées', () => {
     const charges = [charge('a', 10000), charge('b', 10000)]
-    const result = getMatchingChargesForDebit(10000, charges, new Set(['a']))
+    const result = getMatchingChargesForDebit(10000, charges, reste(charges, [debit('a', 10000)]))
     expect(result.map(c => c.id)).toEqual(['b'])
   })
 
-  it('retourne tableau vide si aucune charge au même montant', () => {
-    const result = getMatchingChargesForDebit(10000, [charge('a', 5000)], new Set())
-    expect(result).toHaveLength(0)
+  it('propose une charge partiellement réglée dont le SOLDE tombe juste', () => {
+    // 635 € déjà réglés à hauteur de 600 € : le dernier prélèvement de 35 €
+    // doit être proposé d'office.
+    const charges = [charge('assurance', 63500)]
+    const result = getMatchingChargesForDebit(
+      3500, charges, reste(charges, [debit('assurance', 60000)]),
+    )
+    expect(result.map(c => c.id)).toEqual(['assurance'])
   })
 
-  it('toutes déjà liées → tableau vide', () => {
-    const charges = [charge('a', 10000), charge('b', 10000)]
-    const result = getMatchingChargesForDebit(10000, charges, new Set(['a', 'b']))
-    expect(result).toHaveLength(0)
+  it('retourne tableau vide si aucun reste ne tombe sur le montant', () => {
+    const charges = [charge('a', 5000)]
+    expect(getMatchingChargesForDebit(10000, charges, reste(charges))).toHaveLength(0)
   })
 
   it('trie par proximité de date quand settledAt fourni', () => {
     // Débit le 15 juin ; charge 'proche' le 14, 'loin' le 1er
     const charges = [charge('loin', 10000, '2026-06-01'), charge('proche', 10000, '2026-06-14')]
-    const result = getMatchingChargesForDebit(10000, charges, new Set(), '2026-06-15')
+    const result = getMatchingChargesForDebit(10000, charges, reste(charges), '2026-06-15')
     expect(result[0].id).toBe('proche')
     expect(result[1].id).toBe('loin')
+  })
+})
+
+describe('getChargesOuvertes', () => {
+  it('garde les charges partiellement réglées et écarte les soldées', () => {
+    const charges = [charge('partielle', 63500), charge('soldee', 10000)]
+    const reste = resteDuParCharge(charges, [debit('partielle', 10000), debit('soldee', 10000)])
+    expect(getChargesOuvertes(charges, reste).map(c => c.id)).toEqual(['partielle'])
+  })
+
+  it('trie par proximité de date', () => {
+    const charges = [charge('loin', 10000, '2026-06-01'), charge('proche', 20000, '2026-06-14')]
+    const result = getChargesOuvertes(charges, resteDuParCharge(charges, []), '2026-06-15')
+    expect(result.map(c => c.id)).toEqual(['proche', 'loin'])
   })
 })
 

@@ -1,18 +1,37 @@
 import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Sparkles, X, Send, Check, Paperclip } from 'lucide-react'
+import { Sparkles, X, Send, Check, Paperclip, ClipboardPaste } from 'lucide-react'
 import { useAssistant } from './AssistantContext'
-import type { PendingAction } from './AssistantContext'
+import type { PendingAction, ExtractedDelivery } from './AssistantContext'
 import { runAssistantTurn } from './assistant.queries'
 import {
   prepareCreateLivraison, prepareChangerStatutLivraison,
   prepareCreateCharge, prepareCreateClient, prepareModifierClient, prepareCreatePlein, prepareCreateIncident,
   prepareCreateFournisseur, prepareCreateVehicule, runGenererMail, runExtractDeliveries,
+  runExtractDeliveriesFromText,
   prepareImportLivraisons, prepareModifierLivraison,
 } from './assistant.tools'
 import type { PrepareResult, GenererMailArgs } from './assistant.tools'
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024 // ~10 Mo
+
+/**
+ * Contexte transmis à l'IA avec un message collé. Un mail de réservation ne dit
+ * pas explicitement qui est « le client », ni que son montant est TTC — sans
+ * ces précisions le modèle laisse les deux champs vides plutôt que d'inventer,
+ * ce qui est prudent mais inutilisable.
+ *
+ * Formulation vérifiée sur un vrai mail Cocolis le 10/09/2026 : elle rend
+ * client, type, adresses séparées, poids, date, et convertit 140 € TTC en
+ * 116,67 € HT. Toute reformulation doit être re-testée sur un cas réel — une
+ * version antérieure, plus vague, perdait le client ET le montant.
+ */
+const CONTEXTE_RESERVATION =
+  "Réservation payée en ligne (Cocolis ou équivalent) : le client est le DESTINATAIRE, "
+  + "sauf si un autre donneur d'ordre est nommé. L'adresse de l'expéditeur est l'adresse de retrait, "
+  + "celle du destinataire est l'adresse de livraison. Si le montant affiché est TTC, convertis-le en HT "
+  + "en divisant par 1,20 et mets ce résultat dans montant_ht_eur ; rappelle le montant TTC dans les notes. "
+  + "La course est à planifier et ne sera jamais refacturée : signale-le dans les notes."
 
 function readDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -39,6 +58,7 @@ const ACTION_PREPARERS: Record<string, (args: unknown) => Promise<PrepareResult>
   create_vehicule:          (a) => prepareCreateVehicule(a as never),
 }
 import { tabLabelForPath } from './assistant.knowledge'
+import { RecapExtraction } from './RecapExtraction'
 
 /**
  * Assistant flottant global (monté dans le Shell, présent sur toutes les pages).
@@ -54,6 +74,9 @@ export function AssistantWidget() {
   const [input, setInput] = useState('')
   const [statusLabel, setStatusLabel] = useState<string | null>(null)
   const [chooseStatut, setChooseStatut] = useState(false)
+  // Collage d'un message (reservation Cocolis, demande client...) a lire.
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [pasteText, setPasteText] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -181,7 +204,12 @@ export function AssistantWidget() {
     setStatusLabel('Lecture de la feuille de route…')
     try {
       const r = await runExtractDeliveries(base64, mimeType)
-      if (r.ok) { pushAssistant(r.text); setExtracted(r.deliveries) } // stockées pour l'import (6B-2)
+      // Même récapitulatif que pour un message collé : les deux chemins
+      // aboutissent aux mêmes livraisons, ils doivent s'afficher pareil.
+      if (r.ok) {
+        setMessages(prev => [...prev, { role: 'assistant', text: r.text, extraction: r.deliveries }])
+        setExtracted(r.deliveries) // stockées pour l'import (6B-2)
+      }
       else pushAssistant(r.message)
     } catch (err) {
       pushAssistant(`⚠️ ${(err as Error).message}`)
@@ -190,6 +218,39 @@ export function AssistantWidget() {
       setStatusLabel(null)
     }
   }
+
+  // ── Coller un message (réservation Cocolis, demande client) → extraction ────
+  // Passe par la même Edge Function que les fichiers joints, mais sans OCR :
+  // le texte collé est déjà du texte. C'est le chemin le plus rapide pour une
+  // réservation reçue par mail, qu'on n'a ni à imprimer ni à photographier.
+  const analysePaste = async () => {
+    const texte = pasteText.trim()
+    if (!texte || blocked) return
+
+    setMessages(prev => [...prev, { role: 'user', text: `📋 Message collé (${texte.length} caractères)` }])
+    setPasteOpen(false)
+    setPasteText('')
+    setSending(true)
+    setStatusLabel('Lecture du message…')
+    try {
+      const r = await runExtractDeliveriesFromText(texte, CONTEXTE_RESERVATION)
+      if (r.ok) {
+        // `text` reste present : il alimente « Copier » et sert de repli si le
+        // rendu en cartes venait a etre retire. C'est `extraction` qui decide
+        // de l'affichage.
+        setMessages(prev => [...prev, { role: 'assistant', text: r.text, extraction: r.deliveries }])
+        setExtracted(r.deliveries)
+      }
+      else pushAssistant(r.message)
+    } catch (err) {
+      pushAssistant(`⚠️ ${(err as Error).message}`)
+    } finally {
+      setSending(false)
+      setStatusLabel(null)
+    }
+  }
+
+  const cancelPaste = () => { setPasteOpen(false); setPasteText('') }
 
   // ── Import en lot des livraisons extraites : choix du statut → carte ─────────
   const pickStatut = async (statut: 'planifiee' | 'livree') => {
@@ -223,7 +284,7 @@ export function AssistantWidget() {
             bg-[var(--brand)] text-white flex items-center justify-center
             shadow-lg opacity-35 hover:opacity-100 focus:opacity-100
             hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]
-            transition-all duration-200"
+            press"
         >
           <Sparkles size={22} />
         </button>
@@ -238,7 +299,7 @@ export function AssistantWidget() {
             sm:w-[400px] sm:h-[600px] sm:max-h-[calc(100vh-2rem)]
             bg-[var(--bg-elevated)] border border-[var(--border)] sm:rounded-[var(--r-lg)]
             shadow-2xl flex flex-col overflow-hidden
-            animate-in fade-in slide-in-from-bottom-4 duration-200"
+            anim-sheet"
         >
           {/* En-tête */}
           <header className="flex items-center gap-2 px-4 h-[var(--topbar-h)] shrink-0
@@ -266,7 +327,7 @@ export function AssistantWidget() {
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 flex flex-col gap-3"
           >
             {messages.map((m, i) => (
-              <Bubble key={i} role={m.role} text={m.text} draft={m.draft} />
+              <Bubble key={i} role={m.role} text={m.text} draft={m.draft} extraction={m.extraction} />
             ))}
             {sending && <TypingBubble label={statusLabel ?? undefined} />}
           </div>
@@ -321,6 +382,44 @@ export function AssistantWidget() {
             </div>
           )}
 
+          {/* Zone de collage d'un message à lire (hors scroll, au-dessus de la saisie) */}
+          {pasteOpen && (
+            <div className="shrink-0 border-t border-[var(--border)] p-3 flex flex-col gap-2">
+              <label htmlFor="assistant-paste" className="text-[var(--fs-sm)] text-[var(--text-muted)]">
+                Colle le message (réservation, demande client, feuille de route recopiée) :
+              </label>
+              <textarea
+                id="assistant-paste"
+                value={pasteText}
+                onChange={e => setPasteText(e.target.value)}
+                rows={6}
+                autoFocus
+                placeholder="Colle ici le corps du message…"
+                className="w-full px-3 py-2 rounded-[var(--r-md)] bg-[var(--bg)]
+                  border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)]
+                  focus:outline-none focus:border-[var(--brand)] transition-colors resize-y"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={analysePaste}
+                  disabled={!pasteText.trim() || blocked}
+                  className="flex-1 min-h-[44px] rounded-[var(--r-md)] bg-[var(--brand)] text-white font-medium
+                    hover:bg-[var(--brand-hover)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Lire ce message
+                </button>
+                <button
+                  onClick={cancelPaste}
+                  disabled={sending}
+                  className="min-h-[44px] px-4 rounded-[var(--r-md)] border border-[var(--border-soft)]
+                    text-[var(--text)] hover:bg-[var(--bg-card-hover)] disabled:opacity-50 transition-colors"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Saisie */}
           <div className="shrink-0 border-t border-[var(--border)] p-3 flex items-end gap-2">
             <input
@@ -340,6 +439,17 @@ export function AssistantWidget() {
                 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Paperclip size={18} />
+            </button>
+            <button
+              onClick={() => setPasteOpen(o => !o)}
+              disabled={blocked}
+              aria-label="Coller un message à lire"
+              title="Coller un message (réservation, demande client)"
+              className={`min-h-[44px] min-w-[44px] flex items-center justify-center rounded-[var(--r-md)]
+                hover:bg-[var(--bg-card-hover)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors
+                ${pasteOpen ? 'text-[var(--brand)]' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}
+            >
+              <ClipboardPaste size={18} />
             </button>
             <input
               ref={inputRef}
@@ -374,7 +484,12 @@ export function AssistantWidget() {
   )
 }
 
-function Bubble({ role, text, draft }: { role: 'user' | 'assistant'; text: string; draft?: boolean }) {
+function Bubble({ role, text, draft, extraction }: {
+  role: 'user' | 'assistant'
+  text: string
+  draft?: boolean
+  extraction?: ExtractedDelivery[]
+}) {
   const isUser = role === 'user'
   const [copied, setCopied] = useState(false)
 
@@ -391,12 +506,14 @@ function Bubble({ role, text, draft }: { role: 'user' | 'assistant'; text: strin
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] px-3.5 py-2 rounded-[var(--r-lg)] text-[var(--fs-sm)] whitespace-pre-wrap break-words leading-relaxed
+        className={`${extraction ? 'w-full' : 'max-w-[85%]'} px-3.5 py-2 rounded-[var(--r-lg)] text-[var(--fs-sm)] whitespace-pre-wrap break-words leading-relaxed
           ${isUser
             ? 'bg-[var(--brand)] text-white rounded-br-sm'
             : 'bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)] rounded-bl-sm'}`}
       >
-        {renderMarkdownBold(text)}
+        {/* Un recap de livraisons se lit en cartes, pas en paragraphe : la
+            bulle prend toute la largeur et laisse la place au composant. */}
+        {extraction ? <RecapExtraction deliveries={extraction} /> : renderMarkdownBold(text)}
         {draft && (
           <div className="mt-2 pt-2 border-t border-[var(--border)]">
             <button

@@ -58,7 +58,7 @@ export function Heures() {
           {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Saisies"        value={kpis.nb} tone="info" icon={<Clock size={18} />} />
           <KpiCard label="Heures totales" value={formatMinutes(kpis.totalMinutes)} tone="violet" icon={<Timer size={18} />} />
           <KpiCard label="Chauffeurs"     value={kpis.uniqueDrivers} tone="info" icon={<Users size={18} />} />

@@ -91,7 +91,7 @@ export function Equipe() {
   return (
     <Shell pageTitle="Équipe" actions={['nouveau', 'export']} onAction={handleAction}>
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
         {loading ? <SkeletonKpis count={4} /> : <>
           <KpiCard label="Membres actifs" value={actifs} />
           <KpiCard label="Masse salariale / mois" value={formatSalaryMonthly(masse)} />

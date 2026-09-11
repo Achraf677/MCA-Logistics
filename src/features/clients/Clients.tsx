@@ -138,14 +138,13 @@ export function Clients() {
   return (
     <Shell pageTitle="Clients" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-5 mb-6 [&>*]:min-w-0">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-5 mb-6 stagger [&>*]:min-w-0">
         {loading
-          ? <SkeletonKpis count={6} />
+          ? <SkeletonKpis count={5} />
           : <>
             <KpiCard label="Clients actifs" value={actifs} />
-            <KpiCard label="Médical" value={byType.medical ?? 0} />
-            <KpiCard label="E-commerce" value={byType.ecommerce ?? 0} />
-            <KpiCard label="Retail / Autres" value={(byType.retail ?? 0) + (byType.particulier ?? 0)} />
+            <KpiCard label="Professionnels" value={byType.professionnel ?? 0} />
+            <KpiCard label="Particuliers" value={byType.particulier ?? 0} />
             <KpiCard
               label="Encours total"
               value={encoursLoading ? '…' : formatMoney(kpiTotal)}

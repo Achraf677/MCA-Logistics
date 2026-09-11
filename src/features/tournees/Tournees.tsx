@@ -19,6 +19,7 @@ import { TourCard, formatDuration } from './TourCard'
 import { colorForIndex } from './tours.palette'
 import type { OverviewTour } from './ToursOverviewMap'
 import type { Tour, TourDelivery, Assignment, Lookup } from './tournees.types'
+import { Field } from '../../shared/ui/Field'
 
 // Lazy-load : Leaflet hors bundle initial (chunk séparé).
 const ToursOverviewMap = lazy(() => import('./ToursOverviewMap'))
@@ -402,18 +403,7 @@ export function Tournees() {
 
 // ── Sous-composants ────────────────────────────────────────────────────────────
 
-const inputCls = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)]
-  transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
-      {children}
-    </div>
-  )
-}
+const inputCls = 'field'
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (

@@ -42,9 +42,14 @@ const toneGradient: Record<Tone, string> = {
   danger:  'linear-gradient(90deg, #ff5247, #e63946)',
 }
 
+// `lift` (index.css) remplace `transition-all duration-200 hover:-translate-y-1`.
+// Deux corrections : `transition-all` faisait transiter TOUTES les proprietes,
+// y compris l'ombre et le fond, donc un repeint complet de la carte a chaque
+// survol ; et le saut de 4 px d'un coup etait ce que l'utilisateur appelait
+// « sec ». Desormais 2 px sur une courbe amortie, transform uniquement.
 export function KpiCard({ label, value, sub, tone = 'neutral', icon, delta, progress, spark }: KpiCardProps) {
   return (
-    <div className={`bg-[var(--bg-card)] rounded-[var(--r-xl)] border border-[var(--border)] px-5 py-5 flex flex-col gap-1 min-w-0 shadow-[var(--shadow-card)] transition-all duration-200 hover:-translate-y-1 ${toneHoverBorder[tone]}`}>
+    <div className={`bg-[var(--bg-card)] rounded-[var(--r-xl)] border border-[var(--border)] px-5 py-5 flex flex-col gap-1 min-w-0 shadow-[var(--shadow-card)] lift ${toneHoverBorder[tone]}`}>
       <div className="flex items-center justify-between gap-2 min-w-0">
         <span className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wider min-w-0 truncate">{label}</span>
         <div className="flex items-center gap-2 shrink-0">

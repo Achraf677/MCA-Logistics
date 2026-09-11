@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import type { ReactNode } from 'react'
 import { Link2 } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
@@ -12,12 +11,11 @@ import { PanneauVentilation } from '../../shared/ui/PanneauVentilation'
 import { VentilationFacture } from '../../shared/ui/VentilationFacture'
 import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import { createMaintenance, updateMaintenance, deleteMaintenance } from './entretiens.queries'
-import {
-  MAINTENANCE_TYPE_LABELS, MAINTENANCE_TYPE_COLOR, formatCents,
-} from './entretiens.logic'
+import { formatCents } from './entretiens.logic'
 import type { MaintenanceRow, MaintenanceInsert, MaintenanceType } from './entretiens.types'
 import type { ChargePick } from '../../shared/types/charges'
 import { DeleteButton } from '../../shared/ui/DeleteButton'
+import { Field } from '../../shared/ui/Field'
 
 interface Props {
   open: boolean
@@ -28,10 +26,6 @@ interface Props {
 
 type Lookup = { id: string; label: string }
 
-const MAINTENANCE_TYPES: MaintenanceType[] = [
-  'vidange', 'pneus', 'freins', 'controle_technique',
-  'revision', 'reparation', 'inspection', 'autre',
-]
 
 const EMPTY_FORM = {
   date: new Date().toISOString().slice(0, 10),
@@ -185,11 +179,8 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
     <>
       <Drawer open={open} onClose={onClose} title={drawerTitle}>
         <div className="flex flex-col gap-4">
-          {isEdit && maintenance?.type && (
+          {isEdit && maintenance && (
             <div className="flex items-center gap-2 mb-1">
-              <Badge color={MAINTENANCE_TYPE_COLOR[maintenance.type]}>
-                {MAINTENANCE_TYPE_LABELS[maintenance.type]}
-              </Badge>
               {maintenance.charges && <Badge color="success">Facturé</Badge>}
               <span className="ml-auto font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
                 {new Date(maintenance.date).toLocaleDateString('fr-FR')}
@@ -242,17 +233,15 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Date *">
-              <Input type="date" value={form.date} onChange={v => set('date', v)} />
-            </Field>
-            <Field label="Type">
-              <select value={form.type} onChange={e => set('type', e.target.value)} className={inputCls}>
-                <option value="">— Aucun —</option>
-                {MAINTENANCE_TYPES.map(t => <option key={t} value={t}>{MAINTENANCE_TYPE_LABELS[t]}</option>)}
-              </select>
-            </Field>
-          </div>
+          {/* Le champ « Type » a ete retire : il proposait une liste figee que
+              l'utilisateur ne pouvait pas faire evoluer. Ce sont desormais les
+              categories, librement creees, qui disent de quoi il s'agit — et
+              une meme facture peut en porter plusieurs, ce qu'un « type »
+              unique ne permettait pas. La colonne reste en base : l'historique
+              deja saisi n'est pas detruit, il n'est simplement plus affiche. */}
+          <Field label="Date *">
+            <Input type="date" value={form.date} onChange={v => set('date', v)} />
+          </Field>
 
           <Field label="Véhicule *">
             <select value={form.vehicle_id} onChange={e => set('vehicle_id', e.target.value)} className={inputCls}>
@@ -315,7 +304,7 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
               onChange={e => set('notes', e.target.value)}
               rows={3}
               placeholder="Observations, pièces remplacées…"
-              className={`${inputCls} resize-none`}
+              className={`${inputCls} field-area resize-none`}
             />
           </Field>
 
@@ -346,10 +335,7 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
   )
 }
 
-const inputCls = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)]
-  transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
-
+const inputCls = 'field'
 function Input({ type = 'text', value, onChange, placeholder, disabled }: {
   type?: string; value: string; onChange: (v: string) => void
   placeholder?: string; disabled?: boolean
@@ -360,13 +346,3 @@ function Input({ type = 'text', value, onChange, placeholder, disabled }: {
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-        {label}
-      </label>
-      {children}
-    </div>
-  )
-}

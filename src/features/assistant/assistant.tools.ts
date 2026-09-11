@@ -284,7 +284,7 @@ export async function getTva(mois?: string) {
   return {
     mois: label,
     tva_collectee_eur: centimesToEuros(t.tvaCollecteeCts),
-    tva_deductible_eur: centimesToEuros(t.tvaDeductibleChargesFR + t.tvaDeductibleCarburantFR),
+    tva_deductible_eur: centimesToEuros(t.tvaDeductibleChargesCts + t.tvaDeductibleCarburantCts),
     tva_nette_eur: centimesToEuros(t.soldeCts),
   }
 }
@@ -601,7 +601,7 @@ export type PrepareResult =
   | { ok: false; message: string }
   | { ok: true; action: PendingAction }
 
-const DELIVERY_TYPES = ['medical', 'ecommerce', 'retail', 'particulier']
+const DELIVERY_TYPES = ['professionnel', 'particulier']
 
 /** Résout un client unique par nom (ilike, actifs). */
 async function resolveClient(rawName: string): Promise<
@@ -908,7 +908,7 @@ export interface CreateClientArgs {
   delai_paiement_jours?: number
 }
 
-const CLIENT_TYPES = ['medical', 'ecommerce', 'retail', 'particulier', 'professionnel']
+const CLIENT_TYPES = ['professionnel', 'particulier']
 
 export async function prepareCreateClient(args: CreateClientArgs): Promise<PrepareResult> {
   const nom = (args.nom ?? '').trim()
@@ -1460,9 +1460,13 @@ export async function runGenererMail(
 
   if (error || res?.ok === false) {
     const raw = error?.message ?? res?.error ?? 'Échec de la génération.'
-    const msg = /rate|429|trop de demandes/i.test(String(raw))
-      ? '⏳ L’assistant reçoit trop de demandes à la fois — patiente quelques secondes et réessaie.'
-      : `❌ Génération impossible : ${raw}.`
+    // 403 ≠ 429 : un modèle hors abonnement ne se débloque pas en patientant.
+    const text = String(raw)
+    const msg = /403|tier_not_allowed|model_unavailable/i.test(text)
+      ? '🔒 Génération impossible : le modèle d’IA configuré n’est pas inclus dans l’abonnement Mistral.'
+      : /rate_limited|429/i.test(text)
+        ? '⏳ L’assistant reçoit trop de demandes à la fois — patiente quelques secondes et réessaie.'
+        : `❌ Génération impossible : ${raw}.`
     return { ok: false, message: msg }
   }
 
@@ -1479,45 +1483,121 @@ export type ExtractResult =
   | { ok: true; deliveries: ExtractedDelivery[]; text: string }
   | { ok: false; message: string }
 
+/** Date ISO → « lun. 18 sept. 2026 », pour relire une date d'un coup d'œil. */
+function dateLisible(iso: string | null): string | null {
+  if (!iso) return null
+  const d = new Date(`${iso}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('fr-FR', {
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric',
+  })
+}
+
+/**
+ * Récapitulatif détaillé de ce qui a été lu, champ par champ.
+ *
+ * L'ancienne version condensait tout sur une ligne (client · date · adresse ·
+ * montant) : impossible d'y vérifier une adresse de retrait, un poids ou une
+ * heure — donc impossible de valider en confiance. On liste désormais chaque
+ * champ trouvé, et on sépare nettement ce qui manque.
+ */
 function formatExtracted(deliveries: ExtractedDelivery[]): string {
   const n = deliveries.length
-  const lines = deliveries.map((d, i) => {
-    const parts = [
-      d.client_name ?? 'client ?',
-      d.date ?? 'date ?',
-      d.delivery_address ?? null,
-      d.montant_ht_eur != null ? `${d.montant_ht_eur} € HT` : null,
-    ].filter(Boolean)
-    let line = `**${i + 1}.** ${parts.join(' · ')}`
-    if (Array.isArray(d.missing) && d.missing.length) {
-      line += `\n   ⚠️ à compléter : ${d.missing.join(', ')}`
+
+  const blocs = deliveries.map((d, i) => {
+    const lignes: string[] = []
+    const ajoute = (label: string, valeur: string | null | undefined) => {
+      if (valeur != null && String(valeur).trim() !== '') lignes.push(`· ${label} : ${valeur}`)
     }
-    return line
+
+    ajoute('Client', d.client_name)
+    ajoute('Date', [dateLisible(d.date), d.heure].filter(Boolean).join(' à ') || null)
+    ajoute('Retrait', d.pickup_address)
+    ajoute('Livraison', d.delivery_address)
+    ajoute('Poids', d.weight_kg != null ? `${d.weight_kg} kg` : null)
+    ajoute('Distance', d.km != null ? `${d.km} km` : null)
+    ajoute('Montant', d.montant_ht_eur != null ? `${d.montant_ht_eur} € HT` : null)
+    ajoute('Chauffeur', d.driver_name)
+    ajoute('Véhicule', d.vehicle)
+    ajoute('Notes', d.notes?.trim() || null)
+
+    const entete = n > 1 ? `**Livraison ${i + 1}/${n}**` : '**Livraison lue**'
+    let bloc = `${entete}\n${lignes.join('\n')}`
+
+    const manquants = Array.isArray(d.missing) ? d.missing.filter(Boolean) : []
+    if (manquants.length) {
+      bloc += `\n⚠️ Non trouvé dans le message : ${manquants.join(', ')}`
+    }
+    return bloc
   })
+
   return (
-    `📋 J'ai lu ${n} livraison${n > 1 ? 's' : ''} dans la feuille de route :\n\n`
-    + lines.join('\n')
-    + `\n\n(Vérifie le contenu — la création en lot arrive bientôt.)`
+    `📋 Voici ce que j'ai lu. **Vérifie avant de valider — je peux me tromper.**\n\n`
+    + blocs.join('\n\n')
+    + `\n\nSi c'est bon, choisis le statut de création ci-dessous.`
   )
 }
 
-export async function runExtractDeliveries(fileBase64: string, mimeType: string): Promise<ExtractResult> {
-  const { data, error } = await extractDeliveries({ fileBase64, mimeType })
+/** Traduit une réponse d'extraction en résultat affichable. Commun au fichier et au texte collé. */
+function interpreteExtraction(
+  data: unknown,
+  error: { message: string } | null,
+  origine: 'fichier' | 'texte',
+): ExtractResult {
   const res = data as ExtractResponse | null
 
   if (error || res?.ok === false) {
     const raw = error?.message ?? res?.error ?? "Échec de l'analyse."
-    const msg = /timeout|abort|temps|504|deadline/i.test(String(raw))
-      ? '⏳ La lecture a pris trop de temps — réessaie avec une image plus nette ou plus légère.'
-      : `❌ Lecture impossible : ${raw}.`
-    return { ok: false, message: msg }
+    const texte = String(raw)
+    // 403 = modèle hors abonnement : patienter n'y changera jamais rien.
+    if (/403|tier_not_allowed|model_unavailable/i.test(texte)) {
+      return { ok: false, message: "🔒 Lecture impossible : le modèle d'IA configuré n'est pas inclus dans l'abonnement Mistral." }
+    }
+    if (/timeout|abort|temps|504|deadline/i.test(texte)) {
+      return {
+        ok: false,
+        message: origine === 'fichier'
+          ? '⏳ La lecture a pris trop de temps — réessaie avec une image plus nette ou plus légère.'
+          : '⏳ La lecture a pris trop de temps — réessaie avec un extrait plus court.',
+      }
+    }
+    return { ok: false, message: `❌ Lecture impossible : ${raw}.` }
   }
 
   const deliveries = res?.data?.deliveries ?? []
   if (deliveries.length === 0) {
-    return { ok: false, message: "Je n'ai trouvé aucune livraison dans ce document. Vérifie la photo / le PDF, ou colle le texte directement." }
+    return {
+      ok: false,
+      message: origine === 'fichier'
+        ? "Je n'ai trouvé aucune livraison dans ce document. Vérifie la photo / le PDF, ou colle le texte directement."
+        : "Je n'ai trouvé aucune livraison dans ce texte. Vérifie que tu as bien collé le corps du message (adresses, date, montant).",
+    }
   }
   return { ok: true, deliveries, text: formatExtracted(deliveries) }
+}
+
+export async function runExtractDeliveries(fileBase64: string, mimeType: string): Promise<ExtractResult> {
+  const { data, error } = await extractDeliveries({ fileBase64, mimeType })
+  return interpreteExtraction(data, error, 'fichier')
+}
+
+/**
+ * Extraction depuis un texte collé (mail de réservation Cocolis, demande d'un
+ * client, feuille de route recopiée…). Passe par la même Edge Function que les
+ * fichiers, en court-circuitant l'OCR : le texte est déjà du texte.
+ *
+ * `instructions` porte le contexte que le message ne dit pas explicitement —
+ * par exemple qu'une réservation Cocolis est déjà payée, donc jamais à facturer.
+ */
+export async function runExtractDeliveriesFromText(
+  texte: string,
+  instructions?: string,
+): Promise<ExtractResult> {
+  const propre = texte.trim()
+  if (!propre) return { ok: false, message: 'Colle le texte du message avant de lancer la lecture.' }
+
+  const { data, error } = await extractDeliveries({ text: propre, instructions })
+  return interpreteExtraction(data, error, 'texte')
 }
 
 // ═══════════════════════ OCR 6B-2 — création EN LOT des livraisons extraites ═══

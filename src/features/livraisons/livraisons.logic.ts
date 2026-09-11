@@ -1,5 +1,5 @@
 import { addTva, deliveryTotalHtCts, deliveryTotalTtcCts } from '../../shared/lib/money'
-import type { DeliveryRow, DeliveryStatus } from './livraisons.types'
+import type { DeliveryRow } from './livraisons.types'
 
 // Réexports pour conserver les imports existants (Livraisons.tsx,
 // DrawerLivraison.tsx, tests…). Les helpers vivent désormais dans
@@ -18,26 +18,10 @@ export {
 } from '../../shared/lib/money'
 
 // ── Machine à états ──────────────────────────────────────────────────────────
-
-export const TRANSITIONS: Record<DeliveryStatus, DeliveryStatus[]> = {
-  // 'livree' directe depuis 'planifiee' : un chauffeur peut livrer un arrêt
-  // sans passer explicitement par 'en_cours' (suivi de tournée mobile).
-  planifiee: ['en_cours', 'livree', 'annulee'],
-  en_cours:  ['livree', 'annulee'],
-  livree:    ['facturee'],
-  facturee:  ['payee'],
-  payee:     [],
-  annulee:   [],
-}
-
-export function canTransition(from: string, to: string): boolean {
-  const allowed = TRANSITIONS[from as DeliveryStatus]
-  return Array.isArray(allowed) && allowed.includes(to as DeliveryStatus)
-}
-
-export function allowedNextStatuses(from: string): DeliveryStatus[] {
-  return TRANSITIONS[from as DeliveryStatus] ?? []
-}
+// Déplacée dans shared/lib/livraisonStatuts.ts : l'écran chauffeur « Mes
+// courses » en a besoin aussi, et une feature ne peut pas en importer une
+// autre. Ré-exportée ici pour ne casser aucun import existant.
+export { TRANSITIONS, canTransition, allowedNextStatuses } from '../../shared/lib/livraisonStatuts'
 
 // ── Labels & couleurs ────────────────────────────────────────────────────────
 
@@ -71,18 +55,15 @@ export const TRANSITION_ACTION_LABELS: Record<string, Record<string, string>> = 
   facturee:  { payee: 'Encaisser' },
 }
 
+// Aligne sur clients.type : meme liste des deux cotes (migration 20260911070000).
 export const TYPE_LABELS: Record<string, string> = {
-  medical:    'Médical',
-  ecommerce:  'E-commerce',
-  retail:     'Retail',
-  particulier:'Particulier',
+  particulier:  'Particulier',
+  professionnel:'Professionnel',
 }
 
-export const TYPE_COLORS: Record<string, 'info' | 'success' | 'warning' | 'muted'> = {
-  medical:    'info',
-  ecommerce:  'success',
-  retail:     'warning',
-  particulier:'muted',
+export const TYPE_COLORS: Record<string, 'info' | 'success' | 'warning' | 'muted' | 'purple'> = {
+  particulier:  'muted',
+  professionnel:'purple',
 }
 
 // ── Calcul du montant ────────────────────────────────────────────────────────

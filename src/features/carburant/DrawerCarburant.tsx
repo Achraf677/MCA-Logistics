@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import type { ReactNode } from 'react'
 import { Link2 } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
@@ -16,6 +15,7 @@ import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, formatCents } from './carburant.logic'
 import { fromTtcAndRate, fromTtcAndManualTva } from '../../shared/lib/montants'
 import type { FuelLogRow, FuelLogInsert, FuelType, ChargePick } from './carburant.types'
+import { Field } from '../../shared/ui/Field'
 
 interface Props {
   open: boolean
@@ -392,10 +392,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
   )
 }
 
-const inputCls = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)]
-  transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
-
+const inputCls = 'field'
 function Input({ type = 'text', value, onChange, placeholder, disabled }: {
   type?: string; value: string; onChange: (v: string) => void
   placeholder?: string; disabled?: boolean
@@ -406,13 +403,3 @@ function Input({ type = 'text', value, onChange, placeholder, disabled }: {
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-        {label}
-      </label>
-      {children}
-    </div>
-  )
-}

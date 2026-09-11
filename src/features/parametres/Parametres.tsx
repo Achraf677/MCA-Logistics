@@ -9,10 +9,11 @@ import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
 import { useProfile, supabase } from '../../app/providers'
 import { getCompany, updateCompany } from './parametres.queries'
 import type { CompanyData } from './parametres.queries'
-import { DriveConnect } from './DriveConnect'
-import { DriveAccess } from './DriveAccess'
 import { ThemeSelector } from '../../shared/theme/ThemeSelector'
 import { GestionCategories } from './GestionCategories'
+import { MigrationDrive } from './MigrationDrive'
+import { TestLectureAuto } from './TestLectureAuto'
+import { Field } from '../../shared/ui/Field'
 
 const EMPTY: Omit<CompanyData, 'id'> = {
   name: '', siren: '', siret: '', tva_intra: '',
@@ -268,17 +269,16 @@ export function Parametres() {
               </Field>
             </Section>
 
-            {/* Section Google Drive */}
-            <Section title="Google Drive">
-              <DriveConnect />
+            <Section title="Lecture automatique des documents">
+              <TestLectureAuto />
             </Section>
 
-            {/* Section Accès Drive — président uniquement */}
-            {profile?.role === 'president' && (
-              <Section title="Accès Drive">
-                <DriveAccess />
-              </Section>
-            )}
+            {/* Rapatriement des anciens justificatifs Drive.
+                MigrationDrive rend `null` quand il ne reste rien a rapatrier,
+                mais l'enveloppe <Section> s'affichait quand meme : il restait
+                une carte au titre prometteur et au contenu vide. Le titre est
+                donc descendu DANS le composant, qui disparait en entier. */}
+            <MigrationDrive />
 
             {/* Section Catégories de charges */}
             <Section title="Catégories de charges">
@@ -313,10 +313,7 @@ export function Parametres() {
 
 // ── Sous-composants ──────────────────────────────────────────────────────────
 
-const inputCls = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)]
-  transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
-
+const inputCls = 'field'
 function Input({ type = 'text', value, onChange, placeholder }: {
   type?: string; value: string; onChange: (v: string) => void; placeholder?: string
 }) {
@@ -326,14 +323,6 @@ function Input({ type = 'text', value, onChange, placeholder }: {
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
-      {children}
-    </div>
-  )
-}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (

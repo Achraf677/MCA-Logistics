@@ -16,6 +16,12 @@ export interface Tour {
   geometry: string | null
   optimized_at: string | null
   notes: string | null
+  /**
+   * Demande d'eviter les peages (migration 20260911073000). N'agit QUE sur les
+   * liens de navigation externes : l'optimisation de l'ordre des arrets ne sait
+   * pas eviter les peages. Voir NavOptions dans tournees.logic.ts.
+   */
+  eviter_peages: boolean
   created_at: string
   updated_at: string
 }

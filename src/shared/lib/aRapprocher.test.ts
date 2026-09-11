@@ -3,6 +3,7 @@ import {
   countARapprocher,
   countChargesArapprocher,
   countChargesAvoirs,
+  countChargesHorsPennylane,
   countEncaissements,
   countTresorerie,
   type ChargePick,
@@ -52,6 +53,20 @@ describe('countEncaissements', () => {
 describe('countChargesArapprocher', () => {
   it('cas vide → 0', () => {
     expect(countChargesArapprocher([], [])).toBe(0)
+  })
+
+  it('compte une facture partiellement réglée dont le SOLDE tombe sur un débit', () => {
+    // Assurance 635 € déjà réglée à hauteur de 100 € ; un débit de 535 € attend
+    // d'être rapproché. L'ancienne règle « charge déjà liée » l'aurait écartée.
+    const charges = [ch('assurance', 63500)]
+    const txs = [debit(10000, { charge_id: 'assurance' }), debit(53500)]
+    expect(countChargesArapprocher(txs, charges)).toBe(1)
+  })
+
+  it('ne compte plus une facture soldée', () => {
+    const charges = [ch('assurance', 63500)]
+    const txs = [debit(63500, { charge_id: 'assurance' }), debit(63500)]
+    expect(countChargesArapprocher(txs, charges)).toBe(0)
   })
 
   it('ne compte que les charges non liées ET dont montant matche un débit à rapprocher', () => {
@@ -104,11 +119,54 @@ describe('countChargesAvoirs', () => {
   })
 })
 
+describe('countChargesHorsPennylane', () => {
+  const AUJ = new Date('2026-09-11T10:00:00Z')
+  const hors = (o: Partial<ChargePick> = {}): ChargePick => ({
+    id: 'c1', montant_ttc_cts: 10000, category_id: 'cat-x',
+    pennylane_id: null, date: '2026-05-29', est_immobilisation: false, ...o,
+  })
+
+  it('cas vide → 0', () => {
+    expect(countChargesHorsPennylane([], AUJ)).toBe(0)
+  })
+
+  it('une charge locale ancienne est comptée', () => {
+    expect(countChargesHorsPennylane([hors()], AUJ)).toBe(1)
+  })
+
+  it('une charge venue de Pennylane n est jamais comptée', () => {
+    expect(countChargesHorsPennylane([hors({ pennylane_id: 'PL-1' })], AUJ)).toBe(0)
+  })
+
+  it('delai de grace : une charge saisie aujourd hui n alerte pas', () => {
+    expect(countChargesHorsPennylane([hors({ date: '2026-09-11' })], AUJ)).toBe(0)
+  })
+
+  it('delai de grace : la bascule se fait exactement a 14 jours', () => {
+    // 2026-08-28 = J-14 → comptee ; 2026-08-29 = J-13 → pas encore.
+    expect(countChargesHorsPennylane([hors({ date: '2026-08-28' })], AUJ)).toBe(1)
+    expect(countChargesHorsPennylane([hors({ date: '2026-08-29' })], AUJ)).toBe(0)
+  })
+
+  it('une immobilisation est exclue — circuit comptable a part', () => {
+    expect(countChargesHorsPennylane([hors({ est_immobilisation: true })], AUJ)).toBe(0)
+  })
+
+  it('colonne non selectionnee par l appelant → non compte (retrocompat)', () => {
+    const sansColonne: ChargePick = { id: 'c1', montant_ttc_cts: 10000, category_id: null }
+    expect(countChargesHorsPennylane([sansColonne], AUJ)).toBe(0)
+  })
+
+  it('sans date, on ne peut pas juger de l anciennete → non compte', () => {
+    expect(countChargesHorsPennylane([hors({ date: undefined })], AUJ)).toBe(0)
+  })
+})
+
 describe('countARapprocher — agrégation', () => {
   it('cas 0 partout → total 0 (état neutre)', () => {
     expect(countARapprocher([], [])).toEqual({
       tresorerie: 0, charges: 0, encaissements: 0, categorisation: 0,
-      pennylane_supprimees: 0, avoirs: 0, total: 0,
+      pennylane_supprimees: 0, hors_pennylane: 0, avoirs: 0, total: 0,
     })
   })
 
@@ -132,6 +190,7 @@ describe('countARapprocher — agrégation', () => {
       encaissements: 1,
       categorisation: 0,        // toutes les charges du fixture ont category_id
       pennylane_supprimees: 0,  // aucun flag dans le fixture
+      hors_pennylane: 0,        // le fixture ne sélectionne pas pennylane_id
       avoirs: 0,                // aucun montant négatif dans le fixture
       total: 3,                 // 2 + 1 — charges NON additionné (miroir)
     })

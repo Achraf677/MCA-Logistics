@@ -72,7 +72,7 @@ export function Carburant() {
           {[0,1,2,3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Plein(s)"      value={kpis.nb} tone="info" icon={<Fuel size={18} />} />
           <KpiCard label="Total TTC"     value={formatCents(kpis.totalCts)} tone="warning" icon={<Euro size={18} />} />
           <KpiCard label="Litres"        value={formatLiters(kpis.totalLiters)} tone="info" icon={<Droplet size={18} />} />

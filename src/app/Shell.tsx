@@ -4,7 +4,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, CalendarDays, Truck,
   Users, Wallet, UserCheck, Settings,
-  Menu, X, LogOut,
+  Menu, X, LogOut, Route,
 } from 'lucide-react'
 import { features } from '../features.config'
 import { ActionBar } from '../shared/actions/ActionBar'
@@ -27,6 +27,10 @@ interface NavItem {
 
 // Sidebar plate, ultra-épurée : 8 entrées, chacune = une page à sous-onglets.
 const NAV: NavItem[] = [
+  // « Mes courses » n'a PAS de `section` : elle reste donc visible quel que
+  // soit le jeu de permissions, y compris pour un chauffeur a qui on n'a
+  // ouvert aucune section. C'est voulu — c'est son seul ecran.
+  { key: 'mescourses', label: 'Mes courses', icon: Route,          path: '/mes-courses',  featureKey: 'mesCourses'                        },
   { key: 'pilotage',   label: 'Pilotage',   icon: LayoutDashboard, path: '/pilotage',     featureKey: 'pilotage',    section: 'Pilotage'   },
   { key: 'livraisons', label: 'Livraisons', icon: Package,         path: '/livraisons',   featureKey: 'livraisons',  section: 'Livraisons' },
   { key: 'planning',   label: 'Planning',   icon: CalendarDays,    path: '/planning-hub', featureKey: 'planningHub', section: 'Planning'   },
@@ -134,7 +138,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
       <aside
         className={`
           fixed inset-y-0 left-0 z-30 flex flex-col bg-[var(--bg-elevated)] border-r border-[var(--border)]
-          transition-all duration-200
+          transition-[transform,width] duration-[var(--dur-3)] ease-[var(--ease-out)]
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:relative lg:translate-x-0
           ${collapsed ? 'w-[var(--sidebar-w-icon)]' : 'w-[var(--sidebar-w)]'}

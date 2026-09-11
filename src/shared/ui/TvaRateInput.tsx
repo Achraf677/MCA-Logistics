@@ -8,11 +8,8 @@ interface TvaRateInputProps {
   disabled?: boolean
 }
 
-const inputBase = [
-  'w-full h-9 px-3 pr-8 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]',
-  'text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)]',
-  'transition-colors disabled:opacity-50 disabled:cursor-not-allowed',
-].join(' ')
+// `pr-8` laisse la place au suffixe « % » pose en absolu par-dessus le champ.
+const inputBase = 'field pr-8'
 
 export function TvaRateInput({ value, onChange, disabled = false }: TvaRateInputProps) {
   const [raw, setRaw] = useState(String(value))

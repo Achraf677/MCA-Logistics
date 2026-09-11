@@ -58,9 +58,10 @@ export function TabbedSection({ tabs, headerRight }: { tabs: SubTab[]; headerRig
                 <button
                   key={t.key}
                   onClick={() => select(t.key)}
-                  className={`px-4 py-2.5 text-[var(--fs-sm)] whitespace-nowrap transition-colors -mb-px
+                  className={`px-4 py-2.5 text-[var(--fs-sm)] whitespace-nowrap -mb-px
+                    transition-colors duration-[var(--dur-2)] ease-[var(--ease-out)]
                     ${isActive
-                      ? 'text-[var(--brand)] border-b-2 border-[var(--brand)] font-medium'
+                      ? 'tab-active text-[var(--brand)] font-medium'
                       : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card)] rounded-t-[var(--r-sm)]'}`}
                 >
                   {t.label}
@@ -75,7 +76,9 @@ export function TabbedSection({ tabs, headerRight }: { tabs: SubTab[]; headerRig
         </div>
 
         {/* Contenu de l'onglet actif */}
-        {active && <div key={active.key}>{active.element}</div>}
+        {/* `key` force le remontage a chaque changement d'onglet : c'est ce
+            qui relance l'animation de `anim-tab`. */}
+        {active && <div key={active.key} className="anim-tab">{active.element}</div>}
       </div>
     </TabActionsContext.Provider>
   )

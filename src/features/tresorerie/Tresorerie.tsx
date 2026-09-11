@@ -11,7 +11,9 @@ import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
 import { PanneauVentilation } from '../../shared/ui/PanneauVentilation'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  getMatchingChargesForDebit, classifyDebit, suggestJustifType,
+  getMatchingChargesForDebit,
+  getChargesOuvertes,
+  resteDuParCharge, classifyDebit, suggestJustifType,
   classifyCredit, suggestCreditTag,
 } from '../../shared/lib/rapprochementQonto'
 import type { JustifType, CreditTag } from '../../shared/lib/rapprochementQonto'
@@ -87,10 +89,13 @@ export function Tresorerie() {
     ...memberNames,
   ].filter((n, i, arr) => arr.indexOf(n) === i)
 
-  const linkedChargeIds = new Set(txs.filter(t => t.charge_id).map(t => t.charge_id!))
+  // Reste dû de chaque charge, débits déjà rattachés déduits. Une facture réglée
+  // en plusieurs fois reste proposable tant qu'elle n'est pas soldée.
+  const resteParCharge = resteDuParCharge(charges, txs)
+
   const debits = txs.filter(t => t.side === 'debit')
   const debitsSansJustif = debits.filter(t => {
-    const m = getMatchingChargesForDebit(t.amount_cts, charges, linkedChargeIds, t.settled_at)
+    const m = getMatchingChargesForDebit(t.amount_cts, charges, resteParCharge, t.settled_at)
     return classifyDebit(t.charge_id, t.justif_type ?? null, m.length) === 'sans_justificatif'
   })
   const totalSansJustifCts = debitsSansJustif.reduce((s, t) => s + t.amount_cts, 0)
@@ -135,19 +140,14 @@ export function Tresorerie() {
 
   const txEnCours = rapprochOpen ? txs.find(t => t.qonto_id === rapprochOpen) ?? null : null
   const chargesDisponibles: ChargePick[] = txEnCours
-    ? getMatchingChargesForDebit(txEnCours.amount_cts, charges, linkedChargeIds, txEnCours.settled_at)
+    ? getMatchingChargesForDebit(txEnCours.amount_cts, charges, resteParCharge, txEnCours.settled_at)
     : []
 
-  // Toutes les charges non liées, triées par proximité de date — pour le mode "Autre montant"
-  const allNonLinked: ChargePick[] = (() => {
-    const pool = charges.filter(c => !linkedChargeIds.has(c.id))
-    if (!txEnCours?.settled_at) return pool
-    const ref = new Date(txEnCours.settled_at).getTime()
-    return [...pool].sort((a, b) =>
-      Math.abs(new Date(a.date).getTime() - ref) -
-      Math.abs(new Date(b.date).getTime() - ref)
-    )
-  })()
+  // Toutes les factures encore ouvertes — pour le mode "Autre montant", qui sert
+  // aussi aux échéances intermédiaires d'un règlement fractionné.
+  const allNonLinked: ChargePick[] = getChargesOuvertes(
+    charges, resteParCharge, txEnCours?.settled_at,
+  )
 
   // ── Sous-composant accordéon (partagé desktop/mobile) ─────────────────────
   const renderAccordeonContent = (tx: QontoTx, matches: ChargePick[]) => {
@@ -156,15 +156,16 @@ export function Tresorerie() {
     const suggestion = suggestJustifType(tx.label, tx.operation_type, associeNames)
 
     if (status === 'justifie_charge' && linked) {
-      const isNet = linked.montant_ttc_cts !== tx.amount_cts
+      // Le solde restant remplace l'ancienne mention « montant net (avoir/partiel) » :
+      // un débit inférieur au total de la facture n'est plus une anomalie mais le
+      // cas normal d'un règlement en plusieurs fois.
       return (
         <div className="space-y-1.5">
-          <LinkedChargeCard charge={linked} onDetach={() => handleDetach(tx.qonto_id)} />
-          {isNet && (
-            <p className="text-[var(--fs-xs)] text-[var(--text-muted)] italic">
-              montant net (avoir/partiel)
-            </p>
-          )}
+          <LinkedChargeCard
+            charge={linked}
+            onDetach={() => handleDetach(tx.qonto_id)}
+            resteCts={resteParCharge.get(linked.id) ?? null}
+          />
         </div>
       )
     }
@@ -229,18 +230,19 @@ export function Tresorerie() {
           ))}
         </div>
 
-        {/* Bouton de secours si aucune charge au même montant */}
+        {/* Bouton de secours si aucun solde de facture ne tombe sur ce montant */}
         {matches.length === 0 && (
           <div className="flex items-center gap-3 flex-wrap">
             <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-              Aucune charge au montant TTC de {formatMoney(tx.amount_cts)}.
+              Aucune facture dont le solde tombe sur {formatMoney(tx.amount_cts)} —
+              un règlement partiel reste possible.
             </p>
             <Button
               variant="secondary"
               size="compact"
               onClick={e => { e.stopPropagation(); setRapprochOpen(tx.qonto_id) }}
             >
-              Lier une charge →
+              Lier une facture →
             </Button>
           </div>
         )}
@@ -266,7 +268,7 @@ export function Tresorerie() {
                 targetId={tx.id}
                 targetAmountCts={tx.amount_cts}
                 fetchCharges={() => Promise.resolve(
-                  charges.filter(c => !linkedChargeIds.has(c.id))
+                  getChargesOuvertes(charges, resteParCharge)
                 )}
                 onChanged={load}
               />
@@ -340,7 +342,7 @@ export function Tresorerie() {
           {[0, 1, 2].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Solde actuel"   value={snapshot ? formatMoney(snapshot.balance_cts) : '—'} accent />
           <KpiCard label="Solde autorisé" value={snapshot ? formatMoney(snapshot.authorized_balance_cts) : '—'} />
           <KpiCard label="Transactions"   value={txs.length} />
@@ -405,7 +407,7 @@ export function Tresorerie() {
                   const isCredit  = tx.side === 'credit'
                   const expanded  = expandedTx === tx.qonto_id
                   const matches   = isDebit
-                    ? getMatchingChargesForDebit(tx.amount_cts, charges, linkedChargeIds, tx.settled_at)
+                    ? getMatchingChargesForDebit(tx.amount_cts, charges, resteParCharge, tx.settled_at)
                     : []
                   const debitStatus  = isDebit  ? classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length) : null
                   const creditStatus = isCredit ? classifyCredit(tx.justif_type ?? null) : null
@@ -479,7 +481,7 @@ export function Tresorerie() {
               const isCredit  = tx.side === 'credit'
               const expanded  = expandedTx === tx.qonto_id
               const matches   = isDebit
-                ? getMatchingChargesForDebit(tx.amount_cts, charges, linkedChargeIds, tx.settled_at)
+                ? getMatchingChargesForDebit(tx.amount_cts, charges, resteParCharge, tx.settled_at)
                 : []
               const debitStatus  = isDebit  ? classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length) : null
               const creditStatus = isCredit ? classifyCredit(tx.justif_type ?? null) : null
@@ -543,6 +545,7 @@ export function Tresorerie() {
         onSelect={handleLink}
         fetchCharges={() => Promise.resolve(chargesDisponibles)}
         fetchAllCharges={() => Promise.resolve(allNonLinked)}
+        resteParCharge={resteParCharge}
       />
     </Shell>
   )

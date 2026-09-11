@@ -132,12 +132,12 @@ export function Vehicules() {
           />
         ) : (
           /* Vue garage — cartes (desktop ET mobile) */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 [&>*]:min-w-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 stagger [&>*]:min-w-0">
             {displayedVehicles.map(v => (
               <button
                 key={v.id}
                 onClick={() => openDrawer(v)}
-                className="text-left bg-[var(--bg-card)] rounded-[var(--r-xl)] border border-[var(--border)] p-5 hover:bg-[var(--bg-card-hover)] hover:border-[var(--brand)]/30 transition-all group"
+                className="text-left bg-[var(--bg-card)] rounded-[var(--r-xl)] border border-[var(--border)] p-5 hover:bg-[var(--bg-card-hover)] hover:border-[var(--brand)]/30 lift group"
               >
                 {/* En-tête carte */}
                 <div className="flex items-start justify-between gap-2 mb-3">

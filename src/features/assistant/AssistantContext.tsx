@@ -2,6 +2,11 @@ import { createContext, useContext, useState } from 'react'
 import type { ReactNode, Dispatch, SetStateAction } from 'react'
 import type { ExtractedDelivery } from '../copilote/copilote.types'
 
+// Re-export : les composants de cette feature ont besoin du type sans avoir a
+// pointer eux-memes vers une autre feature. Un seul fichier du dossier connait
+// `copilote`, et c'est celui-ci.
+export type { ExtractedDelivery }
+
 /** Message d'accueil affiché à l'ouverture du panneau. */
 export const GREETING =
   'Bonjour 👋 Je suis l’assistant MCA. Pose-moi une question d’usage '
@@ -12,6 +17,15 @@ export interface AssistantMessage {
   text: string
   /** Brouillon généré (mail/relance…) → affiche un bouton « Copier ». */
   draft?: boolean
+  /**
+   * Livraisons lues dans un message collé ou une feuille de route.
+   *
+   * Le texte reste dans `text` — il sert de repli et alimente le bouton
+   * « Copier ». Mais quand ce champ est rempli, la bulle affiche des CARTES
+   * plutôt que le texte : une liste de « · Champ : valeur » dans une bulle de
+   * chat ne se lit pas, et c'est précisément ce qui était reproché au récap.
+   */
+  extraction?: ExtractedDelivery[]
 }
 
 /**

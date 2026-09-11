@@ -64,14 +64,34 @@
   --sp-8: 40px;
   --sp-9: 56px;
 
-  /* Rayons */
-  --r-sm: 4px;
-  --r-md: 8px;
-  --r-lg: 12px;
-  --r-xl: 16px;
+  /* Rayons — adoucis (retour utilisateur : « les formes trop rigides »).
+     Un rayon unique par palier, utilise PARTOUT via var(--r-*) : changer ces
+     quatre lignes reforme toute l'interface, sans toucher un seul composant. */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
 
-  /* Easing */
-  --ease: cubic-bezier(.22,.61,.36,1);
+  /* ── Mouvement ──────────────────────────────────────────
+     Retour utilisateur : « les animations trop sec, manque de dynamisme ».
+     Le probleme n'etait pas la duree mais la COURBE : une transition qui
+     demarre et s'arrete a la meme vitesse parait mecanique. Ces trois
+     courbes demarrent vite et freinent longuement, ce qui se lit comme un
+     objet qui a du poids.
+     Regle absolue heritee du bug des 10 fps : on n'anime que `transform`
+     et `opacity`, jamais une propriete qui declenche un recalcul de mise
+     en page (width, height, top, margin) ou un repeint de fond. */
+  --ease: cubic-bezier(.22,.61,.36,1);          /* historique, conserve pour les graphiques */
+  --ease-out:    cubic-bezier(.16,1,.3,1);      /* sortie tres amortie : apparitions, ouvertures */
+  --ease-spring: cubic-bezier(.34,1.4,.64,1);   /* leger depassement : validations, badges */
+  --ease-in-out: cubic-bezier(.65,0,.35,1);     /* symetrique : bascules, onglets */
+  --dur-1: 120ms;   /* retour tactile immediat (survol, enfoncement) */
+  --dur-2: 200ms;   /* transition standard */
+  --dur-3: 320ms;   /* apparition d'un bloc */
+  --dur-4: 460ms;   /* ouverture d'un panneau */
+
+  /* Halo de focus : une ombre, jamais une bordure qui pousse les voisins. */
+  --ring: 0 0 0 3px color-mix(in srgb, var(--brand) 20%, transparent);
 
   /* Shell */
   --sidebar-w:      260px;
@@ -134,3 +154,201 @@ body::before {
 @keyframes lcDraw{ to{ stroke-dashoffset:0 } }
 @keyframes lcFade{ to{ opacity:1 } }
 @media (prefers-reduced-motion:reduce){ .lc-line{animation:none;stroke-dashoffset:0} .lc-area{animation:none;opacity:1} }
+
+/* ── Champs de saisie ────────────────────────────────────────────────
+   Retour utilisateur : « les formes trop rigides, ca donne pas envie
+   d'etre complete ». Cause reelle : la meme chaine de classes etait
+   recopiee a l'identique dans 18 fichiers, donc personne ne pouvait la
+   faire evoluer. Elle vit desormais ICI, en un seul endroit.
+
+   Ce qui change au toucher :
+     - un rayon plus doux (var(--r-md) = 10px) ;
+     - la bordure s'eclaircit AVANT le clic, au simple survol : le champ
+       se signale comme vivant ;
+     - au focus, un halo se pose autour au lieu d'un simple trait — et
+       c'est une `box-shadow`, donc ca ne pousse pas les champs voisins ;
+     - un tres leger degrade de haut en bas creuse le champ, ce qui le
+       donne a lire comme un creux a remplir plutot qu'une boite plate.
+
+   Declaree dans @layer components : n'importe quelle classe Tailwind
+   posee a cote (`pr-6`, `h-10`, `text-right`…) gagne toujours. */
+@layer components {
+  .field {
+    width: 100%;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: var(--r-md);
+    border: 1px solid var(--border);
+    background:
+      linear-gradient(180deg, color-mix(in srgb, var(--bg-deep) 55%, transparent), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: inherit;
+    font-size: var(--fs-body);
+    transition:
+      border-color var(--dur-2) var(--ease-out),
+      box-shadow   var(--dur-2) var(--ease-out);
+  }
+  .field::placeholder { color: var(--text-disabled); }
+  .field:hover:not(:disabled):not(:focus) { border-color: var(--border-strong); }
+  .field:focus {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: var(--ring);
+  }
+  .field:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* Variante compacte des tableaux de ventilation et du panneau Documents. */
+  .field-sm { height: 32px; padding: 0 10px; font-size: var(--fs-sm); }
+
+  /* `textarea` : meme habillage mais la hauteur vient du contenu. */
+  .field-area { height: auto; padding: 8px 12px; line-height: 1.5; resize: vertical; }
+}
+
+/* ── Micro-interactions ──────────────────────────────────────────────
+   Une surface cliquable doit repondre AVANT le clic (survol) et PENDANT
+   le clic (enfoncement). Uniquement `transform` : aucune mise en page
+   n'est recalculee, l'animation reste sur le compositeur. */
+@layer components {
+  /* ATTENTION : ces deux classes listent AUSSI les proprietes de couleur.
+     Raison : les utilitaires Tailwind (`transition-colors`) sont dans une
+     couche qui gagne sur @layer components. Poser `lift transition-colors`
+     sur le meme element remplacerait `transition-property` par la seule
+     liste des couleurs — et le mouvement disparaitrait sans prevenir.
+     Donc : on met `lift` OU `press`, jamais accompagne d'un
+     `transition-*` Tailwind. */
+  .lift {
+    transition:
+      transform        var(--dur-2) var(--ease-out),
+      border-color     var(--dur-2) var(--ease-out),
+      background-color var(--dur-2) var(--ease-out),
+      box-shadow       var(--dur-2) var(--ease-out);
+  }
+  .lift:hover  { transform: translateY(-2px); }
+  .lift:active { transform: translateY(0); }
+
+  .press {
+    transition:
+      transform        var(--dur-1) var(--ease-out),
+      color            var(--dur-2) var(--ease-out),
+      background-color var(--dur-2) var(--ease-out),
+      border-color     var(--dur-2) var(--ease-out),
+      opacity          var(--dur-2) var(--ease-out),
+      box-shadow       var(--dur-2) var(--ease-out);
+  }
+  .press:active:not(:disabled) { transform: scale(.97); }
+}
+
+/* ── Apparitions ─────────────────────────────────────────────────────
+   `riseIn` sert aux blocs qui arrivent apres un chargement. La variable
+   `--i` permet un decalage en cascade (style="--i:3") : les lignes
+   n'arrivent pas toutes d'un bloc, ce qui donne le « dynamisme »
+   demande. Plafonne a 8 pour qu'une longue liste ne fasse pas attendre. */
+@keyframes riseIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.rise {
+  opacity: 0;
+  animation: riseIn var(--dur-3) var(--ease-out) forwards;
+  animation-delay: calc(min(var(--i, 0), 8) * 45ms);
+}
+
+/* `stagger` fait la meme chose SANS avoir a numeroter chaque enfant a la
+   main : on la pose sur la grille, les cartes arrivent l'une apres l'autre.
+   Au-dela du 8e enfant le decalage est fige, sinon une longue liste ferait
+   attendre. `backwards` garde l'etat initial (invisible) pendant le delai,
+   sinon les cartes clignoteraient avant de partir.
+   L'animation ne se rejoue PAS a chaque rendu : React reutilise les noeuds
+   du DOM. Elle se rejoue quand le squelette de chargement laisse la place
+   aux vraies cartes — c'est exactement le moment ou on la veut. */
+.stagger > * { animation: riseIn var(--dur-3) var(--ease-out) backwards; }
+.stagger > *:nth-child(1) { animation-delay:   0ms; }
+.stagger > *:nth-child(2) { animation-delay:  45ms; }
+.stagger > *:nth-child(3) { animation-delay:  90ms; }
+.stagger > *:nth-child(4) { animation-delay: 135ms; }
+.stagger > *:nth-child(5) { animation-delay: 180ms; }
+.stagger > *:nth-child(6) { animation-delay: 225ms; }
+.stagger > *:nth-child(7) { animation-delay: 270ms; }
+.stagger > *:nth-child(n+8) { animation-delay: 315ms; }
+
+/* ── Ouverture des panneaux et des modales ───────────────────────────
+   Ces animations remplacent `animate-in slide-in-from-right`,
+   `fade-in`, `zoom-in-95` : ces classes viennent du plugin
+   `tailwindcss-animate`, QUI N'A JAMAIS ETE INSTALLE dans ce projet.
+   Verifie dans le CSS compile : elles ne produisaient pas une seule regle.
+   Le drawer, les deux modales et le panneau de l'assistant apparaissaient
+   donc d'un coup, sans transition — c'est la principale source du « trop
+   sec » ressenti. On les ecrit ici plutot que d'ajouter une dependance
+   pour quatre animations.
+
+   Toutes sur `opacity` + `transform` uniquement. */
+@keyframes fadeIn      { from { opacity: 0; }                                      to { opacity: 1; } }
+@keyframes slideRight  { from { opacity: 0; transform: translateX(28px); }         to { opacity: 1; transform: none; } }
+@keyframes popIn       { from { opacity: 0; transform: scale(.96) translateY(6px);} to { opacity: 1; transform: none; } }
+@keyframes slideUp     { from { opacity: 0; transform: translateY(16px); }         to { opacity: 1; transform: none; } }
+
+.anim-backdrop { animation: fadeIn     var(--dur-2) var(--ease-out); }
+.anim-drawer   { animation: slideRight var(--dur-4) var(--ease-out); }
+/* Courbe `spring` : la modale depasse d'un cheveu sa taille finale avant de
+   se poser. C'est ce leger rebond qui donne l'impression d'un objet pose et
+   non d'une image collee. */
+.anim-dialog   { animation: popIn      var(--dur-3) var(--ease-spring); }
+.anim-sheet    { animation: slideUp    var(--dur-3) var(--ease-out); }
+
+/* ── Onglets ─────────────────────────────────────────────────────────
+   Avant : le trait rouge sous l'onglet actif sautait d'un onglet a
+   l'autre et le contenu se remplacait sans transition. Maintenant le
+   trait se deploie depuis son centre et le contenu arrive en fondu.
+   Le trait passe d'une `border-bottom` a un `::after` : une bordure ne
+   peut pas etre animee en `transform`, un pseudo-element si. */
+@keyframes growX { from { transform: scaleX(.25); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+.tab-active { position: relative; }
+.tab-active::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--brand);
+  animation: growX var(--dur-3) var(--ease-out);
+}
+.anim-tab { animation: fadeIn var(--dur-2) var(--ease-out); }
+
+/* ── Squelettes de chargement ────────────────────────────────────────
+   `animate-pulse` fait clignoter l'opacite de tout le bloc : ca signale
+   l'attente, mais ca ne suggere aucune direction. Un reflet qui balaie le
+   bloc de gauche a droite se lit comme « ca arrive », pas comme « ca
+   clignote ».
+
+   Le reflet est un pseudo-element deplace en `translateX` : c'est le
+   compositeur qui le bouge, la carte en dessous n'est jamais repeinte.
+   Anime `background-position` a la place aurait redessine le fond a
+   chaque frame — exactement le genre de detail qui avait fait tomber
+   l'interface a 10 fps. */
+@keyframes shimmer { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.skeleton { position: relative; overflow: hidden; }
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--text) 6%, transparent),
+    transparent
+  );
+  animation: shimmer 1.6s var(--ease-in-out) infinite;
+}
+
+/* ── Accessibilite ───────────────────────────────────────────────────
+   Un seul interrupteur pour tout ce qui precede. Sans lui, chaque
+   animation ajoutee plus tard devrait penser a son propre garde-fou. */
+@media (prefers-reduced-motion: reduce) {
+  .rise, .stagger > * { animation: none; opacity: 1; }
+  .skeleton::after { animation: none; }
+  .tab-active::after { animation: none; }
+  .lift:hover, .press:active { transform: none; }
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}

@@ -239,15 +239,11 @@ export async function createDeliveryTemplate(payload: DeliveryTemplateInsert) {
 }
 
 // ── Preuve de livraison (POD) ─────────────────────────────────────────────────
-export async function savePod(id: string, recipientName: string) {
-  return supabase
-    .from('deliveries')
-    .update({
-      pod_recipient_name: recipientName,
-      pod_captured_at: new Date().toISOString(),
-    })
-    .eq('id', id)
-}
+// Reexport : l'ecriture reelle a demenage dans shared/lib/pod.queries.ts,
+// parce que l'ecran chauffeur l'ecrit lui aussi et qu'il ne peut pas
+// importer cette feature. Le nom `savePod` est conserve pour ne pas
+// toucher aux appelants existants.
+export { enregistrerPod as savePod } from '../../shared/lib/pod.queries'
 
 // ── Lettre de voiture — récupération des numéros LV attribués sur l'année ───
 // Sert à alimenter lvNumero() côté logic : la fonction reste pure, l'appelant

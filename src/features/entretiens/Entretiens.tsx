@@ -11,10 +11,8 @@ import { DrawerEntretien } from './DrawerEntretien'
 import { supabase } from '../../app/providers'
 import { getMaintenances } from './entretiens.queries'
 import { listAllocationsForCharges, type AllocationRow } from '../../shared/lib/allocations.queries'
-import {
-  MAINTENANCE_TYPE_LABELS, MAINTENANCE_TYPE_COLOR, formatCents, formatMileage, kpiSummary,
-} from './entretiens.logic'
-import type { MaintenanceRow, MaintenanceFilters, MaintenanceType } from './entretiens.types'
+import { formatCents, formatMileage, kpiSummary } from './entretiens.logic'
+import type { MaintenanceRow, MaintenanceFilters } from './entretiens.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
 type VehicleLookup = { id: string; label: string }
@@ -66,7 +64,6 @@ export function Entretiens() {
   const kpis = kpiSummary(rows)
   const hasFilters = !!(
     (filters.vehicle_id && filters.vehicle_id !== 'all') ||
-    (filters.type && filters.type !== 'all') ||
     filters.date_from || filters.date_to
   )
 
@@ -78,7 +75,7 @@ export function Entretiens() {
           {[0,1,2,3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Opérations"          value={kpis.nb} tone="info" icon={<Wrench size={18} />} />
           <KpiCard label="Coût total"          value={formatCents(kpis.totalCostCts)} tone="warning" icon={<Euro size={18} />} />
           <KpiCard label="Avec échéance"       value={kpis.withNextDue} tone="info" icon={<Calendar size={18} />} />
@@ -99,14 +96,6 @@ export function Entretiens() {
           className={filterCls}>
           <option value="all">Tous véhicules</option>
           {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
-        </select>
-        <select value={filters.type ?? 'all'}
-          onChange={e => setFilters(f => ({ ...f, type: (e.target.value || 'all') as MaintenanceFilters['type'] }))}
-          className={filterCls}>
-          <option value="all">Tous types</option>
-          {(Object.entries(MAINTENANCE_TYPE_LABELS) as [MaintenanceType, string][]).map(([k, l]) => (
-            <option key={k} value={k}>{l}</option>
-          ))}
         </select>
         {hasFilters && (
           <Button variant="ghost" size="compact" onClick={() => setFilters({})}>Réinitialiser</Button>
@@ -137,7 +126,7 @@ export function Entretiens() {
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['Date', 'Véhicule', 'Type', 'Description', 'Coût', 'km', 'Prochaine éch.', 'Facture', ''].map(h => (
+                  {['Date', 'Véhicule', 'Description', 'Coût', 'km', 'Prochaine éch.', 'Facture', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -163,11 +152,6 @@ export function Entretiens() {
                             {row.vehicles.plate}
                           </span>
                         )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {row.type
-                          ? <Badge color={MAINTENANCE_TYPE_COLOR[row.type]}>{MAINTENANCE_TYPE_LABELS[row.type]}</Badge>
-                          : <span className="text-[var(--text-disabled)]">—</span>}
                       </td>
                       <td className="px-4 py-3 text-[var(--text-muted)] max-w-[180px] truncate">
                         {row.description ?? '—'}
@@ -239,7 +223,6 @@ export function Entretiens() {
                     <span className="font-medium text-[var(--text)]">{row.vehicles?.label ?? '—'}</span>
                     <div className="flex items-center gap-1.5 shrink-0">
                       {row.charges && <Badge color="success">Facturé</Badge>}
-                      {row.type && <Badge color={MAINTENANCE_TYPE_COLOR[row.type]}>{MAINTENANCE_TYPE_LABELS[row.type]}</Badge>}
                     </div>
                   </div>
                   <div className="flex items-end justify-between gap-2">

@@ -1,28 +1,27 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Upload, Download, Trash2, FileText } from 'lucide-react'
-import { Button } from '../../shared/ui/Button'
-import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
-import { useToast } from '../../shared/ui/useToast'
+import { Button } from './Button'
+import { ConfirmDialog } from './ConfirmDialog'
+import { useToast } from './useToast'
 import { useProfile } from '../../app/providers'
 import {
   uploadDocument, listDocuments, getDownloadUrl, deleteDocument,
-} from '../../shared/lib/documents.queries'
+} from '../lib/documents.queries'
 import {
   DOCUMENT_CATEGORIES, formatBytes, fileLabel, summarizeUploadBatch,
-} from '../../shared/lib/documents.logic'
-import type { DocumentRow, DocumentCategory } from '../../shared/lib/documents.types'
+} from '../lib/documents.logic'
+import type { DocumentRow, DocumentCategory } from '../lib/documents.types'
 
-export type DocumentEntityType = 'vehicle' | 'team_member' | 'client' | 'delivery'
+// 'charge' ajoute le 11/09/2026 : une facture d'achat porte elle aussi des
+// justificatifs (ticket photographie par un chauffeur, PDF du fournisseur).
+export type DocumentEntityType = 'vehicle' | 'team_member' | 'client' | 'delivery' | 'charge'
 
 interface DocumentsPanelProps {
   entityType: DocumentEntityType
   entityId: string | null | undefined
 }
 
-const inputCls =
-  'h-8 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-3 ' +
-  'text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] transition-colors'
-
+const inputCls = 'field field-sm'
 /**
  * Panneau compact de gestion documentaire rattaché à une entité métier.
  * Réutilise uploadDocument / listDocuments / getDownloadUrl / deleteDocument sans rien recoder.
@@ -176,7 +175,7 @@ export function DocumentsPanel({ entityType, entityId }: DocumentsPanelProps) {
       {pendingFiles.length > 0 && (
         <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
           {pendingFiles.map(f => f.name).join(', ')}
-          {pendingFiles.some(f => f.type.startsWith('image/')) && ' — compression auto activée pour les images'}
+          
         </p>
       )}
 
