@@ -27,6 +27,7 @@ export const features = {
   planningHub:  true,
   tiers:        true,
   equipeHub:    true,
+  mesCourses:   true,
   pilotage:     true,
   systeme:      true,
 } as const

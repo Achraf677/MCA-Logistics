@@ -13,6 +13,7 @@ const FlotteSection     = lazy(() => import('./sections/FlotteSection').then(m =
 const PlanningSection   = lazy(() => import('./sections/PlanningSection').then(m => ({ default: m.PlanningSection })))
 const TiersSection      = lazy(() => import('./sections/TiersSection').then(m => ({ default: m.TiersSection })))
 const EquipeSection     = lazy(() => import('./sections/EquipeSection').then(m => ({ default: m.EquipeSection })))
+const MesCourses        = lazy(() => import('../features/mescourses/MesCourses').then(m => ({ default: m.MesCourses })))
 const SystemeSection    = lazy(() => import('./sections/SystemeSection').then(m => ({ default: m.SystemeSection })))
 
 function guard(enabled: boolean, element: React.ReactElement) {
@@ -32,6 +33,8 @@ export function AppRoutes() {
       <Route path="/rentabilite"   element={<Navigate to="/pilotage?tab=rentabilite"  replace />} />
       <Route path="/statistiques"  element={<Navigate to="/pilotage?tab=statistiques" replace />} />
       <Route path="/livraisons"    element={guard(features.livraisons,   <LivraisonsSection />)} />
+      {/* Ecran chauffeur : volontairement hors des sections a sous-onglets. */}
+      <Route path="/mes-courses"   element={guard(features.mesCourses,   <MesCourses />)} />
       {/* Domaine Planning à sous-onglets (path /planning-hub) ; anciennes routes → redirection.
           /planning redirige vers /planning-hub?tab=planning : pas de boucle (section ≠ path redirigé). */}
       <Route path="/planning-hub"  element={guard(features.planningHub,  <PlanningSection />)} />
