@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { MapPin, Loader2 } from 'lucide-react'
 import { parsePhotonResponse, photonUrl } from '../lib/photon'
 import type { AddressSuggestion } from '../lib/photon'
@@ -23,6 +24,12 @@ const inputCls = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border bo
  * Champ d'adresse avec autocomplétion + géocodage via Photon (Komoot/OSM, UE, sans clé).
  * Saisie libre toujours permise : `onChange` reflète le texte ; `onSelect` ne se
  * déclenche qu'en cas de choix dans la liste (avec lat/lng).
+ *
+ * La liste est rendue dans un PORTAIL vers <body>, positionnée en `fixed` sous
+ * le champ. En `absolute` dans le flux, elle était rognée par le conteneur
+ * défilant du drawer (`overflow-y-auto`) dès qu'elle dépassait le bas du
+ * panneau : on ne voyait que les premières lignes. Même famille de bug que les
+ * modales rognées par un ancêtre `backdrop-filter`.
  */
 export function AddressAutocomplete({
   value, onChange, onSelect, placeholder, label, disabled,
@@ -34,14 +41,36 @@ export function AddressAutocomplete({
   // geocode (Edge `geocode`, BAN) prend le relais, donc l'utilisateur n'est
   // pas bloqué : l'adresse tapée sera quand même localisée à l'enregistrement.
   const [suggestFailed, setSuggestFailed] = useState(false)
-  // Empêche une requête de se relancer juste après une sélection.
-  const justSelected = useRef(false)
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null)
+
+  /**
+   * Dernière adresse choisie dans la liste. Tant que le champ vaut exactement
+   * cette valeur, on ne relance aucune recherche.
+   *
+   * Remplace un drapeau booléen à usage unique, qui ne protégeait que le rendu
+   * suivant immédiat : si le parent retouchait la valeur après coup (reformatage,
+   * second `set`), un rendu ultérieur relançait la recherche et la liste se
+   * rouvrait toute seule sur l'adresse déjà choisie. Comparer la valeur est
+   * insensible au nombre de rendus.
+   */
+  const dernierChoix = useRef<string | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const listRef = useRef<HTMLUListElement>(null)
+
+  /** Position de la liste, calculée depuis le champ (référentiel écran). */
+  const majPosition = useCallback(() => {
+    const el = inputRef.current
+    if (!el) return
+    const r = el.getBoundingClientRect()
+    setRect({ top: r.bottom + 4, left: r.left, width: r.width })
+  }, [])
 
   // Debounce + fetch Photon.
   useEffect(() => {
-    if (justSelected.current) { justSelected.current = false; return }
     const q = value.trim()
+    if (dernierChoix.current !== null && q === dernierChoix.current) return
+
     if (q.length < MIN_CHARS) {
       setSuggestions([]); setOpen(false); setLoading(false); setSuggestFailed(false); return
     }
@@ -69,18 +98,40 @@ export function AddressAutocomplete({
     return () => { clearTimeout(timer); ctrl.abort() }
   }, [value])
 
-  // Fermeture au clic extérieur.
+  // Position initiale + suivi du défilement et du redimensionnement. En `fixed`,
+  // la liste ne suit plus le champ toute seule : sans ça elle resterait en
+  // place pendant qu'on fait défiler le drawer.
+  useEffect(() => {
+    if (!open) return
+    majPosition()
+    const suivre = () => majPosition()
+    // `true` = phase de capture, pour attraper le défilement de N'IMPORTE quel
+    // conteneur parent, pas seulement celui de la fenêtre.
+    window.addEventListener('scroll', suivre, true)
+    window.addEventListener('resize', suivre)
+    return () => {
+      window.removeEventListener('scroll', suivre, true)
+      window.removeEventListener('resize', suivre)
+    }
+  }, [open, majPosition])
+
+  // Fermeture au clic extérieur. La liste vivant hors de `boxRef` (portail),
+  // elle doit être testée séparément, sinon cliquer dedans fermerait le menu
+  // avant que le clic n'atteigne le bouton.
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false)
+      const cible = e.target as Node
+      if (boxRef.current?.contains(cible)) return
+      if (listRef.current?.contains(cible)) return
+      setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [open])
 
   const handlePick = (s: AddressSuggestion) => {
-    justSelected.current = true
+    dernierChoix.current = s.address.trim()
     onChange(s.address)
     onSelect(s)
     setSuggestions([])
@@ -96,12 +147,13 @@ export function AddressAutocomplete({
       )}
       <div className="relative">
         <input
+          ref={inputRef}
           type="text"
           value={value}
           disabled={disabled}
           placeholder={placeholder}
           onChange={e => onChange(e.target.value)}
-          onFocus={() => { if (suggestions.length > 0) setOpen(true) }}
+          onFocus={() => { if (suggestions.length > 0) { majPosition(); setOpen(true) } }}
           autoComplete="off"
           className={inputCls}
         />
@@ -111,26 +163,32 @@ export function AddressAutocomplete({
             className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-[var(--text-muted)]"
           />
         )}
-
-        {open && suggestions.length > 0 && (
-          <ul className="absolute z-[70] left-0 right-0 mt-1 max-h-60 overflow-auto rounded-[var(--r-md)]
-            bg-[var(--bg-elevated)] border border-[var(--border)] shadow-lg py-1">
-            {suggestions.map((s, i) => (
-              <li key={`${s.lat},${s.lng},${i}`}>
-                <button
-                  type="button"
-                  onClick={() => handlePick(s)}
-                  className="w-full flex items-start gap-2 px-3 py-2 text-left text-[var(--fs-sm)]
-                    text-[var(--text)] hover:bg-[var(--bg)] transition-colors"
-                >
-                  <MapPin size={14} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
-                  <span>{s.address}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
+
+      {open && suggestions.length > 0 && rect && createPortal(
+        <ul
+          ref={listRef}
+          style={{ position: 'fixed', top: rect.top, left: rect.left, width: rect.width }}
+          className="z-[70] max-h-60 overflow-auto rounded-[var(--r-md)]
+            bg-[var(--bg-elevated)] border border-[var(--border)] shadow-lg py-1"
+        >
+          {suggestions.map((s, i) => (
+            <li key={`${s.lat},${s.lng},${i}`}>
+              <button
+                type="button"
+                onClick={() => handlePick(s)}
+                className="w-full flex items-start gap-2 px-3 py-2 text-left text-[var(--fs-sm)]
+                  text-[var(--text)] hover:bg-[var(--bg)] transition-colors"
+              >
+                <MapPin size={14} className="mt-0.5 shrink-0 text-[var(--text-muted)]" />
+                <span>{s.address}</span>
+              </button>
+            </li>
+          ))}
+        </ul>,
+        document.body,
+      )}
+
       {suggestFailed && !loading && (
         <span className="text-[var(--fs-xs)] text-[var(--text-muted)] italic">
           Suggestions indisponibles — l'adresse sera localisée à l'enregistrement.
