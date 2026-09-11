@@ -18,3 +18,16 @@ export interface CourseChauffeur {
   clients: { name: string; phone: string | null } | null
   vehicles: { label: string; plate: string } | null
 }
+
+/** Pièce jointe à une course, telle que le chauffeur la voit. */
+export interface DocumentCourse {
+  id: string
+  entity_id: string
+  file_name: string
+  mime_type: string | null
+  category: string | null
+  storage_path: string | null
+  /** Dernier recours pour les pièces pas encore rapatriées de Google Drive. */
+  drive_link: string | null
+  created_at: string
+}

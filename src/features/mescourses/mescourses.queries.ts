@@ -51,3 +51,27 @@ export async function avancerCourse(id: string, cible: 'en_cours' | 'livree') {
     .select('id, statut')
     .single()
 }
+
+/**
+ * Documents rattachés aux courses affichées.
+ *
+ * Ce sont les pièces déposées côté bureau — bon de commande, étiquette,
+ * consignes du client, lettre de voiture — plus les photos de preuve prises
+ * sur le terrain. Le chauffeur en avait besoin AVANT d'arriver, et il n'avait
+ * jusqu'ici aucun moyen de les consulter depuis son téléphone.
+ *
+ * Une seule requête pour toute la période, pas une par course : sur une
+ * semaine chargée, cela fait une requête au lieu de trente.
+ *
+ * La RLS fait le tri : `documents_select_company` autorise tout membre de la
+ * société, chauffeur compris. Aucune policy à ajouter.
+ */
+export async function getDocumentsDesCourses(deliveryIds: string[]) {
+  if (deliveryIds.length === 0) return { data: [], error: null }
+  return supabase
+    .from('documents')
+    .select('id, entity_id, file_name, mime_type, category, storage_path, drive_link, created_at')
+    .eq('entity_type', 'delivery')
+    .in('entity_id', deliveryIds)
+    .order('created_at', { ascending: false })
+}
