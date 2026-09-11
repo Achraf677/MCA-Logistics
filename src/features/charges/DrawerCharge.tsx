@@ -7,7 +7,8 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
-import { createCharge, updateCharge, deleteCharge } from './charges.queries'
+import { createCharge, updateCharge, deleteCharge, getChargesPennylaneProches } from './charges.queries'
+import { trouverDoublonsPennylane, type Doublon, type ChargeConnue } from './doublons.logic'
 import { categoryColor, formatCents } from './charges.logic'
 import { fromHtAndRate, fromHtAndManualTva } from '../../shared/lib/montants'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
@@ -62,6 +63,9 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [doublons, setDoublons] = useState<Doublon[]>([])
+  const [doublonsAcceptes, setDoublonsAcceptes] = useState(false)
+  const [nomsFournisseurs, setNomsFournisseurs] = useState<Record<string, string>>({})
   const [suppliers, setSuppliers] = useState<Lookup[]>([])
   const [teamMembers, setTeamMembers] = useState<Lookup[]>([])
 
@@ -125,10 +129,59 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
     setForm(p => ({ ...p, tva_amount: (suggested / 100).toFixed(2) }))
   }, [form.montant_ht, form.tva_rate, tvaTouched])
 
+  /**
+   * Controle anti-doublon, relance a chaque changement de montant, de date ou
+   * de fournisseur.
+   *
+   * Deliberement PENDANT la saisie et pas au moment d'enregistrer : prevenir
+   * quelqu'un qui a fini de taper, c'est l'obliger a tout relire. Le delai de
+   * 400 ms evite d'interroger la base a chaque touche du pave numerique.
+   *
+   * Une charge qui vient elle-meme de Pennylane n'est pas controlee : elle
+   * n'est de toute facon pas modifiable ici.
+   */
+  useEffect(() => {
+    if (!open || isPennylane) { setDoublons([]); return }
+    const ttc = Math.abs(ttcCts)
+    if (ttc <= 0 || !form.date) { setDoublons([]); return }
+
+    let annule = false
+    const t = setTimeout(async () => {
+      const jour = 86_400_000
+      const d = Date.parse(`${form.date}T00:00:00Z`)
+      if (Number.isNaN(d)) { setDoublons([]); return }
+      const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+
+      const { data } = await getChargesPennylaneProches(ttc, iso(d - 7 * jour), iso(d + 7 * jour))
+      if (annule) return
+
+      const lignes = (data ?? []) as unknown as Array<ChargeConnue & { suppliers: { name: string } | null }>
+      setNomsFournisseurs(Object.fromEntries(
+        lignes.filter(l => l.supplier_id && l.suppliers?.name).map(l => [l.supplier_id!, l.suppliers!.name]),
+      ))
+      setDoublons(trouverDoublonsPennylane(
+        { id: charge?.id ?? null, date: form.date, montant_ttc_cts: ttc,
+          supplier_id: form.supplier_id || null, label: form.label },
+        lignes,
+      ))
+      setDoublonsAcceptes(false)
+    }, 400)
+
+    return () => { annule = true; clearTimeout(t) }
+  }, [open, isPennylane, ttcCts, form.date, form.supplier_id, form.label, charge?.id])
+
+  const doublonBloquant = doublons.length > 0 && !doublonsAcceptes
+
   const handleSave = async () => {
     if (!form.label.trim()) { toast('Le libellé est requis', 'error'); return }
     if (!form.date) { toast('La date est requise', 'error'); return }
     if (absHtCts <= 0) { toast('Le montant HT doit être supérieur à 0', 'error'); return }
+    // Meme garde qu'a l'affichage, mais cote action : le bouton desactive ne
+    // protege pas d'une validation au clavier ni d'un double-clic pendant que
+    // le controle se termine.
+    if (doublonBloquant) {
+      toast('Facture déjà présente dans Pennylane — coche la case pour forcer', 'error'); return
+    }
 
     setSaving(true)
     try {
@@ -380,9 +433,59 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories }: Pro
           </div>
         )}
 
+        {/* Garde-fou anti-doublon. Place JUSTE AU-DESSUS du bouton, la ou le
+            regard se trouve au moment de valider — un avertissement en haut
+            d'un formulaire long n'est jamais relu. */}
+        {doublons.length > 0 && (
+          <div className="rounded-[var(--r-lg)] border border-[var(--warning)]/50 bg-[var(--warning)]/10 p-4 flex flex-col gap-3 anim-sheet">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[var(--fs-sm)] font-semibold text-[var(--warning)]">
+                {doublons.length === 1
+                  ? 'Cette facture existe peut-être déjà dans Pennylane'
+                  : `${doublons.length} factures Pennylane ressemblent à celle-ci`}
+              </span>
+              <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                Comparaison faite sur les factures déjà rapatriées de Pennylane. Une facture
+                saisie chez Pennylane à l'instant peut ne pas encore y figurer.
+              </span>
+            </div>
+
+            <ul className="flex flex-col gap-2">
+              {doublons.map(d => (
+                <li key={d.charge.id}
+                    className="flex items-start justify-between gap-3 rounded-[var(--r-md)] bg-[var(--bg-deep)] px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-[var(--fs-sm)] text-[var(--text)] truncate">{d.charge.label}</p>
+                    <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                      {d.charge.date}
+                      {d.charge.supplier_id && nomsFournisseurs[d.charge.supplier_id]
+                        ? ` · ${nomsFournisseurs[d.charge.supplier_id]}` : ''}
+                      {' · '}{d.raison}
+                    </p>
+                  </div>
+                  <span className={`shrink-0 text-[var(--fs-xs)] font-medium ${
+                    d.niveau === 'certain' ? 'text-[var(--danger)]' : 'text-[var(--warning)]'
+                  }`}>
+                    {d.niveau === 'certain' ? 'Quasi sûr' : 'Possible'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+
+            {/* « Pennylane en priorite » : on ne bloque pas definitivement,
+                mais on oblige a dire oui une fois. Sans ce clic, le bouton
+                Enregistrer reste inactif. */}
+            <label className="flex items-center gap-2 text-[var(--fs-sm)] text-[var(--text)] cursor-pointer">
+              <input type="checkbox" checked={doublonsAcceptes}
+                     onChange={e => setDoublonsAcceptes(e.target.checked)} />
+              Ce n'est pas un doublon, enregistrer quand même
+            </label>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
           {!isPennylane && can('finance.charges', isEdit ? 'update' : 'create') && (
-            <Button variant="primary" onClick={handleSave} disabled={saving}>
+            <Button variant="primary" onClick={handleSave} disabled={saving || doublonBloquant}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>
           )}
