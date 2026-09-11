@@ -50,23 +50,36 @@ create index if not exists receipts_inbox_a_traiter_idx
 
 alter table public.receipts_inbox enable row level security;
 
--- Un chauffeur DÉPOSE dans sa société, et ne relit que ses propres dépôts.
--- Il n'a aucune raison de voir les tickets de ses collègues.
+-- Les droits suivent le MÊME modèle que `charges` : `current_company_id()`
+-- pour le cloisonnement, puis `is_president() or has_permission(...)`.
+--
+-- Une première version listait les rôles en dur ('president','dg','comptable').
+-- C'était faux sur deux plans, corrigé avant application :
+--   1. le rôle 'admin' existe en base et se retrouvait exclu, alors qu'un
+--      admin qui gère les charges doit pouvoir traiter les tickets ;
+--   2. figer des rôles dans une policy court-circuite l'écran Permissions —
+--      le président y coche des droits qui n'auraient eu aucun effet ici.
+-- Un ticket devient une charge : c'est donc le droit `finance.charges` qui
+-- commande, et rien d'autre à retenir.
+
+-- Un chauffeur DÉPOSE dans sa société, sous son propre nom.
 create policy receipts_inbox_insert_own on public.receipts_inbox
   for insert to authenticated
   with check (
-    company_id = (select company_id from public.profiles where id = auth.uid())
+    company_id = current_company_id()
     and uploaded_by = auth.uid()
   );
 
+-- Il relit ses propres dépôts, et rien de plus : les tickets d'un collègue ne
+-- le regardent pas. La gestion, elle, voit tout.
 create policy receipts_inbox_select on public.receipts_inbox
   for select to authenticated
   using (
-    company_id = (select company_id from public.profiles where id = auth.uid())
+    company_id = current_company_id()
     and (
       uploaded_by = auth.uid()
-      or (select role from public.profiles where id = auth.uid())
-         in ('president', 'dg', 'comptable')
+      or is_president()
+      or has_permission('finance.charges', 'view')
     )
   );
 
@@ -75,17 +88,15 @@ create policy receipts_inbox_select on public.receipts_inbox
 create policy receipts_inbox_update_gestion on public.receipts_inbox
   for update to authenticated
   using (
-    company_id = (select company_id from public.profiles where id = auth.uid())
-    and (select role from public.profiles where id = auth.uid())
-        in ('president', 'dg', 'comptable')
+    company_id = current_company_id()
+    and (is_president() or has_permission('finance.charges', 'update'))
   );
 
 create policy receipts_inbox_delete_gestion on public.receipts_inbox
   for delete to authenticated
   using (
-    company_id = (select company_id from public.profiles where id = auth.uid())
-    and (select role from public.profiles where id = auth.uid())
-        in ('president', 'dg', 'comptable')
+    company_id = current_company_id()
+    and (is_president() or has_permission('finance.charges', 'delete'))
   );
 
 -- DOWN -----------------------------------------------------------------------
