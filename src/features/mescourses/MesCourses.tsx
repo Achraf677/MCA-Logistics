@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera, ShieldCheck } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -8,6 +8,8 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { deposerTicket } from '../../shared/lib/receiptsInbox.queries'
+import { uploadDocument } from '../../shared/lib/documents.queries'
+import { enregistrerPod } from '../../shared/lib/pod.queries'
 import { canTransition } from '../../shared/lib/livraisonStatuts'
 import { getMesCourses, avancerCourse } from './mescourses.queries'
 import {
@@ -64,16 +66,45 @@ export function MesCourses() {
    * machine à états reste la référence unique (`canTransition`) — on ne
    * réimplémente pas les règles ici.
    */
-  const avancer = async (c: CourseChauffeur) => {
-    const cible = c.statut === 'planifiee' ? 'en_cours' : 'livree'
-    if (!canTransition(c.statut, cible)) {
-      toast(`Passage ${c.statut} → ${cible} impossible`, 'error'); return
+  const demarrer = async (c: CourseChauffeur) => {
+    if (!canTransition(c.statut, 'en_cours')) {
+      toast(`Passage ${c.statut} → en_cours impossible`, 'error'); return
     }
     setBusyId(c.id)
-    const { error } = await avancerCourse(c.id, cible)
+    const { error } = await avancerCourse(c.id, 'en_cours')
     setBusyId(null)
     if (error) { toast(error.message, 'error'); return }
-    toast(cible === 'en_cours' ? 'Course démarrée' : 'Course livrée')
+    toast('Course démarrée')
+    await charger()
+  }
+
+  /**
+   * Clôture d'une course, avec ou sans preuve.
+   *
+   * L'ORDRE COMPTE : on écrit la preuve AVANT de passer en `livree`. Si
+   * l'enregistrement de la preuve échoue, la course reste `en_cours` et le
+   * chauffeur peut réessayer. L'inverse — livrer d'abord, enregistrer
+   * ensuite — laisserait des courses livrées sans preuve alors que le
+   * chauffeur croit avoir tout fait.
+   *
+   * `recipient` à `null` = livraison sans preuve, volontairement autorisée :
+   * un chauffeur n'a pas toujours quelqu'un pour signer ni du réseau. Ces
+   * courses ressortent ensuite dans l'alerte « livraison sans justificatif »,
+   * qui existe exactement pour ça.
+   */
+  const livrer = async (c: CourseChauffeur, recipient: string | null) => {
+    if (!canTransition(c.statut, 'livree')) {
+      toast(`Passage ${c.statut} → livree impossible`, 'error'); return
+    }
+    setBusyId(c.id)
+    if (recipient) {
+      const { error } = await enregistrerPod(c.id, recipient)
+      if (error) { setBusyId(null); toast(error.message, 'error'); return }
+    }
+    const { error } = await avancerCourse(c.id, 'livree')
+    setBusyId(null)
+    if (error) { toast(error.message, 'error'); return }
+    toast(recipient ? 'Livrée, preuve enregistrée' : 'Course livrée')
     await charger()
   }
 
@@ -172,7 +203,8 @@ export function MesCourses() {
                   key={c.id}
                   course={c}
                   busy={busyId === c.id}
-                  onAvancer={() => avancer(c)}
+                  onDemarrer={() => demarrer(c)}
+                  onLivrer={recipient => livrer(c, recipient)}
                 />
               ))}
             </section>
@@ -184,14 +216,61 @@ export function MesCourses() {
 }
 
 function CarteCourse({
-  course: c, busy, onAvancer,
+  course: c, busy, onDemarrer, onLivrer,
 }: {
   course: CourseChauffeur
   busy: boolean
-  onAvancer: () => void
+  onDemarrer: () => void
+  onLivrer: (recipient: string | null) => void
 }) {
+  const { toast } = useToast()
+  const { companyId } = useProfile()
   const aFaire = estAFaire(c.statut)
   const geo = c.delivery_lat != null && c.delivery_lng != null
+
+  // Panneau de preuve, replie par defaut : il ne s'ouvre qu'au moment ou le
+  // chauffeur annonce la livraison, pour ne pas alourdir la liste.
+  const [preuveOuverte, setPreuveOuverte] = useState(false)
+  const [recipient, setRecipient]         = useState('')
+  const [photoEnvoi, setPhotoEnvoi]       = useState(false)
+  const [photoOk, setPhotoOk]             = useState(false)
+  const photoRef = useRef<HTMLInputElement>(null)
+
+  /**
+   * La photo part DES QU'ELLE EST PRISE, sans attendre la validation.
+   * Raison de terrain : le reseau est mauvais au bord de la route. En
+   * televersant tout de suite, l'attente se place pendant que le chauffeur
+   * tape le nom du receptionnaire, et pas apres, quand il a deja range son
+   * telephone. La photo est un document ordinaire de categorie « POD » —
+   * exactement ce que depose le tiroir Livraisons cote bureau.
+   */
+  const prendrePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !companyId) return
+    if (!file.type.startsWith('image/')) {
+      toast('Seules les photos sont acceptées comme preuve', 'error'); return
+    }
+    setPhotoEnvoi(true)
+    const { error } = await uploadDocument(file, companyId, {
+      entity_type: 'delivery', entity_id: c.id, category: 'POD',
+    })
+    setPhotoEnvoi(false)
+    if (error) {
+      // Le refus le plus probable n'est pas technique : un compte chauffeur
+      // n'a pas, par defaut, le droit « Documents / creer ». Le message brut
+      // de Postgres ne dit rien d'utile a quelqu'un au bord de la route, donc
+      // on le traduit — et on rappelle que la livraison reste possible sans
+      // photo.
+      const refus = /row-level security|permission|policy/i.test(error.message)
+      toast(refus
+        ? "Ton compte n'a pas le droit d'ajouter des photos. Préviens la gestion — tu peux livrer sans preuve en attendant."
+        : error.message, 'error')
+      return
+    }
+    setPhotoOk(true)
+    toast('Photo enregistrée')
+  }
 
   return (
     <article className={`rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3 ${
@@ -245,19 +324,71 @@ function CarteCourse({
           </a>
         )}
 
-        {aFaire && (
-          <Button
-            variant="primary"
-            className="min-h-[44px] ml-auto"
-            onClick={onAvancer}
-            disabled={busy}
-          >
-            {busy ? '…' : c.statut === 'planifiee' ? 'Démarrer' : (
-              <span className="inline-flex items-center gap-1.5"><Check size={15} /> Livré</span>
-            )}
+        {c.statut === 'planifiee' && (
+          <Button variant="primary" className="min-h-[44px] ml-auto"
+                  onClick={onDemarrer} disabled={busy}>
+            {busy ? '…' : 'Démarrer'}
           </Button>
         )}
+
+        {c.statut === 'en_cours' && !preuveOuverte && (
+          <Button variant="primary" className="min-h-[44px] ml-auto"
+                  onClick={() => setPreuveOuverte(true)} disabled={busy}>
+            <span className="inline-flex items-center gap-1.5"><Check size={15} /> Livré</span>
+          </Button>
+        )}
+
+        {/* Preuve deja enregistree : on le dit, sinon le chauffeur refait
+            la photo « au cas ou » a chaque ouverture de l'ecran. */}
+        {!aFaire && c.pod_captured_at && (
+          <span className="ml-auto inline-flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--success)]">
+            <ShieldCheck size={14} /> Preuve enregistrée
+          </span>
+        )}
       </div>
+
+      {/* La condition sur le statut n'est pas redondante : apres validation, le
+          parent recharge mais ne remonte PAS cette carte (meme `key`), donc
+          `preuveOuverte` reste a true. Sans ce garde, le panneau resterait
+          ouvert sous une course deja livree. */}
+      {preuveOuverte && c.statut === 'en_cours' && (
+        <div className="flex flex-col gap-2 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-deep)] p-3 anim-sheet">
+          <input ref={photoRef} type="file" accept="image/*" capture="environment"
+                 className="hidden" onChange={prendrePhoto} />
+
+          <Button variant={photoOk ? 'secondary' : 'primary'} className="min-h-[44px]"
+                  onClick={() => photoRef.current?.click()} disabled={photoEnvoi || busy}>
+            <span className="inline-flex items-center gap-1.5">
+              {photoOk ? <Check size={15} /> : <Camera size={15} />}
+              {photoEnvoi ? 'Envoi…' : photoOk ? 'Photo enregistrée — en reprendre une' : 'Photo de la livraison'}
+            </span>
+          </Button>
+
+          <input
+            type="text" value={recipient} onChange={e => setRecipient(e.target.value)}
+            placeholder="Qui a réceptionné ? (nom)"
+            className="field min-h-[44px] h-auto"
+          />
+
+          <Button variant="primary" className="min-h-[44px]"
+                  onClick={() => onLivrer(recipient.trim() || null)}
+                  disabled={busy || photoEnvoi || !recipient.trim()}>
+            {busy ? '…' : 'Valider la livraison'}
+          </Button>
+
+          {/* Sortie de secours assumee : pas de receptionnaire, pas de reseau,
+              pas de temps. La course ressort ensuite dans l'alerte
+              « livraison sans justificatif » cote gestion. */}
+          <button
+            onClick={() => onLivrer(null)}
+            disabled={busy || photoEnvoi}
+            className="min-h-[44px] text-[var(--fs-xs)] text-[var(--text-muted)]
+              hover:text-[var(--text)] transition-colors disabled:opacity-40"
+          >
+            Livrer sans preuve
+          </button>
+        </div>
+      )}
     </article>
   )
 }
