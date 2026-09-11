@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
       const { data: existingRows } = pageIds.length > 0
         ? await supabase
             .from('clients')
-            .select('pennylane_id, email, phone, address, city, postal_code')
+            .select('pennylane_id, type, email, phone, address, city, postal_code')
             .eq('company_id', companyId)
             .in('pennylane_id', pageIds)
         : { data: [] as { pennylane_id: string }[] };
@@ -132,7 +132,14 @@ Deno.serve(async (req) => {
           siret:        c.reg_no ?? null,
           tva_intra:    c.vat_number ?? null,
           ...merged,
-          // `type` non importé : contrainte DB ('medical','ecommerce','retail','particulier')
+          // `type` : LOCAL GAGNE, contrairement aux champs enrichis ci-dessus.
+          // Pennylane ne porte pas cette notion — c'est une decision prise ici.
+          // On ne la deduit donc que pour un client encore inconnu : porter un
+          // numero d'immatriculation (reg_no) ou de TVA suffit a le classer
+          // professionnel. Un client deja en base garde son type, sinon chaque
+          // synchronisation ecraserait un choix manuel.
+          type: existingByPennylaneId.get(pennylaneId)?.type
+            ?? ((c.reg_no || c.vat_number) ? 'professionnel' : null),
           // `tariff_mode`, `payment_terms`, `payment_terms_label`, `notes` préservés (non touchés).
           active: true,
         };

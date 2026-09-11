@@ -71,18 +71,15 @@ export const TRANSITION_ACTION_LABELS: Record<string, Record<string, string>> = 
   facturee:  { payee: 'Encaisser' },
 }
 
+// Aligne sur clients.type : meme liste des deux cotes (migration 20260911070000).
 export const TYPE_LABELS: Record<string, string> = {
-  medical:    'Médical',
-  ecommerce:  'E-commerce',
-  retail:     'Retail',
-  particulier:'Particulier',
+  particulier:  'Particulier',
+  professionnel:'Professionnel',
 }
 
-export const TYPE_COLORS: Record<string, 'info' | 'success' | 'warning' | 'muted'> = {
-  medical:    'info',
-  ecommerce:  'success',
-  retail:     'warning',
-  particulier:'muted',
+export const TYPE_COLORS: Record<string, 'info' | 'success' | 'warning' | 'muted' | 'purple'> = {
+  particulier:  'muted',
+  professionnel:'purple',
 }
 
 // ── Calcul du montant ────────────────────────────────────────────────────────

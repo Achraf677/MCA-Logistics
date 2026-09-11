@@ -1,4 +1,4 @@
-export type DeliveryType = 'medical' | 'ecommerce' | 'retail' | 'particulier'
+export type DeliveryType = 'particulier' | 'professionnel'
 
 export interface ExtractedDelivery {
   client_name: string | null

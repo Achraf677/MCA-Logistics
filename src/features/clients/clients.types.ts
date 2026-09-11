@@ -11,7 +11,7 @@ export interface Client {
   postal_code: string | null
   email: string | null
   phone: string | null
-  type: 'medical' | 'ecommerce' | 'retail' | 'particulier' | 'professionnel' | null
+  type: 'particulier' | 'professionnel' | null
   pennylane_id: string | null
   payment_terms: number
   /** Code du select façon Pennylane (migration 20260722100000). NULL = legacy,

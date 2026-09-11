@@ -601,7 +601,7 @@ export type PrepareResult =
   | { ok: false; message: string }
   | { ok: true; action: PendingAction }
 
-const DELIVERY_TYPES = ['medical', 'ecommerce', 'retail', 'particulier']
+const DELIVERY_TYPES = ['professionnel', 'particulier']
 
 /** Résout un client unique par nom (ilike, actifs). */
 async function resolveClient(rawName: string): Promise<
@@ -908,7 +908,7 @@ export interface CreateClientArgs {
   delai_paiement_jours?: number
 }
 
-const CLIENT_TYPES = ['medical', 'ecommerce', 'retail', 'particulier', 'professionnel']
+const CLIENT_TYPES = ['professionnel', 'particulier']
 
 export async function prepareCreateClient(args: CreateClientArgs): Promise<PrepareResult> {
   const nom = (args.nom ?? '').trim()

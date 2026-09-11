@@ -32,7 +32,7 @@ import {
   listDeliveryTemplates, createDeliveryTemplate, sendClientEmail,
 } from './livraisons.queries'
 import type { DeliveryTemplateLite } from './livraisons.queries'
-import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
+import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus, DeliveryType } from './livraisons.types'
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
 
@@ -399,7 +399,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
         client_id:        form.client_id,
         vehicle_id:       form.vehicle_id  || null,
         driver_id:        form.driver_id   || null,
-        type:             (form.type || null) as 'medical' | 'ecommerce' | 'retail' | 'particulier' | null,
+        type:             (form.type || null) as DeliveryType | null,
         description:      form.description || null,
         pickup_address:   form.pickup_address   || null,
         delivery_address: form.delivery_address || null,
@@ -543,7 +543,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
               <select value={form.type} onChange={e => set('type', e.target.value)}
                 disabled={isDetailReadOnly} className={inputCls}>
                 <option value="">— Aucun —</option>
-                {(['medical','ecommerce','retail','particulier'] as const).map(t => (
+                {(['professionnel','particulier'] as const).map(t => (
                   <option key={t} value={t}>{TYPE_LABELS[t]}</option>
                 ))}
               </select>

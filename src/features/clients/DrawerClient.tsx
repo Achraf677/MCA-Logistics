@@ -10,7 +10,7 @@ import {
   countDeliveriesForClient, countQuotesForClient, getClientDeliveries,
 } from './clients.queries'
 import {
-  CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, validateSiret,
+  CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, CLIENT_TYPES, champsProfessionnels, validateSiret,
   TARIFF_MODE_LABELS, computeEncours, paymentStatusOf,
 } from './clients.logic'
 import { formatMoney } from '../../shared/lib/money'
@@ -44,6 +44,8 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
   const [form, setForm] = useState<Partial<ClientInsert>>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [siretError, setSiretError] = useState('')
+  // Un particulier n'a ni SIRET, ni TVA, ni delai de paiement negocie.
+  const estPro = champsProfessionnels(form.type ?? null)
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
   const [deactivating, setDeactivating] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -97,7 +99,15 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
     setSiretError('')
     setSaving(true)
     try {
-      const payload = { ...form, name: normalizeClientName(form.name!) }
+      // Un particulier n'a ni SIRET ni TVA intracommunautaire. On les efface à
+      // l'enregistrement plutôt que de les laisser en base sous des champs
+      // devenus invisibles : une donnée qu'on ne peut plus ni voir ni corriger
+      // finirait tôt ou tard sur une facture ou une lettre de voiture.
+      const payload = {
+        ...form,
+        name: normalizeClientName(form.name!),
+        ...(estPro ? {} : { siret: null, tva_intra: null }),
+      }
       if (isEdit && client) {
         const { error } = await updateClient(client.id, payload)
         if (error) throw error
@@ -222,37 +232,44 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
                 onChange={e => set('type', e.target.value || null)}
                 className={inputClass}
               >
-                <option value="">— Tous —</option>
-                {(Object.entries(CLIENT_TYPE_LABELS) as [string, string][]).map(([v, l]) => (
-                  <option key={v} value={v}>{l}</option>
+                <option value="">— Non precise —</option>
+                {CLIENT_TYPES.map(v => (
+                  <option key={v} value={v}>{CLIENT_TYPE_LABELS[v]}</option>
                 ))}
               </select>
             </FieldGroup>
-            <FieldGroup label="Délai de paiement">
-              <select
-                value={form.payment_terms_label ?? '30'}
-                onChange={e => {
-                  const code = e.target.value
-                  set('payment_terms_label', code)
-                  set('payment_terms', paymentTermDays(code))
-                }}
-                className={inputClass}
-              >
-                {PAYMENT_TERM_OPTIONS.map(o => (
-                  <option key={o.code} value={o.code}>{o.label}</option>
-                ))}
-              </select>
-            </FieldGroup>
+            {estPro && (
+              <FieldGroup label="Délai de paiement">
+                <select
+                  value={form.payment_terms_label ?? '30'}
+                  onChange={e => {
+                    const code = e.target.value
+                    set('payment_terms_label', code)
+                    set('payment_terms', paymentTermDays(code))
+                  }}
+                  className={inputClass}
+                >
+                  {PAYMENT_TERM_OPTIONS.map(o => (
+                    <option key={o.code} value={o.code}>{o.label}</option>
+                  ))}
+                </select>
+              </FieldGroup>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <FieldGroup label="SIRET" error={siretError}>
-              <Input value={form.siret ?? ''} onChange={v => { set('siret', v); setSiretError('') }} placeholder="14 chiffres" />
-            </FieldGroup>
-            <FieldGroup label="N° TVA intracommunautaire">
-              <Input value={form.tva_intra ?? ''} onChange={v => set('tva_intra', v)} placeholder="FR…" />
-            </FieldGroup>
-          </div>
+          {/* SIRET, TVA et delai de paiement n'ont de sens que pour un
+              professionnel. Pour un particulier ils disparaissent : les
+              afficher grises laisserait croire qu'ils sont attendus. */}
+          {estPro && (
+            <div className="grid grid-cols-2 gap-3">
+              <FieldGroup label="SIRET" error={siretError}>
+                <Input value={form.siret ?? ''} onChange={v => { set('siret', v); setSiretError('') }} placeholder="14 chiffres" />
+              </FieldGroup>
+              <FieldGroup label="N° TVA intracommunautaire">
+                <Input value={form.tva_intra ?? ''} onChange={v => set('tva_intra', v)} placeholder="FR…" />
+              </FieldGroup>
+            </div>
+          )}
 
           <FieldGroup label="Adresse">
             <Input value={form.address ?? ''} onChange={v => set('address', v)} placeholder="Rue…" />
