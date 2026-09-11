@@ -50,14 +50,32 @@ export function canOptimize(geocodedStopCount: number, depotGeocoded: boolean): 
 export interface GeoPoint { lat: number; lng: number }
 export interface OrderedStop extends GeoPoint { stop_order: number | null }
 
+/**
+ * Options de navigation transmises aux applications externes.
+ *
+ * `eviterPeages` agit UNIQUEMENT ici, dans les liens : c'est l'application du
+ * chauffeur qui choisit la route réelle. L'optimisation de l'ordre des arrêts
+ * ne peut pas en tenir compte — elle passe par l'endpoint /optimization
+ * d'OpenRouteService, basé sur Vroom, dont le schéma n'expose aucune option
+ * d'évitement (seul le `profile` du véhicule est paramétrable). Vérifié dans
+ * la documentation Vroom le 11/09/2026.
+ */
+export interface NavOptions {
+  eviterPeages?: boolean
+}
+
 /** Lien Google Maps vers un arrêt unique (destination simple). */
-export function googleMapsStopUrl(lat: number, lng: number): string {
-  return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+export function googleMapsStopUrl(lat: number, lng: number, opts: NavOptions = {}): string {
+  const base = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
+  // Paramètre documenté par Google : avoid=tolls|highways|ferries.
+  return opts.eviterPeages ? `${base}&avoid=tolls` : base
 }
 
 /** Lien Waze vers un point, navigation lancée. */
-export function wazeUrl(lat: number, lng: number): string {
-  return `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
+export function wazeUrl(lat: number, lng: number, opts: NavOptions = {}): string {
+  const base = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
+  // Paramètre documenté par Waze : avoid_tolls=true.
+  return opts.eviterPeages ? `${base}&avoid_tolls=true` : base
 }
 
 /**
@@ -65,18 +83,25 @@ export function wazeUrl(lat: number, lng: number): string {
  * arrêts géocodés en waypoints dans l'ordre stop_order. null si pas de dépôt.
  * Le séparateur waypoints « | » et les virgules sont encodés (encodeURIComponent).
  */
-export function googleMapsRouteUrl(depot: GeoPoint | null, stops: OrderedStop[]): string | null {
+export function googleMapsRouteUrl(
+  depot: GeoPoint | null,
+  stops: OrderedStop[],
+  opts: NavOptions = {},
+): string | null {
   if (!depot) return null
   const ordered = [...stops]
     .filter(s => s.lat != null && s.lng != null)
     .sort((a, b) => (a.stop_order ?? 0) - (b.stop_order ?? 0))
-  const base =
+  let url =
     `https://www.google.com/maps/dir/?api=1` +
     `&origin=${depot.lat},${depot.lng}` +
     `&destination=${depot.lat},${depot.lng}`
-  if (ordered.length === 0) return base
-  const waypoints = ordered.map(s => `${s.lat},${s.lng}`).join('|')
-  return `${base}&waypoints=${encodeURIComponent(waypoints)}`
+  if (ordered.length > 0) {
+    const waypoints = ordered.map(s => `${s.lat},${s.lng}`).join('|')
+    url += `&waypoints=${encodeURIComponent(waypoints)}`
+  }
+  if (opts.eviterPeages) url += '&avoid=tolls'
+  return url
 }
 
 // ── Suivi des arrêts ──────────────────────────────────────────────────────────

@@ -24,7 +24,7 @@ function mkTour(partial: Partial<Tour>): Tour {
     id: 't', company_id: 'c', date: '2026-06-07', vehicle_id: null, driver_id: null,
     status: 'optimisee', depot_lat: null, depot_lng: null,
     total_km: null, total_duration_min: null, geometry: null,
-    optimized_at: null, notes: null, created_at: '', updated_at: '',
+    optimized_at: null, notes: null, eviter_peages: false, created_at: '', updated_at: '',
     ...partial,
   }
 }
@@ -105,6 +105,36 @@ describe('navigation GPS', () => {
     expect(googleMapsRouteUrl(null, [])).toBeNull()
     const url = googleMapsRouteUrl({ lat: 1, lng: 2 }, [])!
     expect(url).toBe('https://www.google.com/maps/dir/?api=1&origin=1,2&destination=1,2')
+  })
+})
+
+describe('navigation GPS — éviter les péages', () => {
+  // Paramètres documentés : `avoid=tolls` chez Google, `avoid_tolls=true` chez
+  // Waze. Ils sont testés littéralement : une faute de frappe ne produirait
+  // aucune erreur visible, juste un itinéraire qui passe par les péages.
+  it('absent par défaut : aucun paramètre ajouté', () => {
+    expect(googleMapsStopUrl(48.5, 7.5)).not.toContain('avoid')
+    expect(wazeUrl(48.5, 7.5)).not.toContain('avoid')
+    expect(googleMapsRouteUrl({ lat: 1, lng: 2 }, [])).not.toContain('avoid')
+  })
+
+  it('ajoute le bon paramètre à chaque service', () => {
+    expect(googleMapsStopUrl(48.5, 7.5, { eviterPeages: true })).toContain('&avoid=tolls')
+    expect(wazeUrl(48.5, 7.5, { eviterPeages: true })).toContain('&avoid_tolls=true')
+  })
+
+  it('itinéraire complet : le paramètre suit les waypoints, pas l’inverse', () => {
+    const url = googleMapsRouteUrl(
+      { lat: 48.5, lng: 7.5 },
+      [{ stop_order: 1, lat: 48.6, lng: 7.6 }],
+      { eviterPeages: true },
+    )!
+    expect(url).toContain('waypoints=')
+    expect(url.endsWith('&avoid=tolls')).toBe(true)
+  })
+
+  it('eviterPeages false se comporte comme absent', () => {
+    expect(googleMapsStopUrl(48.5, 7.5, { eviterPeages: false })).not.toContain('avoid')
   })
 })
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { Route, Navigation2, ExternalLink, Check, Clock, Fuel, Truck, User } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
@@ -8,9 +8,10 @@ import { useToast } from '../../shared/ui/useToast'
 import { formatMoney } from '../../shared/lib/money'
 // Machine d'états unique (réutilisée, pas dupliquée).
 import { canTransition } from '../livraisons/livraisons.logic'
-import { markDelivered, setTourStatus } from './tournees.queries'
+import { markDelivered, setTourStatus, updateTour } from './tournees.queries'
 import {
   estimateFuelCostCts, googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
+  type NavOptions,
   isDelivered, deliveredProgress, hasUndeliveredStops, canStartTour, canFinishTour,
 } from './tournees.logic'
 import type { Tour, TourDelivery, TourStatus } from './tournees.types'
@@ -55,9 +56,34 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
     .filter(s => s.delivery_lat != null && s.delivery_lng != null)
     .map(s => ({ stop_order: s.stop_order, lat: s.delivery_lat as number, lng: s.delivery_lng as number }))
 
+  // Option de navigation portee par la tournee. Elle n'agit que sur les liens
+  // externes : l'optimisation de l'ordre des arrets ne sait pas eviter les
+  // peages (cf. NavOptions dans tournees.logic.ts).
+  // Etat local pour que la case reponde tout de suite, la base restant la
+  // reference — en cas d'echec on revient a la valeur precedente.
+  const [eviterPeages, setEviterPeages] = useState(tour.eviter_peages ?? false)
+  const [peagesBusy, setPeagesBusy] = useState(false)
+  useEffect(() => { setEviterPeages(tour.eviter_peages ?? false) }, [tour.eviter_peages])
+
+  const navOpts: NavOptions = { eviterPeages }
+
+  const handleEviterPeages = async (coche: boolean) => {
+    setEviterPeages(coche)
+    setPeagesBusy(true)
+    const { error } = await updateTour(tour.id, { eviter_peages: coche })
+    setPeagesBusy(false)
+    if (error) {
+      setEviterPeages(!coche)
+      toast(error.message, 'error')
+      return
+    }
+    await onChanged()
+  }
+
   const routeUrl = googleMapsRouteUrl(
     depotGeocoded ? { lat: tour.depot_lat as number, lng: tour.depot_lng as number } : null,
     geoStops,
+    navOpts,
   )
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -147,6 +173,25 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
           )}
         </div>
 
+        {/* Éviter les péages — agit sur les liens de navigation de cette tournée.
+            Le libellé dit explicitement ce que ça ne fait pas : promettre que
+            l'ordre des arrêts en tiendrait compte serait faux. */}
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={eviterPeages}
+            onChange={e => handleEviterPeages(e.target.checked)}
+            disabled={peagesBusy}
+            className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer"
+          />
+          <span className="text-[var(--fs-sm)] text-[var(--text)]">
+            Éviter les péages
+            <span className="block text-[var(--fs-xs)] text-[var(--text-muted)]">
+              S'applique aux liens Maps et Waze de cette tournée, pas à l'ordre des arrêts.
+            </span>
+          </span>
+        </label>
+
         {/* Liste ordonnée — mobile-first */}
         <ol className="flex flex-col">
           {stops.map((s, i) => {
@@ -179,11 +224,11 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
                 <div className="flex items-center gap-2 pl-10">
                   {geo && (
                     <>
-                      <a href={googleMapsStopUrl(s.delivery_lat as number, s.delivery_lng as number)}
+                      <a href={googleMapsStopUrl(s.delivery_lat as number, s.delivery_lng as number, navOpts)}
                         target="_blank" rel="noopener noreferrer" className={linkBtnCls}>
                         <Navigation2 size={14} /> Naviguer
                       </a>
-                      <a href={wazeUrl(s.delivery_lat as number, s.delivery_lng as number)}
+                      <a href={wazeUrl(s.delivery_lat as number, s.delivery_lng as number, navOpts)}
                         target="_blank" rel="noopener noreferrer"
                         className="text-[var(--fs-xs)] text-[var(--text-muted)] underline px-1 py-2">
                         Waze
