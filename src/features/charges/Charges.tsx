@@ -19,6 +19,7 @@ import { formatCents, categoryColor, kpiSummary } from './charges.logic'
 import { getCategories } from '../../shared/lib/categories.queries'
 import { listAllocationsCategoriesForCharges } from '../../shared/lib/allocations.queries'
 import { TotauxParCategorie } from '../../shared/ui/TotauxParCategorie'
+import { InboxTickets } from './InboxTickets'
 import { downloadCSV } from '../../shared/lib/download'
 import { suggestCategory } from '../../shared/lib/suggestCategorie'
 import { parseSuggestionIa } from '../../shared/lib/suggestionIa'
@@ -204,6 +205,9 @@ export function Charges() {
           <KpiCard label="Total TTC" value={formatCents(kpis.totalTtcCts)} tone="warning" icon={<Wallet size={18} />} />
         </div>
       )}
+
+      {/* Tickets envoyes par les chauffeurs — le panneau disparait s'il n'y en a pas */}
+      <InboxTickets onChanged={load} />
 
       {/* Répartition par catégorie — répond à « combien d'AdBlue ai-je acheté ».
           Suit les filtres de la liste : changer la période change la répartition. */}

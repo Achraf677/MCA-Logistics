@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
+import { useProfile } from '../../app/providers'
+import { deposerTicket } from '../../shared/lib/receiptsInbox.queries'
 import { canTransition } from '../../shared/lib/livraisonStatuts'
 import { getMesCourses, avancerCourse } from './mescourses.queries'
 import {
@@ -138,6 +140,8 @@ export function MesCourses() {
         )}
       </div>
 
+      <ScannerTicket />
+
       {erreur && (
         <p className="mb-4 text-[var(--fs-sm)] text-[var(--danger)]">{erreur}</p>
       )}
@@ -255,5 +259,90 @@ function CarteCourse({
         )}
       </div>
     </article>
+  )
+}
+
+/**
+ * Dépôt d'un ticket photographié (péage, plein, pièce détachée…).
+ *
+ * `capture="environment"` ouvre directement l'appareil photo arrière sur
+ * téléphone, au lieu du sélecteur de fichiers : c'est le geste attendu au bord
+ * de la route. Sur ordinateur, l'attribut est ignoré et on retombe sur le
+ * sélecteur habituel.
+ */
+function ScannerTicket() {
+  const { toast } = useToast()
+  const { companyId } = useProfile()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [note, setNote] = useState('')
+  const [envoi, setEnvoi] = useState(false)
+  const [ouvert, setOuvert] = useState(false)
+
+  const choisir = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // permet de reprendre le même fichier après une erreur
+    if (!file || !companyId) return
+
+    setEnvoi(true)
+    const { error } = await deposerTicket(file, companyId, note)
+    setEnvoi(false)
+    if (error) { toast(error.message, 'error'); return }
+
+    setNote('')
+    setOuvert(false)
+    toast('Ticket envoyé — il apparaît côté gestion')
+  }
+
+  return (
+    <div className="mb-4 rounded-[var(--r-lg)] border border-dashed border-[var(--border)] p-3">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        capture="environment"
+        className="hidden"
+        onChange={choisir}
+      />
+
+      {!ouvert ? (
+        <button
+          onClick={() => setOuvert(true)}
+          className="w-full min-h-[44px] flex items-center justify-center gap-2 text-[var(--fs-sm)]
+            text-[var(--text-muted)] hover:text-[var(--brand)] transition-colors"
+        >
+          <Camera size={16} /> Scanner un ticket
+        </button>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <input
+            type="text"
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            placeholder="De quoi s'agit-il ? (péage A35, plein Movano…)"
+            className="w-full min-h-[44px] px-3 rounded-[var(--r-md)] bg-[var(--bg)]
+              border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)]
+              focus:outline-none focus:border-[var(--brand)]"
+          />
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
+              className="flex-1 min-h-[44px]"
+              onClick={() => inputRef.current?.click()}
+              disabled={envoi}
+            >
+              {envoi ? 'Envoi…' : 'Prendre la photo'}
+            </Button>
+            <Button
+              variant="secondary"
+              className="min-h-[44px]"
+              onClick={() => { setOuvert(false); setNote('') }}
+              disabled={envoi}
+            >
+              Annuler
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

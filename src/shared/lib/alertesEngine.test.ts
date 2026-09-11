@@ -193,3 +193,26 @@ describe('tri + résumé', () => {
     expect(resumeAlertes(buildAlertes({}, TODAY))).toEqual({ rouge: 0, orange: 0, info: 0, badge: 0 })
   })
 })
+
+describe('tickets chauffeurs a traiter', () => {
+  const trouve = (ticketsATraiter?: number) =>
+    buildAlertes({ ticketsATraiter }, TODAY).find(a => a.id === 'tickets-inbox')
+
+  it('aucune alerte quand la boite est vide', () => {
+    expect(trouve(0)).toBeUndefined()
+    // Champ absent = meme comportement qu'a zero (donnees anterieures).
+    expect(trouve(undefined)).toBeUndefined()
+  })
+
+  it('alerte orange avec le compte, singulier et pluriel', () => {
+    const une = trouve(1)!
+    expect(une.label).toBe('1 ticket chauffeur à traiter')
+    expect(une.severite).toBe('orange')
+    expect(une.count).toBe(1)
+    expect(trouve(3)!.label).toBe('3 tickets chauffeur à traiter')
+  })
+
+  it('un compte negatif ne cree pas d alerte', () => {
+    expect(trouve(-2)).toBeUndefined()
+  })
+})

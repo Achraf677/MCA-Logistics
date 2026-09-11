@@ -82,6 +82,8 @@ export interface AlertesEngineInput {
   devisEnAttente?: DevisEnAttenteRow[]
   vehicules?: VehiculeEcheanceRow[]
   notesDeFrais?: NoteFraisRow[]
+  /** Nombre de tickets chauffeurs en attente de traitement. */
+  ticketsATraiter?: number
   livraisonsPourJustif?: DeliveryForJustif[]
   documentsLivraison?: DocumentForJustif[]
 }
@@ -224,6 +226,24 @@ function detectNotesDeFrais(rows: NoteFraisRow[]): AlerteMetier | null {
   }
 }
 
+/**
+ * Tickets photographiés par les chauffeurs et pas encore traités. Orange.
+ *
+ * Orange et non info : un justificatif qui dort dans la boîte n'est ni
+ * comptabilisé ni récupéré en TVA, et le chauffeur qui l'a envoyé croit, lui,
+ * avoir fait le nécessaire.
+ */
+function detectTicketsInbox(count: number): AlerteMetier | null {
+  if (count <= 0) return null
+  return {
+    id: 'tickets-inbox',
+    domaine: 'charges',
+    label: `${count} ticket${count > 1 ? 's' : ''} chauffeur à traiter`,
+    count, severite: 'orange',
+    lien: '/finance?tab=charges',
+  }
+}
+
 /** Livraisons livrée/facturée/payée sans aucun justificatif (POD, document, LV). Orange. */
 function detectLivraisonsSansJustif(
   deliveries: DeliveryForJustif[],
@@ -301,6 +321,9 @@ export function buildAlertes(
 
   const sansJustif = detectLivraisonsSansJustif(input.livraisonsPourJustif ?? [], input.documentsLivraison ?? [])
   if (sansJustif) alertes.push(sansJustif)
+
+  const tickets = detectTicketsInbox(input.ticketsATraiter ?? 0)
+  if (tickets) alertes.push(tickets)
 
   // Tri : rouge → orange → info, puis par count décroissant.
   return alertes.sort((a, b) =>
