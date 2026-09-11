@@ -138,7 +138,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
       <aside
         className={`
           fixed inset-y-0 left-0 z-30 flex flex-col bg-[var(--bg-elevated)] border-r border-[var(--border)]
-          transition-all duration-200
+          transition-[transform,width] duration-[var(--dur-3)] ease-[var(--ease-out)]
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:relative lg:translate-x-0
           ${collapsed ? 'w-[var(--sidebar-w-icon)]' : 'w-[var(--sidebar-w)]'}

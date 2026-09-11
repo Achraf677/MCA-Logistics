@@ -272,7 +272,7 @@ export function AssistantWidget() {
             bg-[var(--brand)] text-white flex items-center justify-center
             shadow-lg opacity-35 hover:opacity-100 focus:opacity-100
             hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)]
-            transition-all duration-200"
+            press"
         >
           <Sparkles size={22} />
         </button>

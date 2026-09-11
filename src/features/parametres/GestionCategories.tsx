@@ -106,8 +106,7 @@ export function GestionCategories() {
             onChange={e => setNewName(e.target.value)}
             placeholder="Nouvelle catégorie…"
             maxLength={60}
-            className="flex-1 h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-              text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] transition-colors"
+            className="field flex-1 w-auto text-[var(--fs-sm)]"
           />
           <Button type="submit" variant="secondary" size="compact" disabled={!newName.trim() || adding}>
             <Plus size={13} />

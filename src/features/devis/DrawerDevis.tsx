@@ -402,7 +402,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
           <textarea value={form.notes}
             onChange={e => set('notes', e.target.value)}
             rows={3} placeholder="Notes internes…"
-            disabled={isTerminal} className={`${inputCls} resize-none`} />
+            disabled={isTerminal} className={`${inputCls} field-area resize-none`} />
         </Field>
 
         {/* Actions principales */}
@@ -484,10 +484,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
 
 // ── Sous-composants ───────────────────────────────────────────────────────────
 
-const inputCls = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)]
-  transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
-
+const inputCls = 'field'
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">

@@ -137,7 +137,7 @@ export function Vehicules() {
               <button
                 key={v.id}
                 onClick={() => openDrawer(v)}
-                className="text-left bg-[var(--bg-card)] rounded-[var(--r-xl)] border border-[var(--border)] p-5 hover:bg-[var(--bg-card-hover)] hover:border-[var(--brand)]/30 transition-all group"
+                className="text-left bg-[var(--bg-card)] rounded-[var(--r-xl)] border border-[var(--border)] p-5 hover:bg-[var(--bg-card-hover)] hover:border-[var(--brand)]/30 lift group"
               >
                 {/* En-tête carte */}
                 <div className="flex items-start justify-between gap-2 mb-3">

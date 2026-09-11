@@ -19,10 +19,7 @@ interface DocumentsPanelProps {
   entityId: string | null | undefined
 }
 
-const inputCls =
-  'h-8 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-3 ' +
-  'text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] transition-colors'
-
+const inputCls = 'field field-sm'
 /**
  * Panneau compact de gestion documentaire rattaché à une entité métier.
  * Réutilise uploadDocument / listDocuments / getDownloadUrl / deleteDocument sans rien recoder.

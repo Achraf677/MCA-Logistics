@@ -125,7 +125,7 @@ export function Statistiques() {
                       )}
                       <div className="w-full flex items-end flex-1">
                         <div
-                          className={`w-full rounded-t-[3px] transition-all ${
+                          className={`w-full rounded-t-[3px] transition-[height] duration-[var(--dur-4)] ease-[var(--ease-out)] ${
                             isCurrent ? 'bg-[var(--brand)]' : 'bg-[var(--brand)]/25'
                           }`}
                           style={{ height: height > 0 ? `${height}%` : '2px' }}
@@ -182,7 +182,7 @@ export function Statistiques() {
                         </div>
                         <div className="h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
                           <div
-                            className="h-full rounded-full bg-[var(--brand)] transition-all"
+                            className="h-full rounded-full bg-[var(--brand)] transition-[width] duration-[var(--dur-4)] ease-[var(--ease-out)]"
                             style={{ width: `${(c.cts / maxClient) * 100}%` }}
                           />
                         </div>
@@ -234,7 +234,7 @@ export function Statistiques() {
                       </div>
                       <div className="h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
                         <div
-                          className="h-full rounded-full bg-[var(--warning)]/70 transition-all"
+                          className="h-full rounded-full bg-[var(--warning)]/70 transition-[width] duration-[var(--dur-4)] ease-[var(--ease-out)]"
                           style={{ width: `${(cts / maxCategory) * 100}%` }}
                         />
                       </div>

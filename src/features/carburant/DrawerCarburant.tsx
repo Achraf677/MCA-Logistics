@@ -392,10 +392,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
   )
 }
 
-const inputCls = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)]
-  transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
-
+const inputCls = 'field'
 function Input({ type = 'text', value, onChange, placeholder, disabled }: {
   type?: string; value: string; onChange: (v: string) => void
   placeholder?: string; disabled?: boolean

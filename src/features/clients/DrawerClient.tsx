@@ -334,7 +334,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
               value={form.notes ?? ''}
               onChange={e => set('notes', e.target.value)}
               rows={3}
-              className={`${inputClass} resize-none`}
+              className={`${inputClass} field-area resize-none`}
               placeholder="Notes internes…"
             />
           </FieldGroup>
@@ -510,9 +510,7 @@ function addDays(iso: string, days: number): string {
 }
 
 // ── Mini helpers ──────────────────────────────────────────────────────────────
-const inputClass = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)] transition-colors`
-
+const inputClass = 'field'
 function Input({ type = 'text', value, onChange, placeholder, className = '' }: {
   type?: string; value: string; onChange: (v: string) => void; placeholder?: string; className?: string
 }) {

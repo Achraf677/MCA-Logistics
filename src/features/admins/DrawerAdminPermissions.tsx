@@ -361,7 +361,7 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                     value={roleValue}
                     disabled={roleLoading}
                     onChange={e => handleSetRole(e.target.value as AdminRole)}
-                    className="h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] disabled:opacity-50"
+                    className="field field-sm w-auto"
                   >
                     {ROLE_OPTIONS.map(o => (
                       <option key={o.value} value={o.value}>{o.label}</option>
@@ -408,7 +408,7 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                       onChange={e => setNewPassword(e.target.value)}
                       placeholder="Nouveau mot de passe (8 caractères min.)"
                       autoComplete="off"
-                      className="flex-1 min-w-[220px] h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)]"
+                      className="field field-sm flex-1 w-auto min-w-[220px]"
                     />
                     <Button
                       variant="secondary"

@@ -154,5 +154,4 @@ function Row({ label, value, positive, negative }: { label: string; value: numbe
   )
 }
 
-const selCls = `h-8 px-3 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] transition-colors`
+const selCls = 'field field-sm'

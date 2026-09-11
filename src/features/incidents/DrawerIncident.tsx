@@ -227,7 +227,7 @@ export function DrawerIncident({ open, onClose, incident, onSaved }: Props) {
 
         <Field label="Notes">
           <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
-            rows={2} placeholder="Observations complémentaires…" className={`${inputCls} resize-none`} />
+            rows={2} placeholder="Observations complémentaires…" className={`${inputCls} field-area resize-none`} />
         </Field>
 
         <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
@@ -250,10 +250,7 @@ export function DrawerIncident({ open, onClose, incident, onSaved }: Props) {
   )
 }
 
-const inputCls = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)]
-  transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
-
+const inputCls = 'field'
 function Input({ type = 'text', value, onChange, placeholder }: {
   type?: string; value: string; onChange: (v: string) => void; placeholder?: string
 }) {

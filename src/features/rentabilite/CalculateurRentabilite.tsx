@@ -770,7 +770,7 @@ export function CalculateurRentabilite() {
               <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">/ {num(r.jours)} jours</span>
             </div>
             <div className="h-2 rounded-full overflow-hidden mb-2" style={{ background: 'var(--bg-deep)' }}>
-              <div className="h-full rounded-full transition-all"
+              <div className="h-full rounded-full transition-[width] duration-[var(--dur-4)] ease-[var(--ease-out)]"
                 style={{
                   width: `${Math.min(100, seuilPct)}%`,
                   background: positive ? 'var(--profit)' : 'var(--loss)',

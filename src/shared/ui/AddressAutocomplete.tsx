@@ -16,10 +16,7 @@ interface Props {
 const MIN_CHARS = 3
 const DEBOUNCE_MS = 300
 
-const inputCls = `w-full h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)]
-  transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
-
+const inputCls = 'field'
 /**
  * Champ d'adresse avec autocomplétion + géocodage via Photon (Komoot/OSM, UE, sans clé).
  * Saisie libre toujours permise : `onChange` reflète le texte ; `onSelect` ne se
