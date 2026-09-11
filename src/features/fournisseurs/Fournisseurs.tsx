@@ -6,7 +6,7 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { ContactLinks } from '../../shared/ui/ContactLinks'
-import { telHref, mailtoHref } from '../../shared/lib/contact'
+import { telHref } from '../../shared/lib/contact'
 import { SkeletonTable, SkeletonKpis } from '../../shared/ui/Skeleton'
 import { Drawer } from '../../shared/ui/Drawer'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -14,8 +14,9 @@ import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { useSync } from '../../app/SyncProvider'
 import { usePermissions } from '../../shared/permissions/usePermissions'
-import { getSuppliers, createSupplier, updateSupplier, deactivateSupplier, deleteSupplier } from './fournisseurs.queries'
-import { CATEGORY_LABELS, getCategoryLabel, isTvaDeductible, countByCategory, normalizeSiren, validateSiren, findDuplicate } from './fournisseurs.logic'
+import { getSuppliers, createSupplier, updateSupplier, deactivateSupplier, deleteSupplier, getChargesDouzeMois } from './fournisseurs.queries'
+import { CATEGORY_LABELS, getCategoryLabel, isTvaDeductible, countByCategory, normalizeSiren, validateSiren, findDuplicate, cumulerDepensesParFournisseur, type ChargePourCumul, type DepensesFournisseur } from './fournisseurs.logic'
+import { formatMoney } from '../../shared/lib/money'
 import type { Supplier, SupplierInsert, SupplierFilters } from './fournisseurs.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
@@ -49,6 +50,7 @@ export function Fournisseurs() {
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [depenses, setDepenses] = useState<Map<string, DepensesFournisseur>>(new Map())
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -57,6 +59,15 @@ export function Fournisseurs() {
     else setSuppliers(data ?? [])
     setLoading(false)
   }, [filters, search])
+
+  // Les depenses se chargent A PART de la liste : elles ne dependent ni du
+  // filtre ni de la recherche, et les recalculer a chaque frappe dans la barre
+  // de recherche serait du gaspillage.
+  useEffect(() => {
+    getChargesDouzeMois().then(({ data }) => {
+      setDepenses(cumulerDepensesParFournisseur((data ?? []) as ChargePourCumul[]))
+    })
+  }, [])
 
   const { syncState, syncIfStale } = useSync()
   useEffect(() => { syncIfStale('fournisseurs') }, [syncIfStale])
@@ -154,7 +165,12 @@ export function Fournisseurs() {
           <KpiCard label="Actifs" value={actifs} />
           <KpiCard label="Carburant" value={byCategory.carburant ?? 0} />
           <KpiCard label="Entretien" value={byCategory.entretien ?? 0} />
-          <KpiCard label="Autres" value={suppliers.length - (byCategory.carburant ?? 0) - (byCategory.entretien ?? 0)} />
+          <KpiCard
+            label="Dépensé 12 mois"
+            value={formatMoney([...depenses.values()].reduce((t, d) => t + d.totalHtCts, 0))}
+            sub="HT, hors immobilisations"
+            tone="warning"
+          />
         </>}
       </div>
 
@@ -201,7 +217,7 @@ export function Fournisseurs() {
               <table className="w-full text-[var(--fs-sm)]">
                 <thead>
                   <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                    {['Nom', 'Catégorie', 'SIRET', 'E-mail', 'Téléphone', ''].map(h => (
+                    {['Nom', 'Catégorie', 'Dépensé 12 mois', 'Dernière facture', 'SIRET', 'Téléphone', ''].map(h => (
                       <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
@@ -220,12 +236,20 @@ export function Fournisseurs() {
                       <td className="px-4 py-3">
                         <Badge color="muted">{getCategoryLabel(s.category)}</Badge>
                       </td>
-                      <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">{s.siret ?? '—'}</td>
-                      <td className="px-4 py-3 text-[var(--text-muted)]" onClick={e => e.stopPropagation()}>
-                        {mailtoHref(s.email)
-                          ? <a href={mailtoHref(s.email)!} className="hover:text-[var(--brand)] transition-colors">{s.email}</a>
+                      {/* Les deux colonnes qui manquaient : chez qui on depense,
+                          et depuis quand on n'a plus achete. L'e-mail cede sa
+                          place — il reste accessible dans le tiroir et sur la
+                          carte mobile, et il ne se lit pas en survolant une
+                          liste. */}
+                      <td className="px-4 py-3 font-mono text-[var(--text)]">
+                        {depenses.has(s.id) ? formatMoney(depenses.get(s.id)!.totalHtCts) : '—'}
+                      </td>
+                      <td className="px-4 py-3 text-[var(--fs-xs)] text-[var(--text-muted)]">
+                        {depenses.get(s.id)?.derniereDate
+                          ? new Date(depenses.get(s.id)!.derniereDate!).toLocaleDateString('fr-FR')
                           : '—'}
                       </td>
+                      <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">{s.siret ?? '—'}</td>
                       <td className="px-4 py-3 text-[var(--text-muted)]" onClick={e => e.stopPropagation()}>
                         {telHref(s.phone)
                           ? <a href={telHref(s.phone)!} className="hover:text-[var(--brand)] transition-colors">{s.phone}</a>
