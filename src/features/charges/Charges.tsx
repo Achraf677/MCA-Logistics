@@ -22,6 +22,7 @@ import { TotauxParCategorie } from '../../shared/ui/TotauxParCategorie'
 import { InboxTickets } from './InboxTickets'
 import { classerTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import { indexerFichierExistant } from '../../shared/lib/documents.queries'
+import { estChargeHorsPennylane } from '../../shared/lib/aRapprocher'
 import { downloadCSV } from '../../shared/lib/download'
 import { suggestCategory } from '../../shared/lib/suggestCategorie'
 import { parseSuggestionIa } from '../../shared/lib/suggestionIa'
@@ -54,6 +55,11 @@ export function Charges() {
   // Filtre spécial via URL (?filtre=pennylane_supprimees) — clic depuis la cloche.
   const [searchParams, setSearchParams] = useSearchParams()
   const filtreSupprimees = searchParams.get('filtre') === 'pennylane_supprimees'
+  const filtreHorsPennylane = searchParams.get('filtre') === 'hors_pennylane'
+  // Fige l'instant a l'ouverture de l'ecran. Lire l'heure a chaque rendu
+  // rendrait le filtrage instable : deux rendus successifs pourraient classer
+  // differemment une charge pile a la limite des 14 jours.
+  const [maintenant] = useState(() => new Date())
 
   // Chargement des catégories (une fois par companyId)
   useEffect(() => {
@@ -163,11 +169,19 @@ export function Charges() {
     filters.date_from || filters.date_to || filters.include_immobilisations
   )
 
-  // Liste affichée : filtre "supprimées Pennylane" appliqué côté client.
+  // Liste affichée : les deux filtres spéciaux Pennylane s'appliquent côté
+  // client, sur les lignes déjà chargées. La règle elle-même vient de
+  // `aRapprocher.ts` — la même que celle qui alimente le compteur, pour que le
+  // bandeau et la liste ne racontent jamais deux histoires différentes.
+  const estHorsPennylane = (r: ChargeRow) => estChargeHorsPennylane(r, maintenant)
+
   const displayRows = filtreSupprimees
     ? rows.filter(r => r.pennylane_deleted_at != null)
-    : rows
+    : filtreHorsPennylane
+      ? rows.filter(estHorsPennylane)
+      : rows
   const nbSupprimees = rows.filter(r => r.pennylane_deleted_at != null).length
+  const nbHorsPennylane = rows.filter(estHorsPennylane).length
 
   // Suggestions déterministes de catégorie par fournisseur — calculées 1 fois
   // par rendu de rows. Historique = TOUTES les rows chargées (`getCharges` ne
@@ -285,6 +299,29 @@ export function Charges() {
           ) : (
             <Button variant="secondary" size="compact"
               onClick={() => setSearchParams({ filtre: 'pennylane_supprimees' })}>
+              Voir la liste
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Ecart de « copie parfaite » avec Pennylane. Orange et non rouge : rien
+          n'est casse, c'est une saisie qui reste a faire chez le comptable. */}
+      {!loading && nbHorsPennylane > 0 && (
+        <div className="mb-4 flex items-center gap-2 flex-wrap rounded-[var(--r-lg)] border border-[var(--warning)]/50 bg-[var(--warning)]/10 px-4 py-3 text-[var(--fs-sm)]">
+          <AlertTriangle size={16} className="text-[var(--warning)] shrink-0" />
+          <span className="text-[var(--text)] flex-1">
+            {nbHorsPennylane > 1
+              ? `${nbHorsPennylane} charges n'existent que dans le site`
+              : "1 charge n'existe que dans le site"} — Pennylane ne l'a jamais vue passer.
+          </span>
+          {filtreHorsPennylane ? (
+            <Button variant="ghost" size="compact" onClick={() => setSearchParams({})}>
+              Voir toutes les charges
+            </Button>
+          ) : (
+            <Button variant="secondary" size="compact"
+              onClick={() => setSearchParams({ filtre: 'hors_pennylane' })}>
               Voir la liste
             </Button>
           )}

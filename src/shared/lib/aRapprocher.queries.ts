@@ -31,7 +31,9 @@ export async function getARapprocherCounts(): Promise<ARapprocherCounts> {
       // charges dont la facture a été supprimée côté Pennylane.
       // est_immobilisation : introduit par 20260724100000. Exclut les achats
       // d'investissement (véhicule…) du miroir "charges à rapprocher".
-      .select('id, montant_ttc_cts, category_id, mode_paiement, pennylane_deleted_at, est_immobilisation'),
+      // pennylane_id + date : comptent les charges qui n'existent QUE dans le
+      // site — celles que Pennylane n'a jamais vues passer.
+      .select('id, montant_ttc_cts, category_id, mode_paiement, pennylane_deleted_at, est_immobilisation, pennylane_id, date'),
     // charge_allocations : introduit par 20260716130000. Permet le rapprochement
     // partiel (1 justif → N cibles, 1 cible ← N justifs). Rétrocompat totale
     // via le backfill de la migration (allocation "montant plein" pour chaque

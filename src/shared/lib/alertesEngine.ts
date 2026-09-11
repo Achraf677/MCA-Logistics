@@ -283,6 +283,16 @@ function fromARapprocher(c: ARapprocherCounts): AlerteMetier[] {
     label: `${c.pennylane_supprimees} facture${c.pennylane_supprimees > 1 ? 's' : ''} supprimée${c.pennylane_supprimees > 1 ? 's' : ''} dans Pennylane`,
     count: c.pennylane_supprimees, severite: 'rouge', lien: '/charges?filtre=pennylane_supprimees',
   })
+  // Ecart de « copie parfaite » avec Pennylane : ces charges sont dans le site
+  // et nulle part chez le comptable. Orange et non rouge : ce n'est pas une
+  // anomalie de donnees, c'est une saisie qui reste a faire de l'autre cote.
+  if (c.hors_pennylane > 0) out.push({
+    id: 'hors-pennylane', domaine: 'charges',
+    label: c.hors_pennylane > 1
+      ? `${c.hors_pennylane} charges absentes de Pennylane`
+      : '1 charge absente de Pennylane',
+    count: c.hors_pennylane, severite: 'orange', lien: '/charges?filtre=hors_pennylane',
+  })
   if (c.avoirs > 0) out.push({
     id: 'avoirs', domaine: 'charges',
     label: `${c.avoirs} avoir${c.avoirs > 1 ? 's' : ''} fournisseur à vérifier`,

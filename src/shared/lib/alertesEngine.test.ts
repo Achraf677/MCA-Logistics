@@ -8,7 +8,7 @@ const TODAY = new Date(2026, 6, 21) // 2026-07-21 (mois 0-indexé)
 
 const emptyRapprocher: ARapprocherCounts = {
   tresorerie: 0, charges: 0, encaissements: 0, categorisation: 0,
-  pennylane_supprimees: 0, avoirs: 0, total: 0,
+  pennylane_supprimees: 0, hors_pennylane: 0, avoirs: 0, total: 0,
 }
 
 describe('helpers dates', () => {
