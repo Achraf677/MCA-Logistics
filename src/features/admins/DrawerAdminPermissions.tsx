@@ -46,6 +46,10 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
   const [roleLoading, setRoleLoading] = useState(false)
   const [activeLoading, setActiveLoading] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [pwdLoading, setPwdLoading]   = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
+  const [pwdDefini, setPwdDefini]     = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
 
   const isSelf = member?.id === currentUserId
@@ -55,6 +59,10 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
     setPermMap(emptyPermMap())
     setRoleValue(member.role as AdminRole)
     setActiveValue(member.active ?? true)
+    // Remise à zéro à chaque ouverture : sans ça, le message de confirmation et
+    // un mot de passe à moitié saisi suivraient d'un salarié à l'autre.
+    setNewPassword('')
+    setPwdDefini(false)
     setPermLoading(true)
 
     supabase.functions
@@ -139,6 +147,43 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
       toast(active ? 'Compte activé' : 'Compte désactivé')
       onMemberUpdated()
     }
+  }
+
+  /** L'admin fixe le mot de passe : marche meme sans SMTP configure. */
+  async function handleSetPassword() {
+    if (!member || isSelf) return
+    const pwd = newPassword.trim()
+    if (pwd.length < 8) { toast('8 caractères minimum', 'error'); return }
+    setPwdLoading(true)
+    const { data, error } = await supabase.functions.invoke('admin-users', {
+      body: { action: 'set_password', user_id: member.id, password: pwd },
+    })
+    setPwdLoading(false)
+    if (error || !data?.ok) {
+      toast(data?.detail ?? error?.message ?? 'Échec de la mise à jour', 'error')
+      return
+    }
+    // On vide le champ : laisser le mot de passe a l'ecran apres coup n'apporte
+    // rien et le fait trainer sur un poste partage.
+    setNewPassword('')
+    setPwdDefini(true)
+    toast('Mot de passe mis à jour')
+  }
+
+  /** Lien de reinitialisation par e-mail : personne ne connait le mot de passe. */
+  async function handleSendReset() {
+    if (!member || isSelf) return
+    setResetLoading(true)
+    const { data, error } = await supabase.functions.invoke('admin-users', {
+      body: { action: 'send_reset', user_id: member.id },
+    })
+    setResetLoading(false)
+    if (error || !data?.ok) {
+      // `message` porte le repli explicite quand l'envoi d'e-mail echoue.
+      toast(data?.message ?? data?.detail ?? error?.message ?? "Échec de l'envoi", 'error')
+      return
+    }
+    toast(`Lien envoyé à ${data.email}`)
   }
 
   async function handleDelete() {
@@ -346,6 +391,45 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                       }`}
                     />
                   </button>
+                </div>
+
+                {/* Mot de passe — deux chemins, cf. Edge admin-users */}
+                <div className="flex flex-col gap-2 pt-1">
+                  <div>
+                    <p className="text-[var(--fs-sm)] font-medium text-[var(--text)]">Mot de passe</p>
+                    <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                      Définis-en un si la personne est devant toi, ou envoie-lui un lien si elle est à distance.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input
+                      type="text"
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      placeholder="Nouveau mot de passe (8 caractères min.)"
+                      autoComplete="off"
+                      className="flex-1 min-w-[220px] h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)]"
+                    />
+                    <Button
+                      variant="secondary"
+                      onClick={handleSetPassword}
+                      disabled={pwdLoading || newPassword.trim().length < 8}
+                    >
+                      {pwdLoading ? 'Enregistrement…' : 'Définir'}
+                    </Button>
+                    <Button variant="ghost" onClick={handleSendReset} disabled={resetLoading}>
+                      {resetLoading ? 'Envoi…' : 'Envoyer un lien'}
+                    </Button>
+                  </div>
+
+                  {/* Le mot de passe defini n'est visible qu'ici, une fois : il
+                      n'est jamais relisible ensuite, meme par le president. */}
+                  {pwdDefini && (
+                    <p className="text-[var(--fs-xs)] text-[var(--success)]">
+                      Mot de passe enregistré — communique-le à la personne, il ne sera plus affiché.
+                    </p>
+                  )}
                 </div>
 
                 {/* Supprimer */}

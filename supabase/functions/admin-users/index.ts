@@ -4,6 +4,8 @@
 //  - invite  { email, full_name, role? }
 //  - set_role { user_id, role }   (role ∈ admin/dg/chauffeur/comptable)
 //  - set_active { user_id, active } ; delete { user_id }
+//  - set_password { user_id, password }  (l'admin definit le mot de passe)
+//  - send_reset { user_id }              (lien de reinitialisation par e-mail)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -109,6 +111,43 @@ Deno.serve(async (req: Request) => {
     const { error } = await service.from('profiles').update({ active }).eq('id', targetUserId);
     if (error) return json({ ok: false, error: 'set_active_failed' }, 500);
     return json({ ok: true, active });
+  }
+
+  // ---- RÉINITIALISER LE MOT DE PASSE ----
+  // Deux chemins, parce qu'ils répondent à deux situations différentes :
+  //   - `set_password` : le salarié est devant vous et a oublié son mot de
+  //     passe. Immédiat, et surtout indépendant de l'envoi d'e-mails — la
+  //     branche `invite` ci-dessus montre que le SMTP peut ne pas être
+  //     configuré. C'est le chemin qui marche toujours.
+  //   - `send_reset` : le salarié est à distance. Personne, pas même le
+  //     président, ne connaît alors son mot de passe.
+  // Dans les deux cas, jamais sur un compte président : ce serait une prise de
+  // contrôle d'un compte de même niveau, pas une assistance.
+  if (action === 'set_password') {
+    if (target.role === 'president') return json({ ok: false, error: 'president_non_modifiable' }, 400);
+    if (!password) return json({ ok: false, error: 'password requis' }, 400);
+    if (password.length < 8) return json({ ok: false, error: 'mot de passe trop court (min 8)' }, 400);
+    const { error } = await service.auth.admin.updateUserById(targetUserId, { password });
+    if (error) return json({ ok: false, error: 'set_password_failed', detail: error.message }, 500);
+    return json({ ok: true, mode: 'defini' });
+  }
+
+  if (action === 'send_reset') {
+    if (target.role === 'president') return json({ ok: false, error: 'president_non_modifiable' }, 400);
+    const { data: cible } = await service
+      .from('profiles').select('email').eq('id', targetUserId).single();
+    const cibleEmail = typeof cible?.email === 'string' ? cible.email : '';
+    if (!cibleEmail) return json({ ok: false, error: 'email_cible_inconnu' }, 400);
+    // Client anon : `resetPasswordForEmail` est une méthode publique, pas admin.
+    const { error } = await userClient.auth.resetPasswordForEmail(cibleEmail);
+    if (error) {
+      return json({
+        ok: false, error: 'send_reset_failed',
+        detail: error.message,
+        message: "L'e-mail n'a pas pu être envoyé (SMTP non configuré ?). Définis un mot de passe à la place.",
+      }, 400);
+    }
+    return json({ ok: true, mode: 'email_envoye', email: cibleEmail });
   }
 
   // ---- SUPPRIMER ----
