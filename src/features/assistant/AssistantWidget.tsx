@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { Sparkles, X, Send, Check, Paperclip, ClipboardPaste } from 'lucide-react'
 import { useAssistant } from './AssistantContext'
-import type { PendingAction } from './AssistantContext'
+import type { PendingAction, ExtractedDelivery } from './AssistantContext'
 import { runAssistantTurn } from './assistant.queries'
 import {
   prepareCreateLivraison, prepareChangerStatutLivraison,
@@ -58,6 +58,7 @@ const ACTION_PREPARERS: Record<string, (args: unknown) => Promise<PrepareResult>
   create_vehicule:          (a) => prepareCreateVehicule(a as never),
 }
 import { tabLabelForPath } from './assistant.knowledge'
+import { RecapExtraction } from './RecapExtraction'
 
 /**
  * Assistant flottant global (monté dans le Shell, présent sur toutes les pages).
@@ -203,7 +204,12 @@ export function AssistantWidget() {
     setStatusLabel('Lecture de la feuille de route…')
     try {
       const r = await runExtractDeliveries(base64, mimeType)
-      if (r.ok) { pushAssistant(r.text); setExtracted(r.deliveries) } // stockées pour l'import (6B-2)
+      // Même récapitulatif que pour un message collé : les deux chemins
+      // aboutissent aux mêmes livraisons, ils doivent s'afficher pareil.
+      if (r.ok) {
+        setMessages(prev => [...prev, { role: 'assistant', text: r.text, extraction: r.deliveries }])
+        setExtracted(r.deliveries) // stockées pour l'import (6B-2)
+      }
       else pushAssistant(r.message)
     } catch (err) {
       pushAssistant(`⚠️ ${(err as Error).message}`)
@@ -228,7 +234,13 @@ export function AssistantWidget() {
     setStatusLabel('Lecture du message…')
     try {
       const r = await runExtractDeliveriesFromText(texte, CONTEXTE_RESERVATION)
-      if (r.ok) { pushAssistant(r.text); setExtracted(r.deliveries) }
+      if (r.ok) {
+        // `text` reste present : il alimente « Copier » et sert de repli si le
+        // rendu en cartes venait a etre retire. C'est `extraction` qui decide
+        // de l'affichage.
+        setMessages(prev => [...prev, { role: 'assistant', text: r.text, extraction: r.deliveries }])
+        setExtracted(r.deliveries)
+      }
       else pushAssistant(r.message)
     } catch (err) {
       pushAssistant(`⚠️ ${(err as Error).message}`)
@@ -315,7 +327,7 @@ export function AssistantWidget() {
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 flex flex-col gap-3"
           >
             {messages.map((m, i) => (
-              <Bubble key={i} role={m.role} text={m.text} draft={m.draft} />
+              <Bubble key={i} role={m.role} text={m.text} draft={m.draft} extraction={m.extraction} />
             ))}
             {sending && <TypingBubble label={statusLabel ?? undefined} />}
           </div>
@@ -472,7 +484,12 @@ export function AssistantWidget() {
   )
 }
 
-function Bubble({ role, text, draft }: { role: 'user' | 'assistant'; text: string; draft?: boolean }) {
+function Bubble({ role, text, draft, extraction }: {
+  role: 'user' | 'assistant'
+  text: string
+  draft?: boolean
+  extraction?: ExtractedDelivery[]
+}) {
   const isUser = role === 'user'
   const [copied, setCopied] = useState(false)
 
@@ -489,12 +506,14 @@ function Bubble({ role, text, draft }: { role: 'user' | 'assistant'; text: strin
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] px-3.5 py-2 rounded-[var(--r-lg)] text-[var(--fs-sm)] whitespace-pre-wrap break-words leading-relaxed
+        className={`${extraction ? 'w-full' : 'max-w-[85%]'} px-3.5 py-2 rounded-[var(--r-lg)] text-[var(--fs-sm)] whitespace-pre-wrap break-words leading-relaxed
           ${isUser
             ? 'bg-[var(--brand)] text-white rounded-br-sm'
             : 'bg-[var(--bg-card)] text-[var(--text)] border border-[var(--border)] rounded-bl-sm'}`}
       >
-        {renderMarkdownBold(text)}
+        {/* Un recap de livraisons se lit en cartes, pas en paragraphe : la
+            bulle prend toute la largeur et laisse la place au composant. */}
+        {extraction ? <RecapExtraction deliveries={extraction} /> : renderMarkdownBold(text)}
         {draft && (
           <div className="mt-2 pt-2 border-t border-[var(--border)]">
             <button
