@@ -19,6 +19,29 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
+  const [envoiLien, setEnvoiLien] = useState(false)
+  const [lienEnvoye, setLienEnvoye] = useState(false)
+
+  /**
+   * Demande d'un lien de reinitialisation.
+   *
+   * Jusqu'ici, seul le president pouvait en declencher un depuis l'ecran
+   * Equipe : un salarie qui oubliait son mot de passe un dimanche soir n'avait
+   * aucun recours. La meme mecanique, offerte ici, le sort de cette impasse.
+   *
+   * Le message de retour est VOLONTAIREMENT identique que l'adresse existe ou
+   * non. Repondre « ce compte n'existe pas » permettrait a n'importe qui de
+   * decouvrir, une adresse a la fois, qui travaille dans l'entreprise.
+   */
+  const demanderLien = async () => {
+    if (!email.trim()) { setError('Saisis ton e-mail au-dessus, puis reclique.'); return }
+    setEnvoiLien(true); setError(null)
+    await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    })
+    setEnvoiLien(false)
+    setLienEnvoye(true)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -91,6 +114,19 @@ export function LoginPage() {
           <Button variant="primary" type="submit" disabled={loading || googleLoading} className="w-full justify-center mt-1">
             {loading ? 'Connexion…' : 'Se connecter'}
           </Button>
+
+          {lienEnvoye ? (
+            <p className="text-[var(--fs-sm)] text-[var(--text-muted)] text-center">
+              Si un compte existe pour cette adresse, un lien vient d'être envoyé.
+              Il est valable une heure.
+            </p>
+          ) : (
+            <button type="button" onClick={demanderLien} disabled={envoiLien || loading || googleLoading}
+              className="text-[var(--fs-sm)] text-[var(--text-muted)] hover:text-[var(--brand)]
+                transition-colors disabled:opacity-50">
+              {envoiLien ? 'Envoi…' : 'Mot de passe oublié ?'}
+            </button>
+          )}
         </form>
       </div>
     </div>

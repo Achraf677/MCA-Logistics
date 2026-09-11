@@ -1,7 +1,9 @@
-import React, { lazy, Suspense } from 'react'
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import React, { lazy, Suspense, useEffect } from 'react'
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { features } from '../features.config'
 import { AuthCallback } from './AuthCallback'
+import { supabase } from './providers'
+import { DefinirMotDePasse } from './DefinirMotDePasse'
 
 // Sections chargées à la demande : chacune tire toutes les features de son domaine.
 // En import statique, les 8 sections partaient dans un seul bundle chargé au
@@ -38,9 +40,37 @@ function guard(enabled: boolean, element: React.ReactElement) {
   return enabled ? element : <Navigate to="/" replace />
 }
 
+/**
+ * Filet de securite pour les liens de reinitialisation.
+ *
+ * Le chemin normal passe par `/auth/callback`, qui lit le fragment d'URL et
+ * oriente. Mais si l'URL de redirection du projet Supabase n'a pas ete mise a
+ * jour, le lien retombe sur la racine du site : la session de recuperation
+ * s'ouvre et le salarie se retrouve dans l'application, toujours sans mot de
+ * passe. On ecoute donc l'evenement lui-meme, quel que soit l'ecran d'arrivee.
+ *
+ * Pas de redirection si on y est deja, sinon la navigation se repete.
+ */
+function RecuperationMotDePasse() {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
+
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((evenement) => {
+      if (evenement === 'PASSWORD_RECOVERY' && pathname !== '/definir-mot-de-passe') {
+        navigate('/definir-mot-de-passe', { replace: true })
+      }
+    })
+    return () => data.subscription.unsubscribe()
+  }, [navigate, pathname])
+
+  return null
+}
+
 export function AppRoutes() {
   return (
     <Suspense fallback={<div className="p-8 text-[var(--fs-sm)] text-[var(--text-muted)]">Chargement…</div>}>
+    <RecuperationMotDePasse />
     <Routes>
       {/* Pilotage à sous-onglets ; "/" rend la section (1er onglet = Dashboard) → l'app ouvre sur le Dashboard.
           /pilotage ≠ paths redirigés → aucune boucle. */}
@@ -90,6 +120,10 @@ export function AppRoutes() {
       <Route path="/alertes"       element={<Navigate to="/" replace />} />
       <Route path="/parametres" element={<VersOnglet section="/systeme" tab="parametres" />} />
       <Route path="/auth/callback"  element={<AuthCallback />} />
+      {/* Cible des liens de reinitialisation envoyes par e-mail. Route publique :
+          la session n'existe qu'une fois les jetons de l'URL echanges, donc
+          elle ne peut pas etre derriere le garde d'authentification. */}
+      <Route path="/definir-mot-de-passe" element={<DefinirMotDePasse />} />
       <Route path="*"              element={<Navigate to="/" replace />} />
     </Routes>
     </Suspense>

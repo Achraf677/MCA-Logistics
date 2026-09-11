@@ -5,7 +5,7 @@
 //  - set_role { user_id, role }   (role ∈ admin/dg/chauffeur/comptable)
 //  - set_active { user_id, active } ; delete { user_id }
 //  - set_password { user_id, password }  (l'admin definit le mot de passe)
-//  - send_reset { user_id }              (lien de reinitialisation par e-mail)
+//  - send_reset { user_id, redirect_to? } (lien de reinitialisation par e-mail)
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -33,6 +33,8 @@ Deno.serve(async (req: Request) => {
   const password = typeof body.password === 'string' ? body.password : '';
   const fullName = typeof body.full_name === 'string' ? body.full_name.trim() : '';
   const targetUserId = typeof body.user_id === 'string' ? body.user_id : '';
+  // Origine reelle du site, fournie par le front pour `send_reset`.
+  const redirectTo = typeof body.redirect_to === 'string' ? body.redirect_to : '';
 
   const url = Deno.env.get('SUPABASE_URL')!;
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -139,7 +141,17 @@ Deno.serve(async (req: Request) => {
     const cibleEmail = typeof cible?.email === 'string' ? cible.email : '';
     if (!cibleEmail) return json({ ok: false, error: 'email_cible_inconnu' }, 400);
     // Client anon : `resetPasswordForEmail` est une méthode publique, pas admin.
-    const { error } = await userClient.auth.resetPasswordForEmail(cibleEmail);
+    //
+    // `redirectTo` est fourni par le front (origine réelle du site). Sans lui,
+    // le lien retombe sur l'URL par défaut du projet Supabase. Il doit figurer
+    // dans la liste des URL de redirection autorisées du projet, sinon
+    // Supabase l'ignore silencieusement et reprend l'URL par défaut.
+    const { error } = await userClient.auth.resetPasswordForEmail(
+      cibleEmail,
+      typeof redirectTo === 'string' && redirectTo.startsWith('http')
+        ? { redirectTo }
+        : undefined,
+    );
     if (error) {
       return json({
         ok: false, error: 'send_reset_failed',

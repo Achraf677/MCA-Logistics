@@ -175,7 +175,10 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
     if (!member || isSelf) return
     setResetLoading(true)
     const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'send_reset', user_id: member.id },
+      // `redirect_to` : sans lui, Supabase renvoie le salarié sur l'URL par
+      // défaut du projet, qui n'est pas forcément ce site. On donne l'origine
+      // réelle depuis laquelle l'invitation part.
+      body: { action: 'send_reset', user_id: member.id, redirect_to: `${window.location.origin}/auth/callback` },
     })
     setResetLoading(false)
     if (error || !data?.ok) {
