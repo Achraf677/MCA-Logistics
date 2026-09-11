@@ -84,8 +84,16 @@ export function MigrationDrive() {
 
   if (restants === null || restants === 0) return null
 
+  // Le composant porte desormais sa propre enveloppe titree : quand il rend
+  // `null`, plus rien ne subsiste a l'ecran.
   return (
-    <div className="flex flex-col gap-3">
+    <div className="glass rounded-[var(--r-xl)] overflow-hidden">
+      <div className="px-4 py-2.5 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
+        <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+          Anciens justificatifs Google Drive
+        </span>
+      </div>
+      <div className="p-4 flex flex-col gap-3">
       <p className="text-[var(--fs-sm)] text-[var(--text-muted)]">
         {restants} justificatif{restants > 1 ? 's' : ''} {restants > 1 ? 'sont' : 'est'} encore
         stocké{restants > 1 ? 's' : ''} dans Google Drive. La copie vers Supabase ne supprime rien
@@ -108,6 +116,7 @@ export function MigrationDrive() {
           </ul>
         </div>
       )}
+      </div>
     </div>
   )
 }

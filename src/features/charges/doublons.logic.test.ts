@@ -15,7 +15,6 @@ const candidat = {
   date: '2026-03-10',
   montant_ttc_cts: 12000,
   supplier_id: 'f1',
-  label: 'Plein gasoil',
 }
 
 describe('ecartJours', () => {

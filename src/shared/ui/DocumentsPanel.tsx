@@ -12,7 +12,9 @@ import {
 } from '../lib/documents.logic'
 import type { DocumentRow, DocumentCategory } from '../lib/documents.types'
 
-export type DocumentEntityType = 'vehicle' | 'team_member' | 'client' | 'delivery'
+// 'charge' ajoute le 11/09/2026 : une facture d'achat porte elle aussi des
+// justificatifs (ticket photographie par un chauffeur, PDF du fournisseur).
+export type DocumentEntityType = 'vehicle' | 'team_member' | 'client' | 'delivery' | 'charge'
 
 interface DocumentsPanelProps {
   entityType: DocumentEntityType

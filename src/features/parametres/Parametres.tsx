@@ -268,10 +268,12 @@ export function Parametres() {
               </Field>
             </Section>
 
-            {/* Rapatriement des anciens justificatifs Drive — disparaît une fois fini */}
-            <Section title="Anciens justificatifs Google Drive">
-              <MigrationDrive />
-            </Section>
+            {/* Rapatriement des anciens justificatifs Drive.
+                MigrationDrive rend `null` quand il ne reste rien a rapatrier,
+                mais l'enveloppe <Section> s'affichait quand meme : il restait
+                une carte au titre prometteur et au contenu vide. Le titre est
+                donc descendu DANS le composant, qui disparait en entier. */}
+            <MigrationDrive />
 
             {/* Section Catégories de charges */}
             <Section title="Catégories de charges">

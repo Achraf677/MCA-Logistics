@@ -4,6 +4,7 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
+import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
@@ -163,7 +164,12 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
    */
   useEffect(() => {
     if (!open || isPennylane) { setDoublons([]); return }
-    const ttc = Math.abs(ttcCts)
+    // `ttcCts` est SIGNE : negatif pour un avoir. Ne PAS prendre sa valeur
+    // absolue. Un avoir de 120 euros se mettrait alors a « ressembler » a la
+    // facture de 120 euros qu'il annule, et le bouton Enregistrer resterait
+    // gris sur chaque avoir jusqu'a ce qu'on coche la case. Un avoir n'est
+    // jamais le doublon d'une facture : c'est son contraire.
+    const ttc = ttcCts
     if (ttc <= 0 || !form.date) { setDoublons([]); return }
 
     let annule = false
@@ -180,16 +186,24 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
       setNomsFournisseurs(Object.fromEntries(
         lignes.filter(l => l.supplier_id && l.suppliers?.name).map(l => [l.supplier_id!, l.suppliers!.name]),
       ))
-      setDoublons(trouverDoublonsPennylane(
+      const trouves = trouverDoublonsPennylane(
         { id: charge?.id ?? null, date: form.date, montant_ttc_cts: ttc,
-          supplier_id: form.supplier_id || null, label: form.label },
+          supplier_id: form.supplier_id || null },
         lignes,
-      ))
-      setDoublonsAcceptes(false)
+      )
+      // On ne redemande confirmation que si la liste des suspects a CHANGE.
+      // Sinon, corriger une faute de frappe dans le libelle apres avoir coche
+      // « ce n'est pas un doublon » redesactivait le bouton sans explication.
+      setDoublons(prec => {
+        const memes = prec.length === trouves.length
+          && prec.every((d, i) => d.charge.id === trouves[i].charge.id)
+        if (!memes) setDoublonsAcceptes(false)
+        return trouves
+      })
     }, 400)
 
     return () => { annule = true; clearTimeout(t) }
-  }, [open, isPennylane, ttcCts, form.date, form.supplier_id, form.label, charge?.id])
+  }, [open, isPennylane, ttcCts, form.date, form.supplier_id, charge?.id])
 
   const doublonBloquant = doublons.length > 0 && !doublonsAcceptes
 
@@ -452,6 +466,23 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
               chargeAmountCts={charge.montant_ttc_cts}
               onChanged={onSaved}
             />
+          </div>
+        )}
+
+        {/* Justificatifs de la charge — visibles seulement une fois enregistree,
+            il faut un identifiant pour y rattacher un fichier.
+
+            Ce panneau manquait, et ca s'est vu au pire moment : le ticket d'un
+            chauffeur transforme en charge voyait bien sa photo inscrite au
+            registre des documents, mais AUCUN ecran ne listait les documents
+            d'une charge — l'onglet Documents global ayant ete supprime avec la
+            sortie de Drive. Le justificatif existait et restait introuvable. */}
+        {isEdit && charge && (
+          <div className="flex flex-col gap-3 pt-3 border-t border-[var(--border-soft)]">
+            <p className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+              Justificatifs
+            </p>
+            <DocumentsPanel entityType="charge" entityId={charge.id} />
           </div>
         )}
 

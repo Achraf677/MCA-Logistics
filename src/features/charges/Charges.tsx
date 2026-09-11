@@ -45,6 +45,8 @@ export function Charges() {
   // Ticket chauffeur en cours de transformation en charge. Non nul = le
   // formulaire ouvert vient d'un ticket, et il faudra le classer a la fin.
   const [ticketSource, setTicketSource] = useState<TicketInbox | null>(null)
+  // Compteur de rafraichissement de la boite de tickets. Voir InboxTickets.
+  const [ticketsVersion, setTicketsVersion] = useState(0)
   const { syncState, syncIfStale } = useSync()
   // Suppression Pennylane : charge en attente de confirmation "Supprimer de l'app".
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -56,6 +58,21 @@ export function Charges() {
   const [searchParams, setSearchParams] = useSearchParams()
   const filtreSupprimees = searchParams.get('filtre') === 'pennylane_supprimees'
   const filtreHorsPennylane = searchParams.get('filtre') === 'hors_pennylane'
+
+  /**
+   * Pose ou retire le filtre spécial SANS toucher au reste de l'URL.
+   *
+   * `setSearchParams({ filtre })` remplaçait la totalité des paramètres, donc
+   * effaçait `tab=charges`. `TabbedSection` retombait alors sur son premier
+   * onglet et cet écran disparaissait : cliquer « Voir la liste » renvoyait
+   * l'utilisateur dans Trésorerie.
+   */
+  const poseFiltre = (valeur: string | null) => {
+    const suivant = new URLSearchParams(searchParams)
+    if (valeur) suivant.set('filtre', valeur)
+    else suivant.delete('filtre')
+    setSearchParams(suivant)
+  }
   // Fige l'instant a l'ouverture de l'ecran. Lire l'heure a chaque rendu
   // rendrait le filtrage instable : deux rendus successifs pourraient classer
   // differemment une charge pile a la limite des 14 jours.
@@ -229,6 +246,7 @@ export function Charges() {
       {/* Tickets envoyes par les chauffeurs — le panneau disparait s'il n'y en a pas */}
       <InboxTickets
         onChanged={load}
+        rafraichir={ticketsVersion}
         onCreerCharge={t => { setSelected(null); setTicketSource(t); setDrawerOpen(true) }}
       />
 
@@ -293,12 +311,12 @@ export function Charges() {
             à traiter (supprimer de l'app ou conserver).
           </span>
           {filtreSupprimees ? (
-            <Button variant="ghost" size="compact" onClick={() => setSearchParams({})}>
+            <Button variant="ghost" size="compact" onClick={() => poseFiltre(null)}>
               Voir toutes les charges
             </Button>
           ) : (
             <Button variant="secondary" size="compact"
-              onClick={() => setSearchParams({ filtre: 'pennylane_supprimees' })}>
+              onClick={() => poseFiltre('pennylane_supprimees')}>
               Voir la liste
             </Button>
           )}
@@ -316,12 +334,12 @@ export function Charges() {
               : "1 charge n'existe que dans le site"} — Pennylane ne l'a jamais vue passer.
           </span>
           {filtreHorsPennylane ? (
-            <Button variant="ghost" size="compact" onClick={() => setSearchParams({})}>
+            <Button variant="ghost" size="compact" onClick={() => poseFiltre(null)}>
               Voir toutes les charges
             </Button>
           ) : (
             <Button variant="secondary" size="compact"
-              onClick={() => setSearchParams({ filtre: 'hors_pennylane' })}>
+              onClick={() => poseFiltre('hors_pennylane')}>
               Voir la liste
             </Button>
           )}
@@ -657,6 +675,7 @@ export function Charges() {
           })
           await classerTicket(ticketSource.id, 'traite', chargeId)
           setTicketSource(null)
+          setTicketsVersion(v => v + 1)
         }}
       />
 

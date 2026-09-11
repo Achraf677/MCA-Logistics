@@ -24,7 +24,6 @@ export interface CandidatCharge {
   date: string                      // 'AAAA-MM-JJ'
   montant_ttc_cts: number
   supplier_id: string | null
-  label: string
 }
 
 /** Une charge deja en base, reduite de la meme facon. */

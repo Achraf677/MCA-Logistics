@@ -19,10 +19,17 @@ import {
  *
  * Le panneau disparaît quand la boîte est vide — il n'a rien à dire dans ce cas.
  */
-export function InboxTickets({ onChanged, onCreerCharge }: {
+export function InboxTickets({ onChanged, onCreerCharge, rafraichir = 0 }: {
   onChanged?: () => void
   /** Ouvre le formulaire de charge pre-rempli a partir de ce ticket. */
   onCreerCharge?: (t: TicketInbox) => void
+  /**
+   * Incremente par le parent quand LUI a classe un ticket (creation d'une
+   * charge depuis le formulaire). Sans ce signal, la ligne restait affichee
+   * alors qu'elle etait deja traitee en base — et on pouvait en refaire une
+   * seconde charge.
+   */
+  rafraichir?: number
 }) {
   const { toast } = useToast()
   const [tickets, setTickets] = useState<TicketInbox[]>([])
@@ -36,7 +43,7 @@ export function InboxTickets({ onChanged, onCreerCharge }: {
     setLoading(false)
   }, [])
 
-  useEffect(() => { charger() }, [charger])
+  useEffect(() => { charger() }, [charger, rafraichir])
 
   const ouvrir = async (t: TicketInbox) => {
     const url = await urlTicket(t)
