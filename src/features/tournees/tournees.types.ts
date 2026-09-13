@@ -38,6 +38,8 @@ export interface TourDelivery {
   date: string
   statut: string
   description: string | null
+  /** Poids de la marchandise, en kilogrammes. Sert au plan de chargement. */
+  weight_kg: number | null
   pickup_address: string | null
   /**
    * true = la tournée inclut un arrêt de retrait avant la livraison

@@ -18,6 +18,7 @@ import {
 } from './mescourses.queries'
 // Memes regles que les tournees : ecrites une fois, testees une fois.
 import { deplacerArret, planDeChargement } from '../../shared/lib/ordreArrets'
+import { poidsTotal, libellePoids } from '../../shared/lib/poids'
 import { canStartTour, canFinishTour } from '../../shared/lib/tourneeStatuts'
 import {
   googleMapsRouteUrl, lienNavigation, APPS_NAVIGATION, type AppNavigation,
@@ -494,6 +495,15 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
                 Le camion se vide par une seule porte : ce qu'on charge en premier finit au fond.
                 Le premier client livré se charge donc en dernier, contre la porte.
               </p>
+              {/* Le poids total, la ou on decide si tout rentre. Les courses
+                  non pesees sont annoncees separement : les compter pour zero
+                  transformerait un minimum en total, et c'est exactement ce qui
+                  fait passer un 3,5 t en surcharge. */}
+              {libellePoids(poidsTotal(aLivrer)) && (
+                <p className="text-[var(--fs-sm)] font-medium text-[var(--text)] mb-2">
+                  Charge : {libellePoids(poidsTotal(aLivrer))}
+                </p>
+              )}
               <ol className="flex flex-col gap-1.5">
                 {planDeChargement(aLivrer).map(({ item, rangChargement, rangLivraison }) => (
                   <li key={item.id} className="flex items-start gap-2">
@@ -502,14 +512,21 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
                       {rangChargement}
                     </span>
                     <span className="min-w-0 flex-1">
+                      {/* CE QU'ON CHARGE, avant qui le recoit : devant la porte
+                          du camion, la question est « c'est quoi et ca pese
+                          combien », pas « c'est pour qui ». */}
                       <span className="block text-[var(--fs-sm)] text-[var(--text)] break-words">
-                        {item.clients?.name ?? '—'}
+                        {item.description?.trim() || 'Sans description'}
+                        {item.weight_kg != null && (
+                          <span className="ml-1.5 font-mono text-[var(--fs-xs)] text-[var(--brand)]">
+                            {item.weight_kg} kg
+                          </span>
+                        )}
                       </span>
-                      {item.pickup_address && (
-                        <span className="block text-[var(--fs-xs)] text-[var(--text-muted)] break-words">
-                          à charger : {item.pickup_address}
-                        </span>
-                      )}
+                      <span className="block text-[var(--fs-xs)] text-[var(--text-muted)] break-words">
+                        {item.clients?.name ?? '—'}
+                        {item.pickup_address && ` · à prendre : ${item.pickup_address}`}
+                      </span>
                     </span>
                     <span className="text-[var(--fs-xs)] text-[var(--text-muted)] shrink-0 pt-1">
                       livré n° {rangLivraison}
