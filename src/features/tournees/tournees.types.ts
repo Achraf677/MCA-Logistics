@@ -1,6 +1,12 @@
 // Tournées — composition + optimisation de la tournée d'un véhicule sur une journée.
 
-export type TourStatus = 'brouillon' | 'optimisee' | 'en_cours' | 'terminee'
+// La liste des statuts vit dans shared/ avec les règles qui s'appuient dessus
+// (canStartTour / canFinishTour) : une liste ici et des règles là-bas auraient
+// fini par ne plus parler des mêmes valeurs.
+export type { StatutTournee } from '../../shared/lib/tourneeStatuts'
+import type { StatutTournee } from '../../shared/lib/tourneeStatuts'
+
+export type TourStatus = StatutTournee
 
 export interface Tour {
   id: string

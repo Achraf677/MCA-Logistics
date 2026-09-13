@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Route, Navigation2, ExternalLink, Check, Clock, Fuel, Truck, User, ArrowUp, ArrowDown, PackageOpen } from 'lucide-react'
+import { Route, Navigation2, ExternalLink, Check, Clock, Fuel, Truck, User, ArrowUp, ArrowDown, PackageOpen, ChevronDown } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -11,7 +11,7 @@ import { canTransition } from '../livraisons/livraisons.logic'
 import { markDelivered, setTourStatus, updateTour, setRetraitAFaire, enregistrerOrdreArrets } from './tournees.queries'
 import {
   estimateFuelCostCts, googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
-  googleMapsAdresseUrl, wazeAdresseUrl, deplacerArret,
+  googleMapsAdresseUrl, wazeAdresseUrl, deplacerArret, planDeChargement,
   type NavOptions,
   isDelivered, deliveredProgress, hasUndeliveredStops, canStartTour, canFinishTour,
 } from './tournees.logic'
@@ -47,6 +47,9 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
   const [confirmFinish, setConfirmFinish] = useState(false)
   const [ordreBusy, setOrdreBusy] = useState(false)
+  // Replie par defaut : le plan sert au depot, avant de partir, pas pendant
+  // la tournee. L'ouvrir d'office pousserait la liste des arrets hors ecran.
+  const [planOuvert, setPlanOuvert] = useState(false)
 
   /**
    * Remonte ou descend un arret, puis enregistre l'ordre complet.
@@ -187,7 +190,7 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
 
         {/* Cycle de vie + itinéraire complet */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          {canStartTour(tour.status) && (
+          {canStartTour(tour.status, stops.length) && (
             <Button variant="primary" className="min-h-[44px]" onClick={handleStartTour} disabled={lifecycleBusy}>
               {lifecycleBusy ? '…' : 'Démarrer la tournée'}
             </Button>
@@ -229,6 +232,45 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
             Les flèches imposent ton ordre. Relancer l'optimisation le remplacera.
             {stops.some(s => s.retrait_a_faire) && " Les retraits ne figurent pas dans « Itinéraire complet » : ils n'ont pas de coordonnées, seulement une adresse."}
           </p>
+        )}
+
+        {/* PLAN DE CHARGEMENT — l'inverse de l'ordre de livraison.
+            Repliable : il sert une fois, au dépôt, avant de partir. */}
+        {stops.length > 1 && (
+          <div className="mt-3 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)]">
+            <button type="button" onClick={() => setPlanOuvert(o => !o)}
+              aria-expanded={planOuvert}
+              className="w-full flex items-center gap-2 px-3 min-h-[44px] text-left">
+              <PackageOpen size={15} className="text-[var(--brand)] shrink-0" />
+              <span className="text-[var(--fs-sm)] font-medium text-[var(--text)] flex-1">
+                Plan de chargement
+              </span>
+              <ChevronDown size={16}
+                className={`text-[var(--text-muted)] shrink-0 transition-transform ${planOuvert ? 'rotate-180' : ''}`} />
+            </button>
+            {planOuvert && (
+              <div className="px-3 pb-3">
+                <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mb-2">
+                  Un fourgon se vide par une seule porte : ce qu'on charge en premier finit au
+                  fond. Le premier client livré se charge donc en dernier, contre la porte.
+                </p>
+                <ol className="flex flex-col gap-1">
+                  {planDeChargement(stops).map(({ item, rangChargement, rangLivraison }) => (
+                    <li key={item.id} className="flex items-center gap-2 text-[var(--fs-sm)]">
+                      <span className="flex items-center justify-center w-6 h-6 shrink-0 rounded-full
+                        bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--fs-xs)] font-bold text-[var(--text)]">
+                        {rangChargement}
+                      </span>
+                      <span className="text-[var(--text)] truncate flex-1 min-w-0">{item.clients?.name ?? '—'}</span>
+                      <span className="text-[var(--fs-xs)] text-[var(--text-muted)] shrink-0">
+                        livré n° {rangLivraison}
+                      </span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Liste ordonnée — mobile-first */}

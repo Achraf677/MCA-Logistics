@@ -160,11 +160,16 @@ describe('suivi des arrêts', () => {
 })
 
 describe('cycle de vie tournée', () => {
-  it('canStartTour → seulement optimisee', () => {
+  it('canStartTour → optimisee, ou brouillon ayant des arrêts', () => {
     expect(canStartTour('optimisee')).toBe(true)
+    expect(canStartTour('optimisee', 0)).toBe(true)
+    // Un brouillon vide n'est pas une tournée.
     expect(canStartTour('brouillon')).toBe(false)
-    expect(canStartTour('en_cours')).toBe(false)
-    expect(canStartTour('terminee')).toBe(false)
+    expect(canStartTour('brouillon', 0)).toBe(false)
+    // Ordre imposé à la main : composée sans optimisation, donc brouillon.
+    expect(canStartTour('brouillon', 3)).toBe(true)
+    expect(canStartTour('en_cours', 3)).toBe(false)
+    expect(canStartTour('terminee', 3)).toBe(false)
   })
   it('canFinishTour → seulement en_cours', () => {
     expect(canFinishTour('en_cours')).toBe(true)
