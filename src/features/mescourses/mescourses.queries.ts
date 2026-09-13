@@ -23,6 +23,7 @@ export async function getMesCourses(debut: string, fin: string) {
       'delivery_lat', 'delivery_lng',
       'pod_captured_at', 'weight_kg', 'charge_le', 'lv_signatures',
       'expediteur_nom', 'destinataire_nom', 'pod_recipient_name', 'stop_order', 'tour_id',
+      'pickup_order', 'expediteur_tel', 'destinataire_tel',
       'clients!client_id(name, phone)',
       'vehicles!vehicle_id(label, plate)',
     ].join(', '))
@@ -129,17 +130,28 @@ export async function ajouterSignature(
 }
 
 /**
- * Ordre des courses dans la journée du chauffeur.
+ * Ordre des ARRÊTS dans la journée du chauffeur.
  *
- * Réutilise `stop_order`, déjà porté par `deliveries` pour les tournées : une
- * course sans tournée peut avoir un ordre, et une course en tournée garde le
- * sien. Deux colonnes d'ordre auraient fini par se contredire.
+ * `pickup_order` et `stop_order` indexent la MÊME séquence : celle des arrêts
+ * du jour. Une journée « je charge chez A, je charge chez B, je livre A, je
+ * livre B » s'écrit A(1, 3) et B(2, 4) — ce qu'une seule colonne d'ordre, qui
+ * numérotait les courses, ne pouvait pas exprimer.
+ *
+ * Les écritures partent en parallèle : aucune ne dépend d'une autre, et sur
+ * une journée chargée les faire en série ferait attendre le chauffeur.
  */
-export async function enregistrerOrdreCourses(idsDansLOrdre: string[]) {
+export async function enregistrerOrdreArretsJour(
+  positions: Array<{ courseId: string; pickup_order?: number; stop_order?: number }>,
+) {
   const resultats = await Promise.all(
-    idsDansLOrdre.map((id, i) =>
-      supabase.from('deliveries').update({ stop_order: i + 1 }).eq('id', id),
-    ),
+    positions.map(p => {
+      const maj: Record<string, number | null> = {}
+      // Une course sans arrêt de retrait ne reçoit PAS `pickup_order: null` :
+      // on n'écrase pas une valeur qu'on n'a pas calculée.
+      if (p.pickup_order != null) maj.pickup_order = p.pickup_order
+      if (p.stop_order != null) maj.stop_order = p.stop_order
+      return supabase.from('deliveries').update(maj).eq('id', p.courseId)
+    }),
   )
   const echec = resultats.find(r => r.error)
   return { error: echec?.error ?? null }

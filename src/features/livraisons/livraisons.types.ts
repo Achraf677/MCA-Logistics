@@ -78,6 +78,19 @@ export interface Delivery {
   expediteur_nom: string | null
   expediteur_siren: string | null
   destinataire_nom: string | null
+  /**
+   * Téléphones du TERRAIN (migration 20260913220000) : qui remet, qui reçoit.
+   * Distincts de `clients.phone`, le numéro du donneur d'ordre — sur un
+   * déménagement de particulier, celui-ci n'est souvent ni l'un ni l'autre.
+   * L'écran chauffeur compose l'un ou l'autre selon l'étape en cours.
+   */
+  expediteur_tel: string | null
+  destinataire_tel: string | null
+  /**
+   * Position de l'arrêt de RETRAIT dans la séquence de la journée — la même
+   * que celle indexée par `stop_order` pour l'arrêt de livraison.
+   */
+  pickup_order: number | null
   marchandise_desc: string | null
   nb_colis: number | null
   poids_kg_reel: number | null
@@ -129,6 +142,12 @@ export type DeliveryInsert = Omit<
   | 'relance_count' | 'last_relance_at'
   // POD : mis à jour via savePod(), pas lors du create.
   | 'pod_recipient_name' | 'pod_captured_at'
+  // Telephones du TERRAIN : qui remet, qui recoit. Distincts de
+  // `clients.phone`, le numero du donneur d'ordre.
+  | 'expediteur_tel' | 'destinataire_tel'
+  // Position de l'arret de RETRAIT dans la sequence de la journee, la meme
+  // que celle indexee par `stop_order` pour l'arret de livraison.
+  | 'pickup_order'
   // justif_non_requis : NOT NULL DEFAULT false en base, coché après coup.
   | 'justif_non_requis'
   // extra_lines : optionnel à l'insert (default DB '[]'), écrit via updateDelivery.
@@ -146,6 +165,11 @@ export type DeliveryInsert = Omit<
   expediteur_nom?: string | null
   expediteur_siren?: string | null
   destinataire_nom?: string | null
+  /** Téléphones du terrain — saisis dans l'onglet Lettre de voiture. */
+  expediteur_tel?: string | null
+  destinataire_tel?: string | null
+  /** Position de l'arrêt de retrait — écrite par l'écran chauffeur. */
+  pickup_order?: number | null
   marchandise_desc?: string | null
   nb_colis?: number | null
   poids_kg_reel?: number | null
