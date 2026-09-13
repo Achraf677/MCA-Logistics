@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, MapPin, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -14,11 +13,14 @@ import { enregistrerPod } from '../../shared/lib/pod.queries'
 import { canTransition } from '../../shared/lib/livraisonStatuts'
 import {
   getMesCourses, avancerCourse, getDocumentsDesCourses, marquerCharge,
-  enregistrerOrdreCourses, getTourneesDuChauffeur, changerStatutTournee, getDepot,
+  enregistrerOrdreArretsJour, getTourneesDuChauffeur, changerStatutTournee, getDepot,
 } from './mescourses.queries'
 // Memes regles que les tournees : ecrites une fois, testees une fois.
-import { deplacerArret, planDeChargement } from '../../shared/lib/ordreArrets'
+import { planDeChargement } from '../../shared/lib/ordreArrets'
 import { poidsTotal, libellePoids } from '../../shared/lib/poids'
+import {
+  arretsDuJour, deplacerArretJour, positionsAEcrire, type ArretJour,
+} from '../../shared/lib/arretsJour'
 import { canStartTour, canFinishTour } from '../../shared/lib/tourneeStatuts'
 import {
   googleMapsRouteUrl, lienNavigation, APPS_NAVIGATION, type AppNavigation,
@@ -26,7 +28,7 @@ import {
 import { lireAppNavigation, ecrireAppNavigation } from '../../shared/lib/prefChauffeur'
 import { MESSAGES_TYPES, lienSms, lienTel } from '../../shared/lib/messageClient'
 import { usePermissions } from '../../shared/permissions/usePermissions'
-import { etapeCourante, adresseDeNavigation, libelleAction, libelleEtat } from './etapes.logic'
+import { etapeCourante, libelleEtat } from './etapes.logic'
 import { EtapeTerrain } from './EtapeTerrain'
 import {
   bornesPeriode, decalerPeriode, libellePeriode,
@@ -156,20 +158,23 @@ export function MesCourses() {
   }
 
   /**
-   * Impose l'ordre des courses de la journee.
+   * Impose l'ordre des ARRETS de la journee.
    *
-   * L'ordre ne vaut QUE dans une journee : deplacer une course ne doit pas la
-   * faire changer de jour. On reordonne donc le groupe du jour, puis on
-   * enregistre ce seul groupe.
+   * L'ordre ne vaut QUE dans une journee : deplacer un arret ne doit jamais le
+   * faire changer de jour. On reordonne donc la seule sequence du jour, puis on
+   * ecrit les positions de ses courses.
+   *
+   * Une course peut recevoir une position, l'autre, ou les deux — son retrait
+   * et sa livraison vivent dans la meme sequence mais pas forcement cote a
+   * cote, et c'est tout l'interet.
    */
-  const deplacerCourse = async (jour: string, id: string, sens: 'haut' | 'bas') => {
-    const duJour = courses.filter(c => c.date === jour).map(c => c.id)
-    const nouveau = deplacerArret(duJour, id, sens)
-    // Renvoie la liste inchangee quand le mouvement est impossible : inutile
-    // d'ecrire en base pour rien.
-    if (nouveau.every((v, i) => v === duJour[i])) return
-    setBusyId(id)
-    const { error } = await enregistrerOrdreCourses(nouveau)
+  const deplacerArretDuJour = async (jour: string, cle: string, sens: 'haut' | 'bas') => {
+    const sequence = arretsDuJour(courses.filter(c => c.date === jour))
+    const apres = deplacerArretJour(sequence, cle, sens)
+    // Reference inchangee = mouvement impossible : inutile d'ecrire pour rien.
+    if (apres === sequence) return
+    setBusyId(cle.split(':')[0])
+    const { error } = await enregistrerOrdreArretsJour(positionsAEcrire(apres))
     setBusyId(null)
     if (error) { toast(error.message, 'error'); return }
     await rechargerListe()
@@ -337,18 +342,24 @@ export function MesCourses() {
                 onTourneeChangee={rechargerTournees}
               />
 
-              {duJour.map((c, i) => (
-                <CarteCourse
-                  key={c.id}
-                  course={c}
-                  busy={busyId === c.id}
-                  documents={documents.get(c.id) ?? []}
-                  onDemarrer={() => demarrer(c)}
-                  onCharger={expediteur => charger(c, expediteur)}
+              {/* UN ARRÊT PAR CARTE, et non une course.
+                  Une course compte deux points sur la route — on va chercher,
+                  puis on livre — et ces deux points ne se suivent pas
+                  forcément : on peut charger chez A, charger chez B, puis
+                  livrer A. Tant que la liste montrait des COURSES, cette
+                  journée-là était inexprimable. */}
+              {arretsDuJour(duJour).map((a, i, tous) => (
+                <CarteArret
+                  key={a.cle}
+                  arret={a}
+                  busy={busyId === a.courseId}
+                  documents={documents.get(a.courseId) ?? []}
+                  onDemarrer={() => demarrer(a.course)}
+                  onCharger={expediteur => charger(a.course, expediteur)}
+                  onLivrer={destinataire => livrer(a.course, destinataire)}
                   premier={i === 0}
-                  dernier={i === duJour.length - 1}
-                  onDeplacer={sens => deplacerCourse(jour, c.id, sens)}
-                  onLivrer={destinataire => livrer(c, destinataire)}
+                  dernier={i === tous.length - 1}
+                  onDeplacer={sens => deplacerArretDuJour(jour, a.cle, sens)}
                   appNav={appNav}
                 />
               ))}
@@ -548,11 +559,20 @@ function formatDuree(min: number): string {
   return h > 0 ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`
 }
 
-function CarteCourse({
-  course: c, busy, documents, onDemarrer, onCharger, onLivrer,
+/**
+ * UN ARRÊT : une adresse, une chose à y faire.
+ *
+ * Et non plus une course. Une course compte deux points sur la route — on va
+ * chercher, puis on livre — et ces deux points ne se suivent pas forcément :
+ * on peut charger chez A, charger chez B, puis livrer A. Une carte par arrêt
+ * rend cette journée-là lisible et ordonnable ; une carte par course ne le
+ * permettait pas.
+ */
+function CarteArret({
+  arret, busy, documents, onDemarrer, onCharger, onLivrer,
   premier, dernier, onDeplacer, appNav,
 }: {
-  course: CourseChauffeur
+  arret: ArretJour<CourseChauffeur>
   busy: boolean
   documents: DocumentCourse[]
   onDemarrer: () => void
@@ -564,83 +584,100 @@ function CarteCourse({
   /** Application de navigation choisie par le chauffeur. */
   appNav: AppNavigation
 }) {
+  const c = arret.course
+  const estRetrait = arret.type === 'retrait'
   const etape = etapeCourante(c)
-  const adresse = adresseDeNavigation(c)
-  const action = libelleAction(c)
-  const enCours = etape !== 'terminee'
 
-  // Le panneau de preuve ne s'ouvre qu'au moment du geste : afficher photo,
-  // nom et signature en permanence noierait la liste.
   const [panneauOuvert, setPanneauOuvert] = useState(false)
   const [messagesOuverts, setMessagesOuverts] = useState(false)
 
-  // Lien de navigation : coordonnees quand on les a (plus precis), adresse
-  // ecrite sinon. Seule l'adresse de LIVRAISON est geocodee dans `deliveries` ;
-  // un point de retrait n'a que son texte. `lienNavigation` tranche, et ouvre
-  // l'application que le chauffeur a choisie.
-  const versLivraison = etape === 'vers_livraison' || etape === 'terminee'
-  const geo = versLivraison && c.delivery_lat != null && c.delivery_lng != null
-  const lienNav = lienNavigation(appNav, geo
-    ? { lat: c.delivery_lat as number, lng: c.delivery_lng as number }
-    : { adresse: adresse ?? '' })
+  /**
+   * LE BON NUMÉRO AU BON MOMENT.
+   *
+   * Au retrait, on appelle celui qui REMET ; à la livraison, celui qui REÇOIT.
+   * Le téléphone du client facturé ne sert qu'en dernier recours : sur un
+   * déménagement de particulier, le donneur d'ordre n'est souvent ni l'un ni
+   * l'autre, et le chauffeur appelait jusqu'ici le mauvais interlocuteur pour
+   * demander un code d'immeuble.
+   */
+  const tel = (estRetrait ? c.expediteur_tel : c.destinataire_tel) ?? c.clients?.phone ?? null
+  const telEstCeluiDuClient = !(estRetrait ? c.expediteur_tel : c.destinataire_tel)
+  const lienAppel = lienTel(tel)
+  const peutEcrire = !!lienSms(tel, 'x')
 
-  const lienAppel = lienTel(c.clients?.phone)
-  const peutEcrire = !!lienSms(c.clients?.phone, 'x')
+  // Coordonnées seulement pour l'adresse de LIVRAISON : `deliveries` ne géocode
+  // qu'elle. Un point de retrait n'a que son texte.
+  const lienNav = lienNavigation(
+    appNav,
+    !estRetrait && c.delivery_lat != null && c.delivery_lng != null
+      ? { lat: c.delivery_lat, lng: c.delivery_lng }
+      : { adresse: arret.adresse },
+  )
+
+  /**
+   * Le geste à faire ICI, et nulle part ailleurs.
+   *
+   * L'arrêt de retrait ne propose « Charger » que si la course est partie ;
+   * sinon il propose « Démarrer », parce qu'on ne charge pas une course qu'on
+   * n'a pas commencée. L'arrêt de livraison ne propose « Livrer » que lorsque
+   * c'est bien l'étape en cours.
+   */
+  const action: 'demarrer' | 'charger' | 'livrer' | null =
+    arret.fait ? null
+      : estRetrait
+        ? (etape === 'a_demarrer' ? 'demarrer' : etape === 'vers_chargement' ? 'charger' : null)
+        : (etape === 'a_demarrer' ? 'demarrer' : etape === 'vers_livraison' ? 'livrer' : null)
+
+  const LIBELLE: Record<'demarrer' | 'charger' | 'livrer', string> = {
+    demarrer: 'Démarrer', charger: 'Charger', livrer: 'Livrer',
+  }
 
   return (
-    <article className={`rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3 ${
-      enCours ? '' : 'opacity-60'
+    <article className={`rounded-[var(--r-lg)] border p-4 flex flex-col gap-3 ${
+      arret.fait
+        ? 'border-[var(--border)] opacity-55'
+        : 'border-[var(--border)]'
     }`}>
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
+          <span className={`inline-flex items-center gap-1.5 text-[var(--fs-xs)] font-semibold uppercase tracking-wide ${
+            estRetrait ? 'text-[var(--warning)]' : 'text-[var(--brand)]'
+          }`}>
+            {estRetrait ? <PackageOpen size={13} /> : <Flag size={13} />}
+            {estRetrait ? 'Retrait' : 'Livraison'}
+          </span>
           <p className="font-medium text-[var(--text)] break-words">{c.clients?.name ?? '—'}</p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {/* Ordre de la journee. Masque sur une course close : la reordonner
-              ne changerait plus rien a la route qui reste a faire. */}
-          {enCours && !(premier && dernier) && (
+          {/* L'ordre se change tant qu'il reste quelque chose à faire ici. */}
+          {!arret.fait && !(premier && dernier) && (
             <>
               <button onClick={() => onDeplacer('haut')} disabled={busy || premier}
-                aria-label="Monter cette course"
-                className="p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
-                  hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
-                  disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                aria-label="Monter cet arrêt" className={flecheCls}>
                 <ArrowUp size={15} />
               </button>
               <button onClick={() => onDeplacer('bas')} disabled={busy || dernier}
-                aria-label="Descendre cette course"
-                className="p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
-                  hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
-                  disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                aria-label="Descendre cet arrêt" className={flecheCls}>
                 <ArrowDown size={15} />
               </button>
             </>
           )}
-          <Badge color={etape === 'terminee' ? 'success' : etape === 'vers_livraison' ? 'info' : 'warning'}>
-            {libelleEtat(c)}
+          <Badge color={arret.fait ? 'success' : estRetrait ? 'warning' : 'info'}>
+            {arret.fait ? 'Fait' : libelleEtat(c)}
           </Badge>
         </div>
       </div>
 
-      {/* LES DEUX ADRESSES, toujours visibles. Elles manquaient : la carte
-          n'affichait que la description, donc une course dont le libelle ne
-          mentionnait pas la ville ne disait pas ou aller. L'etape en cours est
-          mise en avant, l'autre reste lisible pour se reperer. */}
-      <div className="flex flex-col gap-1.5">
-        <LigneAdresse icone={<MapPin size={13} />} label="Retrait"
-          valeur={c.pickup_address} actif={etape === 'vers_chargement'} />
-        {/* La livraison est TOUJOURS affichée, même absente : une adresse
-            manquante doit se voir. Masquée, le chauffeur ne pouvait pas
-            distinguer « rien à faire là-bas » de « personne n'a saisi
-            l'adresse » — et il ne s'en apercevait qu'une fois sur la route. */}
-        <LigneAdresse icone={<Flag size={13} />} label="Livraison"
-          valeur={c.delivery_address} actif={versLivraison} obligatoire />
-      </div>
+      {/* L'ADRESSE DE CET ARRÊT, en grand : c'est la seule information dont on
+          a besoin devant le pare-brise. */}
+      {arret.adresse ? (
+        <p className="text-[var(--fs-sm)] text-[var(--text)] break-words">{arret.adresse}</p>
+      ) : (
+        <p className="text-[var(--fs-sm)] font-medium text-[var(--danger)]">
+          Adresse manquante — à compléter au bureau
+        </p>
+      )}
 
-      {/* La plaque du camion a saute : le chauffeur est DEDANS, il sait
-          lequel c'est. Repetee sur chaque carte, elle ne faisait qu'allonger
-          la liste. Restent la description et le poids, qui disent ce qu'il y a
-          a charger. */}
       {(c.description || c.weight_kg != null) && (
         <p className="text-[var(--fs-xs)] text-[var(--text-muted)] break-words">
           {[
@@ -650,25 +687,22 @@ function CarteCourse({
         </p>
       )}
 
-      {documents.length > 0 && <PiecesJointes documents={documents} />}
+      {documents.length > 0 && !arret.fait && <PiecesJointes documents={documents} />}
 
       <div className="flex items-center gap-2 flex-wrap">
-        {/* UN MOT par bouton. « Naviguer · livraison » disait deux choses a
-            la fois : l'etape en cours se lit deja sur la pastille et sur
-            l'adresse mise en avant juste au-dessus. */}
-        {lienNav && enCours && (
+        {lienNav && !arret.fait && (
           <a href={lienNav} target="_blank" rel="noopener noreferrer" className={boutonCls}>
             <Navigation2 size={16} /> Aller
           </a>
         )}
 
-        {lienAppel && (
+        {lienAppel && !arret.fait && (
           <a href={lienAppel} className={boutonCls}>
             <Phone size={16} /> Appeler
           </a>
         )}
 
-        {peutEcrire && (
+        {peutEcrire && !arret.fait && (
           <button type="button" onClick={() => setMessagesOuverts(o => !o)} className={boutonCls}>
             <MessageSquare size={16} /> Écrire
           </button>
@@ -676,26 +710,31 @@ function CarteCourse({
 
         {action && !panneauOuvert && (
           <Button variant="primary" className="min-h-[44px] ml-auto" disabled={busy}
-            onClick={() => (etape === 'a_demarrer' ? onDemarrer() : setPanneauOuvert(true))}>
-            {busy ? '…' : action}
+            onClick={() => (action === 'demarrer' ? onDemarrer() : setPanneauOuvert(true))}>
+            {busy ? '…' : LIBELLE[action]}
           </Button>
         )}
 
-        {etape === 'terminee' && c.pod_captured_at && (
+        {arret.fait && !estRetrait && c.pod_captured_at && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--success)]">
             <ShieldCheck size={14} /> Preuve
           </span>
         )}
       </div>
 
-      {/* Messages tout prets : on n'ecrit pas un SMS au volant. Le SMS part du
-          telephone du chauffeur, donc le client peut LUI repondre — une
-          passerelle enverrait depuis un numero inconnu et la reponse se
-          perdrait. */}
+      {/* Dire QUI on appelle quand ce n'est pas le contact de cet arrêt :
+          composer le numéro du donneur d'ordre en croyant joindre le
+          destinataire fait perdre un appel et parfois la livraison. */}
+      {(lienAppel || peutEcrire) && !arret.fait && telEstCeluiDuClient && (
+        <p className="text-[var(--fs-xs)] text-[var(--text-disabled)]">
+          Numéro du client facturé — pas de contact {estRetrait ? 'expéditeur' : 'destinataire'} renseigné.
+        </p>
+      )}
+
       {messagesOuverts && peutEcrire && (
         <div className="flex flex-wrap gap-2">
           {MESSAGES_TYPES.map(m => {
-            const lien = lienSms(c.clients?.phone, m.texte(c.clients?.name ?? null))
+            const lien = lienSms(tel, m.texte(c.clients?.name ?? null))
             if (!lien) return null
             return (
               <a key={m.cle} href={lien} onClick={() => setMessagesOuverts(false)}
@@ -710,10 +749,10 @@ function CarteCourse({
         </div>
       )}
 
-      {/* La condition sur l'etape n'est pas redondante : apres validation, le
-          parent recharge mais ne remonte PAS cette carte (meme `key`), donc
-          `panneauOuvert` resterait a true sous une course deja close. */}
-      {panneauOuvert && etape === 'vers_chargement' && (
+      {/* La condition sur l'étape n'est pas redondante : après validation, le
+          parent recharge mais ne remonte PAS cette carte (même `key`), donc
+          `panneauOuvert` resterait à true sous un arrêt déjà fait. */}
+      {panneauOuvert && estRetrait && etape === 'vers_chargement' && (
         <EtapeTerrain
           courseId={c.id} role="expediteur"
           nomConnu={c.expediteur_nom}
@@ -726,7 +765,7 @@ function CarteCourse({
         />
       )}
 
-      {panneauOuvert && etape === 'vers_livraison' && (
+      {panneauOuvert && !estRetrait && etape === 'vers_livraison' && (
         <EtapeTerrain
           courseId={c.id} role="destinataire"
           nomConnu={c.destinataire_nom ?? c.pod_recipient_name}
@@ -745,66 +784,14 @@ function CarteCourse({
   )
 }
 
+const flecheCls = `p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
+  hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
+  disabled:opacity-30 disabled:cursor-not-allowed transition-colors`
+
 const boutonCls = `inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-[var(--r-md)]
   border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)] no-underline
   hover:border-[var(--brand)] transition-colors`
 
-/**
- * Une adresse de la course.
- *
- * `actif` met en avant l'etape en cours sans masquer l'autre : le chauffeur
- * doit voir d'un coup d'oeil ou il va MAINTENANT, tout en gardant la
- * destination suivante sous les yeux pour se reperer.
- */
-function LigneAdresse({ icone, label, valeur, actif, obligatoire = false }: {
-  icone: ReactNode; label: string; valeur: string | null; actif: boolean
-  /**
-   * L'adresse est-elle attendue quoi qu'il arrive ?
-   *
-   * Un RETRAIT absent est normal — la course part du dépôt, marchandise déjà
-   * chargée — donc on ne dit rien. Une LIVRAISON absente est une anomalie : on
-   * le dit, en rouge, plutôt que de faire disparaître la ligne.
-   */
-  obligatoire?: boolean
-}) {
-  const vide = !valeur?.trim()
-  if (vide && !obligatoire) return null
-
-  if (vide) {
-    return (
-      <div className="flex items-start gap-2">
-        <span className="mt-0.5 shrink-0 text-[var(--danger)]">{icone}</span>
-        <span className="min-w-0">
-          <span className="block text-[var(--fs-xs)] text-[var(--text-disabled)] leading-tight">{label}</span>
-          <span className="block text-[var(--fs-sm)] font-medium text-[var(--danger)]">
-            Adresse manquante — à compléter au bureau
-          </span>
-        </span>
-      </div>
-    )
-  }
-
-  return (
-    <div className={`flex items-start gap-2 ${actif ? '' : 'opacity-55'}`}>
-      <span className={`mt-0.5 shrink-0 ${actif ? 'text-[var(--brand)]' : 'text-[var(--text-disabled)]'}`}>
-        {icone}
-      </span>
-      <span className="min-w-0">
-        <span className="block text-[var(--fs-xs)] text-[var(--text-disabled)] leading-tight">{label}</span>
-        <span className="block text-[var(--fs-sm)] text-[var(--text)] break-words">{valeur!.trim()}</span>
-      </span>
-    </div>
-  )
-}
-
-/**
- * Dépôt d'un ticket photographié (péage, plein, pièce détachée…).
- *
- * `capture="environment"` ouvre directement l'appareil photo arrière sur
- * téléphone, au lieu du sélecteur de fichiers : c'est le geste attendu au bord
- * de la route. Sur ordinateur, l'attribut est ignoré et on retombe sur le
- * sélecteur habituel.
- */
 function ScannerTicket() {
   const { toast } = useToast()
   const { companyId } = useProfile()

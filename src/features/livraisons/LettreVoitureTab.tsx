@@ -43,14 +43,19 @@ interface Props {
 interface LvFormState {
   expediteur_nom: string
   expediteur_siren: string
+  /** Téléphone de qui remet — celui que le chauffeur compose au retrait. */
+  expediteur_tel: string
   destinataire_nom: string
+  /** Téléphone de qui reçoit — celui que le chauffeur compose à la livraison. */
+  destinataire_tel: string
   marchandise_desc: string
   nb_colis: string        // string pendant l'édition, cast à l'enregistrement
   poids_kg_reel: string   // idem
 }
 
 const EMPTY_LV: LvFormState = {
-  expediteur_nom: '', expediteur_siren: '', destinataire_nom: '',
+  expediteur_nom: '', expediteur_siren: '', expediteur_tel: '',
+  destinataire_nom: '', destinataire_tel: '',
   marchandise_desc: '', nb_colis: '', poids_kg_reel: '',
 }
 
@@ -76,6 +81,8 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
     if (!delivery) { setForm(EMPTY_LV); setSignatures({}); setDirty(false); return }
     setForm({
       expediteur_nom:    delivery.expediteur_nom ?? '',
+      expediteur_tel:    delivery.expediteur_tel ?? '',
+      destinataire_tel:  delivery.destinataire_tel ?? '',
       expediteur_siren:  delivery.expediteur_siren ?? '',
       destinataire_nom:  delivery.destinataire_nom ?? (delivery.clients?.name ?? ''),
       marchandise_desc:  delivery.marchandise_desc ?? (delivery.description ?? ''),
@@ -136,7 +143,9 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
     const { error } = await updateDelivery(delivery.id, {
       expediteur_nom:   form.expediteur_nom.trim() || null,
       expediteur_siren: form.expediteur_siren.trim() || null,
+      expediteur_tel:   form.expediteur_tel.trim() || null,
       destinataire_nom: form.destinataire_nom.trim() || null,
+      destinataire_tel: form.destinataire_tel.trim() || null,
       marchandise_desc: form.marchandise_desc.trim() || null,
       nb_colis:         form.nb_colis ? parseInt(form.nb_colis, 10) : null,
       poids_kg_reel:    form.poids_kg_reel ? parseFloat(form.poids_kg_reel) : null,
@@ -260,9 +269,22 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
           <input value={form.expediteur_siren} onChange={e => set('expediteur_siren', e.target.value)}
             className={inputCls} placeholder="123456789" />
         </Field>
+        {/* Les deux telephones du TERRAIN. Le chauffeur compose celui de
+            l'expediteur tant que la course n'est pas chargee, celui du
+            destinataire ensuite — sans avoir a choisir. Sans eux, il appelle
+            le client FACTURE, qui sur un demenagement de particulier n'est
+            souvent ni l'un ni l'autre. */}
+        <Field label="Expéditeur — téléphone">
+          <input type="tel" value={form.expediteur_tel} onChange={e => set('expediteur_tel', e.target.value)}
+            className={inputCls} placeholder="06 12 34 56 78" />
+        </Field>
         <Field label="Destinataire — nom / raison sociale *">
           <input value={form.destinataire_nom} onChange={e => set('destinataire_nom', e.target.value)}
             className={inputCls} placeholder="Nom sur la remise" />
+        </Field>
+        <Field label="Destinataire — téléphone">
+          <input type="tel" value={form.destinataire_tel} onChange={e => set('destinataire_tel', e.target.value)}
+            className={inputCls} placeholder="06 12 34 56 78" />
         </Field>
         <Field label="Marchandise — description *">
           <input value={form.marchandise_desc} onChange={e => set('marchandise_desc', e.target.value)}

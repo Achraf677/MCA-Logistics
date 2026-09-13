@@ -26,8 +26,17 @@ export interface CourseChauffeur {
   expediteur_nom: string | null
   destinataire_nom: string | null
   pod_recipient_name: string | null
-  /** Ordre imposé dans la journée (partagé avec les tournées). */
+  /**
+   * Position de l'arrêt de LIVRAISON dans la séquence de la journée
+   * (partagée avec les tournées).
+   */
   stop_order: number | null
+  /** Position de l'arrêt de RETRAIT dans la MÊME séquence. */
+  pickup_order: number | null
+  /** Téléphone de qui remet la marchandise. Distinct du client facturé. */
+  expediteur_tel: string | null
+  /** Téléphone de qui la reçoit. */
+  destinataire_tel: string | null
   /** Tournée de rattachement, quand le bureau en a composé une. */
   tour_id: string | null
   clients: { name: string; phone: string | null } | null
