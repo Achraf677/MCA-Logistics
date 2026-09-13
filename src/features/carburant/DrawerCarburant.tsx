@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link2 } from 'lucide-react'
+import { Link2, ScanLine } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import { Button } from '../../shared/ui/Button'
@@ -12,6 +12,9 @@ import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
 import { PanneauVentilation } from '../../shared/ui/PanneauVentilation'
 import { DeleteButton } from '../../shared/ui/DeleteButton'
 import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
+import {
+  lireLibelleCharge, trouverVehicule, parseLectureOcr,
+} from '../../shared/lib/lectureFacture'
 import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, formatCents } from './carburant.logic'
 import { fromTtcAndRate, fromTtcAndManualTva } from '../../shared/lib/montants'
 import type { FuelLogRow, FuelLogInsert, FuelType, ChargePick } from './carburant.types'
@@ -24,7 +27,7 @@ interface Props {
   onSaved: () => void
 }
 
-type Lookup = { id: string; label: string }
+type Lookup = { id: string; label: string; plate?: string | null }
 
 const FUEL_TYPES: FuelType[] = ['diesel', 'essence', 'electric', 'hybrid', 'lpg']
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -61,8 +64,10 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
 
   useEffect(() => {
     if (!open) return
-    supabase.from('vehicles').select('id, label').eq('status', 'active').order('label')
-      .then(({ data }) => setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label }))))
+    // La PLAQUE est chargée : c'est elle qui relie un libellé de facture à un
+    // véhicule, et elle seule est sans ambiguïté.
+    supabase.from('vehicles').select('id, label, plate').eq('status', 'active').order('label')
+      .then(({ data }) => setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label, plate: v.plate }))))
     supabase.from('team_members').select('id, full_name').eq('active', true).order('full_name')
       .then(({ data }) => setDrivers((data ?? []).map(m => ({ id: m.id, label: m.full_name }))))
   }, [open])
@@ -112,8 +117,22 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
 
+  /**
+   * Rattacher une facture pre-remplit TOUT ce que son libelle dit.
+   *
+   * Les libelles venus de Pennylane suivent une convention constante —
+   * « TOTALENERGIES GAZOLE FG-788-FB OPEL MOVANO » — ou le produit donne le
+   * type de carburant et la plaque donne le vehicule. Les lire ne coute ni
+   * appel reseau, ni cle d'API, et ne peut rien halluciner.
+   *
+   * On n'ECRASE jamais une valeur deja saisie : la lecture propose, elle ne
+   * corrige pas quelqu'un qui vient de taper.
+   */
   const handleChargeSelect = (charge: ChargePick) => {
     setLinkedCharge(charge)
+    const { typeCarburant } = lireLibelleCharge(charge.label)
+    const vehiculeId = trouverVehicule(charge.label, vehicles)
+
     setForm(prev => ({
       ...prev,
       chargeId: charge.id,
@@ -122,7 +141,49 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
         ? (charge.montant_ttc_cts / 100).toFixed(2)
         : prev.total_ttc,
       tva_rate: String(charge.tva_rate ?? 20),
+      fuel_type: prev.fuel_type || (typeCarburant ?? ''),
+      vehicle_id: prev.vehicle_id || (vehiculeId ?? ''),
     }))
+  }
+
+  /**
+   * Lecture du JUSTIFICATIF lui-meme, pour ce que le libelle ne peut pas dire :
+   * les litres et le prix au litre.
+   *
+   * A la demande et jamais automatique : c'est un appel OCR, il prend quelques
+   * secondes et il peut se tromper. Le libelle, lui, est lu tout seul — on ne
+   * fait pas payer une attente pour une information deja certaine.
+   */
+  const [lectureEnCours, setLectureEnCours] = useState(false)
+
+  const lireLeJustificatif = async () => {
+    if (!linkedCharge) return
+    setLectureEnCours(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('lire-facture', {
+        body: { charge_id: linkedCharge.id },
+      })
+      if (error || !data?.ok) {
+        toast(data?.error ?? error?.message ?? 'Lecture indisponible', 'error')
+        return
+      }
+      const lu = parseLectureOcr(data.data)
+      if (lu.litres == null && lu.prixParLitre == null && lu.kilometrage == null) {
+        toast(lu.raison === 'aucun justificatif'
+          ? 'Cette facture n\'a pas de justificatif à lire'
+          : "Rien de lisible sur le justificatif — à saisir à la main")
+        return
+      }
+      setForm(prev => ({
+        ...prev,
+        liters: lu.litres != null ? lu.litres.toFixed(2) : prev.liters,
+        price_per_liter: lu.prixParLitre != null ? lu.prixParLitre.toFixed(3) : prev.price_per_liter,
+        mileage_km: lu.kilometrage != null ? String(Math.round(lu.kilometrage)) : prev.mileage_km,
+      }))
+      toast('Lu sur le justificatif — vérifie avant d\'enregistrer')
+    } finally {
+      setLectureEnCours(false)
+    }
   }
 
   const handleDetach = () => {
@@ -240,7 +301,24 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
 
           {/* ── Rapprochement charge ────────────────────────────────────────── */}
           {linkedCharge ? (
-            <LinkedChargeCard charge={linkedCharge} onDetach={handleDetach} />
+            <>
+              <LinkedChargeCard charge={linkedCharge} onDetach={handleDetach} />
+              {/* Le libellé est déjà lu (carburant, véhicule). Ce bouton va
+                  chercher ce qu'il ne contient pas : litres, prix au litre,
+                  kilométrage. À la demande, parce que c'est un OCR — quelques
+                  secondes, et faillible. */}
+              <button
+                type="button"
+                onClick={lireLeJustificatif}
+                disabled={lectureEnCours}
+                className="flex items-center gap-2 px-4 min-h-[44px] rounded-[var(--r-md)]
+                  border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)]
+                  hover:border-[var(--brand)] transition-colors disabled:opacity-50"
+              >
+                <ScanLine size={15} />
+                {lectureEnCours ? 'Lecture…' : 'Lire le justificatif (litres, prix/L)'}
+              </button>
+            </>
           ) : (
             <button
               type="button"
