@@ -343,6 +343,23 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
     setClientError('')
     if (!form.date)       { toast('La date est requise', 'error'); return }
 
+    // L'adresse de LIVRAISON est obligatoire, et elle ne l'etait pas.
+    //
+    // Une course sans destination n'est pas une course : le chauffeur ne peut
+    // aller nulle part, « Naviguer » n'a rien a viser, et le geocodage ne peut
+    // pas la placer sur la carte — donc les tournees l'ignorent aussi. Elle
+    // s'enregistrait pourtant sans un mot, et le manque ne se voyait qu'une
+    // fois sur le telephone, le jour de la livraison.
+    if (!form.delivery_address.trim()) {
+      toast("L'adresse de livraison est requise", 'error')
+      return
+    }
+
+    // L'adresse d'ENLEVEMENT, elle, reste facultative — et c'est delibere :
+    // une course peut partir du depot avec la marchandise deja chargee. Son
+    // absence est signalee sous le champ, pas ici : bloquer l'enregistrement
+    // casserait le cas legitime, et un toast disparaitrait avant d'etre lu.
+
     setSaving(true)
     try {
       // Filtrage extras avant persist :
@@ -596,6 +613,13 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
             onChange={v => set('pickup_address', v)}
             onSelect={s => set('pickup_address', s.address)}
           />
+          {/* Facultative, mais son absence doit se voir ICI plutôt que sur le
+              téléphone du chauffeur le jour de la course. */}
+          {!form.pickup_address.trim() && (
+            <p className="-mt-2 text-[var(--fs-xs)] text-[var(--text-muted)]">
+              Vide = la course part du dépôt, sans arrêt de retrait.
+            </p>
+          )}
           <AddressAutocomplete
             label="Adresse de livraison"
             value={form.delivery_address}

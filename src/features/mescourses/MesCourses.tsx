@@ -569,8 +569,12 @@ function CarteCourse({
       <div className="flex flex-col gap-1.5">
         <LigneAdresse icone={<MapPin size={13} />} label="Retrait"
           valeur={c.pickup_address} actif={etape === 'vers_chargement'} />
+        {/* La livraison est TOUJOURS affichée, même absente : une adresse
+            manquante doit se voir. Masquée, le chauffeur ne pouvait pas
+            distinguer « rien à faire là-bas » de « personne n'a saisi
+            l'adresse » — et il ne s'en apercevait qu'une fois sur la route. */}
         <LigneAdresse icone={<Flag size={13} />} label="Livraison"
-          valeur={c.delivery_address} actif={versLivraison} />
+          valeur={c.delivery_address} actif={versLivraison} obligatoire />
       </div>
 
       {(c.description || c.weight_kg != null || c.vehicles) && (
@@ -665,10 +669,34 @@ function CarteCourse({
  * doit voir d'un coup d'oeil ou il va MAINTENANT, tout en gardant la
  * destination suivante sous les yeux pour se reperer.
  */
-function LigneAdresse({ icone, label, valeur, actif }: {
+function LigneAdresse({ icone, label, valeur, actif, obligatoire = false }: {
   icone: ReactNode; label: string; valeur: string | null; actif: boolean
+  /**
+   * L'adresse est-elle attendue quoi qu'il arrive ?
+   *
+   * Un RETRAIT absent est normal — la course part du dépôt, marchandise déjà
+   * chargée — donc on ne dit rien. Une LIVRAISON absente est une anomalie : on
+   * le dit, en rouge, plutôt que de faire disparaître la ligne.
+   */
+  obligatoire?: boolean
 }) {
-  if (!valeur?.trim()) return null
+  const vide = !valeur?.trim()
+  if (vide && !obligatoire) return null
+
+  if (vide) {
+    return (
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 shrink-0 text-[var(--danger)]">{icone}</span>
+        <span className="min-w-0">
+          <span className="block text-[var(--fs-xs)] text-[var(--text-disabled)] leading-tight">{label}</span>
+          <span className="block text-[var(--fs-sm)] font-medium text-[var(--danger)]">
+            Adresse manquante — à compléter au bureau
+          </span>
+        </span>
+      </div>
+    )
+  }
+
   return (
     <div className={`flex items-start gap-2 ${actif ? '' : 'opacity-55'}`}>
       <span className={`mt-0.5 shrink-0 ${actif ? 'text-[var(--brand)]' : 'text-[var(--text-disabled)]'}`}>
@@ -676,7 +704,7 @@ function LigneAdresse({ icone, label, valeur, actif }: {
       </span>
       <span className="min-w-0">
         <span className="block text-[var(--fs-xs)] text-[var(--text-disabled)] leading-tight">{label}</span>
-        <span className="block text-[var(--fs-sm)] text-[var(--text)] break-words">{valeur.trim()}</span>
+        <span className="block text-[var(--fs-sm)] text-[var(--text)] break-words">{valeur!.trim()}</span>
       </span>
     </div>
   )
