@@ -5,6 +5,10 @@ export type DocumentCategory =
   | 'Véhicule'
   | 'Client'
   | 'POD'
+  // Photo prise AU CHARGEMENT, distincte de la preuve de livraison : les deux
+  // jalons d'une meme course, pris a deux endroits et devant deux personnes
+  // differentes. Les confondre rendrait impossible de savoir lequel manque.
+  | 'Chargement'
   | 'LV'
   | 'Autre'
 
