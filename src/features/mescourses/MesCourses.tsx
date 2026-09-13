@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, MapPin, Flag, PackageOpen, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, MapPin, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -19,7 +19,11 @@ import {
 // Memes regles que les tournees : ecrites une fois, testees une fois.
 import { deplacerArret, planDeChargement } from '../../shared/lib/ordreArrets'
 import { canStartTour, canFinishTour } from '../../shared/lib/tourneeStatuts'
-import { googleMapsAdresseUrl, googleMapsStopUrl, googleMapsRouteUrl } from '../../shared/lib/navigation'
+import {
+  googleMapsRouteUrl, lienNavigation, APPS_NAVIGATION, type AppNavigation,
+} from '../../shared/lib/navigation'
+import { lireAppNavigation, ecrireAppNavigation } from '../../shared/lib/prefChauffeur'
+import { MESSAGES_TYPES, lienSms, lienTel } from '../../shared/lib/messageClient'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { etapeCourante, adresseDeNavigation, libelleAction, libelleEtat } from './etapes.logic'
 import { EtapeTerrain } from './EtapeTerrain'
@@ -70,6 +74,19 @@ export function MesCourses() {
   // rend à un chauffeur que les siennes.
   const [tournees, setTournees] = useState<TourneeChauffeur[]>([])
   const [depot, setDepot] = useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
+  /**
+   * Application de navigation, lue une fois au montage depuis le telephone.
+   *
+   * `useState(initialiseur)` et pas un effet : la valeur est disponible des le
+   * premier rendu, donc les liens ne changent jamais sous le doigt du
+   * chauffeur juste apres l'affichage.
+   */
+  const [appNav, setAppNav] = useState<AppNavigation>(lireAppNavigation)
+
+  const changerAppNav = (app: AppNavigation) => {
+    setAppNav(app)
+    ecrireAppNavigation(app)
+  }
 
   const { debut, fin } = bornesPeriode(ancre, mode)
 
@@ -265,6 +282,25 @@ export function MesCourses() {
         )}
       </div>
 
+      {/* Choix de l'application de navigation. Garde sur CE telephone : c'est
+          une commodite liee a l'appareil (« ici, j'ai Waze »), pas une donnee
+          de l'entreprise. */}
+      <div className="flex items-center gap-2 mb-4">
+        <Navigation2 size={14} className="text-[var(--text-muted)] shrink-0" />
+        <div className="flex items-center gap-1 p-1 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] flex-1">
+          {APPS_NAVIGATION.map(a => (
+            <button key={a.cle} onClick={() => changerAppNav(a.cle)}
+              className={`flex-1 min-h-[36px] rounded-[var(--r-md)] text-[var(--fs-xs)] font-medium transition-colors ${
+                appNav === a.cle
+                  ? 'bg-[var(--brand)] text-white'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+              }`}>
+              {a.libelle}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <ScannerTicket />
 
       {erreur && (
@@ -312,6 +348,7 @@ export function MesCourses() {
                   dernier={i === duJour.length - 1}
                   onDeplacer={sens => deplacerCourse(jour, c.id, sens)}
                   onLivrer={destinataire => livrer(c, destinataire)}
+                  appNav={appNav}
                 />
               ))}
             </section>
@@ -362,6 +399,10 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
   // chauffeur : on la traite comme absente plutot que d'afficher un entete vide.
   const tourneeVisible = tournee && arretsDeLaTournee.length > 0 ? tournee : null
 
+  // « 3 sur 8 » plutot qu'une etiquette : c'est le seul chiffre qui interesse
+  // quelqu'un qui roule.
+  const restantes = arretsDeLaTournee.filter(c => etapeCourante(c) !== 'terminee').length
+
   const lienItineraire = arretsGeocodes.length > 0
     ? googleMapsRouteUrl(
         depotGeocode ? { lat: depot.lat as number, lng: depot.lng as number } : null,
@@ -388,13 +429,14 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
     <div className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)]">
       {tourneeVisible && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 border-b border-[var(--border)]">
+          {/* Ce qui reste : ce qu'on ne peut pas deviner en roulant. Le nom du
+              camion a saute (le chauffeur est dedans) et la pastille de statut
+              aussi — les boutons « Démarrer » / « Terminer » disent deja ou en
+              est la tournee, et mieux qu'une etiquette. */}
           <Truck size={15} className="text-[var(--brand)] shrink-0" />
           <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">
-            {arretsDeLaTournee.find(c => c.vehicles)?.vehicles?.label ?? 'Ma tournée'}
+            {restantes} sur {arretsDeLaTournee.length}
           </span>
-          <Badge color={tourneeVisible.status === 'en_cours' ? 'warning' : tourneeVisible.status === 'terminee' ? 'success' : 'info'}>
-            {LIBELLES_TOURNEE[tourneeVisible.status]}
-          </Badge>
           {tourneeVisible.total_km != null && (
             <span className="inline-flex items-center gap-1 text-[var(--fs-xs)] text-[var(--text-muted)]">
               <Route size={12} /> {Number(tourneeVisible.total_km).toFixed(1)} km
@@ -414,7 +456,7 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
             className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-[var(--r-md)]
               border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)]
               hover:border-[var(--brand)] transition-colors no-underline">
-            <ExternalLink size={15} /> Itinéraire complet
+            <ExternalLink size={16} /> Itinéraire
           </a>
         )}
 
@@ -423,13 +465,13 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
         {tourneeVisible && peutPiloter && canStartTour(tourneeVisible.status, arretsDeLaTournee.length) && (
           <Button variant="primary" className="min-h-[44px]" disabled={busy}
             onClick={() => changerStatut('en_cours')}>
-            {busy ? '…' : 'Démarrer la tournée'}
+            {busy ? '…' : 'Démarrer'}
           </Button>
         )}
         {tourneeVisible && peutPiloter && canFinishTour(tourneeVisible.status) && (
           <Button variant="primary" className="min-h-[44px]" disabled={busy}
             onClick={() => changerStatut('terminee')}>
-            {busy ? '…' : 'Terminer la tournée'}
+            {busy ? '…' : 'Terminer'}
           </Button>
         )}
       </div>
@@ -483,10 +525,6 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
   )
 }
 
-const LIBELLES_TOURNEE: Record<TourneeChauffeur['status'], string> = {
-  brouillon: 'À préparer', optimisee: 'Prête', en_cours: 'En cours', terminee: 'Terminée',
-}
-
 function formatDuree(min: number): string {
   const h = Math.floor(min / 60)
   const m = min % 60
@@ -495,7 +533,7 @@ function formatDuree(min: number): string {
 
 function CarteCourse({
   course: c, busy, documents, onDemarrer, onCharger, onLivrer,
-  premier, dernier, onDeplacer,
+  premier, dernier, onDeplacer, appNav,
 }: {
   course: CourseChauffeur
   busy: boolean
@@ -506,6 +544,8 @@ function CarteCourse({
   premier: boolean
   dernier: boolean
   onDeplacer: (sens: 'haut' | 'bas') => void
+  /** Application de navigation choisie par le chauffeur. */
+  appNav: AppNavigation
 }) {
   const etape = etapeCourante(c)
   const adresse = adresseDeNavigation(c)
@@ -515,17 +555,20 @@ function CarteCourse({
   // Le panneau de preuve ne s'ouvre qu'au moment du geste : afficher photo,
   // nom et signature en permanence noierait la liste.
   const [panneauOuvert, setPanneauOuvert] = useState(false)
+  const [messagesOuverts, setMessagesOuverts] = useState(false)
 
   // Lien de navigation : coordonnees quand on les a (plus precis), adresse
   // ecrite sinon. Seule l'adresse de LIVRAISON est geocodee dans `deliveries` ;
-  // un point de retrait n'a que son texte.
+  // un point de retrait n'a que son texte. `lienNavigation` tranche, et ouvre
+  // l'application que le chauffeur a choisie.
   const versLivraison = etape === 'vers_livraison' || etape === 'terminee'
   const geo = versLivraison && c.delivery_lat != null && c.delivery_lng != null
-  const lienNav = geo
-    ? googleMapsStopUrl(c.delivery_lat as number, c.delivery_lng as number)
-    : adresse
-      ? googleMapsAdresseUrl(adresse)
-      : null
+  const lienNav = lienNavigation(appNav, geo
+    ? { lat: c.delivery_lat as number, lng: c.delivery_lng as number }
+    : { adresse: adresse ?? '' })
+
+  const lienAppel = lienTel(c.clients?.phone)
+  const peutEcrire = !!lienSms(c.clients?.phone, 'x')
 
   return (
     <article className={`rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3 ${
@@ -577,12 +620,15 @@ function CarteCourse({
           valeur={c.delivery_address} actif={versLivraison} obligatoire />
       </div>
 
-      {(c.description || c.weight_kg != null || c.vehicles) && (
+      {/* La plaque du camion a saute : le chauffeur est DEDANS, il sait
+          lequel c'est. Repetee sur chaque carte, elle ne faisait qu'allonger
+          la liste. Restent la description et le poids, qui disent ce qu'il y a
+          a charger. */}
+      {(c.description || c.weight_kg != null) && (
         <p className="text-[var(--fs-xs)] text-[var(--text-muted)] break-words">
           {[
             c.description,
             c.weight_kg != null ? `${c.weight_kg} kg` : null,
-            c.vehicles ? `${c.vehicles.label} (${c.vehicles.plate})` : null,
           ].filter(Boolean).join(' · ')}
         </p>
       )}
@@ -590,49 +636,62 @@ function CarteCourse({
       {documents.length > 0 && <PiecesJointes documents={documents} />}
 
       <div className="flex items-center gap-2 flex-wrap">
+        {/* UN MOT par bouton. « Naviguer · livraison » disait deux choses a
+            la fois : l'etape en cours se lit deja sur la pastille et sur
+            l'adresse mise en avant juste au-dessus. */}
         {lienNav && enCours && (
-          <a href={lienNav} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-[var(--r-md)]
-              border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)]
-              hover:border-[var(--brand)] transition-colors">
-            <Navigation2 size={15} /> Naviguer
-            <span className="text-[var(--fs-xs)] text-[var(--text-disabled)]">
-              {etape === 'vers_chargement' ? '· retrait' : '· livraison'}
-            </span>
+          <a href={lienNav} target="_blank" rel="noopener noreferrer" className={boutonCls}>
+            <Navigation2 size={16} /> Aller
           </a>
         )}
 
-        {c.clients?.phone && (
-          <a href={`tel:${c.clients.phone}`}
-            className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-[var(--r-md)]
-              border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)]
-              hover:border-[var(--brand)] transition-colors">
-            <Phone size={15} /> Appeler
+        {lienAppel && (
+          <a href={lienAppel} className={boutonCls}>
+            <Phone size={16} /> Appeler
           </a>
         )}
 
-        {/* « Demarrer » agit tout de suite ; « Charger » et « Livrer » ouvrent
-            le panneau de preuve, parce qu'ils s'accompagnent d'une photo,
-            d'un nom et d'une signature. */}
+        {peutEcrire && (
+          <button type="button" onClick={() => setMessagesOuverts(o => !o)} className={boutonCls}>
+            <MessageSquare size={16} /> Écrire
+          </button>
+        )}
+
         {action && !panneauOuvert && (
           <Button variant="primary" className="min-h-[44px] ml-auto" disabled={busy}
             onClick={() => (etape === 'a_demarrer' ? onDemarrer() : setPanneauOuvert(true))}>
-            {busy ? '…' : (
-              <span className="inline-flex items-center gap-1.5">
-                {etape === 'vers_chargement' ? <PackageOpen size={15} />
-                  : etape === 'vers_livraison' ? <Check size={15} /> : null}
-                {action}
-              </span>
-            )}
+            {busy ? '…' : action}
           </Button>
         )}
 
         {etape === 'terminee' && c.pod_captured_at && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--success)]">
-            <ShieldCheck size={14} /> Preuve enregistrée
+            <ShieldCheck size={14} /> Preuve
           </span>
         )}
       </div>
+
+      {/* Messages tout prets : on n'ecrit pas un SMS au volant. Le SMS part du
+          telephone du chauffeur, donc le client peut LUI repondre — une
+          passerelle enverrait depuis un numero inconnu et la reponse se
+          perdrait. */}
+      {messagesOuverts && peutEcrire && (
+        <div className="flex flex-wrap gap-2">
+          {MESSAGES_TYPES.map(m => {
+            const lien = lienSms(c.clients?.phone, m.texte(c.clients?.name ?? null))
+            if (!lien) return null
+            return (
+              <a key={m.cle} href={lien} onClick={() => setMessagesOuverts(false)}
+                className="inline-flex items-center min-h-[40px] px-3 rounded-[var(--r-md)]
+                  border border-[var(--border-soft)] bg-[var(--bg-card)]
+                  text-[var(--fs-sm)] text-[var(--text)] no-underline
+                  hover:border-[var(--brand)] transition-colors">
+                {m.libelle}
+              </a>
+            )
+          })}
+        </div>
+      )}
 
       {/* La condition sur l'etape n'est pas redondante : apres validation, le
           parent recharge mais ne remonte PAS cette carte (meme `key`), donc
@@ -642,6 +701,8 @@ function CarteCourse({
           courseId={c.id} role="expediteur"
           nomConnu={c.expediteur_nom}
           dejaSignee={!!c.lv_signatures?.expediteur}
+          demanderTransporteur
+          transporteurDejaSigne={!!c.lv_signatures?.transporteur}
           busy={busy}
           onValider={nom => { setPanneauOuvert(false); onCharger(nom) }}
           onAnnuler={() => setPanneauOuvert(false)}
@@ -653,6 +714,11 @@ function CarteCourse({
           courseId={c.id} role="destinataire"
           nomConnu={c.destinataire_nom ?? c.pod_recipient_name}
           dejaSignee={!!c.lv_signatures?.destinataire}
+          // Le transporteur signe a la PRISE EN CHARGE. Sans etape de
+          // chargement (marchandise deja dans le camion), c'est ici — sinon
+          // la lettre de voiture resterait sans sa signature.
+          demanderTransporteur={!c.pickup_address?.trim()}
+          transporteurDejaSigne={!!c.lv_signatures?.transporteur}
           busy={busy}
           onValider={nom => { setPanneauOuvert(false); onLivrer(nom) }}
           onAnnuler={() => setPanneauOuvert(false)}
@@ -661,6 +727,10 @@ function CarteCourse({
     </article>
   )
 }
+
+const boutonCls = `inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-[var(--r-md)]
+  border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)] no-underline
+  hover:border-[var(--brand)] transition-colors`
 
 /**
  * Une adresse de la course.

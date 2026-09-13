@@ -28,11 +28,17 @@ function pin(html: string): L.DivIcon {
   return L.divIcon({ className: 'mca-tour-pin', html, iconSize: [24, 24], iconAnchor: [12, 12] })
 }
 
-function stopIcon(n: number | null, color: string): L.DivIcon {
+/**
+ * Pastille numerotee d'un arret.
+ *
+ * `n` est un RANG (1, 2, 3…), jamais `stop_order` brut : il ne peut donc plus
+ * etre absent, et la carte se lit comme un itineraire sans trou.
+ */
+function stopIcon(n: number, color: string): L.DivIcon {
   return pin(
     `<div style="width:24px;height:24px;border-radius:50%;background:${color};
       color:#fff;font:700 11px/24px system-ui;text-align:center;
-      border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">${n ?? '•'}</div>`,
+      border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">${n}</div>`,
   )
 }
 
@@ -62,6 +68,20 @@ export default function ToursOverviewMap({ tours, depot }: Props) {
     () => tours.map(t => ({
       ...t,
       line: t.geometry ? (polyline.decode(t.geometry) as [number, number][]) : [],
+      /**
+       * Arrets TRIES, et numerotes par leur RANG et non par `stop_order` brut.
+       *
+       * Deux corrections en une. D'abord l'ordre : les arrets arrivaient dans
+       * l'ordre de la requete, donc un « 3 » pouvait se dessiner avant un
+       * « 1 » — invisible sur la carte, sauf quand deux pastilles se
+       * superposent et que la mauvaise passe devant. Ensuite le numero : un
+       * arret sans `stop_order` affichait « • », et une tournee composee a la
+       * main pouvait donc montrer 1, •, 3. La carte doit se lire comme un
+       * itineraire : 1, 2, 3, sans trou.
+       */
+      stopsOrdonnes: [...t.stops]
+        .sort((a, b) => (a.stop_order ?? Number.MAX_SAFE_INTEGER) - (b.stop_order ?? Number.MAX_SAFE_INTEGER))
+        .map((s, i) => ({ ...s, rang: i + 1 })),
     })),
     [tours],
   )
@@ -70,7 +90,7 @@ export default function ToursOverviewMap({ tours, depot }: Props) {
     const pts: [number, number][] = []
     for (const t of decoded) {
       pts.push(...t.line)
-      for (const s of t.stops) pts.push([s.lat, s.lng])
+      for (const s of t.stopsOrdonnes) pts.push([s.lat, s.lng])
     }
     if (depot) pts.push([depot.lat, depot.lng])
     return pts
@@ -91,11 +111,12 @@ export default function ToursOverviewMap({ tours, depot }: Props) {
               <Polyline key={t.id} positions={t.line} pathOptions={{ color: t.color, weight: 4, opacity: 0.85 }} />
             )
           ))}
-          {decoded.flatMap(t => t.stops.map(s => (
+          {decoded.flatMap(t => t.stopsOrdonnes.map(s => (
             <Marker
-              key={`${t.id}-${s.lat},${s.lng},${s.stop_order ?? ''}`}
+              key={`${t.id}-${s.rang}`}
               position={[s.lat, s.lng]}
-              icon={stopIcon(s.stop_order, t.color)}
+              icon={stopIcon(s.rang, t.color)}
+              zIndexOffset={-s.rang}
             />
           )))}
           {depot && <Marker position={[depot.lat, depot.lng]} icon={depotIcon()} />}
