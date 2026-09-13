@@ -29,6 +29,11 @@ export async function getMesCourses(debut: string, fin: string) {
     .gte('date', debut)
     .lte('date', fin)
     .order('date', { ascending: true })
+    // `stop_order` d'abord : c'est l'ordre que le chauffeur a impose lui-meme.
+    // `nullsFirst: false` place les courses jamais ordonnees APRES celles qui
+    // le sont — sinon une nouvelle course viendrait se planter en tete d'une
+    // journee deja organisee.
+    .order('stop_order', { ascending: true, nullsFirst: false })
     .order('created_at', { ascending: true })
     .returns<CourseChauffeur[]>()
 }

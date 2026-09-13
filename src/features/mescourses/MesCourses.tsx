@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, MapPin, Flag, PackageOpen } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, MapPin, Flag, PackageOpen, ArrowUp, ArrowDown } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -12,7 +12,9 @@ import { deposerTicket } from '../../shared/lib/receiptsInbox.queries'
 import { getDownloadUrl } from '../../shared/lib/documents.queries'
 import { enregistrerPod } from '../../shared/lib/pod.queries'
 import { canTransition } from '../../shared/lib/livraisonStatuts'
-import { getMesCourses, avancerCourse, getDocumentsDesCourses, marquerCharge } from './mescourses.queries'
+import { getMesCourses, avancerCourse, getDocumentsDesCourses, marquerCharge, enregistrerOrdreCourses } from './mescourses.queries'
+// Meme regle d'ordre que les tournees : ecrite une fois, testee une fois.
+import { deplacerArret } from '../../shared/lib/ordreArrets'
 import { etapeCourante, adresseDeNavigation, libelleAction, libelleEtat } from './etapes.logic'
 import { EtapeTerrain } from './EtapeTerrain'
 import {
@@ -98,6 +100,26 @@ export function MesCourses() {
     setBusyId(null)
     if (error) { toast(error.message, 'error'); return }
     toast('Course démarrée')
+    await rechargerListe()
+  }
+
+  /**
+   * Impose l'ordre des courses de la journee.
+   *
+   * L'ordre ne vaut QUE dans une journee : deplacer une course ne doit pas la
+   * faire changer de jour. On reordonne donc le groupe du jour, puis on
+   * enregistre ce seul groupe.
+   */
+  const deplacerCourse = async (jour: string, id: string, sens: 'haut' | 'bas') => {
+    const duJour = courses.filter(c => c.date === jour).map(c => c.id)
+    const nouveau = deplacerArret(duJour, id, sens)
+    // Renvoie la liste inchangee quand le mouvement est impossible : inutile
+    // d'ecrire en base pour rien.
+    if (nouveau.every((v, i) => v === duJour[i])) return
+    setBusyId(id)
+    const { error } = await enregistrerOrdreCourses(nouveau)
+    setBusyId(null)
+    if (error) { toast(error.message, 'error'); return }
     await rechargerListe()
   }
 
@@ -236,7 +258,7 @@ export function MesCourses() {
                 </h2>
               )}
 
-              {duJour.map(c => (
+              {duJour.map((c, i) => (
                 <CarteCourse
                   key={c.id}
                   course={c}
@@ -244,6 +266,9 @@ export function MesCourses() {
                   documents={documents.get(c.id) ?? []}
                   onDemarrer={() => demarrer(c)}
                   onCharger={expediteur => charger(c, expediteur)}
+                  premier={i === 0}
+                  dernier={i === duJour.length - 1}
+                  onDeplacer={sens => deplacerCourse(jour, c.id, sens)}
                   onLivrer={destinataire => livrer(c, destinataire)}
                 />
               ))}
@@ -257,6 +282,7 @@ export function MesCourses() {
 
 function CarteCourse({
   course: c, busy, documents, onDemarrer, onCharger, onLivrer,
+  premier, dernier, onDeplacer,
 }: {
   course: CourseChauffeur
   busy: boolean
@@ -264,6 +290,9 @@ function CarteCourse({
   onDemarrer: () => void
   onCharger: (expediteur: string | null) => void
   onLivrer: (destinataire: string | null) => void
+  premier: boolean
+  dernier: boolean
+  onDeplacer: (sens: 'haut' | 'bas') => void
 }) {
   const etape = etapeCourante(c)
   const adresse = adresseDeNavigation(c)
@@ -293,9 +322,31 @@ function CarteCourse({
         <div className="min-w-0">
           <p className="font-medium text-[var(--text)] break-words">{c.clients?.name ?? '—'}</p>
         </div>
-        <Badge color={etape === 'terminee' ? 'success' : etape === 'vers_livraison' ? 'info' : 'warning'}>
-          {libelleEtat(c)}
-        </Badge>
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Ordre de la journee. Masque sur une course close : la reordonner
+              ne changerait plus rien a la route qui reste a faire. */}
+          {enCours && !(premier && dernier) && (
+            <>
+              <button onClick={() => onDeplacer('haut')} disabled={busy || premier}
+                aria-label="Monter cette course"
+                className="p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
+                  hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
+                  disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                <ArrowUp size={15} />
+              </button>
+              <button onClick={() => onDeplacer('bas')} disabled={busy || dernier}
+                aria-label="Descendre cette course"
+                className="p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
+                  hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
+                  disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                <ArrowDown size={15} />
+              </button>
+            </>
+          )}
+          <Badge color={etape === 'terminee' ? 'success' : etape === 'vers_livraison' ? 'info' : 'warning'}>
+            {libelleEtat(c)}
+          </Badge>
+        </div>
       </div>
 
       {/* LES DEUX ADRESSES, toujours visibles. Elles manquaient : la carte
