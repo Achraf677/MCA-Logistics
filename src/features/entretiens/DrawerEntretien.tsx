@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link2 } from 'lucide-react'
+import { Link2, ScanLine } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -10,6 +10,9 @@ import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
 import { PanneauVentilation } from '../../shared/ui/PanneauVentilation'
 import { VentilationFacture } from '../../shared/ui/VentilationFacture'
 import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
+import {
+  trouverVehicule, parseLectureOcr, descriptionDepuisLibelle,
+} from '../../shared/lib/lectureFacture'
 import { createMaintenance, updateMaintenance, deleteMaintenance } from './entretiens.queries'
 import { formatCents } from './entretiens.logic'
 import type { MaintenanceRow, MaintenanceInsert, MaintenanceType } from './entretiens.types'
@@ -24,7 +27,7 @@ interface Props {
   onSaved: () => void
 }
 
-type Lookup = { id: string; label: string }
+type Lookup = { id: string; label: string; plate?: string | null }
 
 
 const EMPTY_FORM = {
@@ -55,7 +58,8 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
 
   useEffect(() => {
     if (!open) return
-    supabase.from('vehicles').select('id, label').order('label')
+    // La PLAQUE relie le libellé d'une facture à un véhicule, sans ambiguïté.
+    supabase.from('vehicles').select('id, label, plate').order('label')
       .then(({ data }) => setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label }))))
     supabase.from('suppliers').select('id, name').eq('active', true).order('name')
       .then(({ data }) => setSuppliers((data ?? []).map(s => ({ id: s.id, label: s.name }))))
@@ -103,17 +107,62 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
 
+  /**
+   * Rattacher une facture pre-remplit ce que son libelle dit deja.
+   *
+   * « E.LECLERC MASTIC FG-788-FB OPEL MOVANO » nomme le vehicule par sa
+   * plaque, et la description de l'operation est le libelle lui-meme debarrasse
+   * du fournisseur. Rien de tout cela ne demande d'IA.
+   *
+   * On n'ECRASE jamais une valeur deja saisie.
+   */
   const handleChargeSelect = (charge: ChargePick) => {
     setLinkedCharge(charge)
+    const vehiculeId = trouverVehicule(charge.label, vehicles)
     setForm(prev => ({
       ...prev,
       chargeId: charge.id,
       date: charge.date,
       supplier_id: charge.supplier_id ?? prev.supplier_id,
+      vehicle_id: prev.vehicle_id || (vehiculeId ?? ''),
+      description: prev.description || descriptionDepuisLibelle(charge.label, charge.suppliers?.name),
       cost_cts_str: charge.montant_ttc_cts != null
         ? (charge.montant_ttc_cts / 100).toFixed(2)
         : prev.cost_cts_str,
     }))
+  }
+
+  /**
+   * Lecture du JUSTIFICATIF, pour le KILOMETRAGE — la seule information utile
+   * qu'une facture d'entretien porte et qu'un libelle ne dira jamais.
+   *
+   * A la demande : c'est un OCR, quelques secondes, et faillible.
+   */
+  const [lectureEnCours, setLectureEnCours] = useState(false)
+
+  const lireLeJustificatif = async () => {
+    if (!linkedCharge) return
+    setLectureEnCours(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('lire-facture', {
+        body: { charge_id: linkedCharge.id },
+      })
+      if (error || !data?.ok) {
+        toast(data?.error ?? error?.message ?? 'Lecture indisponible', 'error')
+        return
+      }
+      const lu = parseLectureOcr(data.data)
+      if (lu.kilometrage == null) {
+        toast(lu.raison === 'aucun justificatif'
+          ? 'Cette facture n\'a pas de justificatif à lire'
+          : 'Aucun kilométrage lisible sur le justificatif')
+        return
+      }
+      setForm(prev => ({ ...prev, mileage_km: String(Math.round(lu.kilometrage as number)) }))
+      toast('Kilométrage lu — vérifie avant d\'enregistrer')
+    } finally {
+      setLectureEnCours(false)
+    }
   }
 
   const handleDetach = () => {
@@ -190,7 +239,20 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
 
           {/* ── Rapprochement charge ─────────────────────────────────────────── */}
           {linkedCharge ? (
-            <LinkedChargeCard charge={linkedCharge} onDetach={handleDetach} />
+            <>
+              <LinkedChargeCard charge={linkedCharge} onDetach={handleDetach} />
+              <button
+                type="button"
+                onClick={lireLeJustificatif}
+                disabled={lectureEnCours}
+                className="flex items-center gap-2 px-4 min-h-[44px] rounded-[var(--r-md)]
+                  border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)]
+                  hover:border-[var(--brand)] transition-colors disabled:opacity-50"
+              >
+                <ScanLine size={15} />
+                {lectureEnCours ? 'Lecture…' : 'Lire le justificatif (kilométrage)'}
+              </button>
+            </>
           ) : (
             <button
               type="button"
