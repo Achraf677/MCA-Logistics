@@ -21,7 +21,8 @@ export async function getMesCourses(debut: string, fin: string) {
       'id', 'date', 'statut', 'description',
       'pickup_address', 'delivery_address',
       'delivery_lat', 'delivery_lng',
-      'pod_captured_at', 'weight_kg',
+      'pod_captured_at', 'weight_kg', 'charge_le', 'lv_signatures',
+      'expediteur_nom', 'destinataire_nom', 'pod_recipient_name', 'stop_order',
       'clients!client_id(name, phone)',
       'vehicles!vehicle_id(label, plate)',
     ].join(', '))
@@ -74,4 +75,67 @@ export async function getDocumentsDesCourses(deliveryIds: string[]) {
     .eq('entity_type', 'delivery')
     .in('entity_id', deliveryIds)
     .order('created_at', { ascending: false })
+}
+
+/**
+ * Marque le CHARGEMENT au point de retrait.
+ *
+ * Ne touche PAS `statut` : la course reste `en_cours`. Le chargement est une
+ * information de terrain, pas un état comptable — voir la migration
+ * 20260913090000 pour le raisonnement complet.
+ */
+export async function marquerCharge(id: string, expediteurNom: string | null) {
+  return supabase
+    .from('deliveries')
+    .update({
+      charge_le: new Date().toISOString(),
+      // On n'écrase pas un nom déjà saisi au bureau par une valeur vide.
+      ...(expediteurNom ? { expediteur_nom: expediteurNom } : {}),
+    })
+    .eq('id', id)
+    .select('id, charge_le')
+    .single()
+}
+
+/**
+ * Ajoute une signature à la lettre de voiture, sans écraser les autres.
+ *
+ * `lv_signatures` est un objet jsonb à trois clés (expediteur, transporteur,
+ * destinataire). On RELIT avant d'écrire : un `update` direct remplacerait
+ * l'objet entier et effacerait la signature de l'autre partie. Le format est
+ * exactement celui de la lettre de voiture du bureau — même PNG, même
+ * horodatage, même géoloc — pour qu'une signature prise sur le téléphone soit
+ * indiscernable d'une signature prise sur l'ordinateur.
+ */
+export async function ajouterSignature(
+  id: string,
+  role: 'expediteur' | 'transporteur' | 'destinataire',
+  data: { png: string; ts: string; geo?: { lat: number; lng: number; acc?: number } },
+) {
+  const { data: ligne, error: lErr } = await supabase
+    .from('deliveries').select('lv_signatures').eq('id', id).single()
+  if (lErr) return { error: lErr }
+
+  const actuelles = (ligne?.lv_signatures ?? {}) as Record<string, unknown>
+  return supabase
+    .from('deliveries')
+    .update({ lv_signatures: { ...actuelles, [role]: data } })
+    .eq('id', id)
+}
+
+/**
+ * Ordre des courses dans la journée du chauffeur.
+ *
+ * Réutilise `stop_order`, déjà porté par `deliveries` pour les tournées : une
+ * course sans tournée peut avoir un ordre, et une course en tournée garde le
+ * sien. Deux colonnes d'ordre auraient fini par se contredire.
+ */
+export async function enregistrerOrdreCourses(idsDansLOrdre: string[]) {
+  const resultats = await Promise.all(
+    idsDansLOrdre.map((id, i) =>
+      supabase.from('deliveries').update({ stop_order: i + 1 }).eq('id', id),
+    ),
+  )
+  const echec = resultats.find(r => r.error)
+  return { error: echec?.error ?? null }
 }

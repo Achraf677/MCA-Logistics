@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon } from 'lucide-react'
+import type { ReactNode } from 'react'
+import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, MapPin, Flag, PackageOpen } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -8,13 +9,15 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { deposerTicket } from '../../shared/lib/receiptsInbox.queries'
-import { uploadDocument, getDownloadUrl } from '../../shared/lib/documents.queries'
+import { getDownloadUrl } from '../../shared/lib/documents.queries'
 import { enregistrerPod } from '../../shared/lib/pod.queries'
 import { canTransition } from '../../shared/lib/livraisonStatuts'
-import { getMesCourses, avancerCourse, getDocumentsDesCourses } from './mescourses.queries'
+import { getMesCourses, avancerCourse, getDocumentsDesCourses, marquerCharge } from './mescourses.queries'
+import { etapeCourante, adresseDeNavigation, libelleAction, libelleEtat } from './etapes.logic'
+import { EtapeTerrain } from './EtapeTerrain'
 import {
   bornesPeriode, decalerPeriode, libellePeriode,
-  grouperParJour, estAFaire, resteAFaire,
+  grouperParJour, resteAFaire,
   type ModePeriode,
 } from './mescourses.logic'
 import type { CourseChauffeur, DocumentCourse } from './mescourses.types'
@@ -52,7 +55,7 @@ export function MesCourses() {
 
   const { debut, fin } = bornesPeriode(ancre, mode)
 
-  const charger = useCallback(async () => {
+  const rechargerListe = useCallback(async () => {
     setLoading(true); setErreur(null)
     const { data, error } = await getMesCourses(debut, fin)
     if (error) { setErreur(error.message); setCourses([]) }
@@ -60,7 +63,7 @@ export function MesCourses() {
     setLoading(false)
   }, [debut, fin])
 
-  useEffect(() => { charger() }, [charger])
+  useEffect(() => { rechargerListe() }, [rechargerListe])
 
   useEffect(() => {
     if (courses.length === 0) { setDocuments(new Map()); return }
@@ -95,7 +98,22 @@ export function MesCourses() {
     setBusyId(null)
     if (error) { toast(error.message, 'error'); return }
     toast('Course démarrée')
-    await charger()
+    await rechargerListe()
+  }
+
+  /**
+   * Marque le chargement au point de retrait.
+   *
+   * Ne touche PAS au statut : la course reste « en cours ». Le chargement dit
+   * seulement vers quelle adresse « Naviguer » doit pointer désormais.
+   */
+  const charger = async (c: CourseChauffeur, expediteur: string | null) => {
+    setBusyId(c.id)
+    const { error } = await marquerCharge(c.id, expediteur)
+    setBusyId(null)
+    if (error) { toast(error.message, 'error'); return }
+    toast(expediteur ? 'Chargé, preuve enregistrée' : 'Chargé')
+    await rechargerListe()
   }
 
   /**
@@ -125,7 +143,7 @@ export function MesCourses() {
     setBusyId(null)
     if (error) { toast(error.message, 'error'); return }
     toast(recipient ? 'Livrée, preuve enregistrée' : 'Course livrée')
-    await charger()
+    await rechargerListe()
   }
 
   return (
@@ -225,7 +243,8 @@ export function MesCourses() {
                   busy={busyId === c.id}
                   documents={documents.get(c.id) ?? []}
                   onDemarrer={() => demarrer(c)}
-                  onLivrer={recipient => livrer(c, recipient)}
+                  onCharger={expediteur => charger(c, expediteur)}
+                  onLivrer={destinataire => livrer(c, destinataire)}
                 />
               ))}
             </section>
@@ -237,83 +256,61 @@ export function MesCourses() {
 }
 
 function CarteCourse({
-  course: c, busy, documents, onDemarrer, onLivrer,
+  course: c, busy, documents, onDemarrer, onCharger, onLivrer,
 }: {
   course: CourseChauffeur
   busy: boolean
   documents: DocumentCourse[]
   onDemarrer: () => void
-  onLivrer: (recipient: string | null) => void
+  onCharger: (expediteur: string | null) => void
+  onLivrer: (destinataire: string | null) => void
 }) {
-  const { toast } = useToast()
-  const { companyId } = useProfile()
-  const aFaire = estAFaire(c.statut)
-  const geo = c.delivery_lat != null && c.delivery_lng != null
+  const etape = etapeCourante(c)
+  const adresse = adresseDeNavigation(c)
+  const action = libelleAction(c)
+  const enCours = etape !== 'terminee'
 
-  // Panneau de preuve, replie par defaut : il ne s'ouvre qu'au moment ou le
-  // chauffeur annonce la livraison, pour ne pas alourdir la liste.
-  const [preuveOuverte, setPreuveOuverte] = useState(false)
-  const [recipient, setRecipient]         = useState('')
-  const [photoEnvoi, setPhotoEnvoi]       = useState(false)
-  const [photoOk, setPhotoOk]             = useState(false)
-  const photoRef = useRef<HTMLInputElement>(null)
+  // Le panneau de preuve ne s'ouvre qu'au moment du geste : afficher photo,
+  // nom et signature en permanence noierait la liste.
+  const [panneauOuvert, setPanneauOuvert] = useState(false)
 
-  /**
-   * La photo part DES QU'ELLE EST PRISE, sans attendre la validation.
-   * Raison de terrain : le reseau est mauvais au bord de la route. En
-   * televersant tout de suite, l'attente se place pendant que le chauffeur
-   * tape le nom du receptionnaire, et pas apres, quand il a deja range son
-   * telephone. La photo est un document ordinaire de categorie « POD » —
-   * exactement ce que depose le tiroir Livraisons cote bureau.
-   */
-  const prendrePhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file || !companyId) return
-    if (!file.type.startsWith('image/')) {
-      toast('Seules les photos sont acceptées comme preuve', 'error'); return
-    }
-    setPhotoEnvoi(true)
-    const { error } = await uploadDocument(file, companyId, {
-      entity_type: 'delivery', entity_id: c.id, category: 'POD',
-    })
-    setPhotoEnvoi(false)
-    if (error) {
-      // Le refus le plus probable n'est pas technique : un compte chauffeur
-      // n'a pas, par defaut, le droit « Documents / creer ». Le message brut
-      // de Postgres ne dit rien d'utile a quelqu'un au bord de la route, donc
-      // on le traduit — et on rappelle que la livraison reste possible sans
-      // photo.
-      const refus = /row-level security|permission|policy/i.test(error.message)
-      toast(refus
-        ? "Ton compte n'a pas le droit d'ajouter des photos. Préviens la gestion — tu peux livrer sans preuve en attendant."
-        : error.message, 'error')
-      return
-    }
-    setPhotoOk(true)
-    toast('Photo enregistrée')
-  }
+  // Lien de navigation : coordonnees quand on les a (plus precis), adresse
+  // ecrite sinon. Seule l'adresse de LIVRAISON est geocodee dans `deliveries` ;
+  // un point de retrait n'a que son texte.
+  const versLivraison = etape === 'vers_livraison' || etape === 'terminee'
+  const geo = versLivraison && c.delivery_lat != null && c.delivery_lng != null
+  const lienNav = geo
+    ? `https://www.google.com/maps/dir/?api=1&destination=${c.delivery_lat},${c.delivery_lng}`
+    : adresse
+      ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(adresse)}`
+      : null
 
   return (
     <article className={`rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3 ${
-      aFaire ? '' : 'opacity-60'
+      enCours ? '' : 'opacity-60'
     }`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-medium text-[var(--text)] truncate">{c.clients?.name ?? '—'}</p>
-          {c.delivery_address && (
-            <p className="text-[var(--fs-sm)] text-[var(--text-muted)]">{c.delivery_address}</p>
-          )}
+          <p className="font-medium text-[var(--text)] break-words">{c.clients?.name ?? '—'}</p>
         </div>
-        <Badge color={aFaire ? 'warning' : 'success'}>
-          {c.statut === 'planifiee' ? 'À faire'
-            : c.statut === 'en_cours' ? 'En cours'
-            : 'Livrée'}
+        <Badge color={etape === 'terminee' ? 'success' : etape === 'vers_livraison' ? 'info' : 'warning'}>
+          {libelleEtat(c)}
         </Badge>
       </div>
 
+      {/* LES DEUX ADRESSES, toujours visibles. Elles manquaient : la carte
+          n'affichait que la description, donc une course dont le libelle ne
+          mentionnait pas la ville ne disait pas ou aller. L'etape en cours est
+          mise en avant, l'autre reste lisible pour se reperer. */}
+      <div className="flex flex-col gap-1.5">
+        <LigneAdresse icone={<MapPin size={13} />} label="Retrait"
+          valeur={c.pickup_address} actif={etape === 'vers_chargement'} />
+        <LigneAdresse icone={<Flag size={13} />} label="Livraison"
+          valeur={c.delivery_address} actif={versLivraison} />
+      </div>
+
       {(c.description || c.weight_kg != null || c.vehicles) && (
-        <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+        <p className="text-[var(--fs-xs)] text-[var(--text-muted)] break-words">
           {[
             c.description,
             c.weight_kg != null ? `${c.weight_kg} kg` : null,
@@ -322,100 +319,102 @@ function CarteCourse({
         </p>
       )}
 
-      {/* Pièces jointes de la course. Placées AVANT les boutons d'action : on
-          les consulte en préparant la course, pas après l'avoir close. */}
       {documents.length > 0 && <PiecesJointes documents={documents} />}
 
       <div className="flex items-center gap-2 flex-wrap">
-        {geo && (
-          <a
-            href={`https://www.google.com/maps/dir/?api=1&destination=${c.delivery_lat},${c.delivery_lng}`}
-            target="_blank" rel="noopener noreferrer"
+        {lienNav && enCours && (
+          <a href={lienNav} target="_blank" rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-[var(--r-md)]
               border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)]
-              hover:border-[var(--brand)] transition-colors"
-          >
+              hover:border-[var(--brand)] transition-colors">
             <Navigation2 size={15} /> Naviguer
+            <span className="text-[var(--fs-xs)] text-[var(--text-disabled)]">
+              {etape === 'vers_chargement' ? '· retrait' : '· livraison'}
+            </span>
           </a>
         )}
 
         {c.clients?.phone && (
-          <a
-            href={`tel:${c.clients.phone}`}
+          <a href={`tel:${c.clients.phone}`}
             className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-[var(--r-md)]
               border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)]
-              hover:border-[var(--brand)] transition-colors"
-          >
+              hover:border-[var(--brand)] transition-colors">
             <Phone size={15} /> Appeler
           </a>
         )}
 
-        {c.statut === 'planifiee' && (
-          <Button variant="primary" className="min-h-[44px] ml-auto"
-                  onClick={onDemarrer} disabled={busy}>
-            {busy ? '…' : 'Démarrer'}
+        {/* « Demarrer » agit tout de suite ; « Charger » et « Livrer » ouvrent
+            le panneau de preuve, parce qu'ils s'accompagnent d'une photo,
+            d'un nom et d'une signature. */}
+        {action && !panneauOuvert && (
+          <Button variant="primary" className="min-h-[44px] ml-auto" disabled={busy}
+            onClick={() => (etape === 'a_demarrer' ? onDemarrer() : setPanneauOuvert(true))}>
+            {busy ? '…' : (
+              <span className="inline-flex items-center gap-1.5">
+                {etape === 'vers_chargement' ? <PackageOpen size={15} />
+                  : etape === 'vers_livraison' ? <Check size={15} /> : null}
+                {action}
+              </span>
+            )}
           </Button>
         )}
 
-        {c.statut === 'en_cours' && !preuveOuverte && (
-          <Button variant="primary" className="min-h-[44px] ml-auto"
-                  onClick={() => setPreuveOuverte(true)} disabled={busy}>
-            <span className="inline-flex items-center gap-1.5"><Check size={15} /> Livré</span>
-          </Button>
-        )}
-
-        {/* Preuve deja enregistree : on le dit, sinon le chauffeur refait
-            la photo « au cas ou » a chaque ouverture de l'ecran. */}
-        {!aFaire && c.pod_captured_at && (
+        {etape === 'terminee' && c.pod_captured_at && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--success)]">
             <ShieldCheck size={14} /> Preuve enregistrée
           </span>
         )}
       </div>
 
-      {/* La condition sur le statut n'est pas redondante : apres validation, le
+      {/* La condition sur l'etape n'est pas redondante : apres validation, le
           parent recharge mais ne remonte PAS cette carte (meme `key`), donc
-          `preuveOuverte` reste a true. Sans ce garde, le panneau resterait
-          ouvert sous une course deja livree. */}
-      {preuveOuverte && c.statut === 'en_cours' && (
-        <div className="flex flex-col gap-2 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-deep)] p-3 anim-sheet">
-          <input ref={photoRef} type="file" accept="image/*" capture="environment"
-                 className="hidden" onChange={prendrePhoto} />
+          `panneauOuvert` resterait a true sous une course deja close. */}
+      {panneauOuvert && etape === 'vers_chargement' && (
+        <EtapeTerrain
+          courseId={c.id} role="expediteur"
+          nomConnu={c.expediteur_nom}
+          dejaSignee={!!c.lv_signatures?.expediteur}
+          busy={busy}
+          onValider={nom => { setPanneauOuvert(false); onCharger(nom) }}
+          onAnnuler={() => setPanneauOuvert(false)}
+        />
+      )}
 
-          <Button variant={photoOk ? 'secondary' : 'primary'} className="min-h-[44px]"
-                  onClick={() => photoRef.current?.click()} disabled={photoEnvoi || busy}>
-            <span className="inline-flex items-center gap-1.5">
-              {photoOk ? <Check size={15} /> : <Camera size={15} />}
-              {photoEnvoi ? 'Envoi…' : photoOk ? 'Photo enregistrée — en reprendre une' : 'Photo de la livraison'}
-            </span>
-          </Button>
-
-          <input
-            type="text" value={recipient} onChange={e => setRecipient(e.target.value)}
-            placeholder="Qui a réceptionné ? (nom)"
-            className="field min-h-[44px] h-auto"
-          />
-
-          <Button variant="primary" className="min-h-[44px]"
-                  onClick={() => onLivrer(recipient.trim() || null)}
-                  disabled={busy || photoEnvoi || !recipient.trim()}>
-            {busy ? '…' : 'Valider la livraison'}
-          </Button>
-
-          {/* Sortie de secours assumee : pas de receptionnaire, pas de reseau,
-              pas de temps. La course ressort ensuite dans l'alerte
-              « livraison sans justificatif » cote gestion. */}
-          <button
-            onClick={() => onLivrer(null)}
-            disabled={busy || photoEnvoi}
-            className="min-h-[44px] text-[var(--fs-xs)] text-[var(--text-muted)]
-              hover:text-[var(--text)] transition-colors disabled:opacity-40"
-          >
-            Livrer sans preuve
-          </button>
-        </div>
+      {panneauOuvert && etape === 'vers_livraison' && (
+        <EtapeTerrain
+          courseId={c.id} role="destinataire"
+          nomConnu={c.destinataire_nom ?? c.pod_recipient_name}
+          dejaSignee={!!c.lv_signatures?.destinataire}
+          busy={busy}
+          onValider={nom => { setPanneauOuvert(false); onLivrer(nom) }}
+          onAnnuler={() => setPanneauOuvert(false)}
+        />
       )}
     </article>
+  )
+}
+
+/**
+ * Une adresse de la course.
+ *
+ * `actif` met en avant l'etape en cours sans masquer l'autre : le chauffeur
+ * doit voir d'un coup d'oeil ou il va MAINTENANT, tout en gardant la
+ * destination suivante sous les yeux pour se reperer.
+ */
+function LigneAdresse({ icone, label, valeur, actif }: {
+  icone: ReactNode; label: string; valeur: string | null; actif: boolean
+}) {
+  if (!valeur?.trim()) return null
+  return (
+    <div className={`flex items-start gap-2 ${actif ? '' : 'opacity-55'}`}>
+      <span className={`mt-0.5 shrink-0 ${actif ? 'text-[var(--brand)]' : 'text-[var(--text-disabled)]'}`}>
+        {icone}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[var(--fs-xs)] text-[var(--text-disabled)] leading-tight">{label}</span>
+        <span className="block text-[var(--fs-sm)] text-[var(--text)] break-words">{valeur.trim()}</span>
+      </span>
+    </div>
   )
 }
 
