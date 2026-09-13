@@ -5,6 +5,8 @@ import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { LettreVoitureTab } from './LettreVoitureTab'
 import { ApercuFacture } from './ApercuFacture'
 import { uploadDocument, listDocuments, getDownloadUrl } from '../../shared/lib/documents.queries'
+// Regle unique « sans justificatif » — la meme que l'alerte de la cloche.
+import { isLivraisonSansJustif } from '../../shared/lib/livraisonsSansJustif'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { Drawer }      from '../../shared/ui/Drawer'
 import { Button }      from '../../shared/ui/Button'
@@ -93,6 +95,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
   const [clientError, setClientError] = useState('')
   const [transitioning, setTransitioning] = useState<DeliveryStatus | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  /** Facturation demandée sur une course sans aucune preuve de livraison. */
+  const [confirmSansPreuve, setConfirmSansPreuve] = useState(false)
   const [deleting, setDeleting] = useState(false)
   // Coordonnées géocodées de l'adresse de livraison (Photon). null = saisie libre.
   const [deliveryCoords, setDeliveryCoords] =
@@ -457,6 +461,46 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
     }
   }
 
+  /**
+   * Facture-t-on cette course sans la moindre preuve de livraison ?
+   *
+   * Les documents sont relus ICI, au moment du clic, et pas gardes en etat :
+   * le POD peut avoir ete depose depuis une autre session ou par le chauffeur
+   * sur son telephone pendant que ce tiroir etait ouvert. Une seule requete,
+   * et seulement quand on s'apprete a facturer.
+   */
+  const factureSansPreuve = async (): Promise<boolean> => {
+    if (!delivery) return false
+    const { data } = await listDocuments({ entity_type: 'delivery', entity_id: delivery.id })
+    return isLivraisonSansJustif(
+      {
+        id: delivery.id,
+        statut: delivery.statut,
+        pod_captured_at: delivery.pod_captured_at,
+        lv_pdf_url: delivery.lv_pdf_url,
+        justif_non_requis: delivery.justif_non_requis,
+      },
+      (data ?? []).map(d => ({ entity_type: d.entity_type, entity_id: d.entity_id })),
+    )
+  }
+
+  /**
+   * Facturation effective, une fois le manque de preuve assume.
+   *
+   * `marquerNonRequis` coche `justif_non_requis` AVANT la transition : c'est la
+   * meme case que dans l'onglet POD, donc l'alerte de la cloche s'eteint aussi.
+   * Deux facons de dire la meme chose auraient fini par ne plus s'accorder.
+   */
+  const facturerQuandMeme = async (marquerNonRequis: boolean) => {
+    if (!delivery) return
+    setConfirmSansPreuve(false)
+    if (marquerNonRequis) {
+      const { error } = await updateDelivery(delivery.id, { justif_non_requis: true })
+      if (error) { toast(error.message, 'error'); return }
+    }
+    await executerTransition('facturee')
+  }
+
   const handleTransition = async (to: DeliveryStatus) => {
     if (!delivery) return
 
@@ -467,8 +511,20 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
         setTab('montant')
         return
       }
+      // Dernier moment ou la preuve peut encore etre obtenue : apres, le client
+      // est loin et la facture est partie. L'alerte de la cloche arrive, elle,
+      // des semaines plus tard — trop tard pour faire quoi que ce soit.
+      setTransitioning(to)
+      const sansPreuve = await factureSansPreuve()
+      setTransitioning(null)
+      if (sansPreuve) { setConfirmSansPreuve(true); return }
     }
 
+    await executerTransition(to)
+  }
+
+  const executerTransition = async (to: DeliveryStatus) => {
+    if (!delivery) return
     setTransitioning(to)
 
     const amountForTransition = to === 'facturee' ? {
@@ -789,6 +845,21 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(false)}
         loading={deleting}
+      />
+
+      {/* Dernier rappel avant que la facture ne parte. Volontairement PAS un
+          blocage : un chauffeur n'a pas toujours quelqu'un pour signer ni du
+          réseau, et une course réelle ne doit jamais rester infacturable. */}
+      <ConfirmDialog
+        open={confirmSansPreuve}
+        title="Facturer sans preuve de livraison ?"
+        message={"Cette course n'a ni photo, ni POD signé, ni lettre de voiture archivée. "
+          + "C'est le dernier moment pour en obtenir une : après, la facture est partie et le client est loin."}
+        optionLabel="Aucun justificatif n'est attendu pour cette course"
+        confirmLabel="Facturer quand même"
+        onConfirm={facturerQuandMeme}
+        onCancel={() => setConfirmSansPreuve(false)}
+        loading={transitioning === 'facturee'}
       />
     </Drawer>
   )

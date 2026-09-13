@@ -104,7 +104,9 @@ export function Entretiens() {
       </div>
 
       {/* Où part l'argent — suit les filtres ci-dessus. */}
-      {!loading && !error && <RecapEntretiens rows={rows} />}
+      {!loading && !error && (
+        <RecapEntretiens rows={rows} ventilationParCharge={ventilationByCharge} />
+      )}
 
       {/* Contenu */}
       {loading ? (

@@ -90,17 +90,74 @@ function regrouper(
 }
 
 /**
- * Dépenses par TYPE d'entretien : pneus, freins, vidange…
+ * Ligne de ventilation d'une facture d'entretien, réduite à ce qu'il faut ici.
  *
- * C'est la question qu'on se pose devant une flotte — « où part l'argent ? ».
- * Un type absent de la base (`null`) est regroupé sous « Non typé » plutôt
- * qu'écarté : une opération sans type reste de l'argent dépensé.
+ * Même forme que `AllocationRow` (shared/lib/allocations.queries), sans les
+ * champs dont le récap n'a que faire : la feature reste étanche et le calcul
+ * pur ne dépend d'aucun type de requête.
  */
-export function recapParType(rows: MaintenanceRow[]): LigneRecap[] {
-  return regrouper(rows, r => ({
-    cle: r.type ?? '__sans_type__',
-    libelle: r.type ? MAINTENANCE_TYPE_LABELS[r.type] : 'Non typé',
-  }))
+export interface VentilationEntretien {
+  amount_cts: number
+  note: string | null
+  charge_categories: { name: string } | null
+}
+
+/**
+ * Dépenses par CATÉGORIE.
+ *
+ * Le champ « Type » (vidange, pneus, freins…) a été retiré du formulaire :
+ * c'était une liste figée que personne ne pouvait faire évoluer, et une même
+ * facture peut relever de plusieurs postes à la fois — ce qu'un type unique
+ * ne permet pas. Ce sont les CATÉGORIES, librement créées et ventilables, qui
+ * disent désormais de quoi il s'agit.
+ *
+ * Grouper sur `type` reviendrait donc à classer sur une colonne que plus
+ * personne ne peut corriger : le récap afficherait « Autre » en tête sans que
+ * quiconque puisse y changer quoi que ce soit.
+ *
+ * La règle de montant est EXACTEMENT celle du tableau juste au-dessus : quand
+ * la facture liée a été ventilée, ce sont ses sous-lignes qui comptent ;
+ * sinon, le coût de l'opération. Deux règles différentes feraient dire au
+ * récap autre chose qu'à la liste qu'il résume.
+ */
+export function recapParCategorie(
+  rows: MaintenanceRow[],
+  ventilationParCharge: Map<string, VentilationEntretien[]>,
+): LigneRecap[] {
+  const par = new Map<string, LigneRecap>()
+
+  const ajouter = (cle: string, libelle: string, montant: number, sansCout: boolean) => {
+    const l = par.get(cle) ?? { cle, libelle, total_cts: 0, nb: 0, nbSansCout: 0, part: 0 }
+    l.total_cts += montant
+    l.nb += 1
+    if (sansCout) l.nbSansCout += 1
+    par.set(cle, l)
+  }
+
+  for (const r of rows) {
+    const lignes = r.charges ? ventilationParCharge.get(r.charges.id) : undefined
+
+    if (lignes && lignes.length > 0) {
+      // Une facture ventilée compte dans PLUSIEURS catégories à la fois — c'est
+      // tout l'intérêt de la ventilation, et la raison d'être de ce récap.
+      for (const l of lignes) {
+        const nom = l.charge_categories?.name ?? l.note ?? 'Sans catégorie'
+        ajouter(nom.toLowerCase(), nom, l.amount_cts, false)
+      }
+      continue
+    }
+
+    ajouter('__sans_categorie__', 'Sans catégorie', r.cost_cts ?? 0, r.cost_cts == null)
+  }
+
+  const general = [...par.values()].reduce((s, l) => s + l.total_cts, 0)
+  return [...par.values()]
+    .map(l => ({ ...l, part: general > 0 ? l.total_cts / general : 0 }))
+    .sort((a, b) =>
+      b.total_cts - a.total_cts ||
+      b.nb - a.nb ||
+      a.libelle.localeCompare(b.libelle, 'fr'),
+    )
 }
 
 /**

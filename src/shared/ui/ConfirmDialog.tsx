@@ -13,7 +13,18 @@ interface ConfirmDialogProps {
    * (double vérification pour les actions sensibles).
    */
   acknowledgeLabel?: string
-  onConfirm: () => void
+  /**
+   * Si fourni : affiche une case à cocher SUPPLÉMENTAIRE, décochée par défaut,
+   * qui NE BLOQUE PAS la confirmation. Son état est remonté à `onConfirm`.
+   *
+   * À ne pas confondre avec `acknowledgeLabel`, qui verrouille le bouton tant
+   * qu'on n'a pas coché : celle-ci dit « au passage, applique aussi ceci »
+   * (« aucun justificatif attendu »), l'autre dit « confirme que tu as compris ».
+   * Deux intentions opposées, deux props distinctes.
+   */
+  optionLabel?: string
+  /** Reçoit l'état de `optionLabel` (false si la prop n'est pas fournie). */
+  onConfirm: (optionCochee: boolean) => void
   onCancel: () => void
   loading?: boolean
 }
@@ -29,13 +40,14 @@ interface ConfirmDialogProps {
  * inaccessibles. Le portail rend ce cas impossible, quel que soit l'appelant.
  */
 export function ConfirmDialog({
-  open, title, message, confirmLabel = 'Supprimer', acknowledgeLabel,
+  open, title, message, confirmLabel = 'Supprimer', acknowledgeLabel, optionLabel,
   onConfirm, onCancel, loading = false,
 }: ConfirmDialogProps) {
   const [acked, setAcked] = useState(false)
+  const [option, setOption] = useState(false)
 
-  // Réinitialise la case à chaque (ré)ouverture.
-  useEffect(() => { if (open) setAcked(false) }, [open])
+  // Réinitialise les cases à chaque (ré)ouverture.
+  useEffect(() => { if (open) { setAcked(false); setOption(false) } }, [open])
 
   // Fermeture sur Escape (ignorée pendant le traitement).
   useEffect(() => {
@@ -83,11 +95,24 @@ export function ConfirmDialog({
           </label>
         )}
 
+        {optionLabel && (
+          <label className="flex items-start gap-2 text-[var(--fs-sm)] text-[var(--text)] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={option}
+              onChange={e => setOption(e.target.checked)}
+              disabled={loading}
+              className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer"
+            />
+            <span>{optionLabel}</span>
+          </label>
+        )}
+
         <div className="flex items-center justify-end gap-2">
           <Button variant="secondary" onClick={onCancel} disabled={loading}>Annuler</Button>
           <Button
             variant="primary"
-            onClick={onConfirm}
+            onClick={() => onConfirm(option)}
             disabled={confirmDisabled}
             className="!bg-[var(--danger)] hover:!bg-[var(--danger)]/90"
           >
