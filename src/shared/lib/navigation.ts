@@ -92,3 +92,71 @@ export function googleMapsRouteUrl(
   if (opts.eviterPeages) url += '&avoid=tolls'
   return url
 }
+
+// ── Choix de l'application de navigation ──────────────────────────────────────
+
+/**
+ * Les trois applications que le chauffeur peut vouloir.
+ *
+ * `plans` = Plans d'Apple. Le lien `maps.apple.com` ouvre l'application native
+ * sur iPhone et un site web ailleurs — c'est le comportement documenté par
+ * Apple, et c'est pour ca qu'on ne masque pas le choix selon l'appareil :
+ * detecter l'OS depuis le navigateur se trompe (iPad en mode bureau, WebView),
+ * et un chauffeur sait mieux que nous ce qu'il a installe.
+ */
+export type AppNavigation = 'google' | 'waze' | 'plans'
+
+export const APPS_NAVIGATION: Array<{ cle: AppNavigation; libelle: string }> = [
+  { cle: 'google', libelle: 'Google Maps' },
+  { cle: 'waze',   libelle: 'Waze' },
+  { cle: 'plans',  libelle: 'Plans' },
+]
+
+/** Lien Plans (Apple) vers un point. */
+export function plansStopUrl(lat: number, lng: number): string {
+  // `dirflg=d` = itineraire en voiture. Apple n'expose aucune option
+  // d'evitement des peages sur ce schema d'URL : on ne l'invente pas.
+  return `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`
+}
+
+/** Lien Plans (Apple) vers une adresse ecrite. */
+export function plansAdresseUrl(adresse: string): string {
+  return `https://maps.apple.com/?daddr=${encodeURIComponent(adresse.trim())}&dirflg=d`
+}
+
+/** Cible de navigation : un point geocode, ou une adresse ecrite. */
+export type CibleNavigation =
+  | { lat: number; lng: number; adresse?: string | null }
+  | { lat?: null; lng?: null; adresse: string }
+
+/**
+ * LE point d'entree unique : « emmene-moi la, avec cette application ».
+ *
+ * Choisit tout seul entre coordonnees et adresse ecrite — les coordonnees
+ * quand on les a, parce qu'elles sont exactes ; l'adresse sinon, parce que
+ * `deliveries` ne geocode que la livraison et qu'un point de retrait n'a que
+ * son texte.
+ *
+ * Renvoie `null` quand il n'y a rien a viser, pour que l'ecran masque le
+ * bouton plutot que d'ouvrir une carte vide.
+ */
+export function lienNavigation(
+  app: AppNavigation,
+  cible: CibleNavigation,
+  opts: NavOptions = {},
+): string | null {
+  const lat = cible.lat
+  const lng = cible.lng
+  const adresse = cible.adresse?.trim()
+
+  if (lat != null && lng != null) {
+    if (app === 'waze')  return wazeUrl(lat, lng, opts)
+    if (app === 'plans') return plansStopUrl(lat, lng)
+    return googleMapsStopUrl(lat, lng, opts)
+  }
+
+  if (!adresse) return null
+  if (app === 'waze')  return wazeAdresseUrl(adresse)
+  if (app === 'plans') return plansAdresseUrl(adresse)
+  return googleMapsAdresseUrl(adresse, opts)
+}
