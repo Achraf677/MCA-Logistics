@@ -28,3 +28,35 @@ export async function getRentabiliteData(year: number) {
     year,
   }
 }
+
+/**
+ * Données du coût de revient par chargement (véhicule × jour).
+ *
+ * Requête distincte de `getRentabiliteData` : celle-ci a besoin du
+ * `vehicle_id` et des kilomètres, dont la vue mensuelle n'a que faire. Les
+ * charger pour tout le monde alourdirait un écran qui ne s'en sert pas.
+ */
+export async function getChargementsData(year: number) {
+  const start = `${year}-01-01`
+  const end   = `${year}-12-31`
+
+  const [courses, pleins, entretiens, vehicules] = await Promise.all([
+    supabase.from('deliveries')
+      .select('date, vehicle_id, tour_id, amount_ht_cts, km, empty_km')
+      .gte('date', start).lte('date', end).neq('statut', 'annulee'),
+    supabase.from('fuel_logs')
+      .select('total_cts')
+      .gte('date', start).lte('date', end),
+    supabase.from('vehicle_maintenances')
+      .select('cost_cts')
+      .gte('date', start).lte('date', end),
+    supabase.from('vehicles').select('id, label'),
+  ])
+
+  return {
+    courses:    courses.data ?? [],
+    pleins:     pleins.data ?? [],
+    entretiens: entretiens.data ?? [],
+    vehicules:  (vehicules.data ?? []) as { id: string; label: string }[],
+  }
+}
