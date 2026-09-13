@@ -6,6 +6,7 @@ import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { getRentabiliteData } from './rentabilite.queries'
 import { monthlyRows, annualTotals, margeRatio, type MonthRow } from './rentabilite.logic'
+import { ChargementsPanel } from './ChargementsPanel'
 
 const FR_MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 const FR_MONTHS_SHORT = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
@@ -174,6 +175,20 @@ export function Rentabilite() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Le coût de revient, chargement par chargement. Le tableau mensuel
+            dit si l'année est bonne ; celui-ci dit QUELLES journées la portent
+            et lesquelles la plombent. */}
+        <div className="glass rounded-[var(--r-xl)] overflow-hidden">
+          <div className="px-4 py-2.5 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
+            <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+              Coût de revient par chargement — un camion, une journée
+            </span>
+          </div>
+          <div className="p-4">
+            <ChargementsPanel year={year} />
+          </div>
         </div>
       </div>
     </Shell>
