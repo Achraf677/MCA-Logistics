@@ -1,30 +1,45 @@
 import { useMemo, useState } from 'react'
 import { ChevronDown, PieChart } from 'lucide-react'
-import { formatCents, recapParType, recapParVehicule, type LigneRecap } from './entretiens.logic'
+import {
+  formatCents, recapParCategorie, recapParVehicule,
+  type LigneRecap, type VentilationEntretien,
+} from './entretiens.logic'
 import type { MaintenanceRow } from './entretiens.types'
 
 /**
  * Où part l'argent de l'entretien, sur le périmètre affiché.
  *
  * Deux découpages, parce que ce sont deux questions distinctes et qu'aucune
- * ne remplace l'autre : « quel poste me coûte cher ? » (les pneus, les freins)
- * et « quel véhicule me coûte cher ? ». Un camion peut être sain avec un poste
- * qui dérape, et un poste peut être normal sauf sur un seul camion.
+ * ne remplace l'autre : « quel poste me coûte cher ? » et « quel véhicule me
+ * coûte cher ? ». Un camion peut être sain avec un poste qui dérape, et un
+ * poste peut être normal sauf sur un seul camion.
  *
  * Le récap suit les FILTRES de l'écran — période et véhicule. C'est voulu :
  * un récap qui ignorerait les filtres afficherait des totaux sans rapport avec
  * la liste juste en dessous, et on ne saurait plus lequel croire.
  */
-export function RecapEntretiens({ rows }: { rows: MaintenanceRow[] }) {
+export function RecapEntretiens({ rows, ventilationParCharge }: {
+  rows: MaintenanceRow[]
+  /** Ventilations des factures liées, déjà chargées par l'écran. */
+  ventilationParCharge: Map<string, VentilationEntretien[]>
+}) {
   // Replié par défaut : la liste des opérations reste la vue principale.
   const [ouvert, setOuvert] = useState(false)
 
-  const parType = useMemo(() => recapParType(rows), [rows])
+  const parCategorie = useMemo(
+    () => recapParCategorie(rows, ventilationParCharge),
+    [rows, ventilationParCharge],
+  )
   const parVehicule = useMemo(() => recapParVehicule(rows), [rows])
 
   if (rows.length === 0) return null
 
-  const general = parType.reduce((s, l) => s + l.total_cts, 0)
+  // Le total se lit sur « par véhicule » : chaque opération y compte une fois
+  // et une seule. Le côté catégories, lui, éclate une facture ventilée en
+  // plusieurs lignes — sommer celles-là donnerait le même total, sauf pour les
+  // opérations non ventilées comptées à leur coût. Le véhicule est la vue sans
+  // ambiguïté, donc c'est elle qui fait foi en en-tête.
+  const general = parVehicule.reduce((s, l) => s + l.total_cts, 0)
   const sansCout = rows.filter(r => r.cost_cts == null).length
 
   return (
@@ -50,7 +65,7 @@ export function RecapEntretiens({ rows }: { rows: MaintenanceRow[] }) {
 
       {ouvert && (
         <div className="px-4 pb-4 grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
-          <Colonne titre="Par type d'entretien" lignes={parType} />
+          <Colonne titre="Par catégorie" lignes={parCategorie} />
           <Colonne titre="Par véhicule" lignes={parVehicule} />
 
           {/* Dit une fois, en bas, ce que les lignes ne peuvent pas dire :

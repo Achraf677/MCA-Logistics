@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { recapParType, recapParVehicule, kpiSummary } from './entretiens.logic'
+import { recapParCategorie, recapParVehicule, kpiSummary, type VentilationEntretien } from './entretiens.logic'
 import type { MaintenanceRow } from './entretiens.types'
 
 function mk(p: Partial<MaintenanceRow>): MaintenanceRow {
@@ -15,71 +15,83 @@ function mk(p: Partial<MaintenanceRow>): MaintenanceRow {
   }
 }
 
-describe('recapParType', () => {
-  it('additionne les coûts par type', () => {
-    const lignes = recapParType([
-      mk({ id: 'a', type: 'pneus', cost_cts: 40000 }),
-      mk({ id: 'b', type: 'pneus', cost_cts: 20000 }),
-      mk({ id: 'c', type: 'vidange', cost_cts: 15000 }),
+describe('recapParCategorie', () => {
+  const VIDE = new Map<string, VentilationEntretien[]>()
+
+  function avecCharge(id: string, chargeId: string, cout: number | null = 1000): MaintenanceRow {
+    return mk({
+      id, cost_cts: cout,
+      charges: { id: chargeId, label: 'F', montant_ttc_cts: cout, receipt_url: null, pennylane_id: null },
+    })
+  }
+
+  it('éclate une facture ventilée dans toutes ses catégories', () => {
+    // C'est tout l'intérêt : une facture de station porte du lave-glace ET de
+    // l'AdBlue. Un « type » unique ne pouvait pas dire ça.
+    const v = new Map<string, VentilationEntretien[]>([
+      ['ch1', [
+        { amount_cts: 3000, note: null, charge_categories: { name: 'AdBlue' } },
+        { amount_cts: 1000, note: null, charge_categories: { name: 'Lave-glace' } },
+      ]],
     ])
-    expect(lignes.map(l => [l.libelle, l.total_cts, l.nb])).toEqual([
-      ['Pneus', 60000, 2],
-      ['Vidange', 15000, 1],
+    const lignes = recapParCategorie([avecCharge('a', 'ch1')], v)
+    expect(lignes.map(l => [l.libelle, l.total_cts])).toEqual([
+      ['AdBlue', 3000],
+      ['Lave-glace', 1000],
     ])
+  })
+
+  it('additionne une même catégorie venue de plusieurs factures', () => {
+    const v = new Map<string, VentilationEntretien[]>([
+      ['ch1', [{ amount_cts: 3000, note: null, charge_categories: { name: 'Pneus' } }]],
+      ['ch2', [{ amount_cts: 2000, note: null, charge_categories: { name: 'Pneus' } }]],
+    ])
+    const lignes = recapParCategorie([avecCharge('a', 'ch1'), avecCharge('b', 'ch2')], v)
+    expect(lignes).toHaveLength(1)
+    expect(lignes[0]).toMatchObject({ libelle: 'Pneus', total_cts: 5000, nb: 2 })
+  })
+
+  it('retombe sur le coût de l’opération quand la facture n’est pas ventilée', () => {
+    const lignes = recapParCategorie([mk({ id: 'a', cost_cts: 7000 })], VIDE)
+    expect(lignes).toEqual([
+      { cle: '__sans_categorie__', libelle: 'Sans catégorie', total_cts: 7000, nb: 1, nbSansCout: 0, part: 1 },
+    ])
+  })
+
+  it('compte à part les opérations sans coût saisi', () => {
+    const lignes = recapParCategorie([
+      mk({ id: 'a', cost_cts: null }),
+      mk({ id: 'b', cost_cts: null }),
+      mk({ id: 'c', cost_cts: 3000 }),
+    ], VIDE)
+    expect(lignes[0]).toMatchObject({ nb: 3, nbSansCout: 2, total_cts: 3000 })
+  })
+
+  it('nomme une ligne ventilée sans catégorie par sa note, sinon « Sans catégorie »', () => {
+    const v = new Map<string, VentilationEntretien[]>([
+      ['ch1', [{ amount_cts: 500, note: 'Divers atelier', charge_categories: null }]],
+      ['ch2', [{ amount_cts: 400, note: null, charge_categories: null }]],
+    ])
+    const lignes = recapParCategorie([avecCharge('a', 'ch1'), avecCharge('b', 'ch2')], v)
+    expect(lignes.map(l => l.libelle)).toEqual(['Divers atelier', 'Sans catégorie'])
   })
 
   it('classe le poste le plus cher en tête', () => {
-    const lignes = recapParType([
-      mk({ id: 'a', type: 'vidange', cost_cts: 5000 }),
-      mk({ id: 'b', type: 'freins', cost_cts: 90000 }),
+    const v = new Map<string, VentilationEntretien[]>([
+      ['ch1', [{ amount_cts: 500, note: null, charge_categories: { name: 'Petit' } }]],
+      ['ch2', [{ amount_cts: 90000, note: null, charge_categories: { name: 'Gros' } }]],
     ])
-    expect(lignes[0].libelle).toBe('Freins')
-  })
-
-  it('à coût égal, le poste le plus fréquent passe devant', () => {
-    const lignes = recapParType([
-      mk({ id: 'a', type: 'freins', cost_cts: 10000 }),
-      mk({ id: 'b', type: 'vidange', cost_cts: 5000 }),
-      mk({ id: 'c', type: 'vidange', cost_cts: 5000 }),
-    ])
-    expect(lignes.map(l => l.libelle)).toEqual(['Vidange', 'Freins'])
-  })
-
-  it('compte à part les opérations sans coût saisi, sans les écarter', () => {
-    const lignes = recapParType([
-      mk({ id: 'a', type: 'freins', cost_cts: null }),
-      mk({ id: 'b', type: 'freins', cost_cts: null }),
-      mk({ id: 'c', type: 'freins', cost_cts: 30000 }),
-    ])
-    expect(lignes).toHaveLength(1)
-    expect(lignes[0].nb).toBe(3)
-    expect(lignes[0].nbSansCout).toBe(2)
-    expect(lignes[0].total_cts).toBe(30000)
-  })
-
-  it('regroupe les opérations sans type sous « Non typé »', () => {
-    const lignes = recapParType([mk({ id: 'a', type: null, cost_cts: 7000 })])
-    expect(lignes[0].libelle).toBe('Non typé')
-    expect(lignes[0].total_cts).toBe(7000)
-  })
-
-  it('calcule la part de chaque poste dans le total', () => {
-    const lignes = recapParType([
-      mk({ id: 'a', type: 'pneus', cost_cts: 75000 }),
-      mk({ id: 'b', type: 'vidange', cost_cts: 25000 }),
-    ])
-    expect(lignes[0].part).toBeCloseTo(0.75)
-    expect(lignes[1].part).toBeCloseTo(0.25)
+    expect(recapParCategorie([avecCharge('a', 'ch1'), avecCharge('b', 'ch2')], v)[0].libelle).toBe('Gros')
   })
 
   it('total général nul : parts à 0 plutôt qu’une division par zéro', () => {
-    const lignes = recapParType([mk({ id: 'a', type: 'pneus', cost_cts: null })])
+    const lignes = recapParCategorie([mk({ id: 'a', cost_cts: null })], VIDE)
     expect(lignes[0].part).toBe(0)
     expect(Number.isNaN(lignes[0].part)).toBe(false)
   })
 
   it('liste vide → récap vide', () => {
-    expect(recapParType([])).toEqual([])
+    expect(recapParCategorie([], VIDE)).toEqual([])
   })
 })
 
