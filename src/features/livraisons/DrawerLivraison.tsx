@@ -933,6 +933,15 @@ function MontantTab({
             placeholder="0" disabled={isReadOnly} />
         </Field>
       )}
+      {/* PIEGE CONNU, non declenche a ce jour : ce champ ecrit dans
+          `deliveries.weight_kg`, une colonne qui porte partout ailleurs un
+          POIDS EN KILOGRAMMES — c'est ce que lit le plan de chargement du
+          chauffeur. Un client en tarif « palette » y mettrait donc un nombre
+          de palettes, affiche ensuite comme des kilos.
+          Aucun client n'est en mode palette aujourd'hui (28 sur 28 en
+          « manuel »), donc rien ne ment pour l'instant. Le jour ou l'un y
+          passe, il faudra une colonne `pallets` distincte : deux sens dans une
+          meme colonne finissent toujours par se croiser. */}
       {selectedClient && mode === 'palette' && (
         <Field label="Nombre de palettes *">
           <Input type="number" value={form.pallets} onChange={v => set('pallets', v)}

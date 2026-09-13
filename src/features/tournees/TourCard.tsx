@@ -6,6 +6,7 @@ import { Badge } from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { formatMoney } from '../../shared/lib/money'
+import { poidsTotal, libellePoids } from '../../shared/lib/poids'
 // Machine d'états unique (réutilisée, pas dupliquée).
 import { canTransition } from '../livraisons/livraisons.logic'
 import { markDelivered, setTourStatus, updateTour, setRetraitAFaire, enregistrerOrdreArrets } from './tournees.queries'
@@ -254,15 +255,36 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
                   Un fourgon se vide par une seule porte : ce qu'on charge en premier finit au
                   fond. Le premier client livré se charge donc en dernier, contre la porte.
                 </p>
+                {/* Le poids total, la ou on decide si tout rentre. */}
+                {libellePoids(poidsTotal(stops)) && (
+                  <p className="text-[var(--fs-sm)] font-medium text-[var(--text)] mb-2">
+                    Charge : {libellePoids(poidsTotal(stops))}
+                  </p>
+                )}
                 <ol className="flex flex-col gap-1">
                   {planDeChargement(stops).map(({ item, rangChargement, rangLivraison }) => (
-                    <li key={item.id} className="flex items-center gap-2 text-[var(--fs-sm)]">
+                    <li key={item.id} className="flex items-start gap-2 text-[var(--fs-sm)]">
                       <span className="flex items-center justify-center w-6 h-6 shrink-0 rounded-full
                         bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--fs-xs)] font-bold text-[var(--text)]">
                         {rangChargement}
                       </span>
-                      <span className="text-[var(--text)] truncate flex-1 min-w-0">{item.clients?.name ?? '—'}</span>
-                      <span className="text-[var(--fs-xs)] text-[var(--text-muted)] shrink-0">
+                      {/* Ce qu'on charge d'abord, pour qui ensuite : devant la
+                          porte du camion, la question est « c'est quoi et ca
+                          pese combien ». */}
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[var(--text)] break-words">
+                          {item.description?.trim() || 'Sans description'}
+                          {item.weight_kg != null && (
+                            <span className="ml-1.5 font-mono text-[var(--fs-xs)] text-[var(--brand)]">
+                              {item.weight_kg} kg
+                            </span>
+                          )}
+                        </span>
+                        <span className="block text-[var(--fs-xs)] text-[var(--text-muted)] truncate">
+                          {item.clients?.name ?? '—'}
+                        </span>
+                      </span>
+                      <span className="text-[var(--fs-xs)] text-[var(--text-muted)] shrink-0 pt-0.5">
                         livré n° {rangLivraison}
                       </span>
                     </li>

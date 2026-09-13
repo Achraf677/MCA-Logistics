@@ -35,7 +35,7 @@ export async function getActiveDrivers() {
 // ── Livraisons d'une journée (statuts éligibles) ──────────────────────────────
 
 const DELIVERY_COLS =
-  'id, date, statut, description, pickup_address, retrait_a_faire, delivery_address, delivery_lat, delivery_lng, tour_id, stop_order, arrival_time, delivered_at, clients!client_id(name)'
+  'id, date, statut, description, weight_kg, pickup_address, retrait_a_faire, delivery_address, delivery_lat, delivery_lng, tour_id, stop_order, arrival_time, delivered_at, clients!client_id(name)'
 
 export async function getDeliveriesForDate(companyId: string, date: string) {
   return supabase

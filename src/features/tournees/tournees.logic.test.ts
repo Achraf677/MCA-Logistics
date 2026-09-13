@@ -12,7 +12,7 @@ import type { Tour, TourDelivery } from './tournees.types'
 function mk(partial: Partial<TourDelivery>): TourDelivery {
   return {
     id: 'x', date: '2026-06-07', statut: 'planifiee',
-    description: null, pickup_address: null, retrait_a_faire: false,
+    description: null, weight_kg: null, pickup_address: null, retrait_a_faire: false,
     delivery_address: null,
     delivery_lat: null, delivery_lng: null,
     tour_id: null, stop_order: null, arrival_time: null,
