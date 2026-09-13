@@ -1,7 +1,7 @@
 // Logique pure des Tournées : éligibilité, géocodage, carburant, navigation GPS,
 // suivi des arrêts et cycle de vie. Aucune dépendance DB ni DOM.
 
-import type { Tour, TourDelivery, TourStatus, Assignment } from './tournees.types'
+import type { Tour, TourDelivery, Assignment } from './tournees.types'
 
 /** Statuts de livraison pouvant entrer dans une tournée. */
 export const ELIGIBLE_STATUSES = ['planifiee', 'en_cours', 'livree'] as const
@@ -46,94 +46,17 @@ export function canOptimize(geocodedStopCount: number, depotGeocoded: boolean): 
 }
 
 // ── Navigation GPS (liens externes) ───────────────────────────────────────────
+// Les constructeurs de liens ont demenage dans shared/lib/navigation.ts : la
+// meme raison que `deplacerArret` — « Mes courses » en a besoin aussi, et les
+// features sont etanches. Reexportes ici pour ne toucher a aucun appelant.
+export {
+  googleMapsStopUrl, wazeUrl, googleMapsAdresseUrl, wazeAdresseUrl,
+  googleMapsRouteUrl,
+} from '../../shared/lib/navigation'
+export type { GeoPoint, OrderedStop, NavOptions } from '../../shared/lib/navigation'
 
-export interface GeoPoint { lat: number; lng: number }
-export interface OrderedStop extends GeoPoint { stop_order: number | null }
-
-/**
- * Options de navigation transmises aux applications externes.
- *
- * `eviterPeages` agit UNIQUEMENT ici, dans les liens : c'est l'application du
- * chauffeur qui choisit la route réelle. L'optimisation de l'ordre des arrêts
- * ne peut pas en tenir compte — elle passe par l'endpoint /optimization
- * d'OpenRouteService, basé sur Vroom, dont le schéma n'expose aucune option
- * d'évitement (seul le `profile` du véhicule est paramétrable). Vérifié dans
- * la documentation Vroom le 11/09/2026.
- */
-// `deplacerArret` a demenage dans shared/lib/ordreArrets.ts : l'ecran
-// « Mes courses » en a besoin aussi, et les features sont etanches. Reexporte
-// ici pour ne toucher a aucun appelant existant.
-export { deplacerArret } from '../../shared/lib/ordreArrets'
-
-export interface NavOptions {
-  eviterPeages?: boolean
-}
-
-/** Lien Google Maps vers un arrêt unique (destination simple). */
-export function googleMapsStopUrl(lat: number, lng: number, opts: NavOptions = {}): string {
-  const base = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`
-  // Paramètre documenté par Google : avoid=tolls|highways|ferries.
-  return opts.eviterPeages ? `${base}&avoid=tolls` : base
-}
-
-/** Lien Waze vers un point, navigation lancée. */
-export function wazeUrl(lat: number, lng: number, opts: NavOptions = {}): string {
-  const base = `https://waze.com/ul?ll=${lat},${lng}&navigate=yes`
-  // Paramètre documenté par Waze : avoid_tolls=true.
-  return opts.eviterPeages ? `${base}&avoid_tolls=true` : base
-}
-
-/**
- * Lien Google Maps vers une adresse ECRITE, pas des coordonnees.
- *
- * Necessaire pour les adresses de RETRAIT : `deliveries` porte
- * `pickup_address` en texte mais n'a pas de `pickup_lat`/`pickup_lng` — seule
- * l'adresse de livraison est geocodee. Google resout l'adresse de son cote ;
- * c'est moins precis qu'un point, et c'est la seule option disponible.
- */
-export function googleMapsAdresseUrl(adresse: string, opts: NavOptions = {}): string {
-  const base = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(adresse.trim())}`
-  return opts.eviterPeages ? `${base}&avoid=tolls` : base
-}
-
-/**
- * Lien Waze vers une adresse ecrite.
- *
- * Waze n'a PAS de parametre d'evitement des peages sur une recherche par
- * adresse : `avoid_tolls` ne s'applique qu'a une navigation lancee sur des
- * coordonnees. On l'omet donc plutot que d'ajouter un parametre ignore qui
- * laisserait croire que la consigne est passee.
- */
-export function wazeAdresseUrl(adresse: string): string {
-  return `https://waze.com/ul?q=${encodeURIComponent(adresse.trim())}&navigate=yes`
-}
-
-
-/**
- * Itinéraire complet Google Maps : dépôt en origine ET destination,
- * arrêts géocodés en waypoints dans l'ordre stop_order. null si pas de dépôt.
- * Le séparateur waypoints « | » et les virgules sont encodés (encodeURIComponent).
- */
-export function googleMapsRouteUrl(
-  depot: GeoPoint | null,
-  stops: OrderedStop[],
-  opts: NavOptions = {},
-): string | null {
-  if (!depot) return null
-  const ordered = [...stops]
-    .filter(s => s.lat != null && s.lng != null)
-    .sort((a, b) => (a.stop_order ?? 0) - (b.stop_order ?? 0))
-  let url =
-    `https://www.google.com/maps/dir/?api=1` +
-    `&origin=${depot.lat},${depot.lng}` +
-    `&destination=${depot.lat},${depot.lng}`
-  if (ordered.length > 0) {
-    const waypoints = ordered.map(s => `${s.lat},${s.lng}`).join('|')
-    url += `&waypoints=${encodeURIComponent(waypoints)}`
-  }
-  if (opts.eviterPeages) url += '&avoid=tolls'
-  return url
-}
+// L'ordre impose a la main vit lui aussi dans shared/lib.
+export { deplacerArret, planDeChargement } from '../../shared/lib/ordreArrets'
 
 // ── Suivi des arrêts ──────────────────────────────────────────────────────────
 
@@ -153,16 +76,10 @@ export function hasUndeliveredStops(stops: Pick<TourDelivery, 'statut'>[]): bool
 }
 
 // ── Cycle de vie de la tournée ────────────────────────────────────────────────
-
-/** « Démarrer » : seulement depuis une tournée optimisée. */
-export function canStartTour(status: TourStatus): boolean {
-  return status === 'optimisee'
-}
-
-/** « Terminer » : seulement depuis une tournée en cours. */
-export function canFinishTour(status: TourStatus): boolean {
-  return status === 'en_cours'
-}
+// La règle a déménagé dans shared/lib/tourneeStatuts.ts : « Mes courses » doit
+// pouvoir démarrer et terminer la tournée depuis le téléphone, et les features
+// sont étanches. Réexportée ici pour ne toucher à aucun appelant existant.
+export { canStartTour, canFinishTour } from '../../shared/lib/tourneeStatuts'
 
 // ── Multi-véhicule (dispatch) ─────────────────────────────────────────────────
 

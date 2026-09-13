@@ -1,5 +1,5 @@
 import { supabase } from '../../app/providers'
-import type { CourseChauffeur } from './mescourses.types'
+import type { CourseChauffeur, TourneeChauffeur } from './mescourses.types'
 
 /**
  * Courses du chauffeur connecté sur une plage de dates.
@@ -22,7 +22,7 @@ export async function getMesCourses(debut: string, fin: string) {
       'pickup_address', 'delivery_address',
       'delivery_lat', 'delivery_lng',
       'pod_captured_at', 'weight_kg', 'charge_le', 'lv_signatures',
-      'expediteur_nom', 'destinataire_nom', 'pod_recipient_name', 'stop_order',
+      'expediteur_nom', 'destinataire_nom', 'pod_recipient_name', 'stop_order', 'tour_id',
       'clients!client_id(name, phone)',
       'vehicles!vehicle_id(label, plate)',
     ].join(', '))
@@ -143,4 +143,51 @@ export async function enregistrerOrdreCourses(idsDansLOrdre: string[]) {
   )
   const echec = resultats.find(r => r.error)
   return { error: echec?.error ?? null }
+}
+
+// ── La tournée, vue du chauffeur ──────────────────────────────────────────────
+
+/**
+ * Tournées de la période.
+ *
+ * Aucun filtre sur le chauffeur ici non plus : la policy `tours_select_own`
+ * ne rend à un chauffeur que les tournées dont il est le conducteur
+ * (`driver_id`), et tout à un président, un DG ou un comptable. Même règle,
+ * même endroit qu'ailleurs : la base.
+ *
+ * Pourquoi cette requête existe dans « Mes courses » alors que l'écran
+ * Tournées la fait déjà : les features sont étanches. Le bureau prépare la
+ * tournée sur grand écran ; le chauffeur, lui, a besoin sur son téléphone des
+ * deux seules choses qui servent en roulant — l'itinéraire complet et le
+ * démarrage/arrêt de la tournée.
+ */
+export async function getTourneesDuChauffeur(debut: string, fin: string) {
+  return supabase
+    .from('tours')
+    .select('id, date, status, vehicle_id, depot_lat, depot_lng, total_km, total_duration_min, eviter_peages')
+    .gte('date', debut)
+    .lte('date', fin)
+    .order('date', { ascending: true })
+    .returns<TourneeChauffeur[]>()
+}
+
+/**
+ * Démarre ou termine la tournée depuis le téléphone.
+ *
+ * ATTENTION, et l'écran doit le refléter : `tours_update_perm` exige d'être
+ * président ou d'avoir la permission `planning.tournees:update`. Un chauffeur
+ * qui ne l'a pas verra l'écriture refusée par la base. L'écran masque donc les
+ * boutons dans ce cas plutôt que de proposer un geste qui échouera.
+ */
+export async function changerStatutTournee(tourId: string, status: 'en_cours' | 'terminee') {
+  return supabase.from('tours').update({ status }).eq('id', tourId)
+}
+
+/** Dépôt de la société — origine et destination de l'itinéraire complet. */
+export async function getDepot(companyId: string) {
+  return supabase
+    .from('companies')
+    .select('depot_lat, depot_lng')
+    .eq('id', companyId)
+    .single()
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, MapPin, Flag, PackageOpen, ArrowUp, ArrowDown } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Navigation2, Check, Phone, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, MapPin, Flag, PackageOpen, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -12,9 +12,15 @@ import { deposerTicket } from '../../shared/lib/receiptsInbox.queries'
 import { getDownloadUrl } from '../../shared/lib/documents.queries'
 import { enregistrerPod } from '../../shared/lib/pod.queries'
 import { canTransition } from '../../shared/lib/livraisonStatuts'
-import { getMesCourses, avancerCourse, getDocumentsDesCourses, marquerCharge, enregistrerOrdreCourses } from './mescourses.queries'
-// Meme regle d'ordre que les tournees : ecrite une fois, testee une fois.
-import { deplacerArret } from '../../shared/lib/ordreArrets'
+import {
+  getMesCourses, avancerCourse, getDocumentsDesCourses, marquerCharge,
+  enregistrerOrdreCourses, getTourneesDuChauffeur, changerStatutTournee, getDepot,
+} from './mescourses.queries'
+// Memes regles que les tournees : ecrites une fois, testees une fois.
+import { deplacerArret, planDeChargement } from '../../shared/lib/ordreArrets'
+import { canStartTour, canFinishTour } from '../../shared/lib/tourneeStatuts'
+import { googleMapsAdresseUrl, googleMapsStopUrl, googleMapsRouteUrl } from '../../shared/lib/navigation'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 import { etapeCourante, adresseDeNavigation, libelleAction, libelleEtat } from './etapes.logic'
 import { EtapeTerrain } from './EtapeTerrain'
 import {
@@ -22,7 +28,7 @@ import {
   grouperParJour, resteAFaire,
   type ModePeriode,
 } from './mescourses.logic'
-import type { CourseChauffeur, DocumentCourse } from './mescourses.types'
+import type { CourseChauffeur, DocumentCourse, TourneeChauffeur } from './mescourses.types'
 
 const MODES: Array<{ key: ModePeriode; label: string }> = [
   { key: 'jour',    label: 'Jour' },
@@ -44,6 +50,12 @@ const aujourdhui = () => new Date().toISOString().slice(0, 10)
  */
 export function MesCourses() {
   const { toast } = useToast()
+  const { companyId } = useProfile()
+  // `tours_update_perm` exige président ou `planning.tournees:update`. On lit
+  // ici la MÊME condition que la base : proposer un bouton que la RLS
+  // refusera ensuite serait pire que ne pas l'afficher.
+  const { can } = usePermissions()
+  const peutPiloterTournee = can('planning.tournees', 'update')
   const [mode, setMode]     = useState<ModePeriode>('jour')
   const [ancre, setAncre]   = useState(aujourdhui)
   const [courses, setCourses] = useState<CourseChauffeur[]>([])
@@ -54,6 +66,10 @@ export function MesCourses() {
   // conditionnent pas l'affichage de la liste, qui doit s'afficher tout de
   // suite même si le réseau traîne sur les pièces jointes.
   const [documents, setDocuments] = useState<Map<string, DocumentCourse[]>>(new Map())
+  // Tournées de la période, indexées par date. La RLS `tours_select_own` ne
+  // rend à un chauffeur que les siennes.
+  const [tournees, setTournees] = useState<TourneeChauffeur[]>([])
+  const [depot, setDepot] = useState<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
 
   const { debut, fin } = bornesPeriode(ancre, mode)
 
@@ -66,6 +82,24 @@ export function MesCourses() {
   }, [debut, fin])
 
   useEffect(() => { rechargerListe() }, [rechargerListe])
+
+  // Les tournées se chargent à part : elles ne conditionnent pas l'affichage
+  // des courses, qui doit apparaître même si cette requête traîne ou échoue.
+  const rechargerTournees = useCallback(async () => {
+    const { data } = await getTourneesDuChauffeur(debut, fin)
+    setTournees(data ?? [])
+  }, [debut, fin])
+
+  useEffect(() => { rechargerTournees() }, [rechargerTournees])
+
+  useEffect(() => {
+    if (!companyId) return
+    let annule = false
+    getDepot(companyId).then(({ data }) => {
+      if (!annule && data) setDepot({ lat: data.depot_lat, lng: data.depot_lng })
+    })
+    return () => { annule = true }
+  }, [companyId])
 
   useEffect(() => {
     if (courses.length === 0) { setDocuments(new Map()); return }
@@ -258,6 +292,14 @@ export function MesCourses() {
                 </h2>
               )}
 
+              <BandeauJour
+                courses={duJour}
+                tournee={tournees.find(t => t.date === jour) ?? null}
+                depot={depot}
+                peutPiloter={peutPiloterTournee}
+                onTourneeChangee={rechargerTournees}
+              />
+
               {duJour.map((c, i) => (
                 <CarteCourse
                   key={c.id}
@@ -278,6 +320,177 @@ export function MesCourses() {
       )}
     </Shell>
   )
+}
+
+/**
+ * Ce qui se decide AVANT de tourner la cle : dans quel ordre remplir le camion,
+ * et — quand le bureau a compose une tournee — l'itineraire complet et le
+ * demarrage de la tournee.
+ *
+ * C'est la partie de l'ecran « Tournees » qui sert reellement au volant,
+ * ramenee ici. Le reste (repartition entre vehicules, carte d'ensemble,
+ * optimisation) reste au bureau : ce sont des gestes de preparation, sur grand
+ * ecran, pas des gestes de chauffeur.
+ */
+function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }: {
+  courses: CourseChauffeur[]
+  tournee: TourneeChauffeur | null
+  depot: { lat: number | null; lng: number | null }
+  peutPiloter: boolean
+  onTourneeChangee: () => void | Promise<void>
+}) {
+  const { toast } = useToast()
+  const [planOuvert, setPlanOuvert] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  // Le plan ne concerne que ce qui reste a livrer : replanifier le chargement
+  // autour de colis deja deposes n'aurait aucun sens.
+  const aLivrer = courses.filter(c => etapeCourante(c) !== 'terminee')
+
+  // Arrets de CETTE tournee, pas de la journee entiere. La nuance compte : un
+  // president voit ici les courses de tout le monde (policy `deliveries_select_own`,
+  // documentee dans mescourses.queries.ts), et un itineraire qui melangerait les
+  // camions ne menerait nulle part.
+  const arretsDeLaTournee = tournee ? courses.filter(c => c.tour_id === tournee.id) : []
+
+  const depotGeocode = depot.lat != null && depot.lng != null
+  const arretsGeocodes = arretsDeLaTournee
+    .filter(c => c.delivery_lat != null && c.delivery_lng != null)
+    .map((c, i) => ({ stop_order: c.stop_order ?? i + 1, lat: c.delivery_lat as number, lng: c.delivery_lng as number }))
+
+  // Une tournee dont aucun arret n'est visible ici n'a rien a dire au
+  // chauffeur : on la traite comme absente plutot que d'afficher un entete vide.
+  const tourneeVisible = tournee && arretsDeLaTournee.length > 0 ? tournee : null
+
+  const lienItineraire = arretsGeocodes.length > 0
+    ? googleMapsRouteUrl(
+        depotGeocode ? { lat: depot.lat as number, lng: depot.lng as number } : null,
+        arretsGeocodes,
+        { eviterPeages: tournee?.eviter_peages ?? false },
+      )
+    : null
+
+  const changerStatut = async (statut: 'en_cours' | 'terminee') => {
+    if (!tournee) return
+    setBusy(true)
+    const { error } = await changerStatutTournee(tournee.id, statut)
+    setBusy(false)
+    if (error) { toast(error.message, 'error'); return }
+    toast(statut === 'en_cours' ? 'Tournée démarrée' : 'Tournée terminée')
+    await onTourneeChangee()
+  }
+
+  // Rien d'utile a montrer : pas de tournee exploitable, et moins de deux
+  // colis a ranger.
+  if (arretsDeLaTournee.length === 0 && aLivrer.length < 2) return null
+
+  return (
+    <div className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)]">
+      {tourneeVisible && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 border-b border-[var(--border)]">
+          <Truck size={15} className="text-[var(--brand)] shrink-0" />
+          <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">
+            {arretsDeLaTournee.find(c => c.vehicles)?.vehicles?.label ?? 'Ma tournée'}
+          </span>
+          <Badge color={tourneeVisible.status === 'en_cours' ? 'warning' : tourneeVisible.status === 'terminee' ? 'success' : 'info'}>
+            {LIBELLES_TOURNEE[tourneeVisible.status]}
+          </Badge>
+          {tourneeVisible.total_km != null && (
+            <span className="inline-flex items-center gap-1 text-[var(--fs-xs)] text-[var(--text-muted)]">
+              <Route size={12} /> {Number(tourneeVisible.total_km).toFixed(1)} km
+            </span>
+          )}
+          {tourneeVisible.total_duration_min != null && (
+            <span className="inline-flex items-center gap-1 text-[var(--fs-xs)] text-[var(--text-muted)]">
+              <Clock size={12} /> {formatDuree(tourneeVisible.total_duration_min)}
+            </span>
+          )}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
+        {lienItineraire && (
+          <a href={lienItineraire} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-[var(--r-md)]
+              border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)]
+              hover:border-[var(--brand)] transition-colors no-underline">
+            <ExternalLink size={15} /> Itinéraire complet
+          </a>
+        )}
+
+        {/* Le pilotage de la tournee n'apparait que si la base l'autorisera :
+            meme condition que la policy `tours_update_perm`. */}
+        {tourneeVisible && peutPiloter && canStartTour(tourneeVisible.status, arretsDeLaTournee.length) && (
+          <Button variant="primary" className="min-h-[44px]" disabled={busy}
+            onClick={() => changerStatut('en_cours')}>
+            {busy ? '…' : 'Démarrer la tournée'}
+          </Button>
+        )}
+        {tourneeVisible && peutPiloter && canFinishTour(tourneeVisible.status) && (
+          <Button variant="primary" className="min-h-[44px]" disabled={busy}
+            onClick={() => changerStatut('terminee')}>
+            {busy ? '…' : 'Terminer la tournée'}
+          </Button>
+        )}
+      </div>
+
+      {/* PLAN DE CHARGEMENT — l'inverse de l'ordre de livraison. */}
+      {aLivrer.length > 1 && (
+        <>
+          <button type="button" onClick={() => setPlanOuvert(o => !o)} aria-expanded={planOuvert}
+            className="w-full flex items-center gap-2 px-3 min-h-[44px] text-left border-t border-[var(--border)]">
+            <PackageOpen size={15} className="text-[var(--brand)] shrink-0" />
+            <span className="text-[var(--fs-sm)] font-medium text-[var(--text)] flex-1">
+              Plan de chargement
+            </span>
+            <ChevronDown size={16}
+              className={`text-[var(--text-muted)] shrink-0 transition-transform ${planOuvert ? 'rotate-180' : ''}`} />
+          </button>
+          {planOuvert && (
+            <div className="px-3 pb-3">
+              <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mb-2">
+                Le camion se vide par une seule porte : ce qu'on charge en premier finit au fond.
+                Le premier client livré se charge donc en dernier, contre la porte.
+              </p>
+              <ol className="flex flex-col gap-1.5">
+                {planDeChargement(aLivrer).map(({ item, rangChargement, rangLivraison }) => (
+                  <li key={item.id} className="flex items-start gap-2">
+                    <span className="flex items-center justify-center w-6 h-6 shrink-0 rounded-full
+                      bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--fs-xs)] font-bold text-[var(--text)]">
+                      {rangChargement}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-[var(--fs-sm)] text-[var(--text)] break-words">
+                        {item.clients?.name ?? '—'}
+                      </span>
+                      {item.pickup_address && (
+                        <span className="block text-[var(--fs-xs)] text-[var(--text-muted)] break-words">
+                          à charger : {item.pickup_address}
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-[var(--fs-xs)] text-[var(--text-muted)] shrink-0 pt-1">
+                      livré n° {rangLivraison}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+const LIBELLES_TOURNEE: Record<TourneeChauffeur['status'], string> = {
+  brouillon: 'À préparer', optimisee: 'Prête', en_cours: 'En cours', terminee: 'Terminée',
+}
+
+function formatDuree(min: number): string {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return h > 0 ? `${h} h ${String(m).padStart(2, '0')}` : `${m} min`
 }
 
 function CarteCourse({
@@ -309,9 +522,9 @@ function CarteCourse({
   const versLivraison = etape === 'vers_livraison' || etape === 'terminee'
   const geo = versLivraison && c.delivery_lat != null && c.delivery_lng != null
   const lienNav = geo
-    ? `https://www.google.com/maps/dir/?api=1&destination=${c.delivery_lat},${c.delivery_lng}`
+    ? googleMapsStopUrl(c.delivery_lat as number, c.delivery_lng as number)
     : adresse
-      ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(adresse)}`
+      ? googleMapsAdresseUrl(adresse)
       : null
 
   return (

@@ -28,6 +28,8 @@ export interface CourseChauffeur {
   pod_recipient_name: string | null
   /** Ordre imposé dans la journée (partagé avec les tournées). */
   stop_order: number | null
+  /** Tournée de rattachement, quand le bureau en a composé une. */
+  tour_id: string | null
   clients: { name: string; phone: string | null } | null
   vehicles: { label: string; plate: string } | null
 }
@@ -43,4 +45,24 @@ export interface DocumentCourse {
   /** Dernier recours pour les pièces pas encore rapatriées de Google Drive. */
   drive_link: string | null
   created_at: string
+}
+
+/**
+ * La tournée du jour, réduite à ce qui sert au volant.
+ *
+ * Pas de `geometry`, pas de `notes`, pas d'`optimized_at` : un téléphone en
+ * 4G qui charge un tracé de plusieurs dizaines de kilo-octets pour ne jamais
+ * l'afficher, c'est de l'attente pure. Le tracé reste côté bureau, sur la
+ * carte d'ensemble, là où il sert.
+ */
+export interface TourneeChauffeur {
+  id: string
+  date: string
+  status: 'brouillon' | 'optimisee' | 'en_cours' | 'terminee'
+  vehicle_id: string | null
+  depot_lat: number | null
+  depot_lng: number | null
+  total_km: number | null
+  total_duration_min: number | null
+  eviter_peages: boolean
 }

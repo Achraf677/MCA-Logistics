@@ -226,3 +226,78 @@ export async function enregistrerOrdreArrets(idsDansLOrdre: string[]) {
   const echec = resultats.find(r => r.error)
   return { error: echec?.error ?? null }
 }
+
+/**
+ * Compose une tournée SANS optimisation, dans l'ordre imposé à la main.
+ *
+ * Pourquoi ce chemin existe : l'optimiseur calcule le trajet le plus court,
+ * mais il ne sait rien de ce qu'il faut charger en premier, d'un client qui
+ * n'ouvre qu'à 14 h, ou d'une palette qui doit rester accessible. Quand ces
+ * contraintes commandent, l'ordre humain doit gagner — et il ne peut pas
+ * gagner en passant par « Répartir & optimiser », qui recalcule `stop_order`
+ * et effacerait l'ordre choisi à la seconde même où il est posé.
+ *
+ * Ce qu'on N'ÉCRIT PAS, et c'est délibéré : la tournée reste `brouillon`, et
+ * distance, durée et tracé sont remis à `null`. Les laisser à leur ancienne
+ * valeur afficherait des kilomètres calculés pour un ORDRE QUI N'EXISTE PLUS —
+ * un chiffre faux est pire qu'un tiret. `canStartTour` accepte justement un
+ * brouillon qui a des arrêts, pour que la tournée reste démarrable.
+ *
+ * Refuse une tournée déjà en cours ou terminée : la recomposer sous les pieds
+ * du chauffeur qui roule est exactement ce que l'Edge Function interdit déjà
+ * de son côté (409).
+ */
+export async function repartirDansMonOrdre(params: {
+  companyId: string
+  date: string
+  vehicleId: string
+  driverId: string | null
+  depotLat: number | null
+  depotLng: number | null
+  idsDansLOrdre: string[]
+}): Promise<{ error: { message: string } | null }> {
+  const { companyId, date, vehicleId, driverId, depotLat, depotLng, idsDansLOrdre } = params
+  if (idsDansLOrdre.length === 0) return { error: { message: 'Aucune livraison sélectionnée' } }
+
+  const { data: existante, error: findErr } = await findTour(companyId, date, vehicleId)
+  if (findErr) return { error: findErr }
+
+  let tourId = existante?.id as string | undefined
+  if (existante && (existante.status === 'en_cours' || existante.status === 'terminee')) {
+    return {
+      error: {
+        message: `La tournée de ce véhicule est déjà ${existante.status === 'en_cours' ? 'en cours' : 'terminée'} — elle ne peut plus être recomposée.`,
+      },
+    }
+  }
+
+  if (!tourId) {
+    const { data: creee, error: createErr } = await createTour({
+      company_id: companyId,
+      date,
+      vehicle_id: vehicleId,
+      driver_id: driverId,
+      status: 'brouillon',
+      depot_lat: depotLat,
+      depot_lng: depotLng,
+    })
+    if (createErr) return { error: createErr }
+    tourId = creee.id as string
+  }
+
+  const { error: assignErr } = await assignDeliveries(idsDansLOrdre, tourId)
+  if (assignErr) return { error: assignErr }
+
+  const { error: ordreErr } = await enregistrerOrdreArrets(idsDansLOrdre)
+  if (ordreErr) return { error: ordreErr }
+
+  const { error: majErr } = await updateTour(tourId, {
+    driver_id: driverId,
+    status: 'brouillon',
+    total_km: null,
+    total_duration_min: null,
+    geometry: null,
+    optimized_at: null,
+  })
+  return { error: majErr }
+}

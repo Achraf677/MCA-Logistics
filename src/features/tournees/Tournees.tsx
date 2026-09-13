@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
-import { Route, Clock, MapPin, AlertTriangle } from 'lucide-react'
+import { Route, Clock, MapPin, AlertTriangle, ArrowUp, ArrowDown, PackageOpen } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
@@ -10,10 +10,11 @@ import { toLocalISO } from '../../shared/lib/dates'
 import {
   getCompanyDepot, getActiveVehicles, getActiveDrivers,
   fetchPlannableDeliveries, getDeliveriesForDate, fetchToursByDate,
-  dispatchAndOptimize,
+  dispatchAndOptimize, repartirDansMonOrdre,
 } from './tournees.queries'
 import {
   isGeocoded, canDispatch, groupToursWithStops, totalsAcrossTours,
+  deplacerArret, planDeChargement,
 } from './tournees.logic'
 import { TourCard, formatDuration } from './TourCard'
 import { colorForIndex } from './tours.palette'
@@ -44,6 +45,15 @@ export function Tournees() {
   const [allDeliveries, setAllDeliveries] = useState<TourDelivery[]>([]) // pour les arrêts des tournées
   const [tours, setTours]               = useState<Tour[]>([])
   const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set())
+  /**
+   * Ordre imposé à la main sur le pool, avant toute répartition.
+   *
+   * État LOCAL et non persisté : tant qu'une livraison n'est rattachée à
+   * aucune tournée, son `stop_order` ne veut rien dire — l'écrire en base
+   * ferait ressortir un numéro d'arrêt sur une course qui n'a pas de tournée.
+   * L'ordre devient réel au moment de la répartition, pas avant.
+   */
+  const [ordrePool, setOrdrePool] = useState<string[]>([])
 
   const [loadingList, setLoadingList] = useState(false)
   const [dispatching, setDispatching] = useState(false)
@@ -76,6 +86,7 @@ export function Tournees() {
     ])
     const poolList = (poolRes.data as unknown as TourDelivery[]) ?? []
     setPool(poolList)
+    setOrdrePool(poolList.map(d => d.id))
     setAllDeliveries((allRes.data as unknown as TourDelivery[]) ?? [])
     setTours((toursRes.data as unknown as Tour[]) ?? [])
 
@@ -141,12 +152,46 @@ export function Tournees() {
     [selectedVehicles, driverByVehicle],
   )
 
+  /**
+   * Le pool dans l'ordre choisi.
+   *
+   * Les livraisons absentes de `ordrePool` sont placées à la fin plutôt que
+   * masquées : `pool` et `ordrePool` sont deux `setState` distincts, et une
+   * course qui disparaîtrait le temps d'un rendu serait un bug bien plus
+   * déroutant qu'une course en fin de liste.
+   */
+  const poolOrdonne = useMemo(() => {
+    const rang = new Map(ordrePool.map((id, i) => [id, i]))
+    return [...pool].sort(
+      (a, b) => (rang.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rang.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    )
+  }, [pool, ordrePool])
+
   const selectedDeliveries = useMemo(
-    () => pool.filter(d => selectedIds.has(d.id)),
-    [pool, selectedIds],
+    () => poolOrdonne.filter(d => selectedIds.has(d.id)),
+    [poolOrdonne, selectedIds],
   )
 
+  /** Ce qui partira réellement en tournée, dans l'ordre affiché à l'écran. */
+  const idsSelectionnesOrdonnes = useMemo(
+    () => selectedDeliveries.map(d => d.id),
+    [selectedDeliveries],
+  )
+
+  /**
+   * Plan de chargement : l'inverse de l'ordre de livraison. Un fourgon se
+   * charge par une seule porte, donc le premier client livré doit être chargé
+   * en dernier, contre la porte.
+   */
+  const chargement = useMemo(() => planDeChargement(selectedDeliveries), [selectedDeliveries])
+
   const dispatchReady = canDispatch(assignments, selectedDeliveries)
+
+  // « Répartir dans mon ordre » n'a de sens que sur UN véhicule : répartir sur
+  // plusieurs, c'est exactement le travail de l'optimiseur, et un ordre unique
+  // ne dit pas qui prend quoi.
+  const vehiculeUnique = selectedVehicles.size === 1 ? [...selectedVehicles][0] : null
+  const ordreReady = vehiculeUnique != null && idsSelectionnesOrdonnes.length > 0
 
   const grouped = useMemo(() => groupToursWithStops(tours, allDeliveries), [tours, allDeliveries])
   const totals  = useMemo(() => totalsAcrossTours(tours), [tours])
@@ -187,11 +232,46 @@ export function Tournees() {
     return next
   })
 
+  /**
+   * Monte ou descend une livraison dans le pool.
+   *
+   * Purement local : rien n'est écrit tant que la répartition n'a pas eu lieu.
+   */
+  const deplacerDansPool = (id: string, sens: 'haut' | 'bas') => {
+    setOrdrePool(prev => deplacerArret(prev.length > 0 ? prev : pool.map(d => d.id), id, sens))
+  }
+
+  /**
+   * Répartit sur UN véhicule en gardant l'ordre choisi, sans optimisation.
+   *
+   * L'ordre humain et l'optimisation ne peuvent pas gagner en même temps : la
+   * seconde recalcule `stop_order` et effacerait le premier. Deux boutons, deux
+   * promesses distinctes, plutôt qu'un bouton qui trahit l'une des deux.
+   */
+  const handleRepartirDansMonOrdre = async () => {
+    if (!companyId || !vehiculeUnique || !ordreReady) return
+    setDispatching(true)
+    const { error } = await repartirDansMonOrdre({
+      companyId,
+      date,
+      vehicleId: vehiculeUnique,
+      driverId: driverByVehicle[vehiculeUnique] || null,
+      depotLat: depot.lat,
+      depotLng: depot.lng,
+      idsDansLOrdre: idsSelectionnesOrdonnes,
+    })
+    setDispatching(false)
+    if (error) { toast(error.message, 'error'); return }
+    setUnassignedCount(0)
+    toast(`${idsSelectionnesOrdonnes.length} livraison(s) rangée(s) dans ton ordre`)
+    await loadBoard()
+  }
+
   const handleDispatch = async () => {
     if (!dispatchReady) return
     setDispatching(true)
     try {
-      const data = await dispatchAndOptimize(date, assignments, [...selectedIds])
+      const data = await dispatchAndOptimize(date, assignments, idsSelectionnesOrdonnes)
       const un = data.unassigned?.length ?? 0
       setUnassignedCount(un)
       toast(un > 0
@@ -307,42 +387,115 @@ export function Tournees() {
               Aucune livraison planifiée pour cette date.
             </p>
           ) : (
-            <ul className="flex flex-col divide-y divide-[var(--border)]">
-              {pool.map(d => {
-                const geo = isGeocoded(d)
-                return (
-                  <li key={d.id}>
-                    <label className={`flex items-center gap-3 py-2.5 ${geo ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
-                      <input type="checkbox" checked={selectedIds.has(d.id)} disabled={!geo}
-                        onChange={() => toggleDelivery(d.id)}
-                        className="w-4 h-4 rounded accent-[var(--brand)] shrink-0" />
-                      <div className="flex flex-col min-w-0 flex-1">
-                        <span className="text-[var(--fs-sm)] text-[var(--text)] truncate">
-                          {d.clients?.name ?? '—'}
-                          {d.description && <span className="text-[var(--text-muted)]"> · {d.description}</span>}
+            <>
+              {/* L'ordre se lit ici, et il compte : c'est celui qui deviendra
+                  l'ordre des arrêts si tu répartis sans optimiser. */}
+              <p className="text-[var(--fs-xs)] text-[var(--text-muted)] pb-2">
+                Range-les dans l'ordre où tu veux LIVRER. Le plan de chargement en dessous
+                s'en déduit tout seul.
+              </p>
+              <ul className="flex flex-col divide-y divide-[var(--border)]">
+                {poolOrdonne.map((d, i) => {
+                  const geo = isGeocoded(d)
+                  const coche = selectedIds.has(d.id)
+                  // Numéro de livraison : compté parmi les cochées seulement,
+                  // parce que seules celles-là partiront en tournée.
+                  const rang = coche ? idsSelectionnesOrdonnes.indexOf(d.id) + 1 : null
+                  return (
+                    <li key={d.id} className="flex items-center gap-2 py-2.5">
+                      <label className={`flex items-center gap-3 flex-1 min-w-0 ${geo ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+                        <input type="checkbox" checked={coche} disabled={!geo}
+                          onChange={() => toggleDelivery(d.id)}
+                          className="w-4 h-4 rounded accent-[var(--brand)] shrink-0" />
+                        <span className={`flex items-center justify-center w-6 h-6 shrink-0 rounded-full text-[var(--fs-xs)] font-bold
+                          ${rang ? 'bg-[var(--brand-soft)] text-[var(--brand)]' : 'text-[var(--text-disabled)]'}`}>
+                          {rang ?? '–'}
                         </span>
-                        <span className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">{d.delivery_address ?? '—'}</span>
-                      </div>
-                      {geo
-                        ? <MapPin size={14} className="text-[var(--success)] shrink-0" />
-                        : <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] shrink-0">adresse à géocoder</span>}
-                    </label>
-                  </li>
-                )
-              })}
-            </ul>
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="text-[var(--fs-sm)] text-[var(--text)] truncate">
+                            {d.clients?.name ?? '—'}
+                            {d.description && <span className="text-[var(--text-muted)]"> · {d.description}</span>}
+                          </span>
+                          <span className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">{d.delivery_address ?? '—'}</span>
+                          {d.pickup_address && (
+                            <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] truncate">
+                              retrait : {d.pickup_address}
+                            </span>
+                          )}
+                        </div>
+                        {geo
+                          ? <MapPin size={14} className="text-[var(--success)] shrink-0" />
+                          : <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] shrink-0">adresse à géocoder</span>}
+                      </label>
+                      <span className="flex items-center shrink-0">
+                        <button type="button" onClick={() => deplacerDansPool(d.id, 'haut')}
+                          disabled={i === 0} aria-label="Monter cette livraison"
+                          className={flecheCls}><ArrowUp size={15} /></button>
+                        <button type="button" onClick={() => deplacerDansPool(d.id, 'bas')}
+                          disabled={i === poolOrdonne.length - 1} aria-label="Descendre cette livraison"
+                          className={flecheCls}><ArrowDown size={15} /></button>
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+
+              {/* PLAN DE CHARGEMENT — l'inverse de l'ordre de livraison. */}
+              {chargement.length > 1 && (
+                <div className="mt-3 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] p-3">
+                  <div className="flex items-center gap-1.5 mb-1 text-[var(--brand)]">
+                    <PackageOpen size={15} />
+                    <span className="text-[var(--fs-xs)] font-semibold uppercase tracking-wide">
+                      Plan de chargement
+                    </span>
+                  </div>
+                  <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mb-2">
+                    Un fourgon se vide par une seule porte : ce qu'on charge en premier finit au
+                    fond. Donc le premier client livré se charge en dernier.
+                  </p>
+                  <ol className="flex flex-col gap-1">
+                    {chargement.map(({ item, rangChargement, rangLivraison }) => (
+                      <li key={item.id} className="flex items-center gap-2 text-[var(--fs-sm)]">
+                        <span className="flex items-center justify-center w-6 h-6 shrink-0 rounded-full
+                          bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--fs-xs)] font-bold text-[var(--text)]">
+                          {rangChargement}
+                        </span>
+                        <span className="text-[var(--text)] truncate flex-1 min-w-0">{item.clients?.name ?? '—'}</span>
+                        <span className="text-[var(--fs-xs)] text-[var(--text-muted)] shrink-0">
+                          livré n° {rangLivraison}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+            </>
           )}
 
-          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[var(--border)] mt-2">
+          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[var(--border)] mt-3">
             <Button variant="primary" className="min-h-[44px]" onClick={handleDispatch}
               disabled={dispatching || !dispatchReady}
               title={!dispatchReady ? 'Coche au moins un véhicule et une livraison géocodée' : undefined}>
               {dispatching ? 'Répartition…' : 'Répartir & optimiser'}
             </Button>
+            <Button variant="secondary" className="min-h-[44px]" onClick={handleRepartirDansMonOrdre}
+              disabled={dispatching || !ordreReady}
+              title={!ordreReady
+                ? 'Coche UN seul véhicule et au moins une livraison'
+                : undefined}>
+              Répartir dans mon ordre
+            </Button>
             <span className="text-[var(--fs-xs)] text-[var(--text-muted)] ml-auto">
               {selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}
             </span>
           </div>
+
+          {/* Dire ce que chaque bouton fait à l'ordre, avant le clic et non après. */}
+          <p className="text-[var(--fs-xs)] text-[var(--text-disabled)] mt-2">
+            « Répartir & optimiser » recalcule l'ordre des arrêts (et donne distance et durée) :
+            ton ordre sera remplacé. « Répartir dans mon ordre » garde exactement cette liste,
+            sur un seul véhicule, sans calcul de distance.
+          </p>
         </Section>
 
         {/* Avertissement non réparties */}
@@ -404,6 +557,10 @@ export function Tournees() {
 // ── Sous-composants ────────────────────────────────────────────────────────────
 
 const inputCls = 'field'
+
+const flecheCls = `p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
+  hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
+  disabled:opacity-30 disabled:cursor-not-allowed transition-colors`
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
