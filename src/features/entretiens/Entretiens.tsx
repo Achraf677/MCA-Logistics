@@ -8,6 +8,7 @@ import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { DrawerEntretien } from './DrawerEntretien'
+import { RecapEntretiens } from './RecapEntretiens'
 import { supabase } from '../../app/providers'
 import { getMaintenances } from './entretiens.queries'
 import { listAllocationsForCharges, type AllocationRow } from '../../shared/lib/allocations.queries'
@@ -101,6 +102,9 @@ export function Entretiens() {
           <Button variant="ghost" size="compact" onClick={() => setFilters({})}>Réinitialiser</Button>
         )}
       </div>
+
+      {/* Où part l'argent — suit les filtres ci-dessus. */}
+      {!loading && !error && <RecapEntretiens rows={rows} />}
 
       {/* Contenu */}
       {loading ? (
