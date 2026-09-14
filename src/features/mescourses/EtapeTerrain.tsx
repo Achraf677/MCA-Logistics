@@ -1,10 +1,11 @@
-import { useState, useRef } from 'react'
-import { Camera, Check, PenLine, ChevronLeft } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Camera, Check, PenLine, ChevronLeft, X } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { SignaturePad, tryGeoloc } from '../../shared/ui/SignaturePad'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
-import { uploadDocument } from '../../shared/lib/documents.queries'
+import { uploadDocument, deleteDocument } from '../../shared/lib/documents.queries'
+import type { DocumentRow } from '../../shared/lib/documents.types'
 import type { DocumentCategory } from '../../shared/lib/documents.types'
 import { ajouterSignature } from './mescourses.queries'
 
@@ -84,11 +85,34 @@ export function EtapeTerrain({
 
   const [nom, setNom]               = useState(nomConnu ?? '')
   const [photoEnvoi, setPhotoEnvoi] = useState(false)
-  const [photoOk, setPhotoOk]       = useState(false)
+  /**
+   * Les photos prises A CETTE ETAPE, avec leur apercu local.
+   *
+   * Une liste et non un booleen : un hayon abime, une palette filmee et le bon
+   * de livraison, c'est trois photos, pas une. Et l'apercu vient de
+   * `URL.createObjectURL`, pas d'une URL signee : le fichier est deja dans le
+   * telephone, aller le redemander au serveur ferait attendre pour rien au
+   * bord de la route.
+   */
+  const [photos, setPhotos] = useState<Array<{ doc: DocumentRow; apercu: string }>>([])
+  const [suppressionId, setSuppressionId] = useState<string | null>(null)
   const [signee, setSignee]         = useState(dejaSignee)
   const [signeeTransp, setSigneeTransp] = useState(transporteurDejaSigne)
   const [index, setIndex]           = useState(0)
   const photoRef = useRef<HTMLInputElement>(null)
+
+  /**
+   * Libere les apercus quand le panneau se ferme.
+   *
+   * Chaque `createObjectURL` retient la photo entiere en memoire jusqu'au
+   * rechargement de la page. Sur une journee de vingt arrets, cela finit par
+   * peser sur un telephone — et c'est exactement l'appareil qui a le moins de
+   * marge. La ref suit la liste courante : la fermeture ne voit sinon que le
+   * tableau vide du premier rendu.
+   */
+  const apercusRef = useRef<string[]>([])
+  useEffect(() => { apercusRef.current = photos.map(p => p.apercu) }, [photos])
+  useEffect(() => () => { apercusRef.current.forEach(URL.revokeObjectURL) }, [])
 
   // La liste des etapes depend de la course : inutile de faire defiler une
   // etape « transporteur » a quelqu'un qui a deja signe cette course.
@@ -118,20 +142,38 @@ export function EtapeTerrain({
     if (!file.type.startsWith('image/')) { toast('Seules les photos sont acceptées', 'error'); return }
 
     setPhotoEnvoi(true)
-    const { error } = await uploadDocument(file, companyId, {
+    const { data, error } = await uploadDocument(file, companyId, {
       entity_type: 'delivery', entity_id: courseId, category: cfg.categorie,
     })
     setPhotoEnvoi(false)
-    if (error) {
-      const refus = /row-level security|permission|policy/i.test(error.message)
+    if (error || !data) {
+      const message = error?.message ?? 'Envoi impossible'
+      const refus = /row-level security|permission|policy/i.test(message)
       toast(refus
         ? "Ton compte n'a pas le droit d'ajouter des photos. Préviens la gestion — tu peux valider sans."
-        : error.message, 'error')
+        : message, 'error')
       return
     }
-    setPhotoOk(true)
-    toast('Photo enregistrée')
-    suivant()
+    setPhotos(p => [...p, { doc: data, apercu: URL.createObjectURL(file) }])
+    // On NE PASSE PAS a l'etape suivante : le chauffeur en prend souvent
+    // plusieurs, et avancer tout seul l'obligerait a revenir en arriere a
+    // chaque cliche.
+  }
+
+  /**
+   * Retire une photo, du stockage ET de la base.
+   *
+   * Pas seulement de l'ecran : une photo ratee laissee en base ressortirait
+   * dans les pieces jointes de la course, et compterait comme justificatif
+   * alors qu'elle ne montre rien.
+   */
+  const retirerPhoto = async (doc: DocumentRow, apercu: string) => {
+    setSuppressionId(doc.id)
+    const { error } = await deleteDocument(doc)
+    setSuppressionId(null)
+    if (error) { toast(error.message, 'error'); return }
+    URL.revokeObjectURL(apercu)
+    setPhotos(p => p.filter(x => x.doc.id !== doc.id))
   }
 
   /**
@@ -174,14 +216,47 @@ export function EtapeTerrain({
 
       {etape === 'photo' && (
         <>
-          <Button variant={photoOk ? 'secondary' : 'primary'} className="min-h-[48px]"
+          {/* Les photos deja prises, avec de quoi en retirer une. Un cliche
+              flou ou pris par erreur doit pouvoir partir TOUT DE SUITE :
+              constate au bureau trois jours plus tard, il ne prouve plus rien
+              et personne ne retournera le refaire. */}
+          {photos.length > 0 && (
+            <ul className="flex flex-wrap gap-2">
+              {photos.map(({ doc, apercu }) => (
+                <li key={doc.id} className="relative">
+                  <img src={apercu} alt={doc.file_name}
+                       className="w-20 h-20 object-cover rounded-[var(--r-md)] border border-[var(--border)]" />
+                  <button
+                    type="button"
+                    onClick={() => retirerPhoto(doc, apercu)}
+                    disabled={suppressionId === doc.id || busy}
+                    aria-label={`Retirer la photo ${doc.file_name}`}
+                    className="absolute -top-1.5 -right-1.5 w-7 h-7 flex items-center justify-center
+                      rounded-full bg-[var(--danger)] text-white shadow
+                      disabled:opacity-50"
+                  >
+                    {suppressionId === doc.id ? '…' : <X size={14} />}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <Button variant={photos.length > 0 ? 'secondary' : 'primary'} className="min-h-[48px]"
                   onClick={() => photoRef.current?.click()} disabled={photoEnvoi || busy}>
             <span className="inline-flex items-center gap-1.5">
-              {photoOk ? <Check size={16} /> : <Camera size={16} />}
-              {photoEnvoi ? 'Envoi…' : photoOk ? 'Reprendre' : 'Photo'}
+              <Camera size={16} />
+              {photoEnvoi ? 'Envoi…' : photos.length > 0 ? 'Ajouter une photo' : 'Photo'}
             </span>
           </Button>
-          <BoutonPasser onClick={suivant} disabled={photoEnvoi || busy} />
+
+          {photos.length > 0 ? (
+            <Button variant="primary" className="min-h-[48px]" onClick={suivant} disabled={photoEnvoi || busy}>
+              Suivant
+            </Button>
+          ) : (
+            <BoutonPasser onClick={suivant} disabled={photoEnvoi || busy} />
+          )}
         </>
       )}
 
@@ -239,7 +314,8 @@ export function EtapeTerrain({
       {etape === 'recap' && (
         <>
           <ul className="flex flex-col gap-1">
-            <LigneRecap fait={photoOk} texte="Photo" />
+            <LigneRecap fait={photos.length > 0}
+              texte={photos.length > 1 ? `${photos.length} photos` : 'Photo'} />
             <LigneRecap fait={!!nom.trim()} texte={nom.trim() || 'Nom non renseigné'} />
             <LigneRecap fait={signee} texte={cfg.labelSignature} />
             {demanderTransporteur && <LigneRecap fait={signeeTransp} texte="Signature du transporteur" />}
