@@ -55,6 +55,33 @@ const LEGAL_VAT_CODES: Record<number, string> = {
 };
 
 /**
+ * Code TVA Pennylane de l'AUTOLIQUIDATION.
+ *
+ * Ce n'est PAS `FR_000`. Un taux à 0 % est une opération taxable au taux zéro ;
+ * l'autoliquidation est une opération non soumise à la TVA française, avec
+ * report de la taxe sur le preneur — mention légale obligatoire, ligne
+ * distincte en déclaration, code de TVA différent.
+ *
+ * `exempt` est le code documenté par Pennylane pour une opération exonérée. Il
+ * reste pilotable par le secret `PENNYLANE_VAT_CODE_AUTOLIQ` : si le cabinet
+ * comptable impose un autre code, il se change SANS redeploiement — meme
+ * principe que `MISTRAL_MODEL`.
+ */
+export const VAT_CODE_AUTOLIQUIDATION =
+  Deno.env.get('PENNYLANE_VAT_CODE_AUTOLIQ') || 'exempt';
+
+/**
+ * Mention legale portee sur la facture autoliquidee.
+ *
+ * Ajoutee au LIBELLE de la ligne et non a un champ dedie : le libelle est le
+ * seul endroit dont on soit certain qu'il figure sur la facture imprimee. Une
+ * mention absente rend la facture non conforme — mieux vaut la voir deux fois
+ * que pas du tout.
+ */
+export const MENTION_AUTOLIQUIDATION =
+  'Autoliquidation — TVA due par le preneur, art. 259-1 du CGI';
+
+/**
  * Renvoie le code Pennylane UNIQUEMENT si le taux correspond exactement à un taux
  * légal français connu. Sinon `null` : on ne devine jamais un code pour un taux
  * atypique/libre — l'appelant doit alors refuser de facturer.

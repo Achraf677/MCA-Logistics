@@ -185,7 +185,9 @@ export async function resyncPending(): Promise<{ resynced: number; failed: numbe
 export async function getActiveClients() {
   return supabase
     .from('clients')
-    .select('id, name, tariff_mode, tariff_rate_cts, phone, email')
+    // `payment_terms` et `tva_intra` : le delai de paiement s'affiche des la
+    // creation, et le numero de TVA conditionne l'autoliquidation.
+    .select('id, name, tariff_mode, tariff_rate_cts, phone, email, payment_terms, payment_terms_label, tva_intra')
     .eq('active', true)
     .order('name')
 }

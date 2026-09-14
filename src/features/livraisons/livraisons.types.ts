@@ -62,6 +62,14 @@ export interface Delivery {
   relance_count: number
   /** Horodatage de la dernière relance envoyée */
   last_relance_at: string | null
+  /**
+   * Facture émise en AUTOLIQUIDATION (migration 20260914160000) : TVA non
+   * facturée, due par le preneur — art. 259-1 du CGI pour une prestation
+   * intracommunautaire B2B. À NE PAS confondre avec un taux à 0 % : ce n'est
+   * ni la même mention légale, ni la même ligne en déclaration, ni le même
+   * code de TVA chez Pennylane.
+   */
+  autoliquidation: boolean
   /** Preuve de livraison (POD) */
   pod_recipient_name: string | null
   pod_captured_at: string | null
@@ -148,6 +156,8 @@ export type DeliveryInsert = Omit<
   // Position de l'arret de RETRAIT dans la sequence de la journee, la meme
   // que celle indexee par `stop_order` pour l'arret de livraison.
   | 'pickup_order'
+  // autoliquidation : NOT NULL DEFAULT false en base, coché dans l'onglet Montant.
+  | 'autoliquidation'
   // justif_non_requis : NOT NULL DEFAULT false en base, coché après coup.
   | 'justif_non_requis'
   // extra_lines : optionnel à l'insert (default DB '[]'), écrit via updateDelivery.
@@ -170,6 +180,8 @@ export type DeliveryInsert = Omit<
   destinataire_tel?: string | null
   /** Position de l'arrêt de retrait — écrite par l'écran chauffeur. */
   pickup_order?: number | null
+  /** Coché dans l'onglet Montant — jamais positionné automatiquement. */
+  autoliquidation?: boolean
   marchandise_desc?: string | null
   nb_colis?: number | null
   poids_kg_reel?: number | null

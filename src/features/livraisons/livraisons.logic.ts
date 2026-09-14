@@ -167,3 +167,26 @@ export function kpiSummary(rows: DeliveryRow[]) {
     enAttentePaiementCts,
   }
 }
+
+/**
+ * Le délai de paiement d'un client, tel qu'on peut le dire à l'écran.
+ *
+ * Deux colonnes le portent et elles ne disent pas la même chose :
+ * `payment_terms_label` porte la forme convenue (« 30 jours fin de mois »),
+ * `payment_terms` porte le nombre de jours qui sert RÉELLEMENT au calcul de
+ * l'échéance envoyée à Pennylane.
+ *
+ * On affiche les deux quand ils diffèrent. C'est le nombre qui décide de la
+ * date d'échéance, donc de l'alerte de retard : le lire évite de croire qu'un
+ * « fin de mois » vaut trente jours pile.
+ */
+export function libelleDelaiPaiement(
+  c: { payment_terms: number | null; payment_terms_label: string | null },
+): string {
+  const jours = c.payment_terms
+  const etiquette = c.payment_terms_label?.trim()
+  if (jours == null && !etiquette) return 'non renseigné'
+  if (!etiquette) return `${jours} jours`
+  if (jours == null) return etiquette
+  return etiquette === String(jours) ? `${jours} jours` : `${etiquette} (${jours} jours)`
+}
