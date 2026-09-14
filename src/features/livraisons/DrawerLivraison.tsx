@@ -21,7 +21,7 @@ import { formatMoney, addTva, centimesToEuros } from '../../shared/lib/money'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
-  TRANSITION_ACTION_LABELS,
+  TRANSITION_ACTION_LABELS, libelleDelaiPaiement,
   allowedNextStatuses,
   computeAmount,
   effectiveHtCts, effectiveTtcCts,
@@ -54,6 +54,12 @@ interface ClientLookup extends ClientTariff {
   label: string
   phone: string | null
   email: string | null
+  /** Délai de paiement en jours (défaut 30 côté base). */
+  payment_terms: number | null
+  /** Libellé du délai (« 30 », « fin de mois »…) quand il est renseigné. */
+  payment_terms_label: string | null
+  /** Numéro de TVA intracommunautaire — condition de l'autoliquidation. */
+  tva_intra: string | null
 }
 
 interface Lookup { id: string; label: string }
@@ -77,6 +83,12 @@ const EMPTY_FORM = {
   manual_ht:        '',   // HT en euros (mode manuel)
   tva_override:     '',   // TVA en euros, éditable dans tous les modes
   tva_rate:         '20', // Taux TVA % (pilote l'auto-suggestion)
+  /**
+   * Facture en AUTOLIQUIDATION : la TVA n'est pas facturée, elle est due par
+   * le preneur. Stocké en '1' / '' comme les autres champs du formulaire, qui
+   * sont tous des chaînes.
+   */
+  autoliquidation:  '',
   notes:            '',
 }
 
@@ -130,6 +142,9 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
         tariff_rate_cts: c.tariff_rate_cts ?? null,
         phone: (c as { phone?: string | null }).phone ?? null,
         email: (c as { email?: string | null }).email ?? null,
+        payment_terms: (c as { payment_terms?: number | null }).payment_terms ?? null,
+        payment_terms_label: (c as { payment_terms_label?: string | null }).payment_terms_label ?? null,
+        tva_intra: (c as { tva_intra?: string | null }).tva_intra ?? null,
       })))
     )
     getActiveVehicles().then(({ data }) =>
@@ -239,6 +254,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
         manual_ht:        derivedHt > 0 ? (derivedHt / 100).toFixed(2) : '',
         tva_override:     storedTvaCts != null ? (storedTvaCts / 100).toFixed(2) : '',
         tva_rate:         String(derivedRate),
+        autoliquidation:  delivery.autoliquidation ? '1' : '',
         notes:            delivery.notes ?? '',
       })
       setDeliveryCoords({ lat: delivery.delivery_lat ?? null, lng: delivery.delivery_lng ?? null })
@@ -430,8 +446,15 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
         empty_km:         form.empty_km ? parseFloat(form.empty_km) : null,
         weight_kg:        form.pallets  ? parseFloat(form.pallets)  : null,
         amount_ht_cts:    computed?.amount_ht_cts  ?? null,
-        tva_cts:          computed?.tva_cts         ?? null,
-        amount_ttc_cts:   computed?.amount_ttc_cts ?? null,
+        // En AUTOLIQUIDATION la TVA n'est pas facturée : ni taux, ni montant,
+        // et le TTC vaut le HT. On force ici plutôt que de faire confiance à
+        // l'état du formulaire — la coche peut arriver après une saisie.
+        tva_rate:         form.autoliquidation ? 0 : parseFloat(form.tva_rate || '20'),
+        tva_cts:          form.autoliquidation ? 0 : (computed?.tva_cts ?? null),
+        amount_ttc_cts:   form.autoliquidation
+          ? (computed?.amount_ht_cts ?? null)
+          : (computed?.amount_ttc_cts ?? null),
+        autoliquidation:  !!form.autoliquidation,
         notes:            form.notes || null,
         extra_lines:      cleanedExtras,
       }
@@ -636,6 +659,16 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
                 <ContactLinks phone={selectedClient.phone} email={selectedClient.email} />
               </div>
             )}
+            {/* LE DÉLAI DE PAIEMENT, visible dès la création.
+                C'est lui qui fixe la date d'échéance de la facture et qui
+                déclenche l'alerte de retard. Le découvrir au moment de relancer
+                est trop tard : c'est en acceptant la course qu'on décide si ce
+                délai est acceptable. */}
+            {selectedClient && (
+              <p className="mt-1.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
+                Paiement : {libelleDelaiPaiement(selectedClient)}
+              </p>
+            )}
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
@@ -799,6 +832,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
           onTvaChange={v => { set('tva_override', v); setTvaTouched(true) }}
           onTvaRateChange={r => { set('tva_rate', String(r)); setTvaTouched(false) }}
           selectedClient={selectedClient}
+          tvaIntraClient={selectedClient ? (selectedClient as ClientLookup).tva_intra : null}
           computed={computed}
           delivery={delivery}
           isReadOnly={isMontantReadOnly}
@@ -869,7 +903,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
 
 function MontantTab({
   form, set, tvaTouched, onTvaChange, onTvaRateChange,
-  selectedClient, computed, delivery,
+  selectedClient, tvaIntraClient, computed, delivery,
   extraLines, setExtraLines,
   isReadOnly, saving, onSave, onClose,
 }: {
@@ -879,6 +913,8 @@ function MontantTab({
   onTvaChange: (v: string) => void
   onTvaRateChange: (r: number) => void
   selectedClient: ClientTariff | null
+  /** Numéro de TVA intracommunautaire du client — condition de l'autoliquidation. */
+  tvaIntraClient: string | null
   computed: ReturnType<typeof computeAmount>
   delivery?: DeliveryRow | null
   extraLines: DeliveryExtraLine[]
@@ -955,8 +991,49 @@ function MontantTab({
         </Field>
       )}
 
-      {/* Taux TVA + montant TVA éditable */}
+      {/* AUTOLIQUIDATION — avant les champs de TVA, parce qu'elle les annule. */}
       {selectedClient && (
+        <div className="rounded-[var(--r-md)] border border-[var(--border)] p-3 flex flex-col gap-2">
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={!!form.autoliquidation}
+              onChange={e => set('autoliquidation', e.target.checked ? '1' : '')}
+              disabled={isReadOnly}
+              className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer"
+            />
+            <span className="text-[var(--fs-sm)] text-[var(--text)]">
+              Autoliquidation — TVA due par le preneur
+              <span className="block text-[var(--fs-xs)] text-[var(--text-muted)]">
+                Prestation intracommunautaire B2B (art. 259-1 du CGI). La TVA n'est
+                pas facturée : le TTC vaut le HT.
+              </span>
+            </span>
+          </label>
+
+          {/* Le régime suppose un preneur ASSUJETTI. Sans numéro de TVA
+              intracommunautaire au dossier client, la facture est contestable —
+              on le dit sans bloquer : le régime relève de celui qui facture,
+              pas du logiciel. */}
+          {!!form.autoliquidation && !tvaIntraClient?.trim() && (
+            <p className="text-[var(--fs-xs)] text-[var(--warning)]">
+              Ce client n'a pas de numéro de TVA intracommunautaire renseigné. L'autoliquidation
+              suppose un preneur assujetti — à vérifier avant d'émettre la facture.
+            </p>
+          )}
+
+          {!!form.autoliquidation && (
+            <p className="text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
+              Mention portée sur la facture : « Autoliquidation — TVA due par le preneur,
+              art. 259-1 du CGI »
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Taux TVA + montant TVA éditable — masqués en autoliquidation : afficher
+          un taux modifiable sous une case qui l'annule ne peut que tromper. */}
+      {selectedClient && !form.autoliquidation && (
         <>
           <Field label="Taux TVA">
             <TvaRateInput

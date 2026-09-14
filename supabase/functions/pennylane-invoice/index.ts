@@ -15,6 +15,8 @@ import {
   getInvoiceNumber,
   pennylaneToken,
   vatRateCode,
+  VAT_CODE_AUTOLIQUIDATION,
+  MENTION_AUTOLIQUIDATION,
 } from '../_shared/pennylane.ts';
 
 Deno.serve(async (req: Request) => {
@@ -76,7 +78,7 @@ Deno.serve(async (req: Request) => {
     .from('deliveries')
     .select(
       'id, client_id, date, description, type, invoiced_at, ' +
-        'amount_ht_cts, tva_cts, tva_rate, pennylane_invoice_id, extra_lines',
+        'amount_ht_cts, tva_cts, tva_rate, pennylane_invoice_id, extra_lines, autoliquidation',
     )
     .in('id', ids);
 
@@ -138,7 +140,11 @@ Deno.serve(async (req: Request) => {
       ? Math.round((tvaCts / amountHtCts) * 1000) / 10
       : ratePct;
 
-    const vatCode = vatRateCode(effectiveRatePct);
+    // AUTOLIQUIDATION : ce n'est pas un taux, c'est un regime. On court-circuite
+    // donc la table des taux legaux francais — `FR_000` dirait « taxable au taux
+    // zero », ce qui est faux et rendrait la facture non conforme.
+    const autoliq = d.autoliquidation === true;
+    const vatCode = autoliq ? VAT_CODE_AUTOLIQUIDATION : vatRateCode(effectiveRatePct);
     if (vatCode === null) {
       return jsonResponse({
         ok: false,
@@ -147,8 +153,11 @@ Deno.serve(async (req: Request) => {
       }, 422);
     }
 
-    const label = (d.description?.trim() ||
+    const labelBase = (d.description?.trim() ||
       `Livraison ${d.type ?? ''} du ${d.date ?? ''}`.trim());
+    // La mention voyage DANS le libelle : c'est le seul endroit dont on soit
+    // certain qu'il figure sur la facture imprimee.
+    const label = autoliq ? `${labelBase} — ${MENTION_AUTOLIQUIDATION}` : labelBase;
 
     validatedLines.push({ id: d.id, amountHtCts, vatCode, label, quantity: 1 });
 

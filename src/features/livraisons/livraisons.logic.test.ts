@@ -3,8 +3,7 @@ import {
   TRANSITIONS, canTransition, allowedNextStatuses,
   computeAmount, effectiveHtCts, effectiveTtcCts, formatCents, kpiSummary,
   extraLinesHtCts, extraLinesTvaCts, extraLinesTtcCts,
-  deliveryTotalHtCts, deliveryTotalTtcCts,
-} from './livraisons.logic'
+  deliveryTotalHtCts, deliveryTotalTtcCts, libelleDelaiPaiement } from './livraisons.logic'
 import type { ClientTariff } from './livraisons.logic'
 import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
 
@@ -285,3 +284,35 @@ describe('formatCents', () => {
 // Garde-fou : DeliveryStatus reste cohérent avec les clés de TRANSITIONS.
 const _statusKeys: DeliveryStatus[] = Object.keys(TRANSITIONS) as DeliveryStatus[]
 void _statusKeys
+
+describe('libelleDelaiPaiement', () => {
+  it('affiche les jours quand il n’y a pas d’étiquette', () => {
+    expect(libelleDelaiPaiement({ payment_terms: 45, payment_terms_label: null }))
+      .toBe('45 jours')
+  })
+
+  it('n’affiche pas deux fois la même chose', () => {
+    // L'étiquette « 30 » et 30 jours disent la même chose.
+    expect(libelleDelaiPaiement({ payment_terms: 30, payment_terms_label: '30' }))
+      .toBe('30 jours')
+  })
+
+  it('montre l’étiquette ET les jours quand ils diffèrent', () => {
+    // C'est le nombre qui décide de la date d'échéance : le cacher ferait
+    // croire qu'un « fin de mois » vaut trente jours pile.
+    expect(libelleDelaiPaiement({ payment_terms: 30, payment_terms_label: '30_fin_mois' }))
+      .toBe('30_fin_mois (30 jours)')
+  })
+
+  it('se contente de l’étiquette quand les jours manquent', () => {
+    expect(libelleDelaiPaiement({ payment_terms: null, payment_terms_label: 'à réception' }))
+      .toBe('à réception')
+  })
+
+  it('dit « non renseigné » plutôt que d’inventer un délai', () => {
+    expect(libelleDelaiPaiement({ payment_terms: null, payment_terms_label: null }))
+      .toBe('non renseigné')
+    expect(libelleDelaiPaiement({ payment_terms: null, payment_terms_label: '  ' }))
+      .toBe('non renseigné')
+  })
+})
