@@ -929,6 +929,14 @@ function MontantTab({
   const canMontant = can('livraisons.livraisons', isEdit ? 'update' : 'create')
   const mode = selectedClient?.tariff_mode ?? 'manuel'
 
+  // Un seul passage sur `extraLines` (au lieu de 3, un par appel direct dans
+  // le JSX) — impact réel minime vu la petite taille du tableau, mais gratuit.
+  const extraLinesTotaux = useMemo(() => ({
+    ht:  extraLinesHtCts(extraLines),
+    tva: extraLinesTvaCts(extraLines),
+    ttc: extraLinesTtcCts(extraLines),
+  }), [extraLines])
+
   // Valeurs à afficher : préfère computed (live), sinon valeurs stockées
   const displayHt  = computed?.amount_ht_cts  ?? (delivery ? effectiveHtCts(delivery)  : null)
   const displayTva = computed?.tva_cts         ?? delivery?.tva_cts                     ?? null
@@ -1077,18 +1085,18 @@ function MontantTab({
           {extraLines.length > 0 && (
             <>
               <InfoRow label={`Lignes supp. (${extraLines.length}) — HT`}>
-                <span className="font-mono">{formatMoney(extraLinesHtCts(extraLines))}</span>
+                <span className="font-mono">{formatMoney(extraLinesTotaux.ht)}</span>
               </InfoRow>
               <InfoRow label="Lignes supp. — TVA">
-                <span className="font-mono">{formatMoney(extraLinesTvaCts(extraLines))}</span>
+                <span className="font-mono">{formatMoney(extraLinesTotaux.tva)}</span>
               </InfoRow>
             </>
           )}
           <InfoRow label="Total TTC">
             <span className="font-mono font-semibold text-[var(--text)]">
               {displayTtc != null
-                ? formatMoney(displayTtc + extraLinesTtcCts(extraLines))
-                : (extraLines.length > 0 ? formatMoney(extraLinesTtcCts(extraLines)) : '—')}
+                ? formatMoney(displayTtc + extraLinesTotaux.ttc)
+                : (extraLines.length > 0 ? formatMoney(extraLinesTotaux.ttc) : '—')}
             </span>
           </InfoRow>
         </div>

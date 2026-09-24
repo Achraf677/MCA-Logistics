@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { FileText } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { SkeletonTable } from '../../shared/ui/Skeleton'
-import { DrawerLivraison } from './DrawerLivraison'
+// Chargé à la demande : c'est le plus gros bloc du site, utile seulement au
+// clic sur une ligne, pas à l'affichage de la liste des bons de livraison.
+const DrawerLivraison = lazy(() =>
+  import('./DrawerLivraison').then(m => ({ default: m.DrawerLivraison })))
 import { getDeliveriesWithLv } from './livraisons.queries'
 import type { DeliveryRow, DeliveryFilters } from './livraisons.types'
 
@@ -131,13 +134,15 @@ export function BonsLivraison() {
         </>
       )}
 
-      <DrawerLivraison
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        delivery={selected}
-        onSaved={load}
-        initialTab="lv"
-      />
+      <Suspense fallback={null}>
+        <DrawerLivraison
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          delivery={selected}
+          onSaved={load}
+          initialTab="lv"
+        />
+      </Suspense>
     </div>
   )
 }

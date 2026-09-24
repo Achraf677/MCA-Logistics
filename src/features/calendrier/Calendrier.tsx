@@ -1,10 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { EmptyState } from '../../shared/ui/EmptyState'
-import { DrawerLivraison } from '../livraisons/DrawerLivraison'
+// Chargé à la demande : c'est le plus gros bloc du site, utile seulement au
+// clic sur un jour du calendrier, pas à l'affichage du calendrier lui-même.
+const DrawerLivraison = lazy(() =>
+  import('../livraisons/DrawerLivraison').then(m => ({ default: m.DrawerLivraison })))
 import { getDeliveries } from '../livraisons/livraisons.queries'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
@@ -158,12 +161,14 @@ export function Calendrier() {
         </div>
       )}
 
-      <DrawerLivraison
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        delivery={selected}
-        onSaved={load}
-      />
+      <Suspense fallback={null}>
+        <DrawerLivraison
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          delivery={selected}
+          onSaved={load}
+        />
+      </Suspense>
     </Shell>
   )
 }

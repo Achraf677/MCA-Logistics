@@ -10,6 +10,7 @@ import { AppRoutes } from './app/routes'
 import { LoginPage } from './app/LoginPage'
 import { Button } from './shared/ui/Button'
 import { AssistantProvider } from './features/assistant/AssistantContext'
+import { AssistantWidget } from './features/assistant/AssistantWidget'
 import { PermissionsProvider } from './shared/permissions/PermissionsProvider'
 import { ErrorBoundary } from './app/ErrorBoundary'
 import { SyncProvider } from './app/SyncProvider'
@@ -81,6 +82,13 @@ function AppCore() {
           <SyncProvider>
             <AssistantProvider>
               <AppRoutes />
+              {/* Ici et non dans Shell.tsx : Shell se remonte à chaque
+                  navigation (une page = un montage), donc l'assistant s'y
+                  redémarrait aussi à chaque clic de menu — perte de son état
+                  d'affichage local et rendu superflu à chaque changement
+                  d'onglet. Son état de conversation était déjà ici
+                  (AssistantProvider) ; le composant visible le rejoint. */}
+              <AssistantWidget />
             </AssistantProvider>
           </SyncProvider>
         </PermissionsProvider>

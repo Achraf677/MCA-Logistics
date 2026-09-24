@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, memo } from 'react'
 import { MapContainer, TileLayer, Polyline, Marker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import polyline from '@mapbox/polyline'
@@ -33,22 +33,34 @@ function pin(html: string): L.DivIcon {
  *
  * `n` est un RANG (1, 2, 3…), jamais `stop_order` brut : il ne peut donc plus
  * etre absent, et la carte se lit comme un itineraire sans trou.
+ *
+ * MISE EN CACHE : sans elle, une `L.divIcon` est reconstruite pour CHAQUE
+ * marqueur a CHAQUE rendu du composant — donc a chaque clic n'importe ou sur
+ * la page, Leaflet doit reappliquer `setIcon()` sur tous les marqueurs. Le
+ * cache est fini (un numero x une couleur x une tournee), jamais assez grand
+ * pour peser en memoire.
  */
+const stopIconCache = new Map<string, L.DivIcon>()
 function stopIcon(n: number, color: string): L.DivIcon {
-  return pin(
-    `<div style="width:24px;height:24px;border-radius:50%;background:${color};
-      color:#fff;font:700 11px/24px system-ui;text-align:center;
-      border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">${n}</div>`,
-  )
+  const cle = `${n}|${color}`
+  let icone = stopIconCache.get(cle)
+  if (!icone) {
+    icone = pin(
+      `<div style="width:24px;height:24px;border-radius:50%;background:${color};
+        color:#fff;font:700 11px/24px system-ui;text-align:center;
+        border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">${n}</div>`,
+    )
+    stopIconCache.set(cle, icone)
+  }
+  return icone
 }
 
-function depotIcon(): L.DivIcon {
-  return pin(
-    `<div style="width:26px;height:26px;border-radius:50%;background:${DEPOT_COLOR};
-      color:#fff;font:700 12px/26px system-ui;text-align:center;
-      border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">D</div>`,
-  )
-}
+// Icone unique, toujours la meme : calculee une seule fois au chargement du module.
+const DEPOT_ICON = pin(
+  `<div style="width:26px;height:26px;border-radius:50%;background:${DEPOT_COLOR};
+    color:#fff;font:700 12px/26px system-ui;text-align:center;
+    border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)">D</div>`,
+)
 
 // ── Recadrage automatique sur tous les tracés + arrêts + dépôt ─────────────────
 
@@ -62,7 +74,11 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
   return null
 }
 
-export default function ToursOverviewMap({ tours, depot }: Props) {
+// React.memo : sans lui, ce composant se redessine a chaque rendu du parent —
+// donc a chaque clic n'importe ou sur l'ecran Tournees — meme quand ni les
+// tournees ni le depot n'ont change. C'est ce qui donnait l'impression que la
+// carte "saute" a chaque interaction.
+function ToursOverviewMap({ tours, depot }: Props) {
   // Décodage des polylines (précision 5 par défaut, ORS/Google).
   const decoded = useMemo(
     () => tours.map(t => ({
@@ -119,7 +135,7 @@ export default function ToursOverviewMap({ tours, depot }: Props) {
               zIndexOffset={-s.rang}
             />
           )))}
-          {depot && <Marker position={[depot.lat, depot.lng]} icon={depotIcon()} />}
+          {depot && <Marker position={[depot.lat, depot.lng]} icon={DEPOT_ICON} />}
           <FitBounds positions={positions} />
         </MapContainer>
       </div>
@@ -145,3 +161,5 @@ export default function ToursOverviewMap({ tours, depot }: Props) {
     </div>
   )
 }
+
+export default memo(ToursOverviewMap)

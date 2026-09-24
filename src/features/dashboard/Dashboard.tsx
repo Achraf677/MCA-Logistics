@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { ChevronRight, Euro, Package, FileCheck2, CheckCircle2, Truck, Users, Building2, Link2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
@@ -9,7 +9,11 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { DriverAvatar } from '../../shared/ui/DriverAvatar'
 import { LineChart } from '../../shared/ui/LineChart'
 import { TabActions } from '../../shared/ui/TabbedSection'
-import { DrawerLivraison } from '../livraisons/DrawerLivraison'
+// Chargé à la demande : c'est le plus gros bloc du site (formulaire à 5
+// onglets + génération de PDF), et cet écran l'importait en dur — donc
+// téléchargé dès l'ouverture de la page d'accueil, même sans jamais l'ouvrir.
+const DrawerLivraison = lazy(() =>
+  import('../livraisons/DrawerLivraison').then(m => ({ default: m.DrawerLivraison })))
 import { getDashboardKpis, getRecentDeliveries, getMonthlyTrend } from './dashboard.queries'
 import type { TrendPeriod } from './dashboard.queries'
 import { formatCents, STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
@@ -338,12 +342,14 @@ export function Dashboard() {
 
       </div>
 
-      <DrawerLivraison
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        delivery={selected}
-        onSaved={load}
-      />
+      <Suspense fallback={null}>
+        <DrawerLivraison
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          delivery={selected}
+          onSaved={load}
+        />
+      </Suspense>
     </Shell>
   )
 }

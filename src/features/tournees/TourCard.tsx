@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, memo } from 'react'
 import type { ReactNode } from 'react'
 import { Route, Navigation2, ExternalLink, Check, Clock, Fuel, Truck, User, ArrowUp, ArrowDown, PackageOpen, ChevronDown } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
@@ -42,7 +42,11 @@ interface Props {
  * La carte est désormais globale (ToursOverviewMap), plus de mini-carte ici.
  * Comportement (hors carte) identique au mono v2. Pensé mobile.
  */
-export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChanged }: Props) {
+// React.memo (export tout en bas) : sans lui, chaque TourCard affichée se
+// redessine en entier à chaque clic sur N'IMPORTE QUELLE tournée de l'écran
+// (le parent Tournees.tsx se re-rend à chaque interaction) — c'était la
+// première cause de lourdeur générale ressentie sur l'écran Tournées.
+function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged }: Props) {
   const { toast } = useToast()
   const [stopBusy, setStopBusy] = useState<string | null>(null)
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
@@ -87,9 +91,15 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
   const undeliveredCount = stops.filter(s => !isDelivered(s)).length
 
   // Arrêts géocodés, pour le lien « Itinéraire complet ».
-  const geoStops = stops
-    .filter(s => s.delivery_lat != null && s.delivery_lng != null)
-    .map(s => ({ stop_order: s.stop_order, lat: s.delivery_lat as number, lng: s.delivery_lng as number }))
+  // useMemo : sinon refait à chaque rendu de la carte (donc à chaque clic sur
+  // n'importe quel arrêt d'une AUTRE tournée, une fois React.memo posé plus
+  // bas — sans lui ce recalcul serait de toute façon noyé dans le re-rendu).
+  const geoStops = useMemo(
+    () => stops
+      .filter(s => s.delivery_lat != null && s.delivery_lng != null)
+      .map(s => ({ stop_order: s.stop_order, lat: s.delivery_lat as number, lng: s.delivery_lng as number })),
+    [stops],
+  )
 
   // Option de navigation portee par la tournee. Elle n'agit que sur les liens
   // externes : l'optimisation de l'ordre des arrets ne sait pas eviter les
@@ -115,10 +125,13 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
     await onChanged()
   }
 
-  const routeUrl = googleMapsRouteUrl(
-    depotGeocoded ? { lat: tour.depot_lat as number, lng: tour.depot_lng as number } : null,
-    geoStops,
-    navOpts,
+  const routeUrl = useMemo(
+    () => googleMapsRouteUrl(
+      depotGeocoded ? { lat: tour.depot_lat as number, lng: tour.depot_lng as number } : null,
+      geoStops,
+      navOpts,
+    ),
+    [depotGeocoded, tour.depot_lat, tour.depot_lng, geoStops, eviterPeages], // eslint-disable-line react-hooks/exhaustive-deps -- navOpts est un objet inline stable (=eviterPeages), le lister directement évite un faux-négatif de la règle
   )
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -435,6 +448,8 @@ export function TourCard({ tour, stops, vehicleLabel, driverLabel, color, onChan
     </div>
   )
 }
+
+export const TourCard = memo(TourCardBase)
 
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 

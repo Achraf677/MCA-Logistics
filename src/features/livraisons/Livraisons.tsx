@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Package, RefreshCw, Loader2, FileText, Euro, Clock, Mail } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
@@ -9,7 +9,11 @@ import { EmptyState }  from '../../shared/ui/EmptyState'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { DriverAvatar } from '../../shared/ui/DriverAvatar'
-import { DrawerLivraison } from './DrawerLivraison'
+// Chargé à la demande : c'est le plus gros bloc du site (formulaire à 5
+// onglets + génération de PDF) — même ici, sur l'écran Livraisons, il n'est
+// utile qu'au clic sur une ligne, pas à l'affichage du tableau.
+const DrawerLivraison = lazy(() =>
+  import('./DrawerLivraison').then(m => ({ default: m.DrawerLivraison })))
 import { ApercuFacture } from './ApercuFacture'
 import { useToast }    from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
@@ -178,11 +182,17 @@ export function Livraisons() {
   )
 
   // Liste affichée : filtre "sans justificatif" appliqué côté client (clic cloche/dashboard).
-  const displayRows = filtreSansJustif
-    ? rows.filter(r => isLivraisonSansJustif(r, documentsLivraison))
-    : rows
+  // useMemo : sans lui, ce filtre (et le résumé des KPIs juste après) tournait
+  // sur TOUT l'historique des livraisons à chaque rendu — y compris à chaque
+  // frappe dans un champ ou chaque clic sur une ligne du tableau.
+  const displayRows = useMemo(
+    () => filtreSansJustif
+      ? rows.filter(r => isLivraisonSansJustif(r, documentsLivraison))
+      : rows,
+    [filtreSansJustif, rows, documentsLivraison],
+  )
 
-  const kpis = kpiSummary(rows)
+  const kpis = useMemo(() => kpiSummary(rows), [rows])
 
   return (
     <Shell pageTitle="Livraisons" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
@@ -521,12 +531,14 @@ export function Livraisons() {
       )}
 
       {/* ── Drawers & dialogs ──────────────────────────────────────────────── */}
-      <DrawerLivraison
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        delivery={selected}
-        onSaved={load}
-      />
+      <Suspense fallback={null}>
+        <DrawerLivraison
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          delivery={selected}
+          onSaved={load}
+        />
+      </Suspense>
 
       {/* ── Modal de confirmation facturation groupée ──────────────────────── */}
       {confirmInvoice && (

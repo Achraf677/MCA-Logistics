@@ -1,10 +1,18 @@
-import { useEffect } from 'react'
+import { useEffect, lazy } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Shell } from '../Shell'
 import { TabbedSection } from '../../shared/ui/TabbedSection'
 import { Dashboard } from '../../features/dashboard/Dashboard'
-import { CalculateurRentabilite } from '../../features/rentabilite/CalculateurRentabilite'
-import { Statistiques } from '../../features/statistiques/Statistiques'
+
+// Chargés à la demande : Dashboard est le 1er onglet (celui de la page
+// d'accueil), Rentabilité et Statistiques n'ouvrent leurs graphiques
+// (recharts) et leur carte (leaflet) qu'au clic sur leur onglet. En import
+// statique, ces librairies (~300 Ko) étaient téléchargées dès l'ouverture du
+// site, même pour ne regarder que le Dashboard.
+const CalculateurRentabilite = lazy(() =>
+  import('../../features/rentabilite/CalculateurRentabilite').then(m => ({ default: m.CalculateurRentabilite })))
+const Statistiques = lazy(() =>
+  import('../../features/statistiques/Statistiques').then(m => ({ default: m.Statistiques })))
 
 /**
  * Domaine PILOTAGE — page à sous-onglets. Dashboard est le 1er onglet (défaut),

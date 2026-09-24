@@ -34,8 +34,17 @@ src/
 - Échéances/validités via `shared/lib/echeances.ts` (date absente → statut `none`).
 
 ## État actuel (codé & testé)
-Référentiels : Clients (tarif + encours), Fournisseurs (anti-doublon SIREN), Véhicules (échéancier), Équipe (validités). Cœur : Livraisons (machine à états + montant auto + TVA éditable).
-Non commencés : Flotte, Opérations, Finance, **Intégrations**, Pilotage, Système.
+Le site est en production avec **8 sections** (menu principal, `src/app/sections/`), chacune à
+sous-onglets : **Pilotage** (Dashboard, Rentabilité, Statistiques) · **Livraisons** (Livraisons,
+Bons de livraison, Calendrier) · **Finance** (Trésorerie, Charges, Encaissement, TVA, Relances) ·
+**Flotte** (Véhicules, Carburant, Entretiens, Inspections, Incidents) · **Planning** ·
+**Tiers** (Clients, Fournisseurs, Devis) · **Équipe** (Équipe, Heures) · **Système** (Paramètres,
+Admins, Modèles). Plus deux écrans hors menu : **Mes courses** (parcours chauffeur, mobile) et la
+cloche **Alertes**. Soit **30 dossiers `features/`** au total — bien au-delà des specs `mca-spec/tabs/`,
+qui n'en couvrent qu'une partie : ne pas s'y fier seule pour savoir ce qui existe déjà, vérifier
+`src/features/` et `src/app/sections/`.
+Cœur historique : Livraisons (machine à états + montant auto + TVA éditable, y compris
+autoliquidation intracommunautaire).
 
 ## Règles base de données — résidus de l'ancien essai (NE PAS réintroduire les bugs)
 - `deliveries.montant_*` sont des colonnes **GENERATED** ou legacy → **ne jamais écrire dedans**. Écrire UNIQUEMENT `amount_ht_cts`, `tva_cts`, `amount_ttc_cts`. Lecture en fallback `amount_* ?? montant_*`.

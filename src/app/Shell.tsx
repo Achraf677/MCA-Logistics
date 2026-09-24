@@ -9,7 +9,6 @@ import {
 import { features } from '../features.config'
 import { ActionBar } from '../shared/actions/ActionBar'
 import type { ActionKey } from '../shared/actions/ActionBar'
-import { AssistantWidget } from '../features/assistant/AssistantWidget'
 import { AlertesBell } from '../features/alertes/AlertesBell'
 import { TabActions } from '../shared/ui/TabbedSection'
 import { SyncIndicator } from '../shared/ui/SyncIndicator'
@@ -260,9 +259,8 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
           </div>
         </main>
       </div>
-
-      {/* Assistant global — présent sur toutes les pages, hors du <main> */}
-      <AssistantWidget />
+      {/* Assistant global : monté une seule fois dans main.tsx, au-dessus du
+          routeur — pas ici, puisque Shell se remonte à chaque navigation. */}
     </div>
   )
 }
