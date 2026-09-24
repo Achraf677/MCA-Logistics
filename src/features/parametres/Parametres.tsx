@@ -11,7 +11,8 @@ import { getCompany, updateCompany } from './parametres.queries'
 import type { CompanyData } from './parametres.queries'
 import { ThemeSelector } from '../../shared/theme/ThemeSelector'
 import { GestionCategories } from './GestionCategories'
-import { MigrationDrive } from './MigrationDrive'
+import { MigrationDrive, useDocsDriveRestants } from './MigrationDrive'
+import { DriveConnect } from './DriveConnect'
 import { TestLectureAuto } from './TestLectureAuto'
 import { Field } from '../../shared/ui/Field'
 
@@ -31,6 +32,7 @@ export function Parametres() {
   const [saving, setSaving]       = useState(false)
   const [dirty, setDirty]         = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
+  const { restants: restantsDrive } = useDocsDriveRestants()
 
   const handleLogout = async () => {
     setLogoutLoading(true)
@@ -273,12 +275,17 @@ export function Parametres() {
               <TestLectureAuto />
             </Section>
 
-            {/* Rapatriement des anciens justificatifs Drive.
-                MigrationDrive rend `null` quand il ne reste rien a rapatrier,
-                mais l'enveloppe <Section> s'affichait quand meme : il restait
-                une carte au titre prometteur et au contenu vide. Le titre est
-                donc descendu DANS le composant, qui disparait en entier. */}
-            <MigrationDrive />
+            {/* Bloc Drive, TRANSITOIRE et solidaire : la connexion au compte
+                Google et le rapatriement des anciens justificatifs vivent et
+                meurent ensemble. Zero fichier restant, plus rien a l'ecran —
+                on ne laisse pas trainer un bouton « Connecter Google Drive »
+                sur un site qui n'ecrit plus une seule ligne dans Drive. */}
+            {(restantsDrive ?? 0) > 0 && (
+              <>
+                <DriveConnect />
+                <MigrationDrive />
+              </>
+            )}
 
             {/* Section Catégories de charges */}
             <Section title="Catégories de charges">

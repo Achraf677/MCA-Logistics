@@ -45,11 +45,16 @@ async function raisonLisible(error: unknown): Promise<string> {
   return (error as Error).message
 }
 
-export function MigrationDrive() {
-  const { toast } = useToast()
+/**
+ * Nombre de justificatifs encore coinces dans Drive.
+ *
+ * `null` tant qu'on n'a pas compte : on ne veut pas faire clignoter le bloc
+ * Drive au chargement de la page pour le faire disparaitre une seconde apres.
+ * Expose en dehors du composant parce que la CONNEXION Drive doit suivre le
+ * meme sort que le rapatriement : zero fichier restant, plus rien a l'ecran.
+ */
+export function useDocsDriveRestants(): { restants: number | null; compter: () => Promise<void> } {
   const [restants, setRestants] = useState<number | null>(null)
-  const [enCours, setEnCours] = useState(false)
-  const [echecs, setEchecs] = useState<Array<{ nom: string; raison: string }>>([])
 
   const compter = useCallback(async () => {
     const { count } = await supabase
@@ -61,6 +66,15 @@ export function MigrationDrive() {
   }, [])
 
   useEffect(() => { void compter() }, [compter])
+
+  return { restants, compter }
+}
+
+export function MigrationDrive() {
+  const { toast } = useToast()
+  const { restants, compter } = useDocsDriveRestants()
+  const [enCours, setEnCours] = useState(false)
+  const [echecs, setEchecs] = useState<Array<{ nom: string; raison: string }>>([])
 
   async function migrer() {
     setEnCours(true)
@@ -88,7 +102,6 @@ export function MigrationDrive() {
 
         total += res.migres ?? 0
         if (res.echecs?.length) rates.push(...res.echecs)
-        setRestants(res.restants ?? 0)
 
         if ((res.restants ?? 0) === 0) break
         if ((res.migres ?? 0) === 0) break
