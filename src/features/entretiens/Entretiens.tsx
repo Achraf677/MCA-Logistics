@@ -8,6 +8,7 @@ import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { DrawerEntretien } from './DrawerEntretien'
+import { FileAttenteEntretiens } from './FileAttenteEntretiens'
 import { RecapEntretiens } from './RecapEntretiens'
 import { supabase } from '../../app/providers'
 import { getMaintenances } from './entretiens.queries'
@@ -15,8 +16,10 @@ import { listAllocationsForCharges, type AllocationRow } from '../../shared/lib/
 import { formatCents, formatMileage, kpiSummary } from './entretiens.logic'
 import type { MaintenanceRow, MaintenanceFilters } from './entretiens.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
+import type { ChargePick } from '../../shared/types/charges'
+import type { LectureOcr } from '../../shared/lib/lectureFacture'
 
-type VehicleLookup = { id: string; label: string }
+type VehicleLookup = { id: string; label: string; plate?: string | null }
 
 export function Entretiens() {
   const [rows, setRows]         = useState<MaintenanceRow[]>([])
@@ -26,13 +29,18 @@ export function Entretiens() {
   const [filters, setFilters]   = useState<MaintenanceFilters>({})
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<MaintenanceRow | null>(null)
+  const [initialCharge, setInitialCharge] = useState<ChargePick | null>(null)
+  const [initialOcr, setInitialOcr] = useState<LectureOcr | null>(null)
+  const [queueRefresh, setQueueRefresh] = useState(0)
   // Sous-lignes de ventilation "pure" par charge_id — remplace l'affichage du
   // montant brut quand la facture liée a été décomposée (voir DrawerEntretien).
   const [ventilationByCharge, setVentilationByCharge] = useState<Map<string, AllocationRow[]>>(new Map())
 
   useEffect(() => {
-    supabase.from('vehicles').select('id, label').order('label')
-      .then(({ data }) => setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label }))))
+    // La plaque est chargée : c'est elle qui relie une facture d'entretien à
+    // un véhicule sans ambiguïté (voir trouverVehicule, dans la file d'attente).
+    supabase.from('vehicles').select('id, label, plate').order('label')
+      .then(({ data }) => setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label, plate: v.plate }))))
   }, [])
 
   const load = useCallback(async () => {
@@ -57,10 +65,19 @@ export function Entretiens() {
   useEffect(() => { load() }, [load])
 
   const handleAction = (key: ActionKey) => {
-    if (key === 'nouveau') { setSelected(null); setDrawerOpen(true) }
+    if (key === 'nouveau') { setSelected(null); setInitialCharge(null); setInitialOcr(null); setDrawerOpen(true) }
   }
 
-  const openRow = (row: MaintenanceRow) => { setSelected(row); setDrawerOpen(true) }
+  const openRow = (row: MaintenanceRow) => { setSelected(row); setInitialCharge(null); setInitialOcr(null); setDrawerOpen(true) }
+
+  // Depuis la file d'attente : la charge et sa lecture OCR sont déjà en poche,
+  // il ne reste qu'à vérifier et enregistrer dans le drawer.
+  const handleValiderDepuisFile = (charge: ChargePick, ocr: LectureOcr | null) => {
+    setSelected(null)
+    setInitialCharge(charge)
+    setInitialOcr(ocr)
+    setDrawerOpen(true)
+  }
 
   const kpis = kpiSummary(rows)
   const hasFilters = !!(
@@ -70,6 +87,8 @@ export function Entretiens() {
 
   return (
     <Shell pageTitle="Entretiens" actions={['nouveau']} onAction={handleAction}>
+      <FileAttenteEntretiens vehicles={vehicles} onValider={handleValiderDepuisFile} refreshToken={queueRefresh} />
+
       {/* KPIs */}
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
@@ -273,7 +292,9 @@ export function Entretiens() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         maintenance={selected}
-        onSaved={load}
+        initialCharge={initialCharge}
+        initialOcr={initialOcr}
+        onSaved={() => { load(); setQueueRefresh(n => n + 1) }}
       />
     </Shell>
   )
