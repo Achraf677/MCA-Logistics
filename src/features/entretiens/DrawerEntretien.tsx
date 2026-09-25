@@ -11,7 +11,7 @@ import { PanneauVentilation } from '../../shared/ui/PanneauVentilation'
 import { VentilationFacture } from '../../shared/ui/VentilationFacture'
 import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import {
-  trouverVehicule, parseLectureOcr, descriptionDepuisLibelle,
+  trouverVehicule, parseLectureOcr, descriptionDepuisLibelle, type LectureOcr,
 } from '../../shared/lib/lectureFacture'
 import { createMaintenance, updateMaintenance, deleteMaintenance } from './entretiens.queries'
 import { formatCents } from './entretiens.logic'
@@ -25,6 +25,13 @@ interface Props {
   onClose: () => void
   maintenance?: MaintenanceRow | null
   onSaved: () => void
+  /**
+   * Pré-remplissage depuis la file d'attente (FileAttenteEntretiens) : la
+   * charge est déjà choisie et sa lecture OCR déjà faite, il ne reste qu'à
+   * vérifier et enregistrer. Ignoré en édition (`maintenance` prime toujours).
+   */
+  initialCharge?: ChargePick | null
+  initialOcr?: LectureOcr | null
 }
 
 type Lookup = { id: string; label: string; plate?: string | null }
@@ -44,7 +51,9 @@ const EMPTY_FORM = {
   chargeId: '',
 }
 
-export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) {
+export function DrawerEntretien({
+  open, onClose, maintenance, onSaved, initialCharge = null, initialOcr = null,
+}: Props) {
   const { companyId } = useProfile()
   const { toast } = useToast()
   const isEdit = !!maintenance
@@ -60,7 +69,7 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
     if (!open) return
     // La PLAQUE relie le libellé d'une facture à un véhicule, sans ambiguïté.
     supabase.from('vehicles').select('id, label, plate').order('label')
-      .then(({ data }) => setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label }))))
+      .then(({ data }) => setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label, plate: v.plate }))))
     supabase.from('suppliers').select('id, name').eq('active', true).order('name')
       .then(({ data }) => setSuppliers((data ?? []).map(s => ({ id: s.id, label: s.name }))))
   }, [open])
@@ -99,11 +108,25 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
       } else {
         setLinkedCharge(null)
       }
+    } else if (initialCharge) {
+      // Vient de la file d'attente (FileAttenteEntretiens) : la charge est
+      // déjà choisie, l'OCR déjà fait. On applique les deux d'un coup — il ne
+      // reste à l'utilisateur qu'à vérifier et enregistrer.
+      setLinkedCharge(initialCharge)
+      setForm(prefillDepuisCharge(
+        { ...EMPTY_FORM, date: new Date().toISOString().slice(0, 10) }, initialCharge, vehicles,
+      ))
+      if (initialOcr?.kilometrage != null) {
+        setForm(p => ({ ...p, mileage_km: String(Math.round(initialOcr.kilometrage as number)) }))
+      }
     } else {
       setForm({ ...EMPTY_FORM, date: new Date().toISOString().slice(0, 10) })
       setLinkedCharge(null)
     }
-  }, [maintenance, open])
+    // `vehicles` inclus : encore vide au tout premier rendu (chargement async
+    // dans l'effet du dessus), le véhicule devinable depuis la charge ne
+    // peut se déduire qu'une fois la liste arrivée.
+  }, [maintenance, open, initialCharge, initialOcr, vehicles])
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
 
@@ -118,18 +141,7 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
    */
   const handleChargeSelect = (charge: ChargePick) => {
     setLinkedCharge(charge)
-    const vehiculeId = trouverVehicule(charge.label, vehicles)
-    setForm(prev => ({
-      ...prev,
-      chargeId: charge.id,
-      date: charge.date,
-      supplier_id: charge.supplier_id ?? prev.supplier_id,
-      vehicle_id: prev.vehicle_id || (vehiculeId ?? ''),
-      description: prev.description || descriptionDepuisLibelle(charge.label, charge.suppliers?.name),
-      cost_cts_str: charge.montant_ttc_cts != null
-        ? (charge.montant_ttc_cts / 100).toFixed(2)
-        : prev.cost_cts_str,
-    }))
+    setForm(prev => prefillDepuisCharge(prev, charge, vehicles))
   }
 
   /**
@@ -395,6 +407,32 @@ export function DrawerEntretien({ open, onClose, maintenance, onSaved }: Props) 
       />
     </>
   )
+}
+
+/**
+ * Ce qu'une charge Pennylane rattachée dit d'elle-même, appliqué au formulaire.
+ *
+ * N'ÉCRASE jamais une valeur déjà saisie (`prev.x ||`) : la lecture propose,
+ * elle ne corrige pas quelqu'un qui vient de taper.
+ */
+function prefillDepuisCharge(
+  prev: typeof EMPTY_FORM,
+  charge: ChargePick,
+  vehicles: Lookup[] = [],
+): typeof EMPTY_FORM {
+  const vehiculeId = trouverVehicule(charge.label, vehicles)
+
+  return {
+    ...prev,
+    chargeId: charge.id,
+    date: charge.date,
+    supplier_id: charge.supplier_id ?? prev.supplier_id,
+    vehicle_id: prev.vehicle_id || (vehiculeId ?? ''),
+    description: prev.description || descriptionDepuisLibelle(charge.label, charge.suppliers?.name),
+    cost_cts_str: charge.montant_ttc_cts != null
+      ? (charge.montant_ttc_cts / 100).toFixed(2)
+      : prev.cost_cts_str,
+  }
 }
 
 const inputCls = 'field'
