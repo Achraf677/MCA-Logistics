@@ -5,6 +5,7 @@ import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton } from '../../shared/ui/Skeleton'
+import { InstallAppButton } from '../../shared/ui/InstallAppButton'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { deposerTicket } from '../../shared/lib/receiptsInbox.queries'
@@ -238,6 +239,8 @@ export function MesCourses() {
 
   return (
     <Shell pageTitle="Mes courses">
+      <InstallAppButton />
+
       {/* Sélecteur de période — collé en haut, toujours atteignable au pouce */}
       <div className="flex flex-col gap-3 mb-4">
         <div className="flex items-center gap-1 p-1 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">

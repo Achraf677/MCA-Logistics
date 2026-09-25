@@ -6,8 +6,15 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#ff2e3e" />
+    <!-- iOS ne lit pas le manifest pour le mode standalone : sans ces balises,
+         « Sur l'écran d'accueil » ouvre l'app dans Safari (barre d'adresse
+         visible) au lieu de plein écran comme une vraie appli. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="MCA Logistics" />
     <title>MCA Logistics</title>
   </head>
   <body>

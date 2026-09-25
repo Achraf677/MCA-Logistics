@@ -5,10 +5,7 @@ export interface PermResource {
 }
 
 export const PERMISSION_CATALOG: PermResource[] = [
-  // Pilotage
-  { section: 'Pilotage',    key: 'pilotage.dashboard',    label: 'Tableau de bord' },
-  { section: 'Pilotage',    key: 'pilotage.rentabilite',  label: 'Rentabilité' },
-  { section: 'Pilotage',    key: 'pilotage.statistiques', label: 'Statistiques' },
+  // Pilotage : un seul écran (Dashboard), sans gating par onglet — rien à lister ici.
   // Livraisons
   { section: 'Livraisons',  key: 'livraisons.livraisons', label: 'Livraisons' },
   { section: 'Livraisons',  key: 'livraisons.devis',      label: 'Devis' },
@@ -30,7 +27,6 @@ export const PERMISSION_CATALOG: PermResource[] = [
   { section: 'Finance',     key: 'finance.tresorerie',    label: 'Trésorerie' },
   { section: 'Finance',     key: 'finance.charges',       label: 'Charges' },
   { section: 'Finance',     key: 'finance.encaissement',  label: 'Encaissement' },
-  { section: 'Finance',     key: 'finance.tva',           label: 'TVA' },
   { section: 'Finance',     key: 'finance.relances',      label: 'Relances' },
   // Équipe
   { section: 'Équipe',      key: 'equipe.membres',        label: 'Membres' },

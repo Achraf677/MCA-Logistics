@@ -38,7 +38,7 @@ import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus, DeliveryType } fro
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
 
-type Tab = 'detail' | 'montant' | 'suivi' | 'documents' | 'pod' | 'lv'
+type Tab = 'detail' | 'montant' | 'documents' | 'pod' | 'lv'
 
 interface Props {
   open: boolean
@@ -344,8 +344,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
   const tabs: { key: Tab; label: string }[] = isEdit
     ? [
         { key: 'detail',    label: 'Détail' },
-        { key: 'montant',   label: 'Montant' },
-        { key: 'suivi',     label: 'Suivi' },
+        { key: 'montant',   label: 'Montant & Suivi' },
         { key: 'documents', label: 'Documents' },
         { key: 'pod',       label: 'POD' },
         { key: 'lv',        label: 'Lettre de voiture' },
@@ -821,35 +820,41 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
         </div>
       )}
 
-      {/* ── Onglet Montant ───────────────────────────────────────────────────── */}
+      {/* ── Onglet Montant & Suivi (fusionnés) ──────────────────────────────────
+          Souvent consultés ensemble : on regarde où en est la livraison ET
+          son montant au moment de décider de la facturer. Suivi (statut,
+          actions, envoi client) en premier — c'est l'actionnable — puis
+          Montant (détail HT/TVA/TTC) en dessous. */}
       {tab === 'montant' && (
-        <MontantTab
-          extraLines={extraLines}
-          setExtraLines={setExtraLines}
-          form={form}
-          set={set}
-          tvaTouched={tvaTouched}
-          onTvaChange={v => { set('tva_override', v); setTvaTouched(true) }}
-          onTvaRateChange={r => { set('tva_rate', String(r)); setTvaTouched(false) }}
-          selectedClient={selectedClient}
-          tvaIntraClient={selectedClient ? (selectedClient as ClientLookup).tva_intra : null}
-          computed={computed}
-          delivery={delivery}
-          isReadOnly={isMontantReadOnly}
-          saving={saving}
-          onSave={handleSave}
-          onClose={onClose}
-        />
-      )}
-
-      {/* ── Onglet Suivi ─────────────────────────────────────────────────────── */}
-      {tab === 'suivi' && delivery && (
-        <SuiviTab
-          delivery={delivery}
-          transitioning={transitioning}
-          onTransition={handleTransition}
-          onClose={onClose}
-        />
+        <div className="flex flex-col gap-5">
+          {delivery && (
+            <>
+              <SuiviTab
+                delivery={delivery}
+                transitioning={transitioning}
+                onTransition={handleTransition}
+              />
+              <div className="border-t border-[var(--border)]" />
+            </>
+          )}
+          <MontantTab
+            extraLines={extraLines}
+            setExtraLines={setExtraLines}
+            form={form}
+            set={set}
+            tvaTouched={tvaTouched}
+            onTvaChange={v => { set('tva_override', v); setTvaTouched(true) }}
+            onTvaRateChange={r => { set('tva_rate', String(r)); setTvaTouched(false) }}
+            selectedClient={selectedClient}
+            tvaIntraClient={selectedClient ? (selectedClient as ClientLookup).tva_intra : null}
+            computed={computed}
+            delivery={delivery}
+            isReadOnly={isMontantReadOnly}
+            saving={saving}
+            onSave={handleSave}
+            onClose={onClose}
+          />
+        </div>
       )}
 
       {/* ── Onglet Documents ─────────────────────────────────────────────────── */}
@@ -1147,12 +1152,11 @@ function MontantTab({
 const STATUS_TIMELINE: string[] = ['planifiee', 'en_cours', 'livree', 'facturee', 'payee']
 
 function SuiviTab({
-  delivery, transitioning, onTransition, onClose,
+  delivery, transitioning, onTransition,
 }: {
   delivery: DeliveryRow
   transitioning: DeliveryStatus | null
   onTransition: (to: DeliveryStatus) => void
-  onClose: () => void
 }) {
   const nextStatuses = allowedNextStatuses(delivery.statut)
   const actionLabels = TRANSITION_ACTION_LABELS[delivery.statut] ?? {}
@@ -1235,9 +1239,8 @@ function SuiviTab({
         <EnvoiClientSection delivery={delivery} />
       )}
 
-      <div className={`pt-3 ${nextStatuses.length === 0 ? 'border-t border-[var(--border)]' : ''}`}>
-        <Button variant="secondary" onClick={onClose}>Fermer</Button>
-      </div>
+      {/* Pas de bouton Fermer ici : Montant est fusionné juste en dessous et
+          porte déjà le sien, en bas de l'onglet combiné. */}
 
       {/* Modale d'aperçu — le bouton "Facturer" dedans déclenche la transition. */}
       <ApercuFacture

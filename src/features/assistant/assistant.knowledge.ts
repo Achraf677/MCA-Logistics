@@ -3,15 +3,13 @@
 // aux questions d'aide à l'usage. À maintenir en phase avec docs/site-map.md.
 
 export const SITE_KNOWLEDGE = `MCA Logistics — PGI/TMS interne (transport routier sub-3,5 t).
-Navigation : 8 entrées de menu, chacune est une PAGE À SOUS-ONGLETS. Pour orienter l'utilisateur, donne toujours « Section, onglet X » et le chemin direct ?tab= (ex. « Va dans Finance, onglet TVA » → /finance?tab=tva). N'invente aucun onglet hors de cette liste.
+Navigation : 8 entrées de menu, chacune est une PAGE À SOUS-ONGLETS. Pour orienter l'utilisateur, donne toujours « Section, onglet X » et le chemin direct ?tab= (ex. « Va dans Finance, onglet Charges » → /finance?tab=charges). N'invente aucun onglet hors de cette liste.
 Permissions : rôles president / dg / chauffeur / comptable. Le front ne bloque explicitement que la SUPPRESSION définitive (réservée au président) dans Livraisons, Clients et Incidents ; tout le reste (qui lit/écrit) est encadré côté base par les politiques RLS Supabase. Montants toujours en centimes, formatés à l'affichage.
 
-1) PILOTAGE (/pilotage) — l'app s'ouvre dessus (onglet Dashboard par défaut). Sous-onglets :
-   - Dashboard (/pilotage?tab=dashboard) — KPIs du mois (CA HT, nb livraisons, % facturé/payé), référentiels actifs, tendance CA 6 mois, 8 dernières livraisons. Lecture seule.
-   - Rentabilité (/pilotage?tab=rentabilite) — Résultat brut annuel mois par mois (CA − charges − carburant − entretiens), sélecteur d'année. Lecture seule.
-   - Statistiques (/pilotage?tab=statistiques) — Tendances de l'année : CA mensuel, Top 5 clients, charges par catégorie. Lecture seule.
+1) PILOTAGE (/pilotage) — l'app s'ouvre dessus. Un seul écran, Dashboard (/pilotage) — KPIs du mois (CA HT, nb livraisons, % facturé/payé), référentiels actifs, tendance CA 6 mois, dernières livraisons. Lecture seule.
+   (Rentabilité et Statistiques ont été retirées : redondantes avec le Dashboard.)
 
-2) LIVRAISONS (/livraisons) — entrée à part entière. Cœur métier : créer/éditer une course, machine à états (planifiée→en cours→livrée→facturée→payée, ou annulée), facturation Pennylane. « Nouvelle livraison » (Détail puis Montant) ; onglet Suivi pour Démarrer/Marquer livrée/Facturer/Encaisser/Annuler. Suppression réservée président. Resync Pennylane + export CSV.
+2) LIVRAISONS (/livraisons) — entrée à part entière. Cœur métier : créer/éditer une course, machine à états (planifiée→en cours→livrée→facturée→payée, ou annulée), facturation Pennylane. « Nouvelle livraison » (Détail puis Montant) ; onglet « Montant & Suivi » pour Démarrer/Marquer livrée/Facturer/Encaisser/Annuler. Suppression réservée président. Resync Pennylane + export CSV.
 
 3) PLANNING (/planning-hub) — vues temporelles. Sous-onglets :
    - Tournées (/planning-hub?tab=tournees) — composer/optimiser les tournées d'une journée, multi-véhicule (cocher véhicules+chauffeurs+livraisons géocodées, « Répartir & optimiser »), Naviguer/Waze, marquer Livré, Démarrer/Terminer, carte d'ensemble.
@@ -33,7 +31,6 @@ Permissions : rôles president / dg / chauffeur / comptable. Le front ne bloque 
    - Trésorerie (/finance?tab=tresorerie) — solde Qonto + relevé. « Synchroniser Qonto » puis « Vérifier les paiements ».
    - Charges (/finance?tab=charges) — dépenses par catégorie, HT/TVA/TTC auto. « Nouvelle charge », export CSV.
    - Encaissement (/finance?tab=encaissement) — paiements clients, rattachables à une livraison facturée. « Saisir un paiement », export CSV.
-   - TVA (/finance?tab=tva) — aide à la déclaration : collectée, déductible (charges + carburant), solde net, par trimestre/mois. Lecture seule.
 
 7) ÉQUIPE (/equipe-hub) — Sous-onglets :
    - Membres (/equipe-hub?tab=membres) — membres (rôles, contrats, salaires, validités permis B/visite médicale), masse salariale. « Nouveau ».
