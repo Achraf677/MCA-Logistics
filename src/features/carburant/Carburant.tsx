@@ -7,6 +7,7 @@ import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { DrawerCarburant } from './DrawerCarburant'
+import { FileAttenteCarburant } from './FileAttenteCarburant'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
 import { getFuelLogs, exportFuelCSV } from './carburant.queries'
@@ -18,8 +19,10 @@ import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { downloadCSV } from '../../shared/lib/download'
 import type { FuelLogRow, FuelFilters } from './carburant.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
+import type { ChargePick } from '../../shared/types/charges'
+import type { LectureOcr } from '../../shared/lib/lectureFacture'
 
-type VehicleLookup = { id: string; label: string }
+type VehicleLookup = { id: string; label: string; plate?: string | null }
 
 export function Carburant() {
   const { toast } = useToast()
@@ -30,10 +33,15 @@ export function Carburant() {
   const [filters, setFilters]   = useState<FuelFilters>({})
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<FuelLogRow | null>(null)
+  const [initialCharge, setInitialCharge] = useState<ChargePick | null>(null)
+  const [initialOcr, setInitialOcr] = useState<LectureOcr | null>(null)
+  const [queueRefresh, setQueueRefresh] = useState(0)
 
   useEffect(() => {
-    supabase.from('vehicles').select('id, label').eq('status', 'active').order('label')
-      .then(({ data }) => setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label }))))
+    // La plaque est chargée : c'est elle qui relie une facture carburant à un
+    // véhicule sans ambiguïté (voir trouverVehicule, dans la file d'attente).
+    supabase.from('vehicles').select('id, label, plate').eq('status', 'active').order('label')
+      .then(({ data }) => setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label, plate: v.plate }))))
   }, [])
 
   const load = useCallback(async () => {
@@ -47,7 +55,7 @@ export function Carburant() {
   useEffect(() => { load() }, [load])
 
   const handleAction = async (key: ActionKey) => {
-    if (key === 'nouveau') { setSelected(null); setDrawerOpen(true) }
+    if (key === 'nouveau') { setSelected(null); setInitialCharge(null); setInitialOcr(null); setDrawerOpen(true) }
     if (key === 'export') {
       const csv = await exportFuelCSV(filters)
       downloadCSV(csv, 'carburant.csv')
@@ -55,7 +63,16 @@ export function Carburant() {
     }
   }
 
-  const openRow = (row: FuelLogRow) => { setSelected(row); setDrawerOpen(true) }
+  const openRow = (row: FuelLogRow) => { setSelected(row); setInitialCharge(null); setInitialOcr(null); setDrawerOpen(true) }
+
+  // Depuis la file d'attente : la charge et sa lecture OCR sont déjà en poche,
+  // il ne reste qu'à vérifier et enregistrer dans le drawer.
+  const handleValiderDepuisFile = (charge: ChargePick, ocr: LectureOcr | null) => {
+    setSelected(null)
+    setInitialCharge(charge)
+    setInitialOcr(ocr)
+    setDrawerOpen(true)
+  }
 
   const kpis = kpiSummary(rows)
 
@@ -79,6 +96,8 @@ export function Carburant() {
           <KpiCard label="Prix moy. / L" value={formatPricePerLiter(kpis.avgPricePerLiter)} tone="violet" icon={<Gauge size={18} />} />
         </div>
       )}
+
+      <FileAttenteCarburant vehicles={vehicles} onValider={handleValiderDepuisFile} refreshToken={queueRefresh} />
 
       {/* Filtres */}
       <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
@@ -231,7 +250,9 @@ export function Carburant() {
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
         fuelLog={selected}
-        onSaved={load}
+        initialCharge={initialCharge}
+        initialOcr={initialOcr}
+        onSaved={() => { load(); setQueueRefresh(n => n + 1) }}
       />
     </Shell>
   )

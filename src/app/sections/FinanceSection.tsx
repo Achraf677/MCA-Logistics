@@ -4,7 +4,6 @@ import { TabbedSection } from '../../shared/ui/TabbedSection'
 import { Tresorerie } from '../../features/tresorerie/Tresorerie'
 import { Charges } from '../../features/charges/Charges'
 import { Encaissement } from '../../features/encaissement/Encaissement'
-import { Tva } from '../../features/tva/Tva'
 import { Relances } from '../../features/relances/Relances'
 
 /**
@@ -20,7 +19,6 @@ export function FinanceSection() {
           { key: 'tresorerie',   label: 'Trésorerie',   element: <Tresorerie />,   permKey: 'finance.tresorerie'  },
           { key: 'charges',      label: 'Charges',      element: <Charges />,      permKey: 'finance.charges'     },
           { key: 'encaissement', label: 'Encaissement', element: <Encaissement />, permKey: 'finance.encaissement' },
-          { key: 'tva',          label: 'TVA',          element: <Tva />,          permKey: 'finance.tva'         },
           { key: 'relances',     label: 'Relances',     element: <Relances />,     permKey: 'finance.relances'    },
         ]}
       />

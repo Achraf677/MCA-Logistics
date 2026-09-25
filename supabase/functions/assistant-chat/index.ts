@@ -1,5 +1,5 @@
 // Edge Function `assistant-chat` — cerveau conversationnel de l'assistant MCA.
-// Modèle : ministral-14b-2512 (cf. _shared/mistral.ts pour le pourquoi). 18 outils LECTURE + 8 outils ÉCRITURE + 1 outil RÉDACTION (generer_mail).
+// Modèle : ministral-14b-2512 (cf. _shared/mistral.ts pour le pourquoi). 17 outils LECTURE + 8 outils ÉCRITURE + 1 outil RÉDACTION (generer_mail).
 // L'Edge NE TOUCHE JAMAIS la base : elle propose des OUTILS à Mistral. Le front exécute les lectures,
 // affiche une carte de CONFIRMATION pour les écritures, et délègue la rédaction à brouillons-generate.
 // Clé jamais logguée. verify_jwt = true. Retry/backoff sur 429/5xx.
@@ -62,9 +62,6 @@ const TOOLS = [
       parameters: { type: 'object', properties: {}, required: [] } } },
   { type: 'function', function: { name: 'get_charges_mois',
       description: "Total des charges d'un mois et répartition par catégorie. Pour 'mes charges', 'mes dépenses du mois'.",
-      parameters: { type: 'object', properties: { mois: { type: 'string', description: 'Mois YYYY-MM. Defaut : mois courant.' } }, required: [] } } },
-  { type: 'function', function: { name: 'get_tva',
-      description: "Bilan TVA d'un mois : collectée, déductible, nette à payer. Pour 'ma TVA', 'combien de TVA je dois'.",
       parameters: { type: 'object', properties: { mois: { type: 'string', description: 'Mois YYYY-MM. Defaut : mois courant.' } }, required: [] } } },
   { type: 'function', function: { name: 'get_client',
       description: "Fiche d'un client par son nom (recherche partielle) : coordonnées, type, CA total, nb livraisons, impayé. Pour 'le compte de X', 'combien me doit X'.",

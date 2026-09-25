@@ -30,12 +30,12 @@ role: 'president' | 'dg' | 'chauffeur' | 'comptable'
 
 | # | Entrée | Route section | Sous-onglets (`?tab=`) |
 |---|--------|---------------|------------------------|
-| 1 | **Pilotage** | `/pilotage` (et `/`) | Dashboard `dashboard` (défaut) · Rentabilité `rentabilite` · Statistiques `statistiques` |
+| 1 | **Pilotage** | `/pilotage` (et `/`) | Dashboard (page seule — Rentabilité et Statistiques retirées, redondantes) |
 | 2 | **Livraisons** | `/livraisons` | — (page seule) |
 | 3 | **Planning** | `/planning-hub` | Tournées `tournees` · Planning `planning` · Calendrier `calendrier` |
 | 4 | **Flotte** | `/flotte` | Véhicules `vehicules` · Carburant `carburant` · Entretiens `entretiens` · Inspections `inspections` · Incidents `incidents` |
 | 5 | **Tiers** | `/tiers` | Clients `clients` · Fournisseurs `fournisseurs` |
-| 6 | **Finance** | `/finance` | Trésorerie `tresorerie` · Charges `charges` · Encaissement `encaissement` · TVA `tva` |
+| 6 | **Finance** | `/finance` | Trésorerie `tresorerie` · Charges `charges` · Encaissement `encaissement` (TVA retirée — déjà dans la compta) |
 | 7 | **Équipe** | `/equipe-hub` | Membres `membres` · Heures `heures` |
 | 8 | **Système** | `/systeme` | Alertes `alertes` · Paramètres `parametres` |
 
@@ -46,7 +46,7 @@ role: 'president' | 'dg' | 'chauffeur' | 'comptable'
   `ai-extract-deliveries` conservées (l'assistant réutilise leurs queries).
 
 > Les fiches détaillées ci-dessous décrivent chaque page (désormais sous-vue d'une section). Pour s'y rendre :
-> Section + onglet, ex. « Finance › TVA » = `/finance?tab=tva`.
+> Section + onglet, ex. « Finance › Charges » = `/finance?tab=charges`.
 
 ---
 
@@ -60,21 +60,10 @@ role: 'president' | 'dg' | 'chauffeur' | 'comptable'
 - **Mode d'emploi** : L'utilisateur consulte d'un coup d'œil l'activité du mois, clique « Voir tout » pour aller aux livraisons, ou clique une ligne pour ouvrir le détail/éditer la livraison.
 - **Permissions** : Lecture pour tous ; les écritures éventuelles passent par le drawer livraisons et restent encadrées par RLS. Pas de gating front sur cet onglet.
 
-### Rentabilité
-- **Route** : `/rentabilite` · **Menu** : Pilotage › Rentabilité
-- **Rôle** : Suivi annuel du résultat brut (CA encaissable moins charges/carburant/entretiens), mois par mois, pour une année sélectionnable.
-- **Données affichées** : Sélecteur d'année ; KPIs annuels (CA HT, total charges = charges + carburant + entretiens, résultat brut, taux de marge) ; graphe « Résultat mensuel » (barres positives/négatives) ; tableau 12 mois avec colonnes CA HT, Charges, Carburant, Entretiens, Résultat + ligne Total de l'année.
-- **Actions & queries** : Lecture seule, aucune écriture. Charge via `getRentabiliteData(year)` (`rentabilite.queries.ts`) qui lit `deliveries`, `charges`, `fuel_logs`, `vehicle_maintenances`. Agrégation pure dans `rentabilite.logic.ts` : `monthlyRows()`, `annualTotals()`, `margeRatio()`.
-- **Mode d'emploi** : L'utilisateur navigue d'une année à l'autre (le bouton suivant est désactivé au-delà de l'année courante) et lit le résultat mensuel et annuel.
-- **Permissions** : Onglet financier, lecture pour tous au niveau front (pas de gating) ; l'accès aux données est encadré par RLS côté base.
-
-### Statistiques
-- **Route** : `/statistiques` · **Menu** : Pilotage › Statistiques
-- **Rôle** : Tableau de bord analytique de l'année courante : CA mensuel, top clients et répartition des charges.
-- **Données affichées** : KPIs annuels (CA HT, Charges HT, Carburant, Entretiens) ; graphe « CA HT mensuel » (12 barres) ; Top 5 clients par CA HT (barres de progression) ; charges par catégorie (libellés via `CATEGORY_LABELS`) ; bloc « Résultat estimé » (CA HT, total charges HT, marge brute) affiché seulement si CA > 0.
-- **Actions & queries** : Lecture seule, aucune écriture. Charge via `getStatistiquesData()` (`statistiques.queries.ts`, année courante uniquement, non paramétrable) lisant `deliveries`, `charges`, `fuel_logs`, `vehicle_maintenances`. Calculs purs dans `statistiques.logic.ts` : `caMensuel()`, `annualTotals()`, `topClients()`, `chargesByCategory()`.
-- **Mode d'emploi** : L'utilisateur consulte les tendances de l'année en cours ; pas de filtre ni de sélecteur d'année.
-- **Permissions** : Lecture pour tous au niveau front (pas de gating) ; données encadrées par RLS côté base.
+> Rentabilité et Statistiques (Pilotage) ont été retirées : redondantes avec le Dashboard
+> (même CA mensuel, mêmes KPIs). Le calcul du coût de revient RÉEL par tournée/chargement
+> (`features/rentabilite/Rentabilite.tsx` + `ChargementsPanel.tsx`, jamais raccroché à un
+> onglet) a été supprimé aussi, décision du président : à recoder si le besoin revient.
 
 ---
 
@@ -93,7 +82,7 @@ role: 'president' | 'dg' | 'chauffeur' | 'comptable'
   - Resync Pennylane : `getPendingSyncDeliveries()` + `resyncPending()`.
   - Export CSV : `exportDeliveriesCSV(filters)`.
   - Référentiels du drawer : `getActiveClients()`, `getActiveVehicles()`, `getActiveDrivers()`.
-- **Mode d'emploi** : L'utilisateur crée une livraison (onglet Détail puis Montant), suit son cycle de vie dans l'onglet Suivi (Démarrer, Marquer livrée, Facturer, Encaisser, Annuler), et le président peut supprimer une ou plusieurs courses non facturées.
+- **Mode d'emploi** : L'utilisateur crée une livraison (onglet Détail puis Montant), suit son cycle de vie dans l'onglet « Montant & Suivi » (Démarrer, Marquer livrée, Facturer, Encaisser, Annuler), et le président peut supprimer une ou plusieurs courses non facturées.
 - **Permissions** : Gating front explicite — la suppression (unitaire dans le drawer et multiple via cases à cocher) est réservée à `profile?.role === 'president'` ; la suppression d'une livraison facturée/payée exige en plus une case d'acquittement. Création/édition/transitions affichées pour tous au front, encadrées côté base par RLS (ex. `deliveries_delete_president`).
 
 ### Tournées
@@ -220,13 +209,8 @@ role: 'president' | 'dg' | 'chauffeur' | 'comptable'
 - **Mode d'emploi** : cliquer « Synchroniser Qonto » pour rafraîchir le solde et les transactions, puis « Vérifier les paiements » pour rapprocher automatiquement les livraisons facturées encaissées et les marquer payées.
 - **Permissions** : pas de bouton de mutation directe ni de gating front par rôle ; les écritures se font côté Edge Functions / RLS.
 
-### TVA
-- **Route** : `/tva` · **Menu** : Finance › TVA
-- **Rôle** : Calcul d'aide à la déclaration de TVA sur une période (trimestre ou mois) : TVA collectée, déductible, et solde net à déclarer.
-- **Données affichées** : sélecteur Trimestre (T1–T4) / Mois + année courante. KPIs et tableau de détail : TVA collectée sur ventes, TVA déductible Charges générales, TVA déductible Carburant, « TVA nette à déclarer » (solde, rouge si positif / vert sinon). Mention : calcul sur livraisons au statut « Facturée » ou « Payée ».
-- **Actions & queries** : lecture seule `getTvaData(dateFrom, dateTo)` qui agrège en parallèle `deliveries` (statuts `facturee`/`payee`), `charges` et `fuel_logs` sur la période. Calcul en pur via `computeTva` (`tva.logic.ts`) : collectée = `effectiveTtcCts − effectiveHtCts`, déductible charges = somme `tva_cts`, déductible carburant = `tva_cts × tva_deductible_pct/100`. Aucune mutation, aucun export, aucune Edge Function.
-- **Mode d'emploi** : choisir le mode (Trimestre ou Mois) et la période ; les montants se recalculent automatiquement. Lecture seule, à vérifier avec le comptable avant déclaration.
-- **Permissions** : onglet en lecture seule, aucun gating front par rôle ; périmètre des données encadré par RLS.
+> L'onglet TVA a été retiré (président : « j'ai déjà ça dans la compta »). Le dossier
+> `features/tva/` a été supprimé.
 
 ---
 

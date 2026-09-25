@@ -1,34 +1,19 @@
-import { useEffect } from 'react'
-import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Shell } from '../Shell'
-import { TabbedSection } from '../../shared/ui/TabbedSection'
 import { Dashboard } from '../../features/dashboard/Dashboard'
-import { CalculateurRentabilite } from '../../features/rentabilite/CalculateurRentabilite'
-import { Statistiques } from '../../features/statistiques/Statistiques'
 
 /**
- * Domaine PILOTAGE — page à sous-onglets. Dashboard est le 1er onglet (défaut),
- * donc l'app s'ouvre toujours sur le Dashboard (route "/" rend cette section).
+ * Domaine PILOTAGE — un seul écran, Dashboard.
+ *
+ * Portait avant Rentabilité (simulateur manuel, jamais vraiment utilisé) et
+ * Statistiques (CA mensuel + top clients) — retirés à la demande du
+ * président : les deux redisaient ce que le Dashboard affiche déjà (même CA
+ * mensuel, mêmes KPIs). Plus de sous-onglets à gérer : "/" rend directement
+ * cette section, donc l'app s'ouvre toujours sur le Dashboard.
  */
 export function PilotageSection() {
-  const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
-
-  useEffect(() => {
-    if (searchParams.get('tab') === 'simulateur') {
-      navigate('/pilotage?tab=rentabilite', { replace: true })
-    }
-  }, [searchParams, navigate])
-
   return (
     <Shell pageTitle="Pilotage">
-      <TabbedSection
-        tabs={[
-          { key: 'dashboard',    label: 'Dashboard',    element: <Dashboard />,                permKey: 'pilotage.dashboard'    },
-          { key: 'rentabilite',  label: 'Rentabilité',  element: <CalculateurRentabilite />,   permKey: 'pilotage.rentabilite'  },
-          { key: 'statistiques', label: 'Statistiques', element: <Statistiques />,             permKey: 'pilotage.statistiques' },
-        ]}
-      />
+      <Dashboard />
     </Shell>
   )
 }

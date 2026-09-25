@@ -15,7 +15,19 @@ const REDIRECT_URI = 'https://pzfgtcugmqeqixogwzcu.supabase.co/functions/v1/driv
 // Scope Drive (upload/browse) + gmail.send (envoi facture au client par email
 // depuis l'adresse @mcalogistics.fr). Reconnexion requise après ajout du scope
 // pour régénérer un refresh_token incluant Gmail.
-const SCOPE = 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/gmail.send';
+//
+// `openid email` n'est pas décoratif : sans lui Google ne renvoie PAS d'id_token,
+// donc le callback n'a aucune adresse à enregistrer et `connected_email` reste
+// null. On voyait alors « Drive connecté » sans savoir SUR QUEL COMPTE — et un
+// rapatriement lancé depuis le mauvais compte échoue sur chaque fichier avec un
+// 404 qui n'explique rien. L'adresse est la seule façon de le voir avant de
+// cliquer.
+const SCOPE = [
+  'openid',
+  'email',
+  'https://www.googleapis.com/auth/drive',
+  'https://www.googleapis.com/auth/gmail.send',
+].join(' ');
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });

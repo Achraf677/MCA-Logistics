@@ -147,6 +147,15 @@ export function Tournees() {
   // ── Dérivés ──────────────────────────────────────────────────────────────────
   const depotGeocoded = depot.lat != null && depot.lng != null
 
+  // Objet stable : sans ce useMemo, un nouveau `{ lat, lng }` est créé à CHAQUE
+  // rendu de cet écran (cocher un véhicule, taper une date…), ce qui invalide
+  // le React.memo de ToursOverviewMap et force la carte à se recadrer toute
+  // seule à chaque interaction, même sans rapport avec elle.
+  const depotPourCarte = useMemo(
+    () => (depotGeocoded ? { lat: depot.lat as number, lng: depot.lng as number } : null),
+    [depotGeocoded, depot.lat, depot.lng],
+  )
+
   const assignments: Assignment[] = useMemo(
     () => [...selectedVehicles].map(vid => ({ vehicle_id: vid, driver_id: driverByVehicle[vid] || null })),
     [selectedVehicles, driverByVehicle],
@@ -529,7 +538,7 @@ export function Tournees() {
               }>
                 <ToursOverviewMap
                   tours={overviewTours}
-                  depot={depotGeocoded ? { lat: depot.lat as number, lng: depot.lng as number } : null}
+                  depot={depotPourCarte}
                 />
               </Suspense>
             )}

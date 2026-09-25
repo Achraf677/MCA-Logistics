@@ -13,7 +13,7 @@ import { PanneauVentilation } from '../../shared/ui/PanneauVentilation'
 import { DeleteButton } from '../../shared/ui/DeleteButton'
 import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import {
-  lireLibelleCharge, trouverVehicule, parseLectureOcr,
+  lireLibelleCharge, trouverVehicule, parseLectureOcr, type LectureOcr,
 } from '../../shared/lib/lectureFacture'
 import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, formatCents } from './carburant.logic'
 import { fromTtcAndRate, fromTtcAndManualTva } from '../../shared/lib/montants'
@@ -25,6 +25,13 @@ interface Props {
   onClose: () => void
   fuelLog?: FuelLogRow | null
   onSaved: () => void
+  /**
+   * Pré-remplissage depuis la file d'attente (FileAttenteCarburant) : la
+   * charge est déjà choisie et sa lecture OCR déjà faite, il ne reste qu'à
+   * vérifier et enregistrer. Ignoré en édition (`fuelLog` prime toujours).
+   */
+  initialCharge?: ChargePick | null
+  initialOcr?: LectureOcr | null
 }
 
 type Lookup = { id: string; label: string; plate?: string | null }
@@ -46,9 +53,12 @@ const EMPTY_FORM = {
   tva_amount: '',
   tva_deductible_pct: '100',
   chargeId: '',
+  supplier_id: '',
 }
 
-export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
+export function DrawerCarburant({
+  open, onClose, fuelLog, onSaved, initialCharge = null, initialOcr = null,
+}: Props) {
   const { companyId } = useProfile()
   const { toast } = useToast()
   const isEdit = !!fuelLog
@@ -89,6 +99,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
         tva_amount: fuelLog.tva_cts != null ? (fuelLog.tva_cts / 100).toFixed(2) : '',
         tva_deductible_pct: String(fuelLog.tva_deductible_pct ?? 100),
         chargeId: fuelLog.charge_id ?? '',
+        supplier_id: fuelLog.supplier_id ?? '',
       })
       // Peuple linkedCharge depuis le join
       if (fuelLog.charges) {
@@ -108,12 +119,32 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
       } else {
         setLinkedCharge(null)
       }
+    } else if (initialCharge) {
+      // Vient de la file d'attente (FileAttenteCarburant) : la charge est déjà
+      // choisie, l'OCR déjà fait. On applique les deux d'un coup — il ne reste
+      // à l'utilisateur qu'à vérifier et enregistrer, plus un clic à faire.
+      setTvaTouched(false)
+      setLinkedCharge(initialCharge)
+      setForm(prefillDepuisCharge(
+        { ...EMPTY_FORM, date: new Date().toISOString().slice(0, 10) }, initialCharge, vehicles,
+      ))
+      if (initialOcr) {
+        setForm(p => ({
+          ...p,
+          liters: initialOcr.litres != null ? initialOcr.litres.toFixed(2) : p.liters,
+          price_per_liter: initialOcr.prixParLitre != null ? initialOcr.prixParLitre.toFixed(3) : p.price_per_liter,
+          mileage_km: initialOcr.kilometrage != null ? String(Math.round(initialOcr.kilometrage)) : p.mileage_km,
+        }))
+      }
     } else {
       setTvaTouched(false)
       setForm({ ...EMPTY_FORM, date: new Date().toISOString().slice(0, 10) })
       setLinkedCharge(null)
     }
-  }, [fuelLog, open])
+    // `vehicles` inclus : encore vide au tout premier rendu (chargement async
+    // dans l'effet du dessus), le véhicule devinable depuis la charge ne
+    // peut se déduire qu'une fois la liste arrivée.
+  }, [fuelLog, open, initialCharge, initialOcr, vehicles])
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
 
@@ -130,20 +161,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
    */
   const handleChargeSelect = (charge: ChargePick) => {
     setLinkedCharge(charge)
-    const { typeCarburant } = lireLibelleCharge(charge.label)
-    const vehiculeId = trouverVehicule(charge.label, vehicles)
-
-    setForm(prev => ({
-      ...prev,
-      chargeId: charge.id,
-      date: charge.date,
-      total_ttc: charge.montant_ttc_cts != null
-        ? (charge.montant_ttc_cts / 100).toFixed(2)
-        : prev.total_ttc,
-      tva_rate: String(charge.tva_rate ?? 20),
-      fuel_type: prev.fuel_type || (typeCarburant ?? ''),
-      vehicle_id: prev.vehicle_id || (vehiculeId ?? ''),
-    }))
+    setForm(prev => prefillDepuisCharge(prev, charge, vehicles))
   }
 
   /**
@@ -229,6 +247,10 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
 
   const handleSave = async () => {
     if (!form.vehicle_id) { toast('Le véhicule est requis', 'error'); return }
+    // Un plein sans chauffeur ne dit pas QUI a fait le plein : impossible de
+    // rapprocher une consommation anormale d'une personne, et impossible de
+    // contester un plein qu'on n'a pas fait. Demande explicite des chauffeurs.
+    if (!form.driver_id)   { toast('Le chauffeur est requis', 'error'); return }
     if (!form.date)        { toast('La date est requise', 'error'); return }
     if (liters <= 0)       { toast('Le nombre de litres doit être supérieur à 0', 'error'); return }
     if (totalCts <= 0)     { toast('Le montant total doit être supérieur à 0', 'error'); return }
@@ -238,7 +260,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
       const payload = {
         date: form.date,
         vehicle_id: form.vehicle_id,
-        driver_id: form.driver_id || null,
+        driver_id: form.driver_id,
         liters,
         price_per_liter_milli: priceMilli || Math.round(totalCts * 10 / liters),
         total_cts: montants.ttc_cts,
@@ -249,7 +271,7 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
         tva_rate: parseFloat(form.tva_rate || '20'),
         tva_deductible_pct: parseFloat(form.tva_deductible_pct || '100'),
         receipt_url: linkedCharge?.receipt_url ?? (isEdit ? fuelLog?.receipt_url ?? null : null),
-        supplier_id: null,
+        supplier_id: form.supplier_id || linkedCharge?.supplier_id || null,
         charge_id: form.chargeId || null,
       }
 
@@ -365,9 +387,9 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
             </select>
           </Field>
 
-          <Field label="Chauffeur">
+          <Field label="Chauffeur *">
             <select value={form.driver_id} onChange={e => set('driver_id', e.target.value)} className={inputCls}>
-              <option value="">— Aucun —</option>
+              <option value="">— Sélectionner un chauffeur —</option>
               {drivers.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
             </select>
           </Field>
@@ -468,6 +490,38 @@ export function DrawerCarburant({ open, onClose, fuelLog, onSaved }: Props) {
       />
     </>
   )
+}
+
+/**
+ * Ce qu'une charge Pennylane rattachée dit d'elle-même, appliqué au formulaire.
+ *
+ * N'ÉCRASE jamais une valeur déjà saisie (`prev.x ||`) : la lecture propose,
+ * elle ne corrige pas quelqu'un qui vient de taper. La station est le nom du
+ * FOURNISSEUR — c'est lui qui facture, donc lui la station : « TOTAL »,
+ * « E.LECLERC »… Plus fiable qu'un mot-clé cherché dans le libellé, qui varie
+ * d'une facture à l'autre.
+ */
+function prefillDepuisCharge(
+  prev: typeof EMPTY_FORM,
+  charge: ChargePick,
+  vehicles: Lookup[] = [],
+): typeof EMPTY_FORM {
+  const { typeCarburant } = lireLibelleCharge(charge.label)
+  const vehiculeId = trouverVehicule(charge.label, vehicles)
+
+  return {
+    ...prev,
+    chargeId: charge.id,
+    date: charge.date,
+    total_ttc: charge.montant_ttc_cts != null
+      ? (charge.montant_ttc_cts / 100).toFixed(2)
+      : prev.total_ttc,
+    tva_rate: String(charge.tva_rate ?? 20),
+    fuel_type: prev.fuel_type || (typeCarburant ?? ''),
+    vehicle_id: prev.vehicle_id || (vehiculeId ?? ''),
+    station: prev.station || (charge.suppliers?.name ?? ''),
+    supplier_id: prev.supplier_id || (charge.supplier_id ?? ''),
+  }
 }
 
 const inputCls = 'field'

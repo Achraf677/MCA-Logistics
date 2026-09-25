@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton } from '../../shared/ui/Skeleton'
+import { InstallAppButton } from '../../shared/ui/InstallAppButton'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { deposerTicket } from '../../shared/lib/receiptsInbox.queries'
@@ -137,8 +138,19 @@ export function MesCourses() {
     return () => { annule = true }
   }, [courses])
 
-  const groupes = grouperParJour(courses)
-  const { reste, total } = resteAFaire(courses)
+  // useMemo : sans lui, ce tri/filtrage de TOUTES les courses est refait à
+  // chaque rendu — y compris quand seul `busyId` change, donc à chaque clic
+  // sur « Démarrer »/« Charger »/« Livrer » d'UNE SEULE course.
+  const groupes = useMemo(() => grouperParJour(courses), [courses])
+  const { reste, total } = useMemo(() => resteAFaire(courses), [courses])
+
+  // Découpage retrait/livraison par jour, calculé une seule fois avec `groupes`
+  // plutôt qu'appelé en plein JSX à chaque rendu (ça tournait à chaque clic
+  // « Démarrer »/« Charger »/« Livrer », pour TOUS les jours affichés).
+  const groupesAvecArrets = useMemo(
+    () => groupes.map(([jour, duJour]) => ({ jour, duJour, arrets: arretsDuJour(duJour) })),
+    [groupes],
+  )
 
   /**
    * Un chauffeur ne peut qu'AVANCER une course : démarrer, puis livrer. La
@@ -227,6 +239,8 @@ export function MesCourses() {
 
   return (
     <Shell pageTitle="Mes courses">
+      <InstallAppButton />
+
       {/* Sélecteur de période — collé en haut, toujours atteignable au pouce */}
       <div className="flex flex-col gap-3 mb-4">
         <div className="flex items-center gap-1 p-1 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
@@ -325,7 +339,7 @@ export function MesCourses() {
         />
       ) : (
         <div className="flex flex-col gap-5">
-          {groupes.map(([jour, duJour]) => (
+          {groupesAvecArrets.map(({ jour, duJour, arrets }) => (
             <section key={jour} className="flex flex-col gap-2">
               {/* En-tête de jour : inutile en mode « jour », le titre le dit déjà */}
               {mode !== 'jour' && (
@@ -348,7 +362,7 @@ export function MesCourses() {
                   forcément : on peut charger chez A, charger chez B, puis
                   livrer A. Tant que la liste montrait des COURSES, cette
                   journée-là était inexprimable. */}
-              {arretsDuJour(duJour).map((a, i, tous) => (
+              {arrets.map((a, i, tous) => (
                 <CarteArret
                   key={a.cle}
                   arret={a}

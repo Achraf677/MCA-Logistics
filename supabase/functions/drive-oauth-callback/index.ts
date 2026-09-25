@@ -75,7 +75,9 @@ Deno.serve(async (req: Request) => {
     company_id: companyId,
     refresh_token: refreshToken,
     connected_email: email,
-    scope: 'https://www.googleapis.com/auth/drive',
+    // Le scope RÉELLEMENT accordé, pas celui qu'on a demandé : l'utilisateur
+    // peut décocher une case sur l'écran Google.
+    scope: typeof tok.scope === 'string' && tok.scope ? tok.scope : 'https://www.googleapis.com/auth/drive',
     connected_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }, { onConflict: 'company_id' });

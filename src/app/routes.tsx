@@ -72,14 +72,15 @@ export function AppRoutes() {
     <Suspense fallback={<div className="p-8 text-[var(--fs-sm)] text-[var(--text-muted)]">Chargement…</div>}>
     <RecuperationMotDePasse />
     <Routes>
-      {/* Pilotage à sous-onglets ; "/" rend la section (1er onglet = Dashboard) → l'app ouvre sur le Dashboard.
-          /pilotage ≠ paths redirigés → aucune boucle. */}
+      {/* Pilotage : un seul écran (Dashboard) — Rentabilité et Statistiques
+          retirées, redondantes. Les anciennes URLs redirigent simplement
+          vers "/pilotage" au lieu d'un onglet qui n'existe plus. */}
       <Route path="/"              element={<PilotageSection />} />
       <Route path="/pilotage"      element={guard(features.pilotage,     <PilotageSection />)} />
-      <Route path="/dashboard"  element={<VersOnglet section="/pilotage" tab="dashboard" />} />
+      <Route path="/dashboard"     element={<Navigate to="/pilotage"                  replace />} />
       <Route path="/analyses"      element={<Navigate to="/pilotage"                  replace />} />
-      <Route path="/rentabilite" element={<VersOnglet section="/pilotage" tab="rentabilite" />} />
-      <Route path="/statistiques" element={<VersOnglet section="/pilotage" tab="statistiques" />} />
+      <Route path="/rentabilite"   element={<Navigate to="/pilotage"                  replace />} />
+      <Route path="/statistiques"  element={<Navigate to="/pilotage"                  replace />} />
       <Route path="/livraisons"    element={guard(features.livraisons,   <LivraisonsSection />)} />
       {/* Ecran chauffeur : volontairement hors des sections a sous-onglets. */}
       <Route path="/mes-courses"   element={guard(features.mesCourses,   <MesCourses />)} />

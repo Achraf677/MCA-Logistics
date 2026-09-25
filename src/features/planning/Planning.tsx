@@ -1,11 +1,14 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { ChevronLeft, ChevronRight, CalendarDays } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { EmptyState } from '../../shared/ui/EmptyState'
-import { DrawerLivraison } from '../livraisons/DrawerLivraison'
+// Chargé à la demande : c'est le plus gros bloc du site, utile seulement au
+// clic sur un créneau, pas à l'affichage du planning lui-même.
+const DrawerLivraison = lazy(() =>
+  import('../livraisons/DrawerLivraison').then(m => ({ default: m.DrawerLivraison })))
 import { getDeliveriesForWeek } from './planning.queries'
 import { STATUS_LABELS, STATUS_COLORS, formatCents } from '../livraisons/livraisons.logic'
 import { effectiveHtCts } from '../../shared/lib/money'
@@ -236,12 +239,14 @@ export function Planning() {
         </>
       )}
 
-      <DrawerLivraison
-        open={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-        delivery={selected}
-        onSaved={load}
-      />
+      <Suspense fallback={null}>
+        <DrawerLivraison
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          delivery={selected}
+          onSaved={load}
+        />
+      </Suspense>
     </Shell>
   )
 }

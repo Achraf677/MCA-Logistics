@@ -26,7 +26,6 @@ import { uploadDocument } from '../../shared/lib/documents.queries'
 import { getCompany } from '../parametres/parametres.queries'
 import type { CompanyData } from '../parametres/parametres.queries'
 import { buildLettreVoiture, lvNumero } from './lettreVoiture.logic'
-import { buildLettreVoiturePdf } from './lettreVoiture.pdf'
 import { updateDelivery, getLvNumerosForYear } from './livraisons.queries'
 import type { DeliveryRow, LvSignatures, LvSignatureData } from './livraisons.types'
 import { Field } from '../../shared/ui/Field'
@@ -201,6 +200,9 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
       }
       const dataForPdf = { ...preview.data, numero }
       const fileName = `${numero}.pdf`
+      // Import à la demande : jsPDF ne sert qu'à ce clic (génération de la
+      // lettre de voiture), occasionnel — pas à l'ouverture du tiroir.
+      const { buildLettreVoiturePdf } = await import('./lettreVoiture.pdf')
       const { file } = buildLettreVoiturePdf({
         data: dataForPdf,
         signatures,

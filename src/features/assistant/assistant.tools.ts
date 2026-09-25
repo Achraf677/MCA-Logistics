@@ -29,9 +29,6 @@ import { getCharges, createCharge } from '../charges/charges.queries'
 import { kpiSummary as chargesKpiSummary } from '../charges/charges.logic'
 import type { ChargeInsert, ChargeRow } from '../charges/charges.types'
 
-import { getTvaData } from '../tva/tva.queries'
-import { computeTva } from '../tva/tva.logic'
-
 // Vague B — opérations / flotte / équipe
 import { getDeliveries, createDelivery, transitionDelivery } from '../livraisons/livraisons.queries'
 import { STATUS_LABELS as DELIVERY_STATUS_LABELS, computeAmount, canTransition } from '../livraisons/livraisons.logic'
@@ -118,7 +115,7 @@ export function monthBounds(mois?: string): { label: string; start: string; end:
 }
 
 // ── 1) KPIs du mois ────────────────────────────────────────────────────────────
-// Réutilise la définition du CA HT des onglets Statistiques/Rentabilité :
+// Réutilise la définition du CA HT du Dashboard :
 // deliveries.amount_ht_cts via effectiveHtCts, statut != 'annulee', filtre sur `date`.
 
 export interface KpisMois {
@@ -271,21 +268,6 @@ export async function getChargesMois(mois?: string) {
       categorie: cat,
       total_ttc_eur: centimesToEuros(cts),
     })),
-  }
-}
-
-// ── 6) TVA ────────────────────────────────────────────────────────────────────
-// Réutilise getTvaData() + computeTva() (onglet TVA), sur un mois.
-
-export async function getTva(mois?: string) {
-  const { label, start, end } = monthBounds(mois)
-  const raw = await getTvaData(start, end)
-  const t = computeTva(raw)
-  return {
-    mois: label,
-    tva_collectee_eur: centimesToEuros(t.tvaCollecteeCts),
-    tva_deductible_eur: centimesToEuros(t.tvaDeductibleChargesCts + t.tvaDeductibleCarburantCts),
-    tva_nette_eur: centimesToEuros(t.soldeCts),
   }
 }
 

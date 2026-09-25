@@ -1,5 +1,5 @@
 import { useSearchParams } from 'react-router-dom'
-import { createContext, useContext, useState, type ReactNode } from 'react'
+import { createContext, useContext, useState, Suspense, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { usePermissions } from '../permissions/usePermissions'
 
@@ -77,8 +77,21 @@ export function TabbedSection({ tabs, headerRight }: { tabs: SubTab[]; headerRig
 
         {/* Contenu de l'onglet actif */}
         {/* `key` force le remontage a chaque changement d'onglet : c'est ce
-            qui relance l'animation de `anim-tab`. */}
-        {active && <div key={active.key} className="anim-tab">{active.element}</div>}
+            qui relance l'animation de `anim-tab`.
+            `Suspense` ICI et pas seulement au niveau du routeur : un onglet
+            peut porter un composant charge a la demande (`React.lazy`) sans
+            que ca fasse disparaitre la barre d'onglets pendant le
+            telechargement — seul le contenu affiche « Chargement… ». Sans
+            lazy descendant, ce Suspense ne change rien. */}
+        {active && (
+          <div key={active.key} className="anim-tab">
+            <Suspense fallback={
+              <div className="py-16 text-center text-[var(--fs-sm)] text-[var(--text-muted)]">Chargement…</div>
+            }>
+              {active.element}
+            </Suspense>
+          </div>
+        )}
       </div>
     </TabActionsContext.Provider>
   )

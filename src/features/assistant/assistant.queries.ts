@@ -3,7 +3,7 @@ import { SITE_KNOWLEDGE } from './assistant.knowledge'
 import type { AssistantMessage } from './AssistantContext'
 import {
   getKpisMois, getAlertes, getImpayes, getTresorerie, getChargesMois,
-  getTva, getClient, getClientsList, getFournisseursList,
+  getClient, getClientsList, getFournisseursList,
   getLivraisons, getTournees, getIncidentsList, getInspectionsList,
   getVehicules, getCarburantMois, getEntretiens, getEquipe, getHeures,
 } from './assistant.tools'
@@ -20,7 +20,6 @@ const ASSISTANT_TOOLS: Record<string, (args: Record<string, unknown>) => Promise
   get_impayes:      () => getImpayes(),
   get_tresorerie:   () => getTresorerie(),
   get_charges_mois: (args) => getChargesMois(str(args.mois)),
-  get_tva:          (args) => getTva(str(args.mois)),
   get_client:       (args) => getClient(str(args.nom) ?? ''),
   get_clients:      () => getClientsList(),
   get_fournisseurs: () => getFournisseursList(),
