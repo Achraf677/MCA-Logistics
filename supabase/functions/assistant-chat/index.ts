@@ -1,5 +1,5 @@
 // Edge Function `assistant-chat` — cerveau conversationnel de l'assistant MCA.
-// Modèle : ministral-14b-2512 (cf. _shared/mistral.ts pour le pourquoi). 18 outils LECTURE + 8 outils ÉCRITURE + 1 outil RÉDACTION (generer_mail).
+// Modèle : ministral-14b-2512 (cf. _shared/mistral.ts pour le pourquoi). 17 outils LECTURE + 8 outils ÉCRITURE + 1 outil RÉDACTION (generer_mail).
 // L'Edge NE TOUCHE JAMAIS la base : elle propose des OUTILS à Mistral. Le front exécute les lectures,
 // affiche une carte de CONFIRMATION pour les écritures, et délègue la rédaction à brouillons-generate.
 // Clé jamais logguée. verify_jwt = true. Retry/backoff sur 429/5xx.
