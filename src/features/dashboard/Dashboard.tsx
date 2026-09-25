@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
-import { ChevronRight, Euro, Package, FileCheck2, CheckCircle2, Truck, Users, Building2, Link2 } from 'lucide-react'
+import { ChevronRight, Euro, Package, FileCheck2, Truck, Users, Building2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
@@ -18,9 +18,6 @@ import { getDashboardKpis, getRecentDeliveries, getMonthlyTrend } from './dashbo
 import type { TrendPeriod } from './dashboard.queries'
 import { formatCents, STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
 import { effectiveHtCts } from '../../shared/lib/money'
-import { getAlertesMetier } from '../../shared/lib/alertesEngine.queries'
-import { resumeAlertes } from '../../shared/lib/alertesEngine'
-import type { AlerteMetier } from '../../shared/lib/alertesEngine'
 import type { DashboardKpis } from './dashboard.queries'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
 
@@ -33,21 +30,17 @@ export function Dashboard() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
   const [period, setPeriod] = useState<TrendPeriod>('6m')
-  const [metric, setMetric] = useState<'ca' | 'livraisons'>('ca')
-  const [metier, setMetier] = useState<AlerteMetier[]>([])
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [k, r, t, m] = await Promise.all([
+    const [k, r, t] = await Promise.all([
       getDashboardKpis(),
       getRecentDeliveries(),
       getMonthlyTrend('6m'),
-      getAlertesMetier(),   // même moteur que la cloche (source unique)
     ])
     setKpis(k)
     setRecent(r.data ?? [])
     setTrend(t)
-    setMetier(m)
     setLoading(false)
   }, [])
 
@@ -72,9 +65,6 @@ export function Dashboard() {
   const deltaFacturee = (last && prev)
     ? { value: String(Math.abs(last.nbFacturee - prev.nbFacturee)), dir: (last.nbFacturee >= prev.nbFacturee ? 'up' : 'down') as 'up' | 'down' }
     : undefined
-  const deltaPayee = (last && prev)
-    ? { value: String(Math.abs(last.nbPayee - prev.nbPayee)), dir: (last.nbPayee >= prev.nbPayee ? 'up' : 'down') as 'up' | 'down' }
-    : undefined
 
   return (
     <Shell pageTitle="Dashboard">
@@ -97,9 +87,9 @@ export function Dashboard() {
         </div>
 
         {/* ── KPIs ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 [&>*]:min-w-0">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 [&>*]:min-w-0">
           {loading ? (
-            [0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[88px]" />)
+            [0, 1, 2].map(i => <Skeleton key={i} className="h-[88px]" />)
           ) : (
             <>
               <KpiCard label="CA HT du mois" value={formatCents(kpis!.caHtCts)} tone="success"
@@ -112,12 +102,6 @@ export function Dashboard() {
                 delta={deltaFacturee}
                 progress={kpis!.nbLivraisons ? Math.round((kpis!.nbFacturee / kpis!.nbLivraisons) * 100) : 0}
                 spark={trend.map(t => t.nbFacturee)} />
-              <KpiCard label="Payées" value={kpis!.nbPayee} tone="warning"
-                icon={<CheckCircle2 size={18} />}
-                sub={`/ ${kpis!.nbLivraisons}`}
-                delta={deltaPayee}
-                progress={kpis!.nbLivraisons ? Math.round((kpis!.nbPayee / kpis!.nbLivraisons) * 100) : 0}
-                spark={trend.map(t => t.nbPayee)} />
             </>
           )}
         </div>
@@ -130,47 +114,35 @@ export function Dashboard() {
             <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
               <div className="flex items-baseline gap-3">
                 <span className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">
-                  {metric === 'ca' ? "Chiffre d'affaires HT" : 'Livraisons'}
+                  Chiffre d'affaires HT
                 </span>
               </div>
-              {/* Contrôles période + métrique */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden text-[var(--fs-xs)]">
-                  {(['6m', '12m', 'ytd'] as TrendPeriod[]).map(p => (
-                    <button key={p} type="button" onClick={() => handlePeriodChange(p)}
-                      className={`px-3 py-1.5 transition-colors ${period === p
-                        ? 'bg-[var(--brand)] text-white font-semibold'
-                        : 'bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]'}`}>
-                      {p === '6m' ? '6 mois' : p === '12m' ? '12 mois' : 'Année'}
-                    </button>
-                  ))}
-                </div>
-                <div className="flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden text-[var(--fs-xs)]">
-                  {(['ca', 'livraisons'] as const).map(m => (
-                    <button key={m} type="button" onClick={() => setMetric(m)}
-                      className={`px-3 py-1.5 transition-colors ${metric === m
-                        ? 'bg-[var(--brand)] text-white font-semibold'
-                        : 'bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]'}`}>
-                      {m === 'ca' ? 'CA HT' : 'Livraisons'}
-                    </button>
-                  ))}
-                </div>
+              {/* Contrôle de période — plus de bascule CA/Livraisons : un seul
+                  graphique, celui qui compte le plus (l'autre était affichable
+                  d'un clic, rarement utilisé, et fait doublon avec le KPI
+                  « Livraisons » juste au-dessus). */}
+              <div className="flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden text-[var(--fs-xs)]">
+                {(['6m', '12m', 'ytd'] as TrendPeriod[]).map(p => (
+                  <button key={p} type="button" onClick={() => handlePeriodChange(p)}
+                    className={`px-3 py-1.5 transition-colors ${period === p
+                      ? 'bg-[var(--brand)] text-white font-semibold'
+                      : 'bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]'}`}>
+                    {p === '6m' ? '6 mois' : p === '12m' ? '12 mois' : 'Année'}
+                  </button>
+                ))}
               </div>
             </div>
             {loading
               ? <Skeleton className="h-[220px]" />
               : <LineChart
-                  key={`${period}-${metric}`}
-                  points={trend.map(t => ({ label: t.month, value: metric === 'ca' ? t.caHtCts : t.nb }))}
-                  formatValue={metric === 'ca' ? formatCents : v => `${v} liv.`}
-                  formatAxisY={metric === 'ca'
-                    ? (v: number) => {
-                        if (v === 0) return '0'
-                        const eur = Math.round(v / 100)
-                        return eur >= 1000 ? `${Math.round(eur / 1000)} k€` : `${eur} €`
-                      }
-                    : (v: number) => String(Math.round(v))
-                  }
+                  key={period}
+                  points={trend.map(t => ({ label: t.month, value: t.caHtCts }))}
+                  formatValue={formatCents}
+                  formatAxisY={(v: number) => {
+                    if (v === 0) return '0'
+                    const eur = Math.round(v / 100)
+                    return eur >= 1000 ? `${Math.round(eur / 1000)} k€` : `${eur} €`
+                  }}
                 />
             }
           </div>
@@ -208,33 +180,8 @@ export function Dashboard() {
                     <ChevronRight size={18} className="ml-auto text-[var(--text-disabled)]" />
                   </button>
                 ))}
-                {/* À traiter — MÊME moteur que la cloche (source unique). Les 3
-                 *   alertes les plus prioritaires (rouge → orange → info). */}
-                {(() => {
-                  const resume = resumeAlertes(metier)
-                  if (metier.length === 0) return null
-                  const top = metier.slice(0, 3)
-                  return (
-                    <button
-                      onClick={() => navigate(top[0].lien)}
-                      className="w-full flex items-center gap-3 p-3 rounded-[var(--r-md)] hover:bg-[var(--bg-card-hover)] transition-colors text-left"
-                    >
-                      <span className={`w-10 h-10 rounded-[var(--r-md)] grid place-items-center shrink-0
-                        ${resume.rouge > 0
-                          ? 'bg-[var(--danger)]/15 text-[var(--danger)]'
-                          : 'bg-[var(--warning)]/15 text-[var(--warning)]'}`}>
-                        <Link2 size={18} />
-                      </span>
-                      <span className="min-w-0">
-                        <b className="font-mono text-xl text-[var(--text)]">{resume.badge || metier.length}</b>
-                        <small className="block text-[var(--text-muted)] text-[var(--fs-xs)] truncate">
-                          À traiter · {top.map(a => a.label).join(' · ')}
-                        </small>
-                      </span>
-                      <ChevronRight size={18} className="ml-auto text-[var(--text-disabled)]" />
-                    </button>
-                  )
-                })()}
+                {/* Le raccourci « À traiter » vivait ici, en double avec la
+                    cloche d'alertes en haut du site — retiré. */}
               </div>
             )}
           </div>

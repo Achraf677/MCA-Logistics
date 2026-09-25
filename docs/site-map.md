@@ -62,8 +62,8 @@ role: 'president' | 'dg' | 'chauffeur' | 'comptable'
 
 > Rentabilité et Statistiques (Pilotage) ont été retirées : redondantes avec le Dashboard
 > (même CA mensuel, mêmes KPIs). Le calcul du coût de revient RÉEL par tournée/chargement
-> vit dans `features/rentabilite/Rentabilite.tsx` + `ChargementsPanel.tsx` — pas encore
-> raccroché à un onglet, à trancher séparément.
+> (`features/rentabilite/Rentabilite.tsx` + `ChargementsPanel.tsx`, jamais raccroché à un
+> onglet) a été supprimé aussi, décision du président : à recoder si le besoin revient.
 
 ---
 
