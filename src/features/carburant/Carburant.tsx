@@ -36,6 +36,9 @@ export function Carburant() {
   const [initialCharge, setInitialCharge] = useState<ChargePick | null>(null)
   const [initialOcr, setInitialOcr] = useState<LectureOcr | null>(null)
   const [queueRefresh, setQueueRefresh] = useState(0)
+  // Pleins sans facture liée — indépendant de `filters` (envoyés à la requête) :
+  // filtre client, sur les lignes déjà chargées, comme le reste des filtres spéciaux.
+  const [filtreARapprocher, setFiltreARapprocher] = useState(false)
 
   useEffect(() => {
     // La plaque est chargée : c'est elle qui relie une facture carburant à un
@@ -75,11 +78,14 @@ export function Carburant() {
   }
 
   const kpis = kpiSummary(rows)
+  const nbARapprocher = rows.filter(r => !r.charge_id).length
+  const displayRows = filtreARapprocher ? rows.filter(r => !r.charge_id) : rows
 
   const hasFilters = !!(
     (filters.vehicle_id && filters.vehicle_id !== 'all') ||
-    filters.date_from || filters.date_to
+    filters.date_from || filters.date_to || filtreARapprocher
   )
+  const resetFilters = () => { setFilters({}); setFiltreARapprocher(false) }
 
   return (
     <Shell pageTitle="Carburant" actions={['nouveau', 'export']} onAction={handleAction}>
@@ -119,8 +125,15 @@ export function Carburant() {
           <option value="all">Tous véhicules</option>
           {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
         </select>
+        <Button
+          variant={filtreARapprocher ? 'primary' : 'secondary'}
+          size="compact"
+          onClick={() => setFiltreARapprocher(v => !v)}
+        >
+          À rapprocher uniquement{nbARapprocher > 0 ? ` (${nbARapprocher})` : ''}
+        </Button>
         {hasFilters && (
-          <Button variant="ghost" size="compact" onClick={() => setFilters({})}>
+          <Button variant="ghost" size="compact" onClick={resetFilters}>
             Réinitialiser
           </Button>
         )}
@@ -134,7 +147,7 @@ export function Carburant() {
           <p className="text-[var(--danger)] text-[var(--fs-sm)]">{error}</p>
           <Button variant="secondary" onClick={load}>Réessayer</Button>
         </div>
-      ) : rows.length === 0 ? (
+      ) : displayRows.length === 0 ? (
         <EmptyState
           icon={<Fuel size={48} />}
           title="Aucun plein enregistré"
@@ -158,7 +171,7 @@ export function Carburant() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => (
+                {displayRows.map((row, i) => (
                   <tr
                     key={row.id}
                     onClick={() => openRow(row)}
@@ -219,7 +232,7 @@ export function Carburant() {
 
           {/* Mobile */}
           <div className="md:hidden flex flex-col gap-3">
-            {rows.map(row => (
+            {displayRows.map(row => (
               <button
                 key={row.id}
                 onClick={() => openRow(row)}
