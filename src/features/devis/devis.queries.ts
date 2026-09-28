@@ -6,7 +6,8 @@ export async function listQuotes(): Promise<{ data: Quote[] | null; error: unkno
     .from('quotes')
     .select(`
       id, company_id, client_id, date, valid_until, description,
-      amount_ht_cts, tva_rate, tva_cts, amount_ttc_cts, statut,
+      amount_ht_cts, tva_rate, tva_cts, amount_ttc_cts,
+      pickup_address, delivery_address, vehicle_id, driver_id, statut,
       pennylane_quote_id, pennylane_quote_number, pennylane_invoice_id, notes, created_at, updated_at,
       clients!client_id(name)
     `)
@@ -69,6 +70,10 @@ export async function transformToDelivery(quote: Quote, companyId: string) {
     tva_rate: quote.tva_rate,
     tva_cts: quote.tva_cts,
     amount_ttc_cts: quote.amount_ttc_cts,
+    pickup_address: quote.pickup_address,
+    delivery_address: quote.delivery_address,
+    vehicle_id: quote.vehicle_id,
+    driver_id: quote.driver_id,
     quote_id: quote.id,
   })
   if (dErr) return { error: dErr }

@@ -19,9 +19,11 @@ import { generateJson, ocrDocument } from '../_shared/mistral.ts'
 
 interface LectureIa {
   litres: number | null
+  litres_confiance: number
   prix_par_litre: number | null
+  prix_par_litre_confiance: number
   kilometrage: number | null
-  confiance: number
+  kilometrage_confiance: number
 }
 
 const VIDE = { litres: null, prix_par_litre: null, kilometrage: null, confiance: 0 }
@@ -106,10 +108,13 @@ Si une information n'apparaît pas, réponds null pour ce champ.
 
 - litres : volume de carburant servi (nombre, ex. 42.15)
 - prix_par_litre : prix unitaire au litre en euros (nombre, ex. 1.859)
-- kilometrage : compteur du véhicule s'il figure sur le document (entier)
+- kilometrage : compteur du véhicule s'il figure sur le document (entier) — souvent absent d'un ticket de station, c'est normal
+
+Donne une confiance (0 à 1) SÉPARÉE pour chaque champ : un ticket qui n'affiche pas le kilométrage
+ne doit pas faire douter de la lecture des litres, ce sont trois informations indépendantes.
 
 Réponds UNIQUEMENT en JSON :
-{"litres": <nombre|null>, "prix_par_litre": <nombre|null>, "kilometrage": <entier|null>, "confiance": <0 à 1>}`
+{"litres": <nombre|null>, "litres_confiance": <0 à 1>, "prix_par_litre": <nombre|null>, "prix_par_litre_confiance": <0 à 1>, "kilometrage": <entier|null>, "kilometrage_confiance": <0 à 1>}`
 
     const userPrompt = [
       `Libellé : ${charge.label}`,
@@ -119,16 +124,31 @@ Réponds UNIQUEMENT en JSON :
     ].filter(Boolean).join('\n')
 
     const brut = await generateJson<LectureIa>(apiKey, system, userPrompt)
-    const confiance = Number(brut?.confiance)
-    const sure = Number.isFinite(confiance) && confiance >= SEUIL_CONFIANCE
+
+    // Trois champs indépendants, trois seuils indépendants : un ticket qui ne
+    // montre pas le kilométrage ne doit pas faire perdre des litres pourtant
+    // lisibles sans ambiguïté. Un seul score global grillait les trois d'un
+    // coup dès que l'un d'eux manquait — le cas le plus fréquent d'un ticket
+    // de station, qui n'affiche presque jamais le compteur.
+    const sur = (v: unknown): boolean => {
+      const n = Number(v)
+      return Number.isFinite(n) && n >= SEUIL_CONFIANCE
+    }
+    const litresConf = Number(brut?.litres_confiance)
+    const prixConf = Number(brut?.prix_par_litre_confiance)
+    const kmConf = Number(brut?.kilometrage_confiance)
 
     return jsonResponse({
       ok: true,
       data: {
-        litres:         sure ? borner(brut?.litres, MAX_LITRES) : null,
-        prix_par_litre: sure ? borner(brut?.prix_par_litre, MAX_PRIX_LITRE) : null,
-        kilometrage:    sure ? borner(brut?.kilometrage, MAX_KM) : null,
-        confiance: Number.isFinite(confiance) ? confiance : 0,
+        litres:         sur(litresConf) ? borner(brut?.litres, MAX_LITRES) : null,
+        prix_par_litre: sur(prixConf) ? borner(brut?.prix_par_litre, MAX_PRIX_LITRE) : null,
+        kilometrage:    sur(kmConf) ? borner(brut?.kilometrage, MAX_KM) : null,
+        // Confiance globale renvoyée pour compat (non affichée côté front) :
+        // la plus basse des trois parmi celles réellement fournies.
+        confiance: [litresConf, prixConf, kmConf].filter(Number.isFinite).reduce(
+          (min, v) => Math.min(min, v), 1,
+        ),
       },
     })
   } catch {

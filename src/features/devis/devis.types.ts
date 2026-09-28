@@ -18,6 +18,10 @@ export interface Quote {
   tva_rate: number | null
   tva_cts: number | null
   amount_ttc_cts: number | null
+  pickup_address: string | null
+  delivery_address: string | null
+  vehicle_id: string | null
+  driver_id: string | null
   statut: QuoteStatus
   pennylane_quote_id: string | null
   pennylane_quote_number: string | null

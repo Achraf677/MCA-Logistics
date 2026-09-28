@@ -2,10 +2,11 @@ import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import { Drawer }     from '../../shared/ui/Drawer'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
+import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
 import { Button }     from '../../shared/ui/Button'
 import { Badge }      from '../../shared/ui/Badge'
 import { useToast }   from '../../shared/ui/useToast'
-import { useProfile } from '../../app/providers'
+import { useProfile, supabase } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { eurosToCentimes, centimesToEuros, formatMoney } from '../../shared/lib/money'
 import { fromHtAndRate, fromHtAndManualTva } from '../../shared/lib/montants'
@@ -39,15 +40,21 @@ function todayPlus30(): string {
 }
 
 const EMPTY_FORM = {
-  client_id:   '',
-  date:        TODAY,
-  valid_until: todayPlus30(),
-  description: '',
-  amount_ht:   '',
-  tva_rate:    20,
-  tva_amount:  '',
-  notes:       '',
+  client_id:        '',
+  date:              TODAY,
+  valid_until:       todayPlus30(),
+  description:       '',
+  amount_ht:         '',
+  tva_rate:          20,
+  tva_amount:        '',
+  pickup_address:    '',
+  delivery_address:  '',
+  vehicle_id:        '',
+  driver_id:         '',
+  notes:             '',
 }
+
+type Lookup = { id: string; label: string }
 
 // ── Composant ─────────────────────────────────────────────────────────────────
 
@@ -60,6 +67,8 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [tvaTouched, setTvaTouched] = useState(false)
   const [clients, setClients] = useState<{ id: string; name: string }[]>([])
+  const [vehicles, setVehicles] = useState<Lookup[]>([])
+  const [drivers, setDrivers] = useState<Lookup[]>([])
   const [saving, setSaving] = useState(false)
   const [actioning, setActioning] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -71,6 +80,10 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
   useEffect(() => {
     if (!open) return
     listClientsLight().then(({ data }) => setClients(data ?? []))
+    supabase.from('vehicles').select('id, label').eq('status', 'active').order('label')
+      .then(({ data }) => setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label }))))
+    supabase.from('team_members').select('id, full_name').eq('active', true).order('full_name')
+      .then(({ data }) => setDrivers((data ?? []).map(m => ({ id: m.id, label: m.full_name }))))
   }, [open])
 
   // ── Initialisation formulaire ─────────────────────────────────────────────
@@ -87,6 +100,10 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
           ? centimesToEuros(quote.amount_ht_cts).toFixed(2) : '',
         tva_rate:    quote.tva_rate ?? 20,
         tva_amount:  quote.tva_cts != null ? (quote.tva_cts / 100).toFixed(2) : '',
+        pickup_address:   quote.pickup_address ?? '',
+        delivery_address: quote.delivery_address ?? '',
+        vehicle_id:       quote.vehicle_id ?? '',
+        driver_id:        quote.driver_id ?? '',
         notes:       quote.notes ?? '',
       })
     } else {
@@ -156,6 +173,10 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
         tva_rate:       form.tva_rate,
         tva_cts:        tvaCts,
         amount_ttc_cts: ttcCts,
+        pickup_address:   form.pickup_address.trim() || null,
+        delivery_address: form.delivery_address.trim() || null,
+        vehicle_id:       form.vehicle_id || null,
+        driver_id:        form.driver_id || null,
         notes:          form.notes.trim() || null,
       }
 
@@ -356,6 +377,38 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
             placeholder="Objet du devis…"
             disabled={isReadOnly} className={inputCls} />
         </Field>
+
+        {/* Logistique — reprise telle quelle si le devis est transformé en livraison */}
+        <AddressAutocomplete
+          label="Adresse de départ"
+          value={form.pickup_address}
+          onChange={v => set('pickup_address', v)}
+          onSelect={s => set('pickup_address', s.address)}
+          disabled={isReadOnly}
+        />
+        <AddressAutocomplete
+          label="Adresse de livraison"
+          value={form.delivery_address}
+          onChange={v => set('delivery_address', v)}
+          onSelect={s => set('delivery_address', s.address)}
+          disabled={isReadOnly}
+        />
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Véhicule">
+            <select value={form.vehicle_id} onChange={e => set('vehicle_id', e.target.value)}
+              disabled={isReadOnly} className={inputCls}>
+              <option value="">—</option>
+              {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Chauffeur">
+            <select value={form.driver_id} onChange={e => set('driver_id', e.target.value)}
+              disabled={isReadOnly} className={inputCls}>
+              <option value="">—</option>
+              {drivers.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+            </select>
+          </Field>
+        </div>
 
         {/* Montant HT + TVA */}
         <div className="grid grid-cols-2 gap-3">

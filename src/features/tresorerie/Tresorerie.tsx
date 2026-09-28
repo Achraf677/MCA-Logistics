@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ChevronDown, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
@@ -57,8 +58,12 @@ export function Tresorerie() {
   const [expandedTx, setExpandedTx]   = useState<string | null>(null)
   const [rapprochOpen, setRapprochOpen] = useState<string | null>(null)
   // Mouvements encore à traiter (débits à rapprocher/sans justificatif, crédits
-  // non identifiés) — filtre client sur la liste déjà chargée.
-  const [filtreARapprocher, setFiltreARapprocher] = useState(false)
+  // non identifiés) — filtre client sur la liste déjà chargée. Pré-coché quand
+  // on arrive via le lien de la cloche/dashboard (?filtre=a_rapprocher).
+  const [searchParams] = useSearchParams()
+  const [filtreARapprocher, setFiltreARapprocher] = useState(
+    () => searchParams.get('filtre') === 'a_rapprocher',
+  )
   // Ventilation ouverte (qonto_id) — panneau replié par défaut pour ne pas
   // charger charge_allocations à chaque expand.
   const [ventilationTx, setVentilationTx] = useState<string | null>(null)
