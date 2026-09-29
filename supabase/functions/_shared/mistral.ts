@@ -22,6 +22,12 @@ const MODEL = Deno.env.get('MISTRAL_MODEL') || 'ministral-14b-2512';
 // appel reel (action `ping_ocr` de la fonction ai-extract-deliveries).
 export const OCR_MODEL = Deno.env.get('MISTRAL_OCR_MODEL') || 'mistral-ocr-latest';
 
+// Modele VISION (lecture d'image via /chat/completions + `image_url`). Par
+// defaut le meme que MODEL : la famille Ministral 3 (dont ministral-14b-2512)
+// lit les images (https://docs.mistral.ai/studio-api/conversations/vision) et
+// reste ouverte sur le forfait gratuit, contrairement a /v1/ocr.
+export const VISION_MODEL = Deno.env.get('MISTRAL_VISION_MODEL') || MODEL;
+
 interface MistralResponse {
   choices?: Array<{ message?: { content?: string } }>;
 }
@@ -95,6 +101,42 @@ export async function generateJson<T>(
       response_format: { type: 'json_object' },
       temperature: 0.7,
       max_tokens: 4096,
+    },
+    timeoutMs: 60_000,
+  });
+  const content = data.choices?.[0]?.message?.content ?? '';
+  return JSON.parse(content) as T;
+}
+
+/**
+ * Extraction JSON directement depuis une IMAGE (un seul appel, pas d'OCR
+ * préalable). `imageDataUrl` : `data:image/...;base64,...` ou URL https.
+ * Température basse : on lit un document, on n'invente rien.
+ */
+export async function generateJsonFromImage<T>(
+  apiKey: string,
+  systemPrompt: string,
+  userPrompt: string,
+  imageDataUrl: string,
+): Promise<T> {
+  const data = await fetchJson<MistralResponse>(`${BASE}/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: {
+      model: VISION_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: userPrompt },
+            { type: 'image_url', image_url: imageDataUrl },
+          ],
+        },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+      max_tokens: 1024,
     },
     timeoutMs: 60_000,
   });

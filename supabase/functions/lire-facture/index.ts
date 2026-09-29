@@ -1,4 +1,4 @@
-// Edge Function `lire-facture` — lit une facture (OCR Mistral) et renvoie les
+// Edge Function `lire-facture` — lit une facture (vision Mistral) et renvoie les
 // champs qu'un libellé ne peut PAS contenir : litres, prix au litre, kilométrage.
 //
 // Complément, et non remplacement, de `shared/lib/lectureFacture.ts` : le type
@@ -15,7 +15,8 @@
 //     lui appartenir.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
-import { generateJson, ocrDocument } from '../_shared/mistral.ts'
+import { generateJson, generateJsonFromImage, ocrDocument } from '../_shared/mistral.ts'
+import { telechargerEnImage, urlFraichePennylane } from '../_shared/justificatif.ts'
 import { ExternalApiError } from '../_shared/http.ts'
 
 interface LectureIa {
@@ -82,7 +83,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: charge } = await service
       .from('charges')
-      .select('id, company_id, label, montant_ttc_cts, receipt_url, ocr_lecture')
+      .select('id, company_id, label, montant_ttc_cts, receipt_url, pennylane_id, ocr_lecture')
       .eq('id', chargeId)
       .single()
     if (!charge || charge.company_id !== companyId) {
@@ -107,38 +108,11 @@ Deno.serve(async (req: Request) => {
     }
 
     const receiptUrl = charge.receipt_url as string | null
+    const pennylaneId = charge.pennylane_id as string | null
     // Pas de justificatif : rien à lire. On le dit plutôt que d'appeler l'IA
     // sur un libellé, qui ne contient de toute façon ni litres ni kilométrage.
-    if (!receiptUrl) {
+    if (!receiptUrl && !pennylaneId) {
       const data = { ...VIDE, raison: 'aucun justificatif' }
-      await persisterLecture(data)
-      return jsonResponse({ ok: true, data })
-    }
-
-    let texte = ''
-    try {
-      const isPdf = !/\.(png|jpe?g|webp|gif)(\?|$)/i.test(receiptUrl)
-      texte = (await ocrDocument(apiKey, receiptUrl, isPdf)).slice(0, 8000)
-    } catch (e) {
-      // Le quota mensuel Mistral est large et peu consommé (vérifié 29/09) : ce
-      // 429 vient d'ailleurs (limite de débit plus fine, concurrence, panne
-      // ponctuelle...). On loggue le corps de la réponse, pas juste le statut,
-      // pour enfin voir la raison exacte donnée par Mistral.
-      console.error(
-        'lire-facture: ocrDocument a échoué', chargeId, (e as Error)?.message,
-        e instanceof ExternalApiError ? JSON.stringify(e.responseBody) : '',
-      )
-      // Un 429 (déjà retenté avec délai dans fetchJson) veut dire « API saturée »,
-      // pas « rien d'écrit sur le document » — le dire évite à l'utilisateur de
-      // ressaisir à la main un ticket parfaitement lisible. Jamais mis en
-      // cache : c'est un incident d'infra, pas un verdict sur le document.
-      const raison = e instanceof ExternalApiError && e.status === 429
-        ? 'service surchargé' : 'justificatif illisible'
-      return jsonResponse({ ok: true, data: { ...VIDE, raison } })
-    }
-    if (!texte.trim()) {
-      console.error('lire-facture: OCR a renvoyé un texte vide', chargeId, receiptUrl)
-      const data = { ...VIDE, raison: 'justificatif illisible' }
       await persisterLecture(data)
       return jsonResponse({ ok: true, data })
     }
@@ -157,14 +131,60 @@ ne doit pas faire douter de la lecture des litres, ce sont trois informations in
 Réponds UNIQUEMENT en JSON :
 {"litres": <nombre|null>, "litres_confiance": <0 à 1>, "prix_par_litre": <nombre|null>, "prix_par_litre_confiance": <0 à 1>, "kilometrage": <entier|null>, "kilometrage_confiance": <0 à 1>}`
 
-    const userPrompt = [
+    const contexte = [
       `Libellé : ${charge.label}`,
       charge.montant_ttc_cts != null
         ? `Total TTC attendu : ${(Number(charge.montant_ttc_cts) / 100).toFixed(2)} €` : null,
-      `\nContenu du document :\n${texte}`,
     ].filter(Boolean).join('\n')
 
-    const brut = await generateJson<LectureIa>(apiKey, system, userPrompt)
+    // URL fraîche : celle stockée au sync est signée à durée limitée et expire.
+    const urlFichier = (pennylaneId ? await urlFraichePennylane(pennylaneId) : null) ?? receiptUrl
+    if (!urlFichier) {
+      return jsonResponse({ ok: true, data: { ...VIDE, raison: 'justificatif introuvable' } })
+    }
+
+    // Échec d'appel à l'IA : 429 = « service surchargé » (jamais mis en cache,
+    // c'est un incident d'infra, pas un verdict sur le document).
+    const echecIa = (etape: string, e: unknown) => {
+      console.error(
+        `lire-facture: ${etape} a échoué`, chargeId, (e as Error)?.message,
+        e instanceof ExternalApiError ? JSON.stringify(e.responseBody) : '',
+      )
+      const raison = e instanceof ExternalApiError && e.status === 429
+        ? 'service surchargé' : 'justificatif illisible'
+      return jsonResponse({ ok: true, data: { ...VIDE, raison } })
+    }
+
+    let brut: LectureIa
+    const image = await telechargerEnImage(urlFichier)
+    if (image.ok) {
+      // Voie principale, gratuite : le modèle vision lit la photo directement.
+      try {
+        brut = await generateJsonFromImage<LectureIa>(
+          apiKey, system, `${contexte}\n\nLe document à lire est l'image jointe.`, image.dataUrl,
+        )
+      } catch (e) {
+        return echecIa('lecture vision', e)
+      }
+    } else if (image.raison === 'format non pris en charge') {
+      // PDF sans photo (facture texte) : seul l'OCR Mistral sait le lire —
+      // indisponible tant que le forfait ne l'inclut pas, d'où la voie vision.
+      let texte = ''
+      try {
+        texte = (await ocrDocument(apiKey, urlFichier, true)).slice(0, 8000)
+      } catch (e) {
+        return echecIa('ocrDocument', e)
+      }
+      if (!texte.trim()) {
+        const data = { ...VIDE, raison: 'justificatif illisible' }
+        await persisterLecture(data)
+        return jsonResponse({ ok: true, data })
+      }
+      brut = await generateJson<LectureIa>(apiKey, system, `${contexte}\n\nContenu du document :\n${texte}`)
+    } else {
+      console.error('lire-facture: justificatif non téléchargé', chargeId, image.raison)
+      return jsonResponse({ ok: true, data: { ...VIDE, raison: image.raison } })
+    }
 
     // Trois champs indépendants, trois seuils indépendants : un ticket qui ne
     // montre pas le kilométrage ne doit pas faire perdre des litres pourtant
@@ -189,6 +209,7 @@ Réponds UNIQUEMENT en JSON :
         (min, v) => Math.min(min, v), 1,
       ),
     }
+    console.log('lire-facture: lecture OK', chargeId, JSON.stringify(data))
     await persisterLecture(data)
     return jsonResponse({ ok: true, data })
   } catch (e) {
