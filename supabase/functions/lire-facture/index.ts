@@ -48,11 +48,15 @@ Deno.serve(async (req: Request) => {
   const apiKey = Deno.env.get('MISTRAL_API_KEY')
   if (!apiKey) return jsonResponse({ ok: false, error: 'missing MISTRAL_API_KEY' }, 500)
 
-  let body: { charge_id?: string }
+  let body: { charge_id?: string; force?: boolean }
   try { body = await req.json() }
   catch { return jsonResponse({ ok: false, error: 'invalid JSON body' }, 400) }
   const chargeId = typeof body.charge_id === 'string' ? body.charge_id : ''
   if (!chargeId) return jsonResponse({ ok: false, error: 'charge_id requis' }, 400)
+  // La file d'attente (auto) ne force jamais : elle veut le cache s'il existe.
+  // Le bouton manuel « Lire le justificatif » force toujours une lecture
+  // fraîche, quitte à écraser un ancien résultat.
+  const force = body.force === true
 
   try {
     const url = Deno.env.get('SUPABASE_URL')
@@ -78,18 +82,37 @@ Deno.serve(async (req: Request) => {
 
     const { data: charge } = await service
       .from('charges')
-      .select('id, company_id, label, montant_ttc_cts, receipt_url')
+      .select('id, company_id, label, montant_ttc_cts, receipt_url, ocr_lecture')
       .eq('id', chargeId)
       .single()
     if (!charge || charge.company_id !== companyId) {
       return jsonResponse({ ok: false, error: 'charge introuvable' }, 404)
     }
 
+    // Déjà lu : on renvoie le résultat mémorisé plutôt que de rappeler l'IA
+    // pour rien. C'est précisément ce qui manquait — sans ce cache, chaque
+    // rechargement de la file d'attente relisait TOUTES les factures encore
+    // non rattachées, même celles déjà lues avec succès la veille.
+    if (!force && charge.ocr_lecture) {
+      return jsonResponse({ ok: true, data: charge.ocr_lecture })
+    }
+
+    // Écrit le résultat en cache si non vide — jamais pour un échec dû à une
+    // panne d'API (429, timeout, erreur réseau) : celui-là doit rester
+    // retentable au prochain chargement, ce n'est pas une propriété du
+    // document.
+    const persisterLecture = async (data: Record<string, unknown>) => {
+      try { await service.from('charges').update({ ocr_lecture: data }).eq('id', chargeId) }
+      catch (e) { console.error('lire-facture: échec écriture cache', chargeId, (e as Error)?.message) }
+    }
+
     const receiptUrl = charge.receipt_url as string | null
     // Pas de justificatif : rien à lire. On le dit plutôt que d'appeler l'IA
     // sur un libellé, qui ne contient de toute façon ni litres ni kilométrage.
     if (!receiptUrl) {
-      return jsonResponse({ ok: true, data: { ...VIDE, raison: 'aucun justificatif' } })
+      const data = { ...VIDE, raison: 'aucun justificatif' }
+      await persisterLecture(data)
+      return jsonResponse({ ok: true, data })
     }
 
     let texte = ''
@@ -100,14 +123,17 @@ Deno.serve(async (req: Request) => {
       console.error('lire-facture: ocrDocument a échoué', chargeId, (e as Error)?.message)
       // Un 429 (déjà retenté avec délai dans fetchJson) veut dire « API saturée »,
       // pas « rien d'écrit sur le document » — le dire évite à l'utilisateur de
-      // ressaisir à la main un ticket parfaitement lisible.
+      // ressaisir à la main un ticket parfaitement lisible. Jamais mis en
+      // cache : c'est un incident d'infra, pas un verdict sur le document.
       const raison = e instanceof ExternalApiError && e.status === 429
         ? 'service surchargé' : 'justificatif illisible'
       return jsonResponse({ ok: true, data: { ...VIDE, raison } })
     }
     if (!texte.trim()) {
       console.error('lire-facture: OCR a renvoyé un texte vide', chargeId, receiptUrl)
-      return jsonResponse({ ok: true, data: { ...VIDE, raison: 'justificatif illisible' } })
+      const data = { ...VIDE, raison: 'justificatif illisible' }
+      await persisterLecture(data)
+      return jsonResponse({ ok: true, data })
     }
 
     const system = `Tu lis un ticket ou une facture pour une société de transport routier française.
@@ -146,19 +172,18 @@ Réponds UNIQUEMENT en JSON :
     const prixConf = Number(brut?.prix_par_litre_confiance)
     const kmConf = Number(brut?.kilometrage_confiance)
 
-    return jsonResponse({
-      ok: true,
-      data: {
-        litres:         sur(litresConf) ? borner(brut?.litres, MAX_LITRES) : null,
-        prix_par_litre: sur(prixConf) ? borner(brut?.prix_par_litre, MAX_PRIX_LITRE) : null,
-        kilometrage:    sur(kmConf) ? borner(brut?.kilometrage, MAX_KM) : null,
-        // Confiance globale renvoyée pour compat (non affichée côté front) :
-        // la plus basse des trois parmi celles réellement fournies.
-        confiance: [litresConf, prixConf, kmConf].filter(Number.isFinite).reduce(
-          (min, v) => Math.min(min, v), 1,
-        ),
-      },
-    })
+    const data = {
+      litres:         sur(litresConf) ? borner(brut?.litres, MAX_LITRES) : null,
+      prix_par_litre: sur(prixConf) ? borner(brut?.prix_par_litre, MAX_PRIX_LITRE) : null,
+      kilometrage:    sur(kmConf) ? borner(brut?.kilometrage, MAX_KM) : null,
+      // Confiance globale renvoyée pour compat (non affichée côté front) :
+      // la plus basse des trois parmi celles réellement fournies.
+      confiance: [litresConf, prixConf, kmConf].filter(Number.isFinite).reduce(
+        (min, v) => Math.min(min, v), 1,
+      ),
+    }
+    await persisterLecture(data)
+    return jsonResponse({ ok: true, data })
   } catch (e) {
     // IA en panne, OCR KO, JSON illisible → aucune proposition, jamais d'erreur.
     console.error('lire-facture: échec global', chargeId, (e as Error)?.message)
