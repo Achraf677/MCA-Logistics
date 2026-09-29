@@ -16,6 +16,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { generateJson, ocrDocument } from '../_shared/mistral.ts'
+import { ExternalApiError } from '../_shared/http.ts'
 
 interface LectureIa {
   litres: number | null
@@ -97,7 +98,12 @@ Deno.serve(async (req: Request) => {
       texte = (await ocrDocument(apiKey, receiptUrl, isPdf)).slice(0, 8000)
     } catch (e) {
       console.error('lire-facture: ocrDocument a échoué', chargeId, (e as Error)?.message)
-      return jsonResponse({ ok: true, data: { ...VIDE, raison: 'justificatif illisible' } })
+      // Un 429 (déjà retenté avec délai dans fetchJson) veut dire « API saturée »,
+      // pas « rien d'écrit sur le document » — le dire évite à l'utilisateur de
+      // ressaisir à la main un ticket parfaitement lisible.
+      const raison = e instanceof ExternalApiError && e.status === 429
+        ? 'service surchargé' : 'justificatif illisible'
+      return jsonResponse({ ok: true, data: { ...VIDE, raison } })
     }
     if (!texte.trim()) {
       console.error('lire-facture: OCR a renvoyé un texte vide', chargeId, receiptUrl)
@@ -126,10 +132,6 @@ Réponds UNIQUEMENT en JSON :
     ].filter(Boolean).join('\n')
 
     const brut = await generateJson<LectureIa>(apiKey, system, userPrompt)
-    // Diagnostic temporaire : voir ce que le modèle renvoie réellement, pour
-    // distinguer « rien d'écrit sur le ticket » de « le modèle ne suit pas le
-    // format de confiance par champ demandé ». À retirer une fois confirmé.
-    console.log('lire-facture: réponse IA brute', chargeId, JSON.stringify(brut))
 
     // Trois champs indépendants, trois seuils indépendants : un ticket qui ne
     // montre pas le kilométrage ne doit pas faire perdre des litres pourtant

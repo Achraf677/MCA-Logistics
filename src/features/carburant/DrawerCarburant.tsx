@@ -203,6 +203,8 @@ export function DrawerCarburant({
       if (lu.litres == null && lu.prixParLitre == null && lu.kilometrage == null) {
         toast(lu.raison === 'aucun justificatif'
           ? 'Cette facture n\'a pas de justificatif à lire'
+          : lu.raison === 'service surchargé'
+          ? 'Service de lecture surchargé — réessaie dans quelques instants'
           : "Rien de lisible sur le justificatif — à saisir à la main")
         return
       }
