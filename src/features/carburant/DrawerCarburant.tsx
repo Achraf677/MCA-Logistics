@@ -68,6 +68,7 @@ export function DrawerCarburant({
   const [tvaTouched, setTvaTouched] = useState(false)
   const [vehicles, setVehicles] = useState<Lookup[]>([])
   const [drivers, setDrivers]   = useState<Lookup[]>([])
+  const [suppliers, setSuppliers] = useState<Lookup[]>([])
   const [selectorOpen, setSelectorOpen] = useState(false)
   // linkedCharge : charge sélectionnée (nouveau) ou déjà liée (édition)
   const [linkedCharge, setLinkedCharge] = useState<ChargePick | null>(null)
@@ -80,6 +81,11 @@ export function DrawerCarburant({
       .then(({ data }) => setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label, plate: v.plate }))))
     supabase.from('team_members').select('id, full_name').eq('active', true).order('full_name')
       .then(({ data }) => setDrivers((data ?? []).map(m => ({ id: m.id, label: m.full_name }))))
+    // La station est un FOURNISSEUR connu — pas du texte libre. Même logique
+    // que « Prestataire / Garage » dans Entretiens : éviter que « Total »,
+    // « TOTAL » et « Total Energies » deviennent trois stations différentes.
+    supabase.from('suppliers').select('id, name').eq('active', true).order('name')
+      .then(({ data }) => setSuppliers((data ?? []).map(s => ({ id: s.id, label: s.name }))))
   }, [open])
 
   useEffect(() => {
@@ -147,6 +153,14 @@ export function DrawerCarburant({
   }, [fuelLog, open, initialCharge, initialOcr, vehicles])
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  // La station choisie EST le fournisseur — `station` (texte affiché dans les
+  // listes/exports) suit toujours le nom exact du fournisseur sélectionné,
+  // jamais une saisie libre qui diverge du nom enregistré dans Fournisseurs.
+  const handleSupplierChange = (supplierId: string) => {
+    const supplier = suppliers.find(s => s.id === supplierId)
+    setForm(p => ({ ...p, supplier_id: supplierId, station: supplier?.label ?? '' }))
+  }
 
   /**
    * Rattacher une facture pre-remplit TOUT ce que son libelle dit.
@@ -453,7 +467,14 @@ export function DrawerCarburant({
                 onChange={v => set('mileage_km', v)} placeholder="125000" />
             </Field>
             <Field label="Station">
-              <Input value={form.station} onChange={v => set('station', v)} placeholder="Total, BP…" />
+              <select
+                value={form.supplier_id}
+                onChange={e => handleSupplierChange(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">— Sélectionner une station —</option>
+                {suppliers.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
             </Field>
           </div>
 

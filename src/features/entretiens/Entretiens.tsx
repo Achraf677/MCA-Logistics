@@ -32,6 +32,9 @@ export function Entretiens() {
   const [initialCharge, setInitialCharge] = useState<ChargePick | null>(null)
   const [initialOcr, setInitialOcr] = useState<LectureOcr | null>(null)
   const [queueRefresh, setQueueRefresh] = useState(0)
+  // Entretiens sans facture liée — filtre client, indépendant de `filters`
+  // (envoyés à la requête), comme le reste des filtres spéciaux du site.
+  const [filtreARapprocher, setFiltreARapprocher] = useState(false)
   // Sous-lignes de ventilation "pure" par charge_id — remplace l'affichage du
   // montant brut quand la facture liée a été décomposée (voir DrawerEntretien).
   const [ventilationByCharge, setVentilationByCharge] = useState<Map<string, AllocationRow[]>>(new Map())
@@ -80,10 +83,13 @@ export function Entretiens() {
   }
 
   const kpis = kpiSummary(rows)
+  const nbARapprocher = rows.filter(r => !r.charge_id).length
+  const displayRows = filtreARapprocher ? rows.filter(r => !r.charge_id) : rows
   const hasFilters = !!(
     (filters.vehicle_id && filters.vehicle_id !== 'all') ||
-    filters.date_from || filters.date_to
+    filters.date_from || filters.date_to || filtreARapprocher
   )
+  const resetFilters = () => { setFilters({}); setFiltreARapprocher(false) }
 
   return (
     <Shell pageTitle="Entretiens" actions={['nouveau']} onAction={handleAction}>
@@ -117,12 +123,21 @@ export function Entretiens() {
           <option value="all">Tous véhicules</option>
           {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
         </select>
+        <Button
+          variant={filtreARapprocher ? 'primary' : 'secondary'}
+          size="compact"
+          onClick={() => setFiltreARapprocher(v => !v)}
+        >
+          À rapprocher uniquement{nbARapprocher > 0 ? ` (${nbARapprocher})` : ''}
+        </Button>
         {hasFilters && (
-          <Button variant="ghost" size="compact" onClick={() => setFilters({})}>Réinitialiser</Button>
+          <Button variant="ghost" size="compact" onClick={resetFilters}>Réinitialiser</Button>
         )}
       </div>
 
-      {/* Où part l'argent — suit les filtres ci-dessus. */}
+      {/* Où part l'argent — suit les filtres de date/véhicule ci-dessus, mais pas
+          le filtre « à rapprocher » : c'est une répartition financière, pas une
+          file d'action. */}
       {!loading && !error && (
         <RecapEntretiens rows={rows} ventilationParCharge={ventilationByCharge} />
       )}
@@ -135,7 +150,7 @@ export function Entretiens() {
           <p className="text-[var(--danger)] text-[var(--fs-sm)]">{error}</p>
           <Button variant="secondary" onClick={load}>Réessayer</Button>
         </div>
-      ) : rows.length === 0 ? (
+      ) : displayRows.length === 0 ? (
         <EmptyState
           icon={<Wrench size={48} />}
           title="Aucun entretien"
@@ -157,7 +172,7 @@ export function Entretiens() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row, i) => {
+                {displayRows.map((row, i) => {
                   const isOverdue = row.next_due_date != null && row.next_due_date < new Date().toISOString().slice(0, 10)
                   const ventilation = row.charges ? ventilationByCharge.get(row.charges.id) : undefined
                   return (
@@ -235,7 +250,7 @@ export function Entretiens() {
 
           {/* Mobile */}
           <div className="md:hidden flex flex-col gap-3">
-            {rows.map(row => {
+            {displayRows.map(row => {
               const isOverdue = row.next_due_date != null && row.next_due_date < new Date().toISOString().slice(0, 10)
               const ventilation = row.charges ? ventilationByCharge.get(row.charges.id) : undefined
               return (

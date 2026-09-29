@@ -201,13 +201,13 @@ function detectVehicules(rows: VehiculeEcheanceRow[], today: Date, seuil: number
     id: 'vehicules-depasse',
     domaine: 'vehicule',
     label: `${depasse} échéance${depasse > 1 ? 's' : ''} véhicule dépassée${depasse > 1 ? 's' : ''} (CT / assurance / révision)`,
-    count: depasse, severite: 'rouge', lien: '/vehicules',
+    count: depasse, severite: 'rouge', lien: '/vehicules?filtre=urgent',
   })
   if (bientot > 0) out.push({
     id: 'vehicules-bientot',
     domaine: 'vehicule',
     label: `${bientot} échéance${bientot > 1 ? 's' : ''} véhicule dans moins de ${seuil} jours`,
-    count: bientot, severite: 'orange', lien: '/vehicules',
+    count: bientot, severite: 'orange', lien: '/vehicules?filtre=urgent',
   })
   return out
 }
@@ -266,12 +266,12 @@ function fromARapprocher(c: ARapprocherCounts): AlerteMetier[] {
   if (c.tresorerie > 0) out.push({
     id: 'tresorerie', domaine: 'tresorerie',
     label: `${c.tresorerie} mouvement${c.tresorerie > 1 ? 's' : ''} bancaire${c.tresorerie > 1 ? 's' : ''} à rapprocher`,
-    count: c.tresorerie, severite: 'orange', lien: '/tresorerie',
+    count: c.tresorerie, severite: 'orange', lien: '/tresorerie?filtre=a_rapprocher',
   })
   if (c.encaissements > 0) out.push({
     id: 'encaissements', domaine: 'encaissement',
     label: `${c.encaissements} encaissement${c.encaissements > 1 ? 's' : ''} à identifier`,
-    count: c.encaissements, severite: 'orange', lien: '/tresorerie',
+    count: c.encaissements, severite: 'orange', lien: '/tresorerie?filtre=a_rapprocher',
   })
   if (c.categorisation > 0) out.push({
     id: 'categorisation', domaine: 'charges',

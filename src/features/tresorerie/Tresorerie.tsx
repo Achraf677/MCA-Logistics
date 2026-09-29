@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { ChevronDown, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
@@ -56,6 +57,13 @@ export function Tresorerie() {
   const [error, setError]             = useState<string | null>(null)
   const [expandedTx, setExpandedTx]   = useState<string | null>(null)
   const [rapprochOpen, setRapprochOpen] = useState<string | null>(null)
+  // Mouvements encore à traiter (débits à rapprocher/sans justificatif, crédits
+  // non identifiés) — filtre client sur la liste déjà chargée. Pré-coché quand
+  // on arrive via le lien de la cloche/dashboard (?filtre=a_rapprocher).
+  const [searchParams] = useSearchParams()
+  const [filtreARapprocher, setFiltreARapprocher] = useState(
+    () => searchParams.get('filtre') === 'a_rapprocher',
+  )
   // Ventilation ouverte (qonto_id) — panneau replié par défaut pour ne pas
   // charger charge_allocations à chaque expand.
   const [ventilationTx, setVentilationTx] = useState<string | null>(null)
@@ -103,6 +111,20 @@ export function Tresorerie() {
   const credits = txs.filter(t => t.side === 'credit')
   const creditsNonIdentifies = credits.filter(t => classifyCredit(t.justif_type ?? null) === 'non_identifie')
   const totalCreditsNonIdentifiesCts = creditsNonIdentifies.reduce((s, t) => s + t.amount_cts, 0)
+
+  // Un mouvement est « à rapprocher » : débit sans justificatif ni charge liée,
+  // ou crédit dont la nature n'est pas encore identifiée. Même classification
+  // que les badges affichés par ligne, pour ne jamais raconter deux histoires.
+  const estARapprocher = (tx: QontoTx): boolean => {
+    if (tx.side === 'debit') {
+      const matches = getMatchingChargesForDebit(tx.amount_cts, charges, resteParCharge, tx.settled_at)
+      const status = classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length)
+      return status === 'a_rapprocher' || status === 'sans_justificatif'
+    }
+    return classifyCredit(tx.justif_type ?? null) === 'non_identifie'
+  }
+  const txsARapprocher = txs.filter(estARapprocher)
+  const displayTxs = filtreARapprocher ? txsARapprocher : txs
 
   // ── Handlers ──────────────────────────────────────────────────────────────
   const handleLink = async (charge: ChargePick) => {
@@ -375,6 +397,24 @@ export function Tresorerie() {
         </div>
       )}
 
+      {/* Filtres */}
+      {!loading && txs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
+          <Button
+            variant={filtreARapprocher ? 'primary' : 'secondary'}
+            size="compact"
+            onClick={() => setFiltreARapprocher(v => !v)}
+          >
+            À rapprocher uniquement{txsARapprocher.length > 0 ? ` (${txsARapprocher.length})` : ''}
+          </Button>
+          {filtreARapprocher && (
+            <Button variant="ghost" size="compact" onClick={() => setFiltreARapprocher(false)}>
+              Réinitialiser
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Contenu */}
       {loading ? (
         <SkeletonTable rows={6} />
@@ -389,6 +429,12 @@ export function Tresorerie() {
           title="Aucune donnée"
           description="Aucune donnée — clique sur Synchroniser Qonto."
         />
+      ) : displayTxs.length === 0 ? (
+        <EmptyState
+          icon={<Wallet size={48} />}
+          title="Rien à rapprocher"
+          description="Tous les mouvements sont justifiés ou identifiés."
+        />
       ) : (
         <>
           {/* Desktop */}
@@ -402,7 +448,7 @@ export function Tresorerie() {
                 </tr>
               </thead>
               <tbody>
-                {txs.map((tx, i) => {
+                {displayTxs.map((tx, i) => {
                   const isDebit   = tx.side === 'debit'
                   const isCredit  = tx.side === 'credit'
                   const expanded  = expandedTx === tx.qonto_id
@@ -476,7 +522,7 @@ export function Tresorerie() {
 
           {/* Mobile */}
           <div className="md:hidden flex flex-col gap-3">
-            {txs.map(tx => {
+            {displayTxs.map(tx => {
               const isDebit   = tx.side === 'debit'
               const isCredit  = tx.side === 'credit'
               const expanded  = expandedTx === tx.qonto_id

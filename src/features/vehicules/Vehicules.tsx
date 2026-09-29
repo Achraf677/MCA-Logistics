@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Car, AlertTriangle } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
@@ -39,7 +40,12 @@ export function Vehicules() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [filters, setFilters] = useState<VehicleFilters>({})
+  // Lien cloche/dashboard (?filtre=urgent) : pré-coche le filtre échéances déjà
+  // existant au lieu d'atterrir sur la liste complète non filtrée.
+  const [searchParams] = useSearchParams()
+  const [filters, setFilters] = useState<VehicleFilters>(
+    () => searchParams.get('filtre') === 'urgent' ? { echeance: 'urgent' } : {},
+  )
   const today = new Date()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<Vehicle | null>(null)
