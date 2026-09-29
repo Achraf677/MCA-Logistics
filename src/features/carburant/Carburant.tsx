@@ -8,6 +8,7 @@ import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { DrawerCarburant } from './DrawerCarburant'
 import { FileAttenteCarburant } from './FileAttenteCarburant'
+import { DrawerReleve } from './DrawerReleve'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
 import { getFuelLogs, exportFuelCSV } from './carburant.queries'
@@ -77,6 +78,9 @@ export function Carburant() {
     setDrawerOpen(true)
   }
 
+  // Relevé de carte carburant (une facture → plusieurs pleins).
+  const [releveCharge, setReleveCharge] = useState<ChargePick | null>(null)
+
   // Filtre « Tout / Carburants / Liquides » appliqué côté client : les KPIs
   // suivent la sélection (litres et prix/L restent de toute façon carburants).
   const rowsFamille = filtrerFamille(rows, filters.famille)
@@ -107,7 +111,7 @@ export function Carburant() {
         </div>
       )}
 
-      <FileAttenteCarburant vehicles={vehicles} onValider={handleValiderDepuisFile} refreshToken={queueRefresh} />
+      <FileAttenteCarburant vehicles={vehicles} onValider={handleValiderDepuisFile} onImporterReleve={setReleveCharge} refreshToken={queueRefresh} />
 
       {/* Filtres */}
       <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
@@ -278,6 +282,12 @@ export function Carburant() {
         fuelLog={selected}
         initialCharge={initialCharge}
         initialOcr={initialOcr}
+        onSaved={() => { load(); setQueueRefresh(n => n + 1) }}
+      />
+      <DrawerReleve
+        open={releveCharge != null}
+        onClose={() => setReleveCharge(null)}
+        charge={releveCharge}
         onSaved={() => { load(); setQueueRefresh(n => n + 1) }}
       />
     </Shell>

@@ -47,6 +47,29 @@ export async function urlFraichePennylane(pennylaneId: string): Promise<string |
  * PDF sans photo (facture 100 % texte/vectorielle) → non pris en charge ici.
  */
 export async function telechargerEnImage(url: string): Promise<ResultatImage> {
+  const fichier = await telechargerFichier(url);
+  if (!fichier.ok) return fichier;
+  const { octets, type } = fichier;
+
+  const typeImage = type.startsWith('image/') ? type : detecterImage(octets);
+  if (typeImage) return { ok: true, dataUrl: versDataUrl(octets, typeImage) };
+
+  if (estPdf(octets)) {
+    const jpeg = plusGrandJpeg(octets);
+    if (jpeg && jpeg.length >= TAILLE_MIN_PHOTO) {
+      return { ok: true, dataUrl: versDataUrl(jpeg, 'image/jpeg') };
+    }
+  }
+  console.log('justificatif: format non pris en charge', type, octets.length, estPdf(octets));
+  return { ok: false, raison: 'format non pris en charge' };
+}
+
+export type ResultatFichier =
+  | { ok: true; octets: Uint8Array; type: string }
+  | { ok: false; raison: 'lien expiré' | 'téléchargement impossible' };
+
+/** Télécharge un justificatif brut (octets + type MIME annoncé). */
+export async function telechargerFichier(url: string): Promise<ResultatFichier> {
   let res: Response;
   try {
     res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
@@ -60,26 +83,19 @@ export async function telechargerEnImage(url: string): Promise<ResultatImage> {
   if (octets.length === 0 || octets.length > TAILLE_MAX_OCTETS) {
     return { ok: false, raison: 'téléchargement impossible' };
   }
-
   const type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
-  const typeImage = type.startsWith('image/') ? type : detecterImage(octets);
-  if (typeImage) return { ok: true, dataUrl: `data:${typeImage};base64,${versBase64(octets)}` };
-
-  if (estPdf(octets)) {
-    const jpeg = plusGrandJpeg(octets);
-    if (jpeg && jpeg.length >= TAILLE_MIN_PHOTO) {
-      return { ok: true, dataUrl: `data:image/jpeg;base64,${versBase64(jpeg)}` };
-    }
-  }
-  console.log('justificatif: format non pris en charge', type, octets.length, estPdf(octets));
-  return { ok: false, raison: 'format non pris en charge' };
+  return { ok: true, octets, type };
 }
 
-function estPdf(o: Uint8Array): boolean {
+export function versDataUrl(octets: Uint8Array, type: string): string {
+  return `data:${type};base64,${versBase64(octets)}`;
+}
+
+export function estPdf(o: Uint8Array): boolean {
   return o[0] === 0x25 && o[1] === 0x50 && o[2] === 0x44 && o[3] === 0x46; // %PDF
 }
 
-function detecterImage(o: Uint8Array): string | null {
+export function detecterImage(o: Uint8Array): string | null {
   if (o[0] === 0xff && o[1] === 0xd8 && o[2] === 0xff) return 'image/jpeg';
   if (o[0] === 0x89 && o[1] === 0x50 && o[2] === 0x4e && o[3] === 0x47) return 'image/png';
   if (o[0] === 0x52 && o[1] === 0x49 && o[2] === 0x46 && o[3] === 0x46
@@ -111,7 +127,16 @@ function indexDe(o: Uint8Array, motif: Uint8Array, depuis: number): number {
  * sa signature (FF D8) plutôt qu'en analysant le dictionnaire du PDF.
  */
 export function plusGrandJpeg(o: Uint8Array): Uint8Array | null {
-  let meilleur: Uint8Array | null = null;
+  return jpegsDuPdf(o, 1, 0)[0] ?? null;
+}
+
+/**
+ * Photos JPEG d'un PDF, des plus grandes aux plus petites (un relevé scanné
+ * peut faire plusieurs pages = plusieurs photos). Les images sous `tailleMin`
+ * (logos, icônes) sont ignorées.
+ */
+export function jpegsDuPdf(o: Uint8Array, max = 6, tailleMin = TAILLE_MIN_PHOTO): Uint8Array[] {
+  const trouves: Uint8Array[] = [];
   let pos = 0;
   for (;;) {
     const s = indexDe(o, MOT_STREAM, pos);
@@ -124,11 +149,11 @@ export function plusGrandJpeg(o: Uint8Array): Uint8Array | null {
     if (o[debut] === 0xff && o[debut + 1] === 0xd8) {
       let f = fin;
       while (f > debut && (o[f - 1] === 0x0a || o[f - 1] === 0x0d)) f--;
-      if (!meilleur || f - debut > meilleur.length) meilleur = o.subarray(debut, f);
+      if (f - debut >= tailleMin) trouves.push(o.subarray(debut, f));
     }
     pos = fin + MOT_ENDSTREAM.length;
   }
-  return meilleur;
+  return trouves.sort((a, b) => b.length - a.length).slice(0, max);
 }
 
 function versBase64(o: Uint8Array): string {
