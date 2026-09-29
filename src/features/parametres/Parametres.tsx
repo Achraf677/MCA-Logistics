@@ -294,7 +294,7 @@ export function Parametres() {
             </Section>
 
             {/* Section Produits Carburant & consommables */}
-            <Section title="Produits carburant & consommables">
+            <Section title="Articles & familles — dépenses véhicule">
               <GestionProduits />
             </Section>
 

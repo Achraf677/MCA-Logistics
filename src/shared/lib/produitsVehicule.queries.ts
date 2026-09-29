@@ -1,11 +1,11 @@
 import { supabase } from '../../app/providers'
-import type { FamilleProduit, ProduitVehicule } from './produitsVehicule'
+import type { FamilleProduit, ProduitVehicule, ReglagesArticle } from './produitsVehicule'
 import { codeProduit, PRODUITS_BASE } from './produitsVehicule'
 
 export async function listProduitsVehicule(): Promise<ProduitVehicule[]> {
   const { data } = await supabase
     .from('produits_vehicule')
-    .select('id, code, libelle, famille, actif, supprime')
+    .select('id, code, libelle, famille, actif, supprime, unite, stockable, periodicite_km, periodicite_mois, seuil_stock')
   return (data ?? []) as ProduitVehicule[]
 }
 
@@ -21,10 +21,15 @@ export async function createProduitVehicule(companyId: string, libelle: string, 
  */
 export async function enregistrerProduit(
   companyId: string,
-  p: { code: string; libelle: string; famille: FamilleProduit; actif: boolean },
+  p: { code: string; libelle: string; famille: FamilleProduit; actif: boolean; reglages: ReglagesArticle },
 ) {
   return supabase.from('produits_vehicule').upsert(
-    { company_id: companyId, code: p.code, libelle: p.libelle.trim(), famille: p.famille, actif: p.actif },
+    {
+      company_id: companyId, code: p.code, libelle: p.libelle.trim(), famille: p.famille, actif: p.actif,
+      unite: p.reglages.unite, stockable: p.reglages.stockable,
+      periodicite_km: p.reglages.periodiciteKm, periodicite_mois: p.reglages.periodiciteMois,
+      seuil_stock: p.reglages.seuilStock,
+    },
     { onConflict: 'company_id,code' },
   )
 }
