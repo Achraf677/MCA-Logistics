@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { ReactNode } from 'react'
-import { Building2, LogOut } from 'lucide-react'
+import { Building2, LogOut, Palette, Wallet, Truck, ScanLine, UserRound } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
@@ -16,6 +17,8 @@ import { MigrationDrive, useDocsDriveRestants } from './MigrationDrive'
 import { DriveConnect } from './DriveConnect'
 import { TestLectureAuto } from './TestLectureAuto'
 import { Field } from '../../shared/ui/Field'
+
+type Volet = 'societe' | 'apparence' | 'finance' | 'flotte' | 'documents' | 'compte'
 
 const EMPTY: Omit<CompanyData, 'id'> = {
   name: '', siren: '', siret: '', tva_intra: '',
@@ -34,6 +37,13 @@ export function Parametres() {
   const [dirty, setDirty]         = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
   const { restants: restantsDrive } = useDocsDriveRestants()
+  const [params, setParams] = useSearchParams()
+  const volet = (params.get('volet') ?? 'societe') as Volet
+  const choisirVolet = (v: Volet) => {
+    const next = new URLSearchParams(params)
+    next.set('volet', v)
+    setParams(next, { replace: true })
+  }
 
   const handleLogout = async () => {
     setLogoutLoading(true)
@@ -133,12 +143,24 @@ export function Parametres() {
     )
   }
 
+  // Volets : un menu latéral, un volet affiché à la fois (?volet=… dans l'URL,
+  // pour pouvoir y renvoyer depuis ailleurs : ex. ?tab=parametres&volet=flotte).
+  const volets: Array<{ key: Volet; label: string; icone: ReactNode; description: string }> = [
+    { key: 'societe',   label: 'Société',        icone: <Building2 size={16} />,  description: 'Identité légale, coordonnées, banque et conformité.' },
+    { key: 'apparence', label: 'Apparence',      icone: <Palette size={16} />,    description: "L'ambiance visuelle de ton espace." },
+    { key: 'finance',   label: 'Finance',        icone: <Wallet size={16} />,     description: 'Catégories de charges : renommer, masquer, supprimer si vides.' },
+    { key: 'flotte',    label: 'Flotte',         icone: <Truck size={16} />,      description: 'Articles & familles des dépenses véhicule : unité, stock, périodicité.' },
+    { key: 'documents', label: 'Documents & IA', icone: <ScanLine size={16} />,   description: 'Lecture automatique des justificatifs.' },
+    { key: 'compte',    label: 'Compte',         icone: <UserRound size={16} />,  description: 'Ta session sur le site.' },
+  ]
+  const actif = volets.find(v => v.key === volet) ?? volets[0]
+
   return (
     <Shell pageTitle="Paramètres">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-6xl mx-auto flex flex-col gap-6">
 
-        {/* En-tête société — pleine largeur */}
-        <div className="flex items-center gap-3 p-4 rounded-[var(--r-lg)] bg-[var(--brand-soft)] border border-[var(--brand)]/20 mb-6">
+        {/* En-tête société */}
+        <div className="flex items-center gap-3 p-4 rounded-[var(--r-lg)] bg-[var(--brand-soft)] border border-[var(--brand)]/20">
           <Building2 size={20} className="text-[var(--brand)] shrink-0" />
           <div>
             <p className="font-semibold text-[var(--text)]">{form.name || 'Société'}</p>
@@ -146,20 +168,43 @@ export function Parametres() {
           </div>
         </div>
 
-        {/* Section Apparence — pleine largeur, avant les colonnes */}
-        <div className="mb-6">
-          <Section title="Apparence">
-            <p className="text-[var(--fs-sm)] text-[var(--text-muted)] mb-3">Choisis l'ambiance visuelle de ton espace.</p>
-            <ThemeSelector />
-          </Section>
-        </div>
+        <div className="flex flex-col md:flex-row gap-6 items-start">
+          {/* Menu des volets : colonne à gauche (ordinateur), rangée défilante (mobile) */}
+          <nav className="md:w-56 shrink-0 w-full flex md:flex-col gap-1 overflow-x-auto md:sticky md:top-4
+            [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {volets.map(v => {
+              const estActif = v.key === actif.key
+              return (
+                <button
+                  key={v.key}
+                  onClick={() => choisirVolet(v.key)}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-[var(--r-md)] text-left whitespace-nowrap
+                    text-[var(--fs-sm)] transition-colors
+                    ${estActif
+                      ? 'bg-[var(--brand-soft)] text-[var(--text)] font-medium'
+                      : 'text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]'}`}
+                >
+                  <span className={estActif ? 'text-[var(--brand)]' : ''}>{v.icone}</span>
+                  {v.label}
+                </button>
+              )
+            })}
+          </nav>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+          {/* Volet actif */}
+          <div className="flex-1 min-w-0 flex flex-col gap-6">
+            <div>
+              <h2 className="text-[var(--fs-h2)] font-semibold text-[var(--text)] flex items-center gap-2">
+                <span className="text-[var(--brand)]">{actif.icone}</span>{actif.label}
+              </h2>
+              <p className="text-[var(--fs-sm)] text-[var(--text-muted)] mt-0.5">{actif.description}</p>
+            </div>
 
-          {/* Colonne gauche */}
-          <div className="flex flex-col gap-6">
-
-            {/* Section Identité */}
+            {actif.key === 'societe' && (
+              <>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+                  <div className="flex flex-col gap-6">
+{/* Section Identité */}
             <Section title="Identité légale">
               <Field label="Raison sociale *">
                 <Input value={form.name} onChange={v => set('name', v)} placeholder="MCA Logistics" />
@@ -190,7 +235,9 @@ export function Parametres() {
               </Field>
             </Section>
 
-            {/* Section Coordonnées */}
+                              </div>
+                  <div className="flex flex-col gap-6">
+{/* Section Coordonnées */}
             <Section title="Coordonnées">
               <AddressAutocomplete
                 label="Adresse du dépôt"
@@ -228,20 +275,6 @@ export function Parametres() {
               )}
             </Section>
 
-            {/* Actions */}
-            <div className="flex items-center gap-3 pt-2">
-              <Button variant="primary" onClick={handleSave} disabled={saving || !dirty}>
-                {saving ? 'Enregistrement…' : 'Enregistrer les modifications'}
-              </Button>
-              {!dirty && !saving && (
-                <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Aucune modification</span>
-              )}
-            </div>
-          </div>
-
-          {/* Colonne droite */}
-          <div className="flex flex-col gap-6">
-
             {/* Section Conformité */}
             <Section title="Conformité / Documents société">
               <Field label="N° licence de transport (DREAL) — obligatoire lettre de voiture">
@@ -272,7 +305,49 @@ export function Parametres() {
               </Field>
             </Section>
 
-            <Section title="Lecture automatique des documents">
+                              </div>
+                </div>
+{/* Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              <Button variant="primary" onClick={handleSave} disabled={saving || !dirty}>
+                {saving ? 'Enregistrement…' : 'Enregistrer les modifications'}
+              </Button>
+              {!dirty && !saving && (
+                <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Aucune modification</span>
+              )}
+            </div>
+              </>
+            )}
+
+            {actif.key === 'apparence' && (
+              <Section title="Thème">
+                <ThemeSelector />
+              </Section>
+            )}
+
+            {actif.key === 'finance' && (
+              <>
+{/* Section Catégories de charges */}
+            <Section title="Catégories de charges">
+              <GestionCategories />
+            </Section>
+
+                          </>
+            )}
+
+            {actif.key === 'flotte' && (
+              <>
+{/* Section Produits Carburant & consommables */}
+            <Section title="Articles & familles — dépenses véhicule">
+              <GestionProduits />
+            </Section>
+
+                          </>
+            )}
+
+            {actif.key === 'documents' && (
+              <>
+<Section title="Lecture automatique des documents">
               <TestLectureAuto />
             </Section>
 
@@ -288,17 +363,12 @@ export function Parametres() {
               </>
             )}
 
-            {/* Section Catégories de charges */}
-            <Section title="Catégories de charges">
-              <GestionCategories />
-            </Section>
+                          </>
+            )}
 
-            {/* Section Produits Carburant & consommables */}
-            <Section title="Articles & familles — dépenses véhicule">
-              <GestionProduits />
-            </Section>
-
-            {/* Section Compte */}
+            {actif.key === 'compte' && (
+              <>
+{/* Section Compte */}
             <Section title="Compte">
               <div className="flex items-center justify-between">
                 <div>
@@ -317,6 +387,8 @@ export function Parametres() {
                 </button>
               </div>
             </Section>
+              </>
+            )}
           </div>
         </div>
       </div>

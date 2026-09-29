@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, RotateCcw, Settings2 } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { LigneParametre } from '../../shared/ui/LigneParametre'
+import { IconeFamille } from '../../shared/ui/IconeFamille'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import {
@@ -9,7 +10,7 @@ import {
   supprimerProduit, restaurerProduitsBase, compterUsagesProduits,
 } from '../../shared/lib/produitsVehicule.queries'
 import {
-  FAMILLES, ICONE_FAMILLE, LIBELLE_FAMILLE, LIBELLE_FAMILLE_PLURIEL, UNITES,
+  FAMILLES, LIBELLE_FAMILLE, LIBELLE_FAMILLE_PLURIEL, UNITES,
   familleStockable, produitsEffectifs, produitsBaseSupprimes,
   type FamilleProduit, type ProduitEffectif, type ProduitVehicule, type ReglagesArticle, type Unite,
 } from '../../shared/lib/produitsVehicule'
@@ -83,8 +84,8 @@ export function GestionProduits() {
 
   const groupe = (f: FamilleProduit) => (
     <div key={f} className="flex flex-col rounded-[var(--r-lg)] border border-[var(--border)] p-3">
-      <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-1">
-        {ICONE_FAMILLE[f]} {LIBELLE_FAMILLE_PLURIEL[f]}
+      <span className="flex items-center gap-1.5 text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide mb-1">
+        <IconeFamille famille={f} size={13} className="text-[var(--brand)]" /> {LIBELLE_FAMILLE_PLURIEL[f]}
       </span>
       <ul className="flex flex-col divide-y divide-[var(--border)]">
         {produits.filter(p => p.famille === f).map(p => (
@@ -127,7 +128,7 @@ export function GestionProduits() {
       {loading ? (
         <div className="text-[var(--fs-sm)] text-[var(--text-disabled)]">Chargement…</div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2">{FAMILLES.map(groupe)}</div>
+        <div className="grid gap-4 xl:grid-cols-2">{FAMILLES.map(groupe)}</div>
       )}
 
       {supprimesBase.length > 0 && companyId && (
@@ -151,7 +152,7 @@ export function GestionProduits() {
           className="field flex-1 w-auto text-[var(--fs-sm)]"
         />
         <select value={famille} onChange={e => setFamille(e.target.value as FamilleProduit)} className="field w-auto text-[var(--fs-sm)]">
-          {FAMILLES.map(f => <option key={f} value={f}>{ICONE_FAMILLE[f]} {LIBELLE_FAMILLE[f]}</option>)}
+          {FAMILLES.map(f => <option key={f} value={f}>{LIBELLE_FAMILLE[f]}</option>)}
         </select>
         <Button type="submit" variant="secondary" size="compact" disabled={!nouveau.trim() || busy}>
           <Plus size={13} /> Ajouter

@@ -28,9 +28,6 @@ export const LIBELLE_FAMILLE_PLURIEL: Record<FamilleProduit, string> = {
   entretien: 'Entretien & réparations',
   equipement: 'Équipement & fournitures',
 }
-export const ICONE_FAMILLE: Record<FamilleProduit, string> = {
-  carburant: '⛽', liquide: '🧴', entretien: '🔧', equipement: '📦',
-}
 
 /** Unités proposées (l'unité par défaut d'un article pré-remplit la saisie). */
 export const UNITES = ['L', 'bidon', 'pièce', 'lot', 'prestation'] as const
