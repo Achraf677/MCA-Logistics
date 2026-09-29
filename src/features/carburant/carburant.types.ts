@@ -1,4 +1,11 @@
-export type FuelType = 'diesel' | 'essence' | 'electric' | 'hybrid' | 'lpg'
+/** Carburants — comptent dans les litres, le prix moyen au litre et la conso. */
+export type Carburant = 'diesel' | 'essence' | 'electric' | 'hybrid' | 'lpg'
+/** Liquides du véhicule — même écran, mais hors stats carburant. */
+export type Liquide =
+  | 'adblue' | 'lave_glace' | 'huile_moteur' | 'liquide_refroidissement'
+  | 'liquide_frein' | 'autre_liquide'
+/** Produit d'une ligne de « Carburant & liquides » (colonne fuel_type). */
+export type FuelType = Carburant | Liquide
 
 export interface FuelLog {
   id: string
@@ -34,6 +41,8 @@ export type FuelLogUpdate = Partial<Omit<FuelLog, 'id' | 'company_id' | 'created
 
 export interface FuelFilters {
   vehicle_id?: string | 'all'
+  /** Filtre côté client : tous les produits, carburants seuls ou liquides seuls. */
+  famille?: 'all' | 'carburant' | 'liquide'
   date_from?: string
   date_to?: string
 }

@@ -14,7 +14,7 @@ import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import {
   lireLibelleCharge, trouverVehicule, parseLectureOcr, type LectureOcr,
 } from '../../shared/lib/lectureFacture'
-import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, formatCents } from './carburant.logic'
+import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, CARBURANTS, LIQUIDES, estLiquide, formatCents } from './carburant.logic'
 import { fromTtcAndRate, fromTtcAndManualTva } from '../../shared/lib/montants'
 import type { FuelLogRow, FuelLogInsert, FuelType, ChargePick } from './carburant.types'
 import { Field } from '../../shared/ui/Field'
@@ -35,7 +35,6 @@ interface Props {
 
 type Lookup = { id: string; label: string; plate?: string | null }
 
-const FUEL_TYPES: FuelType[] = ['diesel', 'essence', 'electric', 'hybrid', 'lpg']
 const TODAY = new Date().toISOString().slice(0, 10)
 
 const EMPTY_FORM = {
@@ -228,6 +227,7 @@ export function DrawerCarburant({
 
   // Auto-calcul du total quand litres ou prix/L changent
   const liters = parseFloat(form.liters || '0')
+  const liquide = estLiquide((form.fuel_type || null) as FuelType | null)
   const priceMilli = Math.round(parseFloat(form.price_per_liter || '0') * 1000)
   const autoTotalCts = liters > 0 && priceMilli > 0
     ? Math.round(liters * priceMilli / 10)
@@ -269,7 +269,9 @@ export function DrawerCarburant({
     // contester un plein qu'on n'a pas fait. Demande explicite des chauffeurs.
     if (!form.driver_id)   { toast('Le chauffeur est requis', 'error'); return }
     if (!form.date)        { toast('La date est requise', 'error'); return }
-    if (liters <= 0)       { toast('Le nombre de litres doit être supérieur à 0', 'error'); return }
+    // Un liquide s'achète souvent au bidon sans quantité lisible : seul le
+    // montant est exigé. Un carburant, lui, sans litres fausserait la conso.
+    if (!liquide && liters <= 0) { toast('Le nombre de litres doit être supérieur à 0', 'error'); return }
     if (totalCts <= 0)     { toast('Le montant total doit être supérieur à 0', 'error'); return }
 
     setSaving(true)
@@ -279,7 +281,7 @@ export function DrawerCarburant({
         vehicle_id: form.vehicle_id,
         driver_id: form.driver_id,
         liters,
-        price_per_liter_milli: priceMilli || Math.round(totalCts * 10 / liters),
+        price_per_liter_milli: priceMilli || (liters > 0 ? Math.round(totalCts * 10 / liters) : 0),
         total_cts: montants.ttc_cts,
         tva_cts: montants.tva_cts > 0 ? montants.tva_cts : null,
         fuel_type: (form.fuel_type || null) as FuelType | null,
@@ -373,10 +375,15 @@ export function DrawerCarburant({
             <Field label="Date *">
               <Input type="date" value={form.date} onChange={v => set('date', v)} />
             </Field>
-            <Field label="Type de carburant">
+            <Field label="Produit">
               <select value={form.fuel_type} onChange={e => set('fuel_type', e.target.value)} className={inputCls}>
                 <option value="">— Aucun —</option>
-                {FUEL_TYPES.map(t => <option key={t} value={t}>{FUEL_TYPE_LABELS[t]}</option>)}
+                <optgroup label="Carburants">
+                  {CARBURANTS.map(t => <option key={t} value={t}>{FUEL_TYPE_LABELS[t]}</option>)}
+                </optgroup>
+                <optgroup label="Liquides">
+                  {LIQUIDES.map(t => <option key={t} value={t}>{FUEL_TYPE_LABELS[t]}</option>)}
+                </optgroup>
               </select>
             </Field>
           </div>
@@ -396,7 +403,7 @@ export function DrawerCarburant({
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Litres *">
+            <Field label={liquide ? 'Quantité (L)' : 'Litres *'}>
               <Input type="number" value={form.liters}
                 onChange={v => handleLitersOrPriceChange('liters', v)}
                 placeholder="50.00" />

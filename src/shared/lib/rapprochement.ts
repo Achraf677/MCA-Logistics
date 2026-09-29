@@ -1,5 +1,6 @@
 import { supabase } from '../../app/providers'
 import type { ChargePick } from '../types/charges'
+import { estProduitLiquide, lireLibelleCharge } from './lectureFacture'
 
 export type RapprochementTarget = 'fuel_logs' | 'vehicle_maintenances'
 
@@ -42,7 +43,15 @@ export async function getUnlinkedChargesFor(target: RapprochementTarget): Promis
   const { data } = await q
   const rows = (data ?? []) as unknown as ChargePick[]
 
-  // Filtre strict : uniquement les charges du type correspondant à la cible
+  // Filtre strict : uniquement les charges du type correspondant à la cible.
+  // Exception : un LIQUIDE du véhicule (AdBlue, lave-glace, huile…) souvent
+  // classé « Entretien » chez Pennylane se range dans Carburant & liquides,
+  // jamais dans Entretiens — c'est là qu'il se saisit désormais.
   const targetType = TARGET_TYPE[target]
-  return rows.filter(r => r.charge_categories?.type === targetType)
+  return rows.filter(r => {
+    const type = r.charge_categories?.type
+    const liquide = estProduitLiquide(lireLibelleCharge(r.label).typeCarburant)
+    if (target === 'fuel_logs') return type === 'carburant' || (type === 'entretien' && liquide)
+    return type === targetType && !liquide
+  })
 }
