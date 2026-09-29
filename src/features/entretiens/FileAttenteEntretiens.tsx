@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Loader2, ScanLine, Wrench } from 'lucide-react'
 import { supabase } from '../../app/providers'
 import { Button } from '../../shared/ui/Button'
@@ -23,11 +23,11 @@ interface Props {
  * File d'attente des factures d'entretien — même principe que Carburant
  * (FileAttenteCarburant) : `getUnlinkedChargesFor` trie déjà les charges
  * Pennylane catégorisées « Entretien » et pas encore rattachées à une
- * intervention. Le libellé se lit tout seul (véhicule, description), et
- * l'OCR de chaque justificatif est lancé automatiquement pour ce qu'un
- * libellé ne peut pas dire — ici, uniquement le KILOMÉTRAGE (litres et
- * prix/L n'ont pas de sens pour un entretien, ignorés à l'affichage même
- * si `lire-facture` les renvoie).
+ * intervention. Le libellé se lit tout seul (véhicule, description).
+ *
+ * L'OCR du justificatif (kilométrage) N'EST PLUS automatique : un clic sur
+ * « Lire la facture » par ligne, à la demande — voir FileAttenteCarburant
+ * pour le pourquoi (relance en boucle de l'IA à chaque ouverture d'écran).
  */
 export function FileAttenteEntretiens({ vehicles, onValider, refreshToken }: Props) {
   const [charges, setCharges] = useState<ChargePick[]>([])
@@ -43,31 +43,16 @@ export function FileAttenteEntretiens({ vehicles, onValider, refreshToken }: Pro
 
   useEffect(() => { void charger() }, [charger, refreshToken])
 
-  // OCR automatique, une facture après l'autre — jamais en parallèle (coût API).
-  const traitees = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    let annule = false
-    async function lireToutesLesFactures() {
-      for (const charge of charges) {
-        if (annule) return
-        if (traitees.current.has(charge.id)) continue
-        traitees.current.add(charge.id)
-
-        if (!charge.receipt_url) { setLectures(p => ({ ...p, [charge.id]: null })); continue }
-        setLectures(p => ({ ...p, [charge.id]: 'en-cours' }))
-        try {
-          const { data } = await supabase.functions.invoke('lire-facture', { body: { charge_id: charge.id } })
-          if (annule) return
-          setLectures(p => ({ ...p, [charge.id]: data?.ok ? parseLectureOcr(data.data) : null }))
-        } catch {
-          if (!annule) setLectures(p => ({ ...p, [charge.id]: null }))
-        }
-      }
+  const lireUneFacture = async (charge: ChargePick) => {
+    if (!charge.receipt_url) return
+    setLectures(p => ({ ...p, [charge.id]: 'en-cours' }))
+    try {
+      const { data } = await supabase.functions.invoke('lire-facture', { body: { charge_id: charge.id } })
+      setLectures(p => ({ ...p, [charge.id]: data?.ok ? parseLectureOcr(data.data) : null }))
+    } catch {
+      setLectures(p => ({ ...p, [charge.id]: null }))
     }
-    void lireToutesLesFactures()
-    return () => { annule = true }
-  }, [charges])
+  }
 
   if (loading || charges.length === 0) return null
 
@@ -102,8 +87,21 @@ export function FileAttenteEntretiens({ vehicles, onValider, refreshToken }: Pro
               </div>
 
               <div className="text-[var(--fs-xs)] text-[var(--text-muted)] min-w-[120px]">
-                {lecture === 'en-cours' || lecture === undefined ? (
+                {!charge.receipt_url ? (
+                  <span>Pas de justificatif — à saisir à la main</span>
+                ) : lecture === 'en-cours' ? (
                   <span className="flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> Lecture…</span>
+                ) : lecture === undefined ? (
+                  <Button variant="secondary" size="compact" onClick={() => lireUneFacture(charge)}>
+                    <ScanLine size={12} /> Lire la facture
+                  </Button>
+                ) : lecture === null || lecture.raison === 'service surchargé' ? (
+                  // Échec transitoire (réseau, IA saturée) : rien n'est mémorisé côté
+                  // serveur, on laisse relancer à la main plutôt que d'affirmer
+                  // « à saisir à la main ».
+                  <Button variant="secondary" size="compact" onClick={() => lireUneFacture(charge)}>
+                    <ScanLine size={12} /> Service saturé · Réessayer
+                  </Button>
                 ) : lecture && lecture.kilometrage != null ? (
                   <span>{Math.round(lecture.kilometrage).toLocaleString('fr-FR')} km</span>
                 ) : (

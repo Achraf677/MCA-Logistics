@@ -46,6 +46,33 @@ qui n'en couvrent qu'une partie : ne pas s'y fier seule pour savoir ce qui exist
 Cœur historique : Livraisons (machine à états + montant auto + TVA éditable, y compris
 autoliquidation intracommunautaire).
 
+## En cours — 29/09/2026 (à lire avant de reprendre)
+- **OCR Carburant/Entretiens : tout le code est prêt, mais BLOQUÉ côté Mistral.**
+  Le compte Mistral (`chikriachraf67@gmail.com`, workspace "Default Workspace") est en forfait
+  gratuit **sans pay-as-you-go activé** → l'API OCR (`mistral-ocr-latest`) répond `429 rate_limited`
+  sur quasi tous les appels, quel que soit le débit réel (confirmé : conso très faible, ~0,12 €
+  sur 8,5 € de crédit inclus, donc PAS un problème de quota épuisé — un forfait gratuit sans carte
+  associée semble bridé plus fort que les limites affichées).
+  Tentative d'activation du pay-as-you-go (carte ajoutée, CGU acceptées) : **le bouton
+  « S'abonner » reste bloqué en chargement sans jamais partir en requête réseau** — bug côté page
+  Mistral, pas côté nous. Aucun débit/facture n'a eu lieu. À réessayer en navigation privée / autre
+  navigateur, ou contacter le support Mistral si ça persiste.
+  Le code compense déjà ce qui peut l'être : `_shared/http.ts` retente 2x sur 429 (2s/4s),
+  `charges.ocr_lecture` (jsonb) cache tout résultat définitif pour ne jamais relire deux fois la
+  même facture, et la lecture n'est plus automatique dans les files d'attente Carburant/Entretiens
+  (bouton « Lire la facture » à la demande, PR #27 — **vérifier si mergée**, sinon merger si CI
+  verte et testée). Tant que le pay-as-you-go Mistral n'est pas actif, l'OCR restera indisponible
+  quoi qu'on fasse côté code — ne pas re-diagnostiquer ce point sans redemander l'état du compte
+  Mistral à l'utilisateur.
+- **Hébergement : Cloudflare Pages fait foi pour `app.mcalogistics.fr`, PAS Netlify.**
+  Confirmé par DNS (CNAME → `mca-logistics-app.pages.dev`, IP Cloudflare). Le projet Netlify
+  (espace renommé **« MCA LOGISTICS APP »**, ex-« Vinted Achraf ») a un certificat expiré et une
+  « Pending DNS verification » — mort pour ce domaine, mais sert encore les **previews de PR**
+  (deploy-preview-N--gleaming-marzipan-9f0a30.netlify.app) tant que ses crédits mensuels
+  (quasi épuisés, reset le 10 de chaque mois) ne tombent pas à zéro. Donner systématiquement le
+  lien de preview (Netlify et/ou Cloudflare Pages, présent dans les commentaires bot de la PR)
+  **avant** de merger, sur demande explicite de l'utilisateur.
+
 ## Règles base de données — résidus de l'ancien essai (NE PAS réintroduire les bugs)
 - `deliveries.montant_*` sont des colonnes **GENERATED** ou legacy → **ne jamais écrire dedans**. Écrire UNIQUEMENT `amount_ht_cts`, `tva_cts`, `amount_ttc_cts`. Lecture en fallback `amount_* ?? montant_*`.
 - `deliveries.statut` est un `text` contraint par `deliveries_statut_check` =
