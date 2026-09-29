@@ -60,8 +60,8 @@ autoliquidation intracommunautaire).
   Le code compense déjà ce qui peut l'être : `_shared/http.ts` retente 2x sur 429 (2s/4s),
   `charges.ocr_lecture` (jsonb) cache tout résultat définitif pour ne jamais relire deux fois la
   même facture, et la lecture n'est plus automatique dans les files d'attente Carburant/Entretiens
-  (bouton « Lire la facture » à la demande, PR #27 — **vérifier si mergée**, sinon merger si CI
-  verte et testée). Tant que le pay-as-you-go Mistral n'est pas actif, l'OCR restera indisponible
+  (bouton « Lire la facture » à la demande, bouton « Service saturé · Réessayer » sur 429 —
+  PR #27 **mergée le 29/09/2026**, testée sur preview OK). Tant que le pay-as-you-go Mistral n'est pas actif, l'OCR restera indisponible
   quoi qu'on fasse côté code — ne pas re-diagnostiquer ce point sans redemander l'état du compte
   Mistral à l'utilisateur.
 - **Hébergement : Cloudflare Pages fait foi pour `app.mcalogistics.fr`, PAS Netlify.**
@@ -72,6 +72,10 @@ autoliquidation intracommunautaire).
   (quasi épuisés, reset le 10 de chaque mois) ne tombent pas à zéro. Donner systématiquement le
   lien de preview (Netlify et/ou Cloudflare Pages, présent dans les commentaires bot de la PR)
   **avant** de merger, sur demande explicite de l'utilisateur.
+  ⚠️ Pour tester une preview : ses URL doivent figurer dans Supabase → Authentication → URL
+  Configuration → Redirect URLs (`https://*.mca-logistics-app.pages.dev/**`,
+  `https://*--gleaming-marzipan-9f0a30.netlify.app/**`), sinon la connexion Google renvoie
+  vers la prod (Site URL) et on teste l'ancien code sans s'en rendre compte.
 
 ## Règles base de données — résidus de l'ancien essai (NE PAS réintroduire les bugs)
 - `deliveries.montant_*` sont des colonnes **GENERATED** ou legacy → **ne jamais écrire dedans**. Écrire UNIQUEMENT `amount_ht_cts`, `tva_cts`, `amount_ttc_cts`. Lecture en fallback `amount_* ?? montant_*`.
