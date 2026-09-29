@@ -156,8 +156,10 @@ export function DrawerEntretien({
     if (!linkedCharge) return
     setLectureEnCours(true)
     try {
+      // force: true — clic explicite de l'utilisateur, contrairement à la
+      // file d'attente qui se contente du résultat déjà mémorisé.
       const { data, error } = await supabase.functions.invoke('lire-facture', {
-        body: { charge_id: linkedCharge.id },
+        body: { charge_id: linkedCharge.id, force: true },
       })
       if (error || !data?.ok) {
         toast(data?.error ?? error?.message ?? 'Lecture indisponible', 'error')
@@ -167,6 +169,8 @@ export function DrawerEntretien({
       if (lu.kilometrage == null) {
         toast(lu.raison === 'aucun justificatif'
           ? 'Cette facture n\'a pas de justificatif à lire'
+          : lu.raison === 'service surchargé'
+          ? 'Service de lecture surchargé — réessaie dans quelques instants'
           : 'Aucun kilométrage lisible sur le justificatif')
         return
       }
