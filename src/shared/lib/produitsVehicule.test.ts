@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { codeProduit, estCodePersonnalise, produitsEffectifs } from './produitsVehicule'
+import { codeProduit, estCodePersonnalise, produitsBaseSupprimes, produitsEffectifs } from './produitsVehicule'
 
 describe('produits personnalisés', () => {
   it('génère un code stable préfixé x_', () => {
@@ -26,5 +26,13 @@ describe('liste effective des produits', () => {
     expect(l.find(p => p.code === 'x_gnv')).toMatchObject({ base: false, famille: 'carburant' })
     // carburants d'abord : GNV (carburant perso) avant AdBlue (consommable)
     expect(l.findIndex(p => p.code === 'x_gnv')).toBeLessThan(l.findIndex(p => p.code === 'adblue'))
+  })
+})
+
+describe('produits de base supprimés', () => {
+  it('disparaissent de la liste et restent restaurables', () => {
+    const table = [{ id: '1', code: 'electric', libelle: 'Électrique', famille: 'carburant' as const, actif: false, supprime: true }]
+    expect(produitsEffectifs(table).some(p => p.code === 'electric')).toBe(false)
+    expect(produitsBaseSupprimes(table)).toEqual(['electric'])
   })
 })

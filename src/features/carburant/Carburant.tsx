@@ -86,7 +86,7 @@ export function Carburant() {
   const [produits, setProduits] = useState<ProduitVehicule[]>([])
   useEffect(() => { void listProduitsVehicule().then(setProduits) }, [])
 
-  // Puces « Tous / Carburants / Consommables / <produit> », côté client : les
+  // Filtre « Tous / Carburants / Consommables / <produit> », côté client : les
   // KPIs suivent la sélection (litres et prix/L restent de toute façon carburants).
   const puces = produitsUtilises(rows)
   const filtreProduit = filters.produit ?? 'all'
@@ -141,6 +141,19 @@ export function Carburant() {
           <option value="all">Tous véhicules</option>
           {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
         </select>
+        <select value={filtreProduit} onChange={e => choisirProduit(e.target.value)} className={filterCls}
+          title="Filtrer par famille ou par produit">
+          <option value="all">Tous les produits</option>
+          <option value="famille:carburant">Carburants</option>
+          <option value="famille:liquide">Consommables</option>
+          {puces.length > 0 && (
+            <optgroup label="Produit précis">
+              {puces.map(p => (
+                <option key={p.code} value={p.code}>{libelleProduit(p.code, produits)} ({p.nb})</option>
+              ))}
+            </optgroup>
+          )}
+        </select>
         <Button
           variant={filtreARapprocher ? 'primary' : 'secondary'}
           size="compact"
@@ -155,26 +168,6 @@ export function Carburant() {
         )}
       </div>
 
-      {/* Puces produit : un clic pour ne voir qu'une famille ou qu'un produit */}
-      {puces.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-4">
-          {[
-            { v: 'all', l: 'Tous' },
-            { v: 'famille:carburant', l: 'Carburants' },
-            { v: 'famille:liquide', l: 'Consommables' },
-          ].map(p => (
-            <Button key={p.v} size="compact" variant={filtreProduit === p.v ? 'primary' : 'secondary'} onClick={() => choisirProduit(p.v)}>
-              {p.l}
-            </Button>
-          ))}
-          <span className="w-px h-5 bg-[var(--border)] mx-1" aria-hidden />
-          {puces.map(p => (
-            <Button key={p.code} size="compact" variant={filtreProduit === p.code ? 'primary' : 'ghost'} onClick={() => choisirProduit(p.code)}>
-              {libelleProduit(p.code, produits)} <span className="opacity-60 tabular-nums">{p.nb}</span>
-            </Button>
-          ))}
-        </div>
-      )}
 
       {/* Contenu */}
       {loading ? (

@@ -146,6 +146,7 @@ export async function listChargeCategories(): Promise<{ id: string; name: string
   const { data } = await supabase
     .from('charge_categories')
     .select('id, name, slug')
+    .neq('actif', false)
     .order('name')
   return (data ?? []) as { id: string; name: string; slug: string }[]
 }

@@ -24,6 +24,16 @@ export async function createCategory(companyId: string, name: string, type: stri
     .single()
 }
 
+/** Renomme une catégorie (le slug, qui route le rapprochement, ne change pas). */
+export async function renameCategory(id: string, name: string) {
+  return supabase.from('charge_categories').update({ name: name.trim() }).eq('id', id)
+}
+
+/** Masque / réaffiche une catégorie dans les listes de choix. */
+export async function setCategoryActif(id: string, actif: boolean) {
+  return supabase.from('charge_categories').update({ actif }).eq('id', id)
+}
+
 /** Supprime une catégorie personnalisée (échoue si is_system=true ou charges liées). */
 export async function deleteCategory(id: string) {
   return supabase.from('charge_categories').delete().eq('id', id)

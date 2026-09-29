@@ -26,6 +26,8 @@ export interface ProduitVehicule {
   libelle: string
   famille: FamilleProduit
   actif: boolean
+  /** Produit de base retiré de la liste par l'utilisateur (surcharge). */
+  supprime?: boolean
 }
 
 /** Produit tel que l'écran l'utilise, après fusion base + table. */
@@ -54,12 +56,13 @@ export const PRODUITS_BASE: ReadonlyArray<{ code: string; libelle: string; famil
 
 /**
  * Liste effective : produits de base (éventuellement renommés / masqués par
- * une ligne de la table), puis produits personnalisés. Ordre : carburants
+ * une ligne de la table, absents s'ils ont été supprimés), puis produits
+ * personnalisés. Ordre : carburants
  * d'abord, puis consommables ; base avant personnalisés.
  */
 export function produitsEffectifs(table: ProduitVehicule[]): ProduitEffectif[] {
   const parCode = new Map(table.map(p => [p.code, p]))
-  const base: ProduitEffectif[] = PRODUITS_BASE.map(b => {
+  const base: ProduitEffectif[] = PRODUITS_BASE.filter(b => !parCode.get(b.code)?.supprime).map(b => {
     const s = parCode.get(b.code)
     return { code: b.code, famille: b.famille, libelle: s?.libelle?.trim() || b.libelle, actif: s ? s.actif : true, base: true }
   })
@@ -83,4 +86,9 @@ export function codeProduit(libelle: string): string {
 
 export function estCodePersonnalise(code: string | null | undefined): boolean {
   return typeof code === 'string' && code.startsWith('x_')
+}
+
+/** Produits de base supprimés par l'utilisateur (pour pouvoir les restaurer). */
+export function produitsBaseSupprimes(table: ProduitVehicule[]): string[] {
+  return table.filter(p => p.supprime && PRODUITS_BASE.some(b => b.code === p.code)).map(p => p.code)
 }

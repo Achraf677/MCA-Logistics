@@ -5,6 +5,8 @@ export interface ChargeCategoryRow {
   slug: string
   type: string | null
   is_system: boolean
+  /** false = masquée des listes de choix (reste sur les charges déjà classées). */
+  actif?: boolean
   created_at: string
   updated_at: string
 }
