@@ -8,7 +8,9 @@ import { supabase, useProfile } from '../../app/providers'
 import { trouverVehicule } from '../../shared/lib/lectureFacture'
 import { fromTtcAndRate } from '../../shared/lib/montants'
 import { createFuelLogs, lireReleve } from './carburant.queries'
-import { CARBURANTS, FUEL_TYPE_LABELS, LIQUIDES, estLiquide, formatCents } from './carburant.logic'
+import { estLiquide, formatCents } from './carburant.logic'
+import { OptionsProduit } from './OptionsProduit'
+import type { ProduitVehicule } from '../../shared/lib/produitsVehicule'
 import {
   controleReleve, erreurLigne, euroVersCts, normaliserLignes,
   type LigneReleve, type LigneReleveBrute,
@@ -22,6 +24,7 @@ interface Props {
   onClose: () => void
   charge: ChargePick | null
   onSaved: () => void
+  produits?: ProduitVehicule[]
 }
 
 /**
@@ -33,7 +36,8 @@ interface Props {
  * somme de TOUTES les lignes lues doit égaler le total de la facture — preuve
  * que la lecture n'a rien oublié avant de créer quoi que ce soit.
  */
-export function DrawerReleve({ open, onClose, charge, onSaved }: Props) {
+export function DrawerReleve({ open, onClose, charge, onSaved, produits = [] }: Props) {
+  const liquide = (t: FuelType | null) => estLiquide(t, produits)
   const { companyId } = useProfile()
   const { toast } = useToast()
   const [vehicles, setVehicles] = useState<Lookup[]>([])
@@ -90,7 +94,7 @@ export function DrawerReleve({ open, onClose, charge, onSaved }: Props) {
   )
   const ctrl = controleReleve(lignesEffectives, charge?.montant_ttc_cts ?? null)
   const aCreer = lignesEffectives.filter(l => l.inclure)
-  const erreurs = aCreer.map(l => erreurLigne(l, estLiquide)).filter(Boolean)
+  const erreurs = aCreer.map(l => erreurLigne(l, liquide)).filter(Boolean)
   const ecart = ctrl.ecartCts ?? 0
   const peutCreer = aCreer.length > 0 && erreurs.length === 0 && (ecart === 0 || ecartAccepte) && !saving
 
@@ -181,7 +185,7 @@ export function DrawerReleve({ open, onClose, charge, onSaved }: Props) {
                   </thead>
                   <tbody>
                     {lignesEffectives.map(l => {
-                      const err = erreurLigne(l, estLiquide)
+                      const err = erreurLigne(l, liquide)
                       return (
                         <tr key={l.cle} className={`border-t border-[var(--border)] ${l.inclure ? '' : 'opacity-50'}`}>
                           <td className="px-2 py-1">
@@ -193,8 +197,7 @@ export function DrawerReleve({ open, onClose, charge, onSaved }: Props) {
                           <td className="px-2 py-1">
                             <select value={l.produit ?? ''} onChange={e => maj(l.cle, { produit: (e.target.value || null) as FuelType | null })} className={cellCls}>
                               <option value="">Frais / autre</option>
-                              <optgroup label="Carburants">{CARBURANTS.map(t => <option key={t} value={t}>{FUEL_TYPE_LABELS[t]}</option>)}</optgroup>
-                              <optgroup label="Liquides">{LIQUIDES.map(t => <option key={t} value={t}>{FUEL_TYPE_LABELS[t]}</option>)}</optgroup>
+                              <OptionsProduit produits={produits} valeur={l.produit} />
                             </select>
                           </td>
                           <td className="px-2 py-1">

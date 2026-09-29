@@ -14,7 +14,9 @@ import { getUnlinkedChargesFor } from '../../shared/lib/rapprochement'
 import {
   lireLibelleCharge, trouverVehicule, parseLectureOcr, type LectureOcr,
 } from '../../shared/lib/lectureFacture'
-import { FUEL_TYPE_LABELS, FUEL_TYPE_COLOR, CARBURANTS, LIQUIDES, estLiquide, formatCents } from './carburant.logic'
+import { libelleProduit, couleurProduit, estLiquide, formatCents } from './carburant.logic'
+import { OptionsProduit } from './OptionsProduit'
+import type { ProduitVehicule } from '../../shared/lib/produitsVehicule'
 import { fromTtcAndRate, fromTtcAndManualTva } from '../../shared/lib/montants'
 import type { FuelLogRow, FuelLogInsert, FuelType, ChargePick } from './carburant.types'
 import { Field } from '../../shared/ui/Field'
@@ -31,6 +33,8 @@ interface Props {
    */
   initialCharge?: ChargePick | null
   initialOcr?: LectureOcr | null
+  /** Produits personnalisés (Paramètres), chargés par la page. */
+  produits?: ProduitVehicule[]
 }
 
 type Lookup = { id: string; label: string; plate?: string | null }
@@ -55,7 +59,7 @@ const EMPTY_FORM = {
 }
 
 export function DrawerCarburant({
-  open, onClose, fuelLog, onSaved, initialCharge = null, initialOcr = null,
+  open, onClose, fuelLog, onSaved, initialCharge = null, initialOcr = null, produits = [],
 }: Props) {
   const { companyId } = useProfile()
   const { toast } = useToast()
@@ -227,7 +231,7 @@ export function DrawerCarburant({
 
   // Auto-calcul du total quand litres ou prix/L changent
   const liters = parseFloat(form.liters || '0')
-  const liquide = estLiquide((form.fuel_type || null) as FuelType | null)
+  const liquide = estLiquide((form.fuel_type || null) as FuelType | null, produits)
   const priceMilli = Math.round(parseFloat(form.price_per_liter || '0') * 1000)
   const autoTotalCts = liters > 0 && priceMilli > 0
     ? Math.round(liters * priceMilli / 10)
@@ -332,7 +336,7 @@ export function DrawerCarburant({
           {/* Statut véhicule */}
           {isEdit && fuelLog?.fuel_type && (
             <div className="flex items-center gap-2 mb-1">
-              <Badge color={FUEL_TYPE_COLOR[fuelLog.fuel_type]}>{FUEL_TYPE_LABELS[fuelLog.fuel_type]}</Badge>
+              <Badge color={couleurProduit(fuelLog.fuel_type)}>{libelleProduit(fuelLog.fuel_type, produits)}</Badge>
               {fuelLog.charges && <Badge color="success">Facturé</Badge>}
               <span className="ml-auto font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
                 {new Date(fuelLog.date).toLocaleDateString('fr-FR')}
@@ -378,12 +382,7 @@ export function DrawerCarburant({
             <Field label="Produit">
               <select value={form.fuel_type} onChange={e => set('fuel_type', e.target.value)} className={inputCls}>
                 <option value="">— Aucun —</option>
-                <optgroup label="Carburants">
-                  {CARBURANTS.map(t => <option key={t} value={t}>{FUEL_TYPE_LABELS[t]}</option>)}
-                </optgroup>
-                <optgroup label="Liquides">
-                  {LIQUIDES.map(t => <option key={t} value={t}>{FUEL_TYPE_LABELS[t]}</option>)}
-                </optgroup>
+                <OptionsProduit produits={produits} valeur={form.fuel_type} />
               </select>
             </Field>
           </div>

@@ -9,11 +9,13 @@ import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { DrawerCarburant } from './DrawerCarburant'
 import { FileAttenteCarburant } from './FileAttenteCarburant'
 import { DrawerReleve } from './DrawerReleve'
+import { listProduitsVehicule } from '../../shared/lib/produitsVehicule.queries'
+import type { ProduitVehicule } from '../../shared/lib/produitsVehicule'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
 import { getFuelLogs, exportFuelCSV } from './carburant.queries'
 import {
-  FUEL_TYPE_LABELS, FUEL_TYPE_COLOR,
+  libelleProduit, couleurProduit,
   formatCents, formatLiters, formatPricePerLiter, kpiSummary, filtrerFamille,
 } from './carburant.logic'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
@@ -80,11 +82,14 @@ export function Carburant() {
 
   // Relevé de carte carburant (une facture → plusieurs pleins).
   const [releveCharge, setReleveCharge] = useState<ChargePick | null>(null)
+  // Produits personnalisés (Paramètres) : libellés, famille, listes déroulantes.
+  const [produits, setProduits] = useState<ProduitVehicule[]>([])
+  useEffect(() => { void listProduitsVehicule().then(setProduits) }, [])
 
   // Filtre « Tout / Carburants / Liquides » appliqué côté client : les KPIs
   // suivent la sélection (litres et prix/L restent de toute façon carburants).
-  const rowsFamille = filtrerFamille(rows, filters.famille)
-  const kpis = kpiSummary(rowsFamille)
+  const rowsFamille = filtrerFamille(rows, filters.famille, produits)
+  const kpis = kpiSummary(rowsFamille, produits)
   const nbARapprocher = rowsFamille.filter(r => !r.charge_id).length
   const displayRows = filtreARapprocher ? rowsFamille.filter(r => !r.charge_id) : rowsFamille
 
@@ -216,7 +221,7 @@ export function Carburant() {
                     </td>
                     <td className="px-4 py-3">
                       {row.fuel_type
-                        ? <Badge color={FUEL_TYPE_COLOR[row.fuel_type]}>{FUEL_TYPE_LABELS[row.fuel_type]}</Badge>
+                        ? <Badge color={couleurProduit(row.fuel_type)}>{libelleProduit(row.fuel_type, produits)}</Badge>
                         : <span className="text-[var(--text-disabled)]">—</span>}
                     </td>
                     <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
@@ -259,7 +264,7 @@ export function Carburant() {
                   <span className="font-medium text-[var(--text)]">{row.vehicles?.label ?? '—'}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {row.charges && <Badge color="success">Facturé</Badge>}
-                    {row.fuel_type && <Badge color={FUEL_TYPE_COLOR[row.fuel_type]}>{FUEL_TYPE_LABELS[row.fuel_type]}</Badge>}
+                    {row.fuel_type && <Badge color={couleurProduit(row.fuel_type)}>{libelleProduit(row.fuel_type, produits)}</Badge>}
                   </div>
                 </div>
                 <div className="flex items-end justify-between gap-2">
@@ -282,12 +287,14 @@ export function Carburant() {
         fuelLog={selected}
         initialCharge={initialCharge}
         initialOcr={initialOcr}
+        produits={produits}
         onSaved={() => { load(); setQueueRefresh(n => n + 1) }}
       />
       <DrawerReleve
         open={releveCharge != null}
         onClose={() => setReleveCharge(null)}
         charge={releveCharge}
+        produits={produits}
         onSaved={() => { load(); setQueueRefresh(n => n + 1) }}
       />
     </Shell>

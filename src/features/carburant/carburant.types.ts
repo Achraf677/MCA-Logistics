@@ -4,8 +4,10 @@ export type Carburant = 'diesel' | 'essence' | 'electric' | 'hybrid' | 'lpg'
 export type Liquide =
   | 'adblue' | 'lave_glace' | 'huile_moteur' | 'liquide_refroidissement'
   | 'liquide_frein' | 'autre_liquide'
+/** Produit personnalisé créé dans Paramètres (table produits_vehicule). */
+export type ProduitPerso = `x_${string}`
 /** Produit d'une ligne de « Carburant & liquides » (colonne fuel_type). */
-export type FuelType = Carburant | Liquide
+export type FuelType = Carburant | Liquide | ProduitPerso
 
 export interface FuelLog {
   id: string
