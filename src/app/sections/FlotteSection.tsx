@@ -18,7 +18,7 @@ export function FlotteSection() {
       <TabbedSection
         tabs={[
           { key: 'vehicules',   label: 'Véhicules',   element: <Vehicules />,   permKey: 'flotte.vehicules'   },
-          { key: 'carburant',   label: 'Carburant & liquides', element: <Carburant />,   permKey: 'flotte.carburant'   },
+          { key: 'carburant',   label: 'Carburant & consommables', element: <Carburant />,   permKey: 'flotte.carburant'   },
           { key: 'entretiens',  label: 'Entretiens',  element: <Entretiens />,  permKey: 'flotte.entretiens'  },
           { key: 'inspections', label: 'Inspections', element: <Inspections />, permKey: 'flotte.inspections' },
           { key: 'incidents',   label: 'Incidents',   element: <Incidents />,   permKey: 'flotte.incidents'   },

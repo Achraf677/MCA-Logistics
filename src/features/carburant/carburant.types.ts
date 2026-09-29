@@ -43,8 +43,8 @@ export type FuelLogUpdate = Partial<Omit<FuelLog, 'id' | 'company_id' | 'created
 
 export interface FuelFilters {
   vehicle_id?: string | 'all'
-  /** Filtre côté client : tous les produits, carburants seuls ou liquides seuls. */
-  famille?: 'all' | 'carburant' | 'liquide'
+  /** Filtre côté client : 'all', 'famille:carburant', 'famille:liquide' ou le code d'un produit. */
+  produit?: string
   date_from?: string
   date_to?: string
 }

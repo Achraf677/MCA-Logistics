@@ -293,8 +293,8 @@ export function Parametres() {
               <GestionCategories />
             </Section>
 
-            {/* Section Produits Carburant & liquides */}
-            <Section title="Produits carburant & liquides">
+            {/* Section Produits Carburant & consommables */}
+            <Section title="Produits carburant & consommables">
               <GestionProduits />
             </Section>
 

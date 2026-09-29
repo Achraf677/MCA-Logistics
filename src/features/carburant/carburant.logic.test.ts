@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { estLiquide, filtrerFamille, kpiSummary } from './carburant.logic'
+import { estLiquide, filtrerProduit, kpiSummary, produitsUtilises } from './carburant.logic'
 import type { FuelLogRow, FuelType } from './carburant.types'
 
 const ligne = (fuel_type: FuelType | null, liters: number, milli: number, total_cts: number) =>
@@ -27,9 +27,15 @@ describe('Carburant & liquides', () => {
     expect(k.nb).toBe(4)
   })
 
-  it('filtre par famille', () => {
-    expect(filtrerFamille(rows, 'all')).toHaveLength(4)
-    expect(filtrerFamille(rows, 'carburant')).toHaveLength(2)
-    expect(filtrerFamille(rows, 'liquide')).toHaveLength(2)
+  it('filtre par famille ou par produit précis', () => {
+    expect(filtrerProduit(rows, 'all')).toHaveLength(4)
+    expect(filtrerProduit(rows, 'famille:carburant')).toHaveLength(2)
+    expect(filtrerProduit(rows, 'famille:liquide')).toHaveLength(2)
+    expect(filtrerProduit(rows, 'adblue')).toHaveLength(1)
+  })
+
+  it('liste les produits présents, du plus fréquent au plus rare', () => {
+    expect(produitsUtilises([...rows, ligne('adblue', 5, 1500, 750)]).map(p => p.code))
+      .toEqual(['adblue', 'diesel', 'lave_glace'])
   })
 })

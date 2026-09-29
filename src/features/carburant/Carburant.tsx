@@ -16,7 +16,7 @@ import { supabase } from '../../app/providers'
 import { getFuelLogs, exportFuelCSV } from './carburant.queries'
 import {
   libelleProduit, couleurProduit,
-  formatCents, formatLiters, formatPricePerLiter, kpiSummary, filtrerFamille,
+  formatCents, formatLiters, formatPricePerLiter, kpiSummary, filtrerProduit, produitsUtilises,
 } from './carburant.logic'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { downloadCSV } from '../../shared/lib/download'
@@ -86,22 +86,25 @@ export function Carburant() {
   const [produits, setProduits] = useState<ProduitVehicule[]>([])
   useEffect(() => { void listProduitsVehicule().then(setProduits) }, [])
 
-  // Filtre « Tout / Carburants / Liquides » appliqué côté client : les KPIs
-  // suivent la sélection (litres et prix/L restent de toute façon carburants).
-  const rowsFamille = filtrerFamille(rows, filters.famille, produits)
+  // Puces « Tous / Carburants / Consommables / <produit> », côté client : les
+  // KPIs suivent la sélection (litres et prix/L restent de toute façon carburants).
+  const puces = produitsUtilises(rows)
+  const filtreProduit = filters.produit ?? 'all'
+  const choisirProduit = (v: string) => setFilters(f => ({ ...f, produit: v === 'all' ? undefined : v }))
+  const rowsFamille = filtrerProduit(rows, filters.produit, produits)
   const kpis = kpiSummary(rowsFamille, produits)
   const nbARapprocher = rowsFamille.filter(r => !r.charge_id).length
   const displayRows = filtreARapprocher ? rowsFamille.filter(r => !r.charge_id) : rowsFamille
 
   const hasFilters = !!(
     (filters.vehicle_id && filters.vehicle_id !== 'all') ||
-    (filters.famille && filters.famille !== 'all') ||
+    (filters.produit && filters.produit !== 'all') ||
     filters.date_from || filters.date_to || filtreARapprocher
   )
   const resetFilters = () => { setFilters({}); setFiltreARapprocher(false) }
 
   return (
-    <Shell pageTitle="Carburant & liquides" actions={['nouveau', 'export']} onAction={handleAction}>
+    <Shell pageTitle="Carburant & consommables" actions={['nouveau', 'export']} onAction={handleAction}>
       {/* KPIs */}
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
@@ -109,7 +112,7 @@ export function Carburant() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
-          <KpiCard label="Plein(s)"      value={kpis.nb} tone="info" icon={<Fuel size={18} />} />
+          <KpiCard label="Achats"        value={kpis.nb} tone="info" icon={<Fuel size={18} />} />
           <KpiCard label="Total TTC"     value={formatCents(kpis.totalCts)} tone="warning" icon={<Euro size={18} />} />
           <KpiCard label="Litres carburant" value={formatLiters(kpis.totalLiters)} tone="info" icon={<Droplet size={18} />} />
           <KpiCard label="Prix moy. / L" value={formatPricePerLiter(kpis.avgPricePerLiter)} tone="violet" icon={<Gauge size={18} />} />
@@ -138,15 +141,6 @@ export function Carburant() {
           <option value="all">Tous véhicules</option>
           {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
         </select>
-        <select
-          value={filters.famille ?? 'all'}
-          onChange={e => setFilters(f => ({ ...f, famille: e.target.value as FuelFilters['famille'] }))}
-          className={filterCls}
-        >
-          <option value="all">Carburants & liquides</option>
-          <option value="carburant">Carburants</option>
-          <option value="liquide">Liquides</option>
-        </select>
         <Button
           variant={filtreARapprocher ? 'primary' : 'secondary'}
           size="compact"
@@ -160,6 +154,27 @@ export function Carburant() {
           </Button>
         )}
       </div>
+
+      {/* Puces produit : un clic pour ne voir qu'une famille ou qu'un produit */}
+      {puces.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          {[
+            { v: 'all', l: 'Tous' },
+            { v: 'famille:carburant', l: 'Carburants' },
+            { v: 'famille:liquide', l: 'Consommables' },
+          ].map(p => (
+            <Button key={p.v} size="compact" variant={filtreProduit === p.v ? 'primary' : 'secondary'} onClick={() => choisirProduit(p.v)}>
+              {p.l}
+            </Button>
+          ))}
+          <span className="w-px h-5 bg-[var(--border)] mx-1" aria-hidden />
+          {puces.map(p => (
+            <Button key={p.code} size="compact" variant={filtreProduit === p.code ? 'primary' : 'ghost'} onClick={() => choisirProduit(p.code)}>
+              {libelleProduit(p.code, produits)} <span className="opacity-60 tabular-nums">{p.nb}</span>
+            </Button>
+          ))}
+        </div>
+      )}
 
       {/* Contenu */}
       {loading ? (

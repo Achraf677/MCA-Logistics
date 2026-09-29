@@ -273,7 +273,7 @@ export function DrawerCarburant({
     // contester un plein qu'on n'a pas fait. Demande explicite des chauffeurs.
     if (!form.driver_id)   { toast('Le chauffeur est requis', 'error'); return }
     if (!form.date)        { toast('La date est requise', 'error'); return }
-    // Un liquide s'achète souvent au bidon sans quantité lisible : seul le
+    // Un consommable s'achète souvent au bidon sans quantité lisible : seul le
     // montant est exigé. Un carburant, lui, sans litres fausserait la conso.
     if (!liquide && liters <= 0) { toast('Le nombre de litres doit être supérieur à 0', 'error'); return }
     if (totalCts <= 0)     { toast('Le montant total doit être supérieur à 0', 'error'); return }

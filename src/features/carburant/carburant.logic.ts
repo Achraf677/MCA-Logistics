@@ -1,5 +1,5 @@
 import type { Carburant, FuelLogRow, FuelType, Liquide } from './carburant.types'
-import type { ProduitVehicule } from '../../shared/lib/produitsVehicule'
+import { produitsEffectifs, type ProduitVehicule } from '../../shared/lib/produitsVehicule'
 
 export const CARBURANTS: Carburant[] = ['diesel', 'essence', 'electric', 'hybrid', 'lpg']
 export const LIQUIDES: Liquide[] = [
@@ -17,7 +17,7 @@ export const FUEL_TYPE_LABELS: Record<Carburant | Liquide, string> = {
   huile_moteur:            'Huile moteur',
   liquide_refroidissement: 'Liquide de refroidissement',
   liquide_frein:           'Liquide de frein',
-  autre_liquide:           'Autre liquide',
+  autre_liquide:           'Autre consommable',
 }
 
 export const FUEL_TYPE_COLOR: Record<Carburant | Liquide, 'muted' | 'info' | 'success' | 'warning'> = {
@@ -34,12 +34,10 @@ export const FUEL_TYPE_COLOR: Record<Carburant | Liquide, 'muted' | 'info' | 'su
   autre_liquide:           'info',
 }
 
-/** Libellé d'un produit, de base ou personnalisé (Paramètres). */
+/** Libellé d'un produit, tel que nommé dans Paramètres (renommage compris). */
 export function libelleProduit(code: FuelType | null | undefined, produits: ProduitVehicule[] = []): string {
   if (!code) return '—'
-  return (FUEL_TYPE_LABELS as Record<string, string>)[code]
-    ?? produits.find(p => p.code === code)?.libelle
-    ?? code
+  return produitsEffectifs(produits).find(p => p.code === code)?.libelle ?? code
 }
 
 export function couleurProduit(code: FuelType | null | undefined): 'muted' | 'info' | 'success' | 'warning' {
@@ -47,9 +45,9 @@ export function couleurProduit(code: FuelType | null | undefined): 'muted' | 'in
 }
 
 /**
- * Carburant ou liquide ? Un produit inconnu (null) est traité comme un
- * carburant : c'est ce qu'étaient toutes les lignes avant l'ajout des liquides.
- * Un produit personnalisé suit la famille choisie à sa création.
+ * Consommable (AdBlue, lave-glace, huile…) plutôt que carburant ? Un produit
+ * absent (null) est un carburant : c'est ce qu'étaient toutes les lignes avant
+ * l'ajout des consommables. Un produit personnalisé suit sa famille.
  */
 export function estLiquide(type: FuelType | null | undefined, produits: ProduitVehicule[] = []): boolean {
   if (type == null) return false
@@ -57,12 +55,24 @@ export function estLiquide(type: FuelType | null | undefined, produits: ProduitV
   return produits.find(p => p.code === type)?.famille === 'liquide'
 }
 
-/** Filtre « Tout / Carburants / Liquides » — appliqué côté client. */
-export function filtrerFamille(
-  rows: FuelLogRow[], famille: 'all' | 'carburant' | 'liquide' | undefined, produits: ProduitVehicule[] = [],
+/**
+ * Filtre de la liste, côté client : `'all'`, une famille (`'famille:carburant'`,
+ * `'famille:liquide'`) ou un produit précis (son code, ex. `'adblue'`).
+ */
+export function filtrerProduit(
+  rows: FuelLogRow[], filtre: string | undefined, produits: ProduitVehicule[] = [],
 ): FuelLogRow[] {
-  if (!famille || famille === 'all') return rows
-  return rows.filter(r => (famille === 'liquide') === estLiquide(r.fuel_type, produits))
+  if (!filtre || filtre === 'all') return rows
+  if (filtre === 'famille:carburant') return rows.filter(r => !estLiquide(r.fuel_type, produits))
+  if (filtre === 'famille:liquide') return rows.filter(r => estLiquide(r.fuel_type, produits))
+  return rows.filter(r => r.fuel_type === filtre)
+}
+
+/** Produits réellement présents dans la liste, du plus fréquent au plus rare (puces de filtre). */
+export function produitsUtilises(rows: FuelLogRow[]): Array<{ code: FuelType; nb: number }> {
+  const nb = new Map<FuelType, number>()
+  for (const r of rows) if (r.fuel_type) nb.set(r.fuel_type, (nb.get(r.fuel_type) ?? 0) + 1)
+  return [...nb.entries()].map(([code, n]) => ({ code, nb: n })).sort((a, b) => b.nb - a.nb)
 }
 
 export { formatCents } from '../../shared/lib/money'
