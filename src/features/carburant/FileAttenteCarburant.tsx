@@ -50,7 +50,7 @@ export function FileAttenteCarburant({ vehicles, onValider, refreshToken }: Prop
   useEffect(() => { void charger() }, [charger, refreshToken])
 
   const lireUneFacture = async (charge: ChargePick) => {
-    if (!charge.receipt_url) { setLectures(p => ({ ...p, [charge.id]: null })); return }
+    if (!charge.receipt_url) return
     setLectures(p => ({ ...p, [charge.id]: 'en-cours' }))
     try {
       const { data } = await supabase.functions.invoke('lire-facture', { body: { charge_id: charge.id } })
@@ -95,11 +95,20 @@ export function FileAttenteCarburant({ vehicles, onValider, refreshToken }: Prop
               </div>
 
               <div className="text-[var(--fs-xs)] text-[var(--text-muted)] min-w-[140px]">
-                {lecture === 'en-cours' ? (
+                {!charge.receipt_url ? (
+                  <span>Pas de justificatif — à saisir à la main</span>
+                ) : lecture === 'en-cours' ? (
                   <span className="flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> Lecture…</span>
                 ) : lecture === undefined ? (
                   <Button variant="secondary" size="compact" onClick={() => lireUneFacture(charge)}>
                     <ScanLine size={12} /> Lire la facture
+                  </Button>
+                ) : lecture === null || lecture.raison === 'service surchargé' ? (
+                  // Échec transitoire (réseau, IA saturée) : rien n'est mémorisé côté
+                  // serveur, on laisse relancer à la main plutôt que d'affirmer
+                  // « à saisir à la main ».
+                  <Button variant="secondary" size="compact" onClick={() => lireUneFacture(charge)}>
+                    <ScanLine size={12} /> Service saturé · Réessayer
                   </Button>
                 ) : lecture && (lecture.litres != null || lecture.prixParLitre != null) ? (
                   <span>
