@@ -95,10 +95,12 @@ Deno.serve(async (req: Request) => {
     try {
       const isPdf = !/\.(png|jpe?g|webp|gif)(\?|$)/i.test(receiptUrl)
       texte = (await ocrDocument(apiKey, receiptUrl, isPdf)).slice(0, 8000)
-    } catch {
+    } catch (e) {
+      console.error('lire-facture: ocrDocument a échoué', chargeId, (e as Error)?.message)
       return jsonResponse({ ok: true, data: { ...VIDE, raison: 'justificatif illisible' } })
     }
     if (!texte.trim()) {
+      console.error('lire-facture: OCR a renvoyé un texte vide', chargeId, receiptUrl)
       return jsonResponse({ ok: true, data: { ...VIDE, raison: 'justificatif illisible' } })
     }
 
@@ -124,6 +126,10 @@ Réponds UNIQUEMENT en JSON :
     ].filter(Boolean).join('\n')
 
     const brut = await generateJson<LectureIa>(apiKey, system, userPrompt)
+    // Diagnostic temporaire : voir ce que le modèle renvoie réellement, pour
+    // distinguer « rien d'écrit sur le ticket » de « le modèle ne suit pas le
+    // format de confiance par champ demandé ». À retirer une fois confirmé.
+    console.log('lire-facture: réponse IA brute', chargeId, JSON.stringify(brut))
 
     // Trois champs indépendants, trois seuils indépendants : un ticket qui ne
     // montre pas le kilométrage ne doit pas faire perdre des litres pourtant
@@ -151,8 +157,9 @@ Réponds UNIQUEMENT en JSON :
         ),
       },
     })
-  } catch {
+  } catch (e) {
     // IA en panne, OCR KO, JSON illisible → aucune proposition, jamais d'erreur.
+    console.error('lire-facture: échec global', chargeId, (e as Error)?.message)
     return jsonResponse({ ok: true, data: VIDE })
   }
 })
