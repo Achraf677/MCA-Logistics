@@ -17,6 +17,12 @@ interface Props {
   onRenommer: (libelle: string) => void | Promise<void>
   onBasculer: () => void | Promise<void>
   onSupprimer: () => void | Promise<void>
+  /** Boutons supplémentaires, avant « Renommer » (ex. réglages). */
+  actions?: ReactNode
+  /** Contenu déplié sous la ligne (ex. formulaire de réglages). */
+  enfants?: ReactNode
+  /** Détail discret sous le libellé (ex. « L · stockable »). */
+  sousTitre?: ReactNode
 }
 
 /**
@@ -27,7 +33,7 @@ interface Props {
  */
 export function LigneParametre({
   libelle, extra, usages, unite, actif, supprimable = true, raisonNonSupprimable,
-  busy = false, onRenommer, onBasculer, onSupprimer,
+  busy = false, onRenommer, onBasculer, onSupprimer, actions, enfants, sousTitre,
 }: Props) {
   const [edition, setEdition] = useState<string | null>(null)
 
@@ -67,25 +73,32 @@ export function LigneParametre({
   }
 
   return (
-    <li className={`flex items-center gap-2 py-2 ${actif ? '' : 'opacity-50'}`}>
-      <span className="text-[var(--fs-sm)] text-[var(--text)]">{libelle}</span>
-      {extra}
-      {!actif && <span className="text-[var(--fs-xs)] text-[var(--text-disabled)]">masqué</span>}
-      <span className="ml-auto text-[var(--fs-xs)] text-[var(--text-disabled)] tabular-nums">
-        {usages > 0 ? `${usages} ${usages > 1 ? unite[1] : unite[0]}` : ''}
-      </span>
-      <button className={btn} disabled={busy} title="Renommer" onClick={() => setEdition(libelle)}>
-        <Pencil size={13} />
-      </button>
-      <button className={btn} disabled={busy}
-        title={actif ? 'Masquer des listes de choix (reste sur l’existant)' : 'Afficher à nouveau'}
-        onClick={() => void onBasculer()}>
-        {actif ? <Eye size={13} /> : <EyeOff size={13} />}
-      </button>
-      <button className={`${btn} !text-[var(--danger)]`} disabled={busy || !peutSupprimer} title={titreSupprimer}
-        onClick={() => void onSupprimer()}>
-        <Trash2 size={13} />
-      </button>
+    <li className="flex flex-col py-2">
+      <div className={`flex items-center gap-2 ${actif ? '' : 'opacity-50'}`}>
+        <span className="flex flex-col min-w-0">
+          <span className="text-[var(--fs-sm)] text-[var(--text)]">{libelle}</span>
+          {sousTitre && <span className="text-[var(--fs-xs)] text-[var(--text-disabled)]">{sousTitre}</span>}
+        </span>
+        {extra}
+        {!actif && <span className="text-[var(--fs-xs)] text-[var(--text-disabled)]">masqué</span>}
+        <span className="ml-auto text-[var(--fs-xs)] text-[var(--text-disabled)] tabular-nums">
+          {usages > 0 ? `${usages} ${usages > 1 ? unite[1] : unite[0]}` : ''}
+        </span>
+        {actions}
+        <button className={btn} disabled={busy} title="Renommer" onClick={() => setEdition(libelle)}>
+          <Pencil size={13} />
+        </button>
+        <button className={btn} disabled={busy}
+          title={actif ? 'Masquer des listes de choix (reste sur l’existant)' : 'Afficher à nouveau'}
+          onClick={() => void onBasculer()}>
+          {actif ? <Eye size={13} /> : <EyeOff size={13} />}
+        </button>
+        <button className={`${btn} !text-[var(--danger)]`} disabled={busy || !peutSupprimer} title={titreSupprimer}
+          onClick={() => void onSupprimer()}>
+          <Trash2 size={13} />
+        </button>
+      </div>
+      {enfants}
     </li>
   )
 }

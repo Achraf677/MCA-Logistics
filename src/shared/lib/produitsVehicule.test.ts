@@ -36,3 +36,28 @@ describe('produits de base supprimés', () => {
     expect(produitsBaseSupprimes(table)).toEqual(['electric'])
   })
 })
+
+describe('articles & familles (étape 1)', () => {
+  it('fournit les 4 familles avec leurs réglages par défaut', () => {
+    const l = produitsEffectifs([])
+    expect(new Set(l.map(p => p.famille))).toEqual(new Set(['carburant', 'liquide', 'entretien', 'equipement']))
+    expect(l.find(p => p.code === 'vidange')?.reglages).toMatchObject({ periodiciteKm: 30000, periodiciteMois: 12, stockable: false })
+    expect(l.find(p => p.code === 'adblue')?.reglages.stockable).toBe(true)
+    expect(l.find(p => p.code === 'diesel')?.reglages.stockable).toBe(false)
+  })
+
+  it('applique les réglages enregistrés, sans jamais rendre stockable un carburant ou un entretien', () => {
+    const l = produitsEffectifs([
+      { id: '1', code: 'vidange', libelle: 'Vidange', famille: 'entretien', actif: true, periodicite_km: 20000, periodicite_mois: null, stockable: true },
+      { id: '2', code: 'adblue', libelle: 'AdBlue', famille: 'liquide', actif: true, unite: 'bidon', seuil_stock: 2 },
+    ])
+    expect(l.find(p => p.code === 'vidange')?.reglages).toMatchObject({ periodiciteKm: 20000, periodiciteMois: null, stockable: false })
+    expect(l.find(p => p.code === 'adblue')?.reglages).toMatchObject({ unite: 'bidon', seuilStock: 2, stockable: true })
+  })
+
+  it('ordonne ⛽ 🧴 🔧 📦', () => {
+    const familles = produitsEffectifs([]).map(p => p.famille)
+    expect(familles.indexOf('equipement')).toBeGreaterThan(familles.lastIndexOf('entretien'))
+    expect(familles.indexOf('entretien')).toBeGreaterThan(familles.lastIndexOf('liquide'))
+  })
+})

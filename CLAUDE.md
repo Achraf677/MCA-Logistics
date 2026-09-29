@@ -47,23 +47,17 @@ Cœur historique : Livraisons (machine à états + montant auto + TVA éditable,
 autoliquidation intracommunautaire).
 
 ## En cours — 29/09/2026 (à lire avant de reprendre)
-- **OCR Carburant/Entretiens : tout le code est prêt, mais BLOQUÉ côté Mistral.**
-  Le compte Mistral (`chikriachraf67@gmail.com`, workspace "Default Workspace") est en forfait
-  gratuit **sans pay-as-you-go activé** → l'API OCR (`mistral-ocr-latest`) répond `429 rate_limited`
-  sur quasi tous les appels, quel que soit le débit réel (confirmé : conso très faible, ~0,12 €
-  sur 8,5 € de crédit inclus, donc PAS un problème de quota épuisé — un forfait gratuit sans carte
-  associée semble bridé plus fort que les limites affichées).
-  Tentative d'activation du pay-as-you-go (carte ajoutée, CGU acceptées) : **le bouton
-  « S'abonner » reste bloqué en chargement sans jamais partir en requête réseau** — bug côté page
-  Mistral, pas côté nous. Aucun débit/facture n'a eu lieu. À réessayer en navigation privée / autre
-  navigateur, ou contacter le support Mistral si ça persiste.
-  Le code compense déjà ce qui peut l'être : `_shared/http.ts` retente 2x sur 429 (2s/4s),
-  `charges.ocr_lecture` (jsonb) cache tout résultat définitif pour ne jamais relire deux fois la
-  même facture, et la lecture n'est plus automatique dans les files d'attente Carburant/Entretiens
-  (bouton « Lire la facture » à la demande, bouton « Service saturé · Réessayer » sur 429 —
-  PR #27 **mergée le 29/09/2026**, testée sur preview OK). Tant que le pay-as-you-go Mistral n'est pas actif, l'OCR restera indisponible
-  quoi qu'on fasse côté code — ne pas re-diagnostiquer ce point sans redemander l'état du compte
-  Mistral à l'utilisateur.
+- **Lecture des justificatifs : RÉSOLU (gratuit).** Le forfait gratuit Mistral n'ouvre PAS
+  `/v1/ocr` (429 code 1300 permanent). On lit donc via **vision** (`ministral-14b-2512` sur
+  `/chat/completions` + `image_url`, `_shared/mistral.ts#generateJsonFromImage`). Pennylane sert
+  tout en PDF et `public_file_url` EXPIRE : `_shared/justificatif.ts` redemande une URL fraîche
+  (`urlFraichePennylane`) puis ressort la photo JPEG du PDF. Relevés de carte (PDF texte) :
+  Edge `lire-releve` (texte extrait par unpdf → modèle texte). Ne plus parler d'OCR payant.
+- **Chantier en cours : « Dépenses véhicule » (uniformisation Carburant & consommables +
+  Entretien & équipement).** Plan validé : `mca-spec/tabs/30-depenses-vehicule.md` — le lire
+  AVANT toute modif de Carburant / Entretiens / produits. Étapes 0 (PR #29) faite ; étape 1
+  (Articles & familles dans Paramètres) en cours. **Pas d'immobilisation ni de prorata km** dans
+  ces écrans (reste en compta).
 - **Hébergement : Cloudflare Pages fait foi pour `app.mcalogistics.fr`, PAS Netlify.**
   Confirmé par DNS (CNAME → `mca-logistics-app.pages.dev`, IP Cloudflare). Le projet Netlify
   (espace renommé **« MCA LOGISTICS APP »**, ex-« Vinted Achraf ») a un certificat expiré et une
