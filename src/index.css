@@ -139,7 +139,11 @@ body::before {
 @media (prefers-reduced-motion: reduce) { .page-enter { animation: none; } }
 
 /* ── Glass morphism ─────────────────────────────────────── */
-.glass{ background:color-mix(in srgb, var(--bg-card) 72%, transparent); -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px); border:1px solid var(--border); box-shadow:0 24px 50px -28px rgba(0,0,0,.85); }
+/* SANS backdrop-filter : les cartes .glass vivent dans <main>, qui défile.
+   Mesuré (Chromium) : 2 cartes floutées visibles → 32 fps, 10 → 30 fps ; sans
+   flou → 60 fps. Le fond à 72 % sur un halo très diffus rend le flou quasi
+   invisible. Le flou reste réservé aux calques FIXES (modales, drawers). */
+.glass{ background:color-mix(in srgb, var(--bg-card) 72%, transparent); border:1px solid var(--border); box-shadow:0 24px 50px -28px rgba(0,0,0,.85); }
 
 /* Même habillage que .glass (bordure, ombre, fond de carte) mais SANS
    backdrop-filter : à utiliser sur les conteneurs qui défilent. Un flou d'arrière-plan
