@@ -11,6 +11,7 @@ import { getCompany, updateCompany } from './parametres.queries'
 import type { CompanyData } from './parametres.queries'
 import { ThemeSelector } from '../../shared/theme/ThemeSelector'
 import { GestionCategories } from './GestionCategories'
+import { GestionProduits } from './GestionProduits'
 import { MigrationDrive, useDocsDriveRestants } from './MigrationDrive'
 import { DriveConnect } from './DriveConnect'
 import { TestLectureAuto } from './TestLectureAuto'
@@ -290,6 +291,11 @@ export function Parametres() {
             {/* Section Catégories de charges */}
             <Section title="Catégories de charges">
               <GestionCategories />
+            </Section>
+
+            {/* Section Produits Carburant & consommables */}
+            <Section title="Produits carburant & consommables">
+              <GestionProduits />
             </Section>
 
             {/* Section Compte */}

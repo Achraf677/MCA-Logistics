@@ -27,11 +27,18 @@ describe('lireLibelleCharge', () => {
     }
   })
 
-  it('NE PREND PAS l’AdBlue pour du carburant', () => {
-    // L'AdBlue est un additif. Le compter comme un plein créerait un plein
-    // fantôme qui fausserait le coût au kilomètre.
-    expect(lireLibelleCharge('E.LECLERC AD BLUE FG-788-FB OPEL MOVANO').typeCarburant).toBeNull()
-    expect(lireLibelleCharge('ADBLUE 10L').typeCarburant).toBeNull()
+  it('range l’AdBlue en AdBlue, jamais en diesel', () => {
+    // Un liquide, pas un carburant : il reste hors litres et prix moyen/L,
+    // sans quoi il fausserait le coût au kilomètre.
+    expect(lireLibelleCharge('E.LECLERC AD BLUE FG-788-FB OPEL MOVANO').typeCarburant).toBe('adblue')
+    expect(lireLibelleCharge('ADBLUE 10L').typeCarburant).toBe('adblue')
+  })
+
+  it('reconnaît les liquides du véhicule', () => {
+    expect(lireLibelleCharge('LIQUIDE LAVE GLACE FG-788-FB OPEL MOVANO').typeCarburant).toBe('lave_glace')
+    expect(lireLibelleCharge('NORAUTO HUILE 5W30 5L').typeCarburant).toBe('huile_moteur')
+    expect(lireLibelleCharge('LIQUIDE DE REFROIDISSEMENT -25').typeCarburant).toBe('liquide_refroidissement')
+    expect(lireLibelleCharge('LIQUIDE DE FREIN DOT 4').typeCarburant).toBe('liquide_frein')
   })
 
   it('ne voit pas de carburant dans un dépôt de garantie', () => {

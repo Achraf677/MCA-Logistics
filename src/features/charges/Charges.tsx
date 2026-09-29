@@ -430,7 +430,7 @@ export function Charges() {
                           className={categoryCls}
                         >
                           <option value="">Non catégorisé</option>
-                          {categories.map(c => (
+                          {categories.filter(c => c.actif !== false || c.id === row.category_id).map(c => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                           ))}
                         </select>
@@ -565,7 +565,7 @@ export function Charges() {
                           className={categoryCls}
                         >
                           <option value="">—</option>
-                          {categories.map(c => (
+                          {categories.filter(c => c.actif !== false || c.id === row.category_id).map(c => (
                             <option key={c.id} value={c.id}>{c.name}</option>
                           ))}
                         </select>

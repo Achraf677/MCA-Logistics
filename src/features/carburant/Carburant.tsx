@@ -8,12 +8,15 @@ import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { DrawerCarburant } from './DrawerCarburant'
 import { FileAttenteCarburant } from './FileAttenteCarburant'
+import { DrawerReleve } from './DrawerReleve'
+import { listProduitsVehicule } from '../../shared/lib/produitsVehicule.queries'
+import type { ProduitVehicule } from '../../shared/lib/produitsVehicule'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
 import { getFuelLogs, exportFuelCSV } from './carburant.queries'
 import {
-  FUEL_TYPE_LABELS, FUEL_TYPE_COLOR,
-  formatCents, formatLiters, formatPricePerLiter, kpiSummary,
+  libelleProduit, couleurProduit,
+  formatCents, formatLiters, formatPricePerLiter, kpiSummary, filtrerProduit, produitsUtilises,
 } from './carburant.logic'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { downloadCSV } from '../../shared/lib/download'
@@ -77,18 +80,31 @@ export function Carburant() {
     setDrawerOpen(true)
   }
 
-  const kpis = kpiSummary(rows)
-  const nbARapprocher = rows.filter(r => !r.charge_id).length
-  const displayRows = filtreARapprocher ? rows.filter(r => !r.charge_id) : rows
+  // Relevé de carte carburant (une facture → plusieurs pleins).
+  const [releveCharge, setReleveCharge] = useState<ChargePick | null>(null)
+  // Produits personnalisés (Paramètres) : libellés, famille, listes déroulantes.
+  const [produits, setProduits] = useState<ProduitVehicule[]>([])
+  useEffect(() => { void listProduitsVehicule().then(setProduits) }, [])
+
+  // Filtre « Tous / Carburants / Consommables / <produit> », côté client : les
+  // KPIs suivent la sélection (litres et prix/L restent de toute façon carburants).
+  const puces = produitsUtilises(rows)
+  const filtreProduit = filters.produit ?? 'all'
+  const choisirProduit = (v: string) => setFilters(f => ({ ...f, produit: v === 'all' ? undefined : v }))
+  const rowsFamille = filtrerProduit(rows, filters.produit, produits)
+  const kpis = kpiSummary(rowsFamille, produits)
+  const nbARapprocher = rowsFamille.filter(r => !r.charge_id).length
+  const displayRows = filtreARapprocher ? rowsFamille.filter(r => !r.charge_id) : rowsFamille
 
   const hasFilters = !!(
     (filters.vehicle_id && filters.vehicle_id !== 'all') ||
+    (filters.produit && filters.produit !== 'all') ||
     filters.date_from || filters.date_to || filtreARapprocher
   )
   const resetFilters = () => { setFilters({}); setFiltreARapprocher(false) }
 
   return (
-    <Shell pageTitle="Carburant" actions={['nouveau', 'export']} onAction={handleAction}>
+    <Shell pageTitle="Carburant & consommables" actions={['nouveau', 'export']} onAction={handleAction}>
       {/* KPIs */}
       {loading ? (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
@@ -96,14 +112,14 @@ export function Carburant() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
-          <KpiCard label="Plein(s)"      value={kpis.nb} tone="info" icon={<Fuel size={18} />} />
+          <KpiCard label="Achats"        value={kpis.nb} tone="info" icon={<Fuel size={18} />} />
           <KpiCard label="Total TTC"     value={formatCents(kpis.totalCts)} tone="warning" icon={<Euro size={18} />} />
-          <KpiCard label="Litres"        value={formatLiters(kpis.totalLiters)} tone="info" icon={<Droplet size={18} />} />
+          <KpiCard label="Litres carburant" value={formatLiters(kpis.totalLiters)} tone="info" icon={<Droplet size={18} />} />
           <KpiCard label="Prix moy. / L" value={formatPricePerLiter(kpis.avgPricePerLiter)} tone="violet" icon={<Gauge size={18} />} />
         </div>
       )}
 
-      <FileAttenteCarburant vehicles={vehicles} onValider={handleValiderDepuisFile} refreshToken={queueRefresh} />
+      <FileAttenteCarburant vehicles={vehicles} onValider={handleValiderDepuisFile} onImporterReleve={setReleveCharge} refreshToken={queueRefresh} />
 
       {/* Filtres */}
       <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
@@ -125,6 +141,19 @@ export function Carburant() {
           <option value="all">Tous véhicules</option>
           {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
         </select>
+        <select value={filtreProduit} onChange={e => choisirProduit(e.target.value)} className={filterCls}
+          title="Filtrer par famille ou par produit">
+          <option value="all">Tous les produits</option>
+          <option value="famille:carburant">Carburants</option>
+          <option value="famille:liquide">Consommables</option>
+          {puces.length > 0 && (
+            <optgroup label="Produit précis">
+              {puces.map(p => (
+                <option key={p.code} value={p.code}>{libelleProduit(p.code, produits)} ({p.nb})</option>
+              ))}
+            </optgroup>
+          )}
+        </select>
         <Button
           variant={filtreARapprocher ? 'primary' : 'secondary'}
           size="compact"
@@ -138,6 +167,7 @@ export function Carburant() {
           </Button>
         )}
       </div>
+
 
       {/* Contenu */}
       {loading ? (
@@ -165,7 +195,7 @@ export function Carburant() {
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['Date', 'Véhicule', 'Chauffeur', 'Litres', '€/L', 'Total TTC', 'Carburant', 'km', 'Facture', ''].map(h => (
+                  {['Date', 'Véhicule', 'Chauffeur', 'Litres', '€/L', 'Total TTC', 'Produit', 'km', 'Facture', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -190,16 +220,16 @@ export function Carburant() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-[var(--text-muted)]">{row.team_members?.full_name ?? '—'}</td>
-                    <td className="px-4 py-3 font-mono">{row.liters.toFixed(2)} L</td>
+                    <td className="px-4 py-3 font-mono">{row.liters > 0 ? `${row.liters.toFixed(2)} L` : '—'}</td>
                     <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
-                      {(row.price_per_liter_milli / 1000).toFixed(3)} €
+                      {row.price_per_liter_milli > 0 ? `${(row.price_per_liter_milli / 1000).toFixed(3)} €` : '—'}
                     </td>
                     <td className="px-4 py-3 font-mono font-semibold text-[var(--text)]">
                       {formatCents(row.total_cts)}
                     </td>
                     <td className="px-4 py-3">
                       {row.fuel_type
-                        ? <Badge color={FUEL_TYPE_COLOR[row.fuel_type]}>{FUEL_TYPE_LABELS[row.fuel_type]}</Badge>
+                        ? <Badge color={couleurProduit(row.fuel_type)}>{libelleProduit(row.fuel_type, produits)}</Badge>
                         : <span className="text-[var(--text-disabled)]">—</span>}
                     </td>
                     <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
@@ -242,13 +272,13 @@ export function Carburant() {
                   <span className="font-medium text-[var(--text)]">{row.vehicles?.label ?? '—'}</span>
                   <div className="flex items-center gap-1.5 shrink-0">
                     {row.charges && <Badge color="success">Facturé</Badge>}
-                    {row.fuel_type && <Badge color={FUEL_TYPE_COLOR[row.fuel_type]}>{FUEL_TYPE_LABELS[row.fuel_type]}</Badge>}
+                    {row.fuel_type && <Badge color={couleurProduit(row.fuel_type)}>{libelleProduit(row.fuel_type, produits)}</Badge>}
                   </div>
                 </div>
                 <div className="flex items-end justify-between gap-2">
                   <div className="flex flex-col gap-0.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
                     <span>{new Date(row.date).toLocaleDateString('fr-FR')}</span>
-                    <span>{row.liters.toFixed(2)} L · {(row.price_per_liter_milli / 1000).toFixed(3)} €/L</span>
+                    <span>{row.liters > 0 ? `${row.liters.toFixed(2)} L · ${(row.price_per_liter_milli / 1000).toFixed(3)} €/L` : '—'}</span>
                     {row.station && <span>{row.station}</span>}
                   </div>
                   <span className="font-mono font-semibold text-[var(--text)]">{formatCents(row.total_cts)}</span>
@@ -265,6 +295,14 @@ export function Carburant() {
         fuelLog={selected}
         initialCharge={initialCharge}
         initialOcr={initialOcr}
+        produits={produits}
+        onSaved={() => { load(); setQueueRefresh(n => n + 1) }}
+      />
+      <DrawerReleve
+        open={releveCharge != null}
+        onClose={() => setReleveCharge(null)}
+        charge={releveCharge}
+        produits={produits}
         onSaved={() => { load(); setQueueRefresh(n => n + 1) }}
       />
     </Shell>

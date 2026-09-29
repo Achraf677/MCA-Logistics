@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Loader2, ScanLine, Fuel } from 'lucide-react'
+import { Loader2, ScanLine, Fuel, ListChecks } from 'lucide-react'
 import { supabase } from '../../app/providers'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -14,6 +14,8 @@ interface Props {
   vehicles: Lookup[]
   /** Ouvre le drawer Carburant, la charge et sa lecture déjà en poche. */
   onValider: (charge: ChargePick, ocr: LectureOcr | null) => void
+  /** Ouvre l'import d'un relevé de carte carburant (une facture, plusieurs pleins). */
+  onImporterReleve: (charge: ChargePick) => void
   /** Incrémenté par le parent pour forcer un rechargement (ex. après un enregistrement). */
   refreshToken: number
 }
@@ -35,7 +37,7 @@ interface Props {
  * « Valider » ouvre le plein avec la lecture déjà faite si elle existe, sinon
  * vide — le bouton « Lire le justificatif » reste disponible dans le formulaire.
  */
-export function FileAttenteCarburant({ vehicles, onValider, refreshToken }: Props) {
+export function FileAttenteCarburant({ vehicles, onValider, onImporterReleve, refreshToken }: Props) {
   const [charges, setCharges] = useState<ChargePick[]>([])
   const [loading, setLoading] = useState(true)
   const [lectures, setLectures] = useState<Record<string, LectureOcr | 'en-cours' | null>>({})
@@ -120,6 +122,12 @@ export function FileAttenteCarburant({ vehicles, onValider, refreshToken }: Prop
                 )}
               </div>
 
+              {/* Relevé de carte (plusieurs pleins sur une facture) : import en
+                  tableau, quel que soit l'émetteur de la carte. */}
+              <Button variant="secondary" size="compact" onClick={() => onImporterReleve(charge)}
+                title="Facture regroupant plusieurs pleins (relevé de carte carburant)">
+                <ListChecks size={12} /> Relevé
+              </Button>
               <Button
                 variant="primary"
                 size="compact"

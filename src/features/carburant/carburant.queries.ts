@@ -26,6 +26,16 @@ export async function createFuelLog(data: FuelLogInsert) {
   return supabase.from('fuel_logs').insert(data).select().single()
 }
 
+/** Création groupée (import d'un relevé de carte) : tout ou rien. */
+export async function createFuelLogs(rows: FuelLogInsert[]) {
+  return supabase.from('fuel_logs').insert(rows).select('id')
+}
+
+/** Lecture d'un relevé de carte carburant par l'Edge Function `lire-releve`. */
+export async function lireReleve(chargeId: string) {
+  return supabase.functions.invoke('lire-releve', { body: { charge_id: chargeId } })
+}
+
 export async function updateFuelLog(id: string, data: FuelLogUpdate) {
   return supabase.from('fuel_logs').update(data).eq('id', id).select().single()
 }

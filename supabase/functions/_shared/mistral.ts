@@ -110,15 +110,18 @@ export async function generateJson<T>(
 
 /**
  * Extraction JSON directement depuis une IMAGE (un seul appel, pas d'OCR
- * préalable). `imageDataUrl` : `data:image/...;base64,...` ou URL https.
+ * préalable). `imageDataUrl` : une ou plusieurs images (`data:image/...;base64,...`
+ * ou URL https) — plusieurs pour un document de plusieurs pages.
  * Température basse : on lit un document, on n'invente rien.
  */
 export async function generateJsonFromImage<T>(
   apiKey: string,
   systemPrompt: string,
   userPrompt: string,
-  imageDataUrl: string,
+  imageDataUrl: string | string[],
+  maxTokens = 1024,
 ): Promise<T> {
+  const images = Array.isArray(imageDataUrl) ? imageDataUrl : [imageDataUrl];
   const data = await fetchJson<MistralResponse>(`${BASE}/chat/completions`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -130,13 +133,13 @@ export async function generateJsonFromImage<T>(
           role: 'user',
           content: [
             { type: 'text', text: userPrompt },
-            { type: 'image_url', image_url: imageDataUrl },
+            ...images.map((image_url) => ({ type: 'image_url', image_url })),
           ],
         },
       ],
       response_format: { type: 'json_object' },
       temperature: 0.1,
-      max_tokens: 1024,
+      max_tokens: maxTokens,
     },
     timeoutMs: 60_000,
   });

@@ -16,29 +16,50 @@
  * Vit dans `shared/` : Carburant et Entretiens le réclament tous les deux.
  */
 
-/** Types de carburant de l'application (`fuel_logs.fuel_type`). */
-export type TypeCarburant = 'diesel' | 'essence' | 'electric' | 'hybrid' | 'lpg'
+/**
+ * Produits de « Carburant & liquides » (`fuel_logs.fuel_type`) : carburants
+ * ET liquides du véhicule. Le nom `TypeCarburant` est gardé pour ne pas casser
+ * les appelants ; il couvre désormais les deux familles.
+ */
+export type TypeCarburant =
+  | 'diesel' | 'essence' | 'electric' | 'hybrid' | 'lpg'
+  | 'adblue' | 'lave_glace' | 'huile_moteur' | 'liquide_refroidissement'
+  | 'liquide_frein' | 'autre_liquide'
 
 /**
- * Mots-clés produit → type de carburant.
+ * Mots-clés produit → produit.
  *
- * ADBLUE est VOLONTAIREMENT absent : c'est un additif, pas un carburant. Une
- * facture d'AdBlue pré-sélectionnant « diesel » créerait un plein fantôme de
- * 12 € qui fausserait le coût au kilomètre — celui-là même qui sert au coût de
- * revient.
+ * Les LIQUIDES passent en premier : « AD BLUE » n'est pas un carburant, et
+ * depuis que Carburant accueille aussi les liquides, une facture d'AdBlue se
+ * range en AdBlue — hors litres et prix moyen au litre, donc sans fausser le
+ * coût au kilomètre.
  */
 const PRODUITS: Array<{ motif: RegExp; type: TypeCarburant }> = [
+  { motif: /\bad[\s-]?blue\b/i, type: 'adblue' },
+  { motif: /\blave[\s-]?glaces?\b/i, type: 'lave_glace' },
+  { motif: /\bliquide\s+(de\s+)?refroidissement\b|\bantigel\b|\bliquide\s+radiateur\b/i, type: 'liquide_refroidissement' },
+  { motif: /\bliquide\s+(de\s+)?freins?\b|\bdot\s?[345]\b/i, type: 'liquide_frein' },
+  { motif: /\bhuile\b/i, type: 'huile_moteur' },
   { motif: /\b(gazole|gasoil|gas-?oil|diesel|gnr|b7)\b/i, type: 'diesel' },
   { motif: /\b(sp\s?9[58]|e10|e85|essence|sans\s?plomb)\b/i, type: 'essence' },
   { motif: /\b(gpl|lpg)\b/i, type: 'lpg' },
   { motif: /\b(electri\w*|recharge|borne)\b/i, type: 'electric' },
 ]
 
+const LIQUIDES: TypeCarburant[] = [
+  'adblue', 'lave_glace', 'huile_moteur', 'liquide_refroidissement', 'liquide_frein', 'autre_liquide',
+]
+
+/** Le produit est-il un liquide du véhicule (et non un carburant) ? */
+export function estProduitLiquide(type: TypeCarburant | null | undefined): boolean {
+  return type != null && LIQUIDES.includes(type)
+}
+
 /** Plaque française moderne : AA-123-AB, avec ou sans séparateurs. */
 const PLAQUE = /\b([A-Z]{2})[-\s]?(\d{3})[-\s]?([A-Z]{2})\b/i
 
 export interface LectureLibelle {
-  /** Type de carburant reconnu, `null` si le libellé n'en nomme aucun. */
+  /** Produit reconnu (carburant ou liquide), `null` si le libellé n'en nomme aucun. */
   typeCarburant: TypeCarburant | null
   /** Plaque normalisée en MAJUSCULES avec tirets, `null` si absente. */
   plaque: string | null

@@ -344,7 +344,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
           <Field label="Catégorie">
             <select value={form.category_id} onChange={e => set('category_id', e.target.value)} className={inputCls}>
               <option value="">— Aucune —</option>
-              {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {categories.filter(c => c.actif !== false || c.id === form.category_id).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </Field>
         </div>
