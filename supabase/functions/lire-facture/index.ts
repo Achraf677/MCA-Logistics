@@ -120,7 +120,14 @@ Deno.serve(async (req: Request) => {
       const isPdf = !/\.(png|jpe?g|webp|gif)(\?|$)/i.test(receiptUrl)
       texte = (await ocrDocument(apiKey, receiptUrl, isPdf)).slice(0, 8000)
     } catch (e) {
-      console.error('lire-facture: ocrDocument a échoué', chargeId, (e as Error)?.message)
+      // Le quota mensuel Mistral est large et peu consommé (vérifié 29/09) : ce
+      // 429 vient d'ailleurs (limite de débit plus fine, concurrence, panne
+      // ponctuelle...). On loggue le corps de la réponse, pas juste le statut,
+      // pour enfin voir la raison exacte donnée par Mistral.
+      console.error(
+        'lire-facture: ocrDocument a échoué', chargeId, (e as Error)?.message,
+        e instanceof ExternalApiError ? JSON.stringify(e.responseBody) : '',
+      )
       // Un 429 (déjà retenté avec délai dans fetchJson) veut dire « API saturée »,
       // pas « rien d'écrit sur le document » — le dire évite à l'utilisateur de
       // ressaisir à la main un ticket parfaitement lisible. Jamais mis en
