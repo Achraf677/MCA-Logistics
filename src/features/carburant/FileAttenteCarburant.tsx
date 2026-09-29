@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Loader2, ScanLine, Fuel } from 'lucide-react'
 import { supabase } from '../../app/providers'
 import { Button } from '../../shared/ui/Button'
@@ -24,13 +24,16 @@ interface Props {
  * Toute facture Pennylane catégorisée « Carburant » et pas encore rattachée à
  * un plein atterrit ici, SANS action de l'utilisateur : `getUnlinkedChargesFor`
  * fait déjà ce tri (voir rapprochement.ts). Ce composant lit d'abord ce que le
- * LIBELLÉ dit tout seul (station, carburant, véhicule — gratuit, instantané),
- * puis lance l'OCR sur chaque justificatif l'un après l'autre : Mistral
- * facture à l'appel, autant ne jamais paralléliser une file qui peut compter
- * plusieurs factures d'un coup.
+ * LIBELLÉ dit tout seul (station, carburant, véhicule — gratuit, instantané).
  *
- * « Valider » ouvre le plein déjà rempli — plus un seul clic « Lire le
- * justificatif » à faire à la main, c'est déjà fait en arrivant sur l'écran.
+ * L'OCR du justificatif (litres, prix/L) N'EST PLUS automatique : un clic sur
+ * « Lire la facture » par ligne, à la demande. Avant, la file entière
+ * relançait l'IA sur toutes les factures dès l'ouverture de l'écran — en cas
+ * de panne ou de limite de débit côté fournisseur IA, ça grillait le quota en
+ * boucle pour rien.
+ *
+ * « Valider » ouvre le plein avec la lecture déjà faite si elle existe, sinon
+ * vide — le bouton « Lire le justificatif » reste disponible dans le formulaire.
  */
 export function FileAttenteCarburant({ vehicles, onValider, refreshToken }: Props) {
   const [charges, setCharges] = useState<ChargePick[]>([])
@@ -46,34 +49,16 @@ export function FileAttenteCarburant({ vehicles, onValider, refreshToken }: Prop
 
   useEffect(() => { void charger() }, [charger, refreshToken])
 
-  // OCR automatique, une facture après l'autre — jamais en parallèle (coût API).
-  // `traitees` vit dans une ref : le state `lectures` se met à jour de façon
-  // asynchrone et ne peut pas servir, dans la même boucle, à savoir ce qui a
-  // déjà été lancé — on relirait la même facture plusieurs fois.
-  const traitees = useRef<Set<string>>(new Set())
-
-  useEffect(() => {
-    let annule = false
-    async function lireToutesLesFactures() {
-      for (const charge of charges) {
-        if (annule) return
-        if (traitees.current.has(charge.id)) continue
-        traitees.current.add(charge.id)
-
-        if (!charge.receipt_url) { setLectures(p => ({ ...p, [charge.id]: null })); continue }
-        setLectures(p => ({ ...p, [charge.id]: 'en-cours' }))
-        try {
-          const { data } = await supabase.functions.invoke('lire-facture', { body: { charge_id: charge.id } })
-          if (annule) return
-          setLectures(p => ({ ...p, [charge.id]: data?.ok ? parseLectureOcr(data.data) : null }))
-        } catch {
-          if (!annule) setLectures(p => ({ ...p, [charge.id]: null }))
-        }
-      }
+  const lireUneFacture = async (charge: ChargePick) => {
+    if (!charge.receipt_url) { setLectures(p => ({ ...p, [charge.id]: null })); return }
+    setLectures(p => ({ ...p, [charge.id]: 'en-cours' }))
+    try {
+      const { data } = await supabase.functions.invoke('lire-facture', { body: { charge_id: charge.id } })
+      setLectures(p => ({ ...p, [charge.id]: data?.ok ? parseLectureOcr(data.data) : null }))
+    } catch {
+      setLectures(p => ({ ...p, [charge.id]: null }))
     }
-    void lireToutesLesFactures()
-    return () => { annule = true }
-  }, [charges])
+  }
 
   if (loading || charges.length === 0) return null
 
@@ -110,8 +95,12 @@ export function FileAttenteCarburant({ vehicles, onValider, refreshToken }: Prop
               </div>
 
               <div className="text-[var(--fs-xs)] text-[var(--text-muted)] min-w-[140px]">
-                {lecture === 'en-cours' || lecture === undefined ? (
+                {lecture === 'en-cours' ? (
                   <span className="flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" /> Lecture…</span>
+                ) : lecture === undefined ? (
+                  <Button variant="secondary" size="compact" onClick={() => lireUneFacture(charge)}>
+                    <ScanLine size={12} /> Lire la facture
+                  </Button>
                 ) : lecture && (lecture.litres != null || lecture.prixParLitre != null) ? (
                   <span>
                     {lecture.litres != null ? `${lecture.litres.toFixed(2)} L` : '— L'}
