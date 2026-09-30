@@ -149,5 +149,5 @@ export async function aLaPermission(
     .eq('resource_key', resource)
     .maybeSingle();
   if (error || !data) return false;
-  return (data as Record<string, unknown>)[col] === true;
+  return (data as unknown as Record<string, unknown>)[col] === true;
 }

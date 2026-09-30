@@ -133,7 +133,7 @@ export function Dashboard() {
                 <CaseJour icone={<Truck size={13} />} valeur={d.jour.enCours} libelle="En cours" onClick={() => navigate('/livraisons')} />
                 <CaseJour icone={<CheckCircle2 size={13} />} valeur={d.jour.livrees} libelle="Livrées" ton="success" onClick={() => navigate('/livraisons')} />
                 <CaseJour icone={<AlarmClock size={13} />} valeur={d.jour.enRetard} libelle="Retard" ton={d.jour.enRetard ? 'danger' : undefined} onClick={() => navigate('/livraisons')} />
-                <CaseJour icone={<AlertTriangle size={13} />} valeur={d.jour.echecs} libelle="Échecs" ton={d.jour.echecs ? 'danger' : undefined} onClick={() => navigate('/livraisons')} />
+                <CaseJour icone={<AlertTriangle size={13} />} valeur={d.jour.echecs} libelle="Échecs" ton={d.jour.echecs ? 'danger' : undefined} onClick={() => navigate('/livraisons?filtre=echecs')} />
               </div>
             )}
           </section>

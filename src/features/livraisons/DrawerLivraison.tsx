@@ -1376,7 +1376,7 @@ function SuiviTab({
   )
 }
 
-// ── Envoi email client (facture Pennylane + BL) ───────────────────────────────
+// ── Envoi email client (facture Pennylane + lettre de voiture) ───────────────────────────────
 // Réutilisable drawer + liste. Confirmation affichant l'email destinataire,
 // puis invocation de l'Edge send-client-email. Aucun changement de layout.
 
@@ -1398,8 +1398,8 @@ function EnvoiClientSection({ delivery }: { delivery: DeliveryRow }) {
     setConfirm(false)
     setSentAt(new Date().toISOString())
     toast(data.data?.bl_attached
-      ? 'Email envoyé (facture + BL)'
-      : 'Email envoyé (facture — BL non joint)')
+      ? 'Email envoyé (facture + lettre de voiture)'
+      : 'Email envoyé (facture — lettre de voiture non jointe)')
   }
 
   return (
@@ -1424,7 +1424,7 @@ function EnvoiClientSection({ delivery }: { delivery: DeliveryRow }) {
       <ConfirmDialog
         open={confirm}
         title="Envoyer la facture au client ?"
-        message={`La facture Pennylane${delivery.lv_pdf_url ? ' et le bon de livraison' : ''} seront envoyés à ${email}.`}
+        message={`La facture Pennylane${delivery.lv_pdf_url ? ' et la lettre de voiture seront envoyées' : ' sera envoyée'} à ${email}.`}
         confirmLabel="Envoyer"
         onConfirm={handleSend}
         onCancel={() => setConfirm(false)}
