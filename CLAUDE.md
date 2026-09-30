@@ -7,6 +7,20 @@
 - ✘ Ne jamais écrire « DelivPro » (abandonné), ni « v1 / v2 ». **Une seule version : celle-ci.**
 - L'ancien essai abandonné = « ancien essai » / « résidus en base ». Pas « v1 ».
 
+## Métier (à garder en tête sur CHAQUE écran)
+- **Express** (aujourd'hui) : course unitaire enlèvement → livraison, souvent dans la journée,
+  parfois urgente (créneau / heure limite). Une course = 2 arrêts (retrait, livraison).
+- **Messagerie** (à venir) : tournées de nombreux colis / arrêts, preuve par colis, échecs de
+  livraison (absent, refus, adresse erronée…), retours au dépôt, relivraison.
+- Tout écran doit servir les deux : ne jamais coder « 1 course = 1 colis = 1 arrêt » en dur.
+
+## Revue onglet par onglet (méthode validée le 30/09/2026)
+- Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation →
+  PR + preview Cloudflare → test → merge → onglet suivant.
+- Format des critiques : tirets, pas de tableau, pas de blabla. Critique archivée dans
+  `mca-spec/revue/NN-<onglet>.md`.
+- Ordre : 01 Mes courses, puis les sections du menu dans l'ordre.
+
 ## Stack
 React + TypeScript + Tailwind v4 (`@tailwindcss/vite`) · Vite · Supabase (Postgres + RLS + Auth + Storage + Edge Functions). Dev local : `http://localhost:5173`. Repo : branche `main` = source de vérité.
 
@@ -55,8 +69,10 @@ autoliquidation intracommunautaire).
   Edge `lire-releve` (texte extrait par unpdf → modèle texte). Ne plus parler d'OCR payant.
 - **Chantier en cours : « Dépenses véhicule » (uniformisation Carburant & consommables +
   Entretien & équipement).** Plan validé : `mca-spec/tabs/30-depenses-vehicule.md` — le lire
-  AVANT toute modif de Carburant / Entretiens / produits. Étapes 0 (PR #29) faite ; étape 1
-  (Articles & familles dans Paramètres) en cours. **Pas d'immobilisation ni de prorata km** dans
+  AVANT toute modif de Carburant / Entretiens / produits. Étapes 0 (PR #29) et 1 (PR #30,
+  Articles & familles + Paramètres en volets) faites ; étape 2 (table unifiée) en attente du
+  « go ». Perf : `.glass` sans backdrop-filter (PR #31) — ne pas remettre de flou sur un
+  élément qui défile. **Pas d'immobilisation ni de prorata km** dans
   ces écrans (reste en compta).
 - **Hébergement : Cloudflare Pages fait foi pour `app.mcalogistics.fr`, PAS Netlify.**
   Confirmé par DNS (CNAME → `mca-logistics-app.pages.dev`, IP Cloudflare). Le projet Netlify
