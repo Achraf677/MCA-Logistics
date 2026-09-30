@@ -130,3 +130,57 @@ export function resteAFaire(courses: Array<{ statut: string }>): { reste: number
     total: courses.length,
   }
 }
+
+// ── Revue 01 : prochain arrêt, progression, horaire ─────────────────────────
+
+/** Premier arrêt pas encore fait, dans l'ordre de la route. `null` = journée finie. */
+export function prochainArret<T extends { fait: boolean }>(arrets: T[]): T | null {
+  return arrets.find(a => !a.fait) ?? null
+}
+
+/** « 3 / 12 » : arrêts faits sur le total. */
+export function progression(arrets: Array<{ fait: boolean }>): { faits: number; total: number } {
+  return { faits: arrets.filter(a => a.fait).length, total: arrets.length }
+}
+
+export type EtatHoraire = 'retard' | 'bientot' | 'ok'
+
+/**
+ * Où en est-on par rapport à l'heure prévue (`arrival_time`, « HH:MM[:SS] ») ?
+ *
+ * `maintenant` est passé en paramètre (heure LOCALE du téléphone, « AAAA-MM-JJ »
+ * + minutes depuis minuit) : le module reste pur et testable. Un jour passé
+ * est en retard, un jour futur toujours à l'heure. « Bientôt » = dans l'heure.
+ */
+export function etatHoraire(
+  date: string,
+  heure: string | null,
+  maintenant: { jour: string; minutes: number },
+): EtatHoraire | null {
+  if (!heure) return null
+  const m = /^(\d{1,2}):(\d{2})/.exec(heure)
+  if (!m) return null
+  if (date < maintenant.jour) return 'retard'
+  if (date > maintenant.jour) return 'ok'
+  const prevu = Number(m[1]) * 60 + Number(m[2])
+  const ecart = prevu - maintenant.minutes
+  if (ecart < 0) return 'retard'
+  return ecart <= 60 ? 'bientot' : 'ok'
+}
+
+/** « 14:30:00 » → « 14 h 30 ». */
+export function libelleHeure(heure: string | null): string | null {
+  const m = heure ? /^(\d{1,2}):(\d{2})/.exec(heure) : null
+  return m ? `${Number(m[1])} h ${m[2]}` : null
+}
+
+/**
+ * Filtre « mes courses » pour un président / DG qui conduit aussi : la RLS
+ * lui rend TOUTES les courses, il ne veut voir que les siennes au volant.
+ * `monId` = sa fiche équipe ; sans fiche, rien ne peut être à lui.
+ */
+export function filtrerMesCourses<T extends { driver_id: string | null }>(
+  courses: T[], monId: string | null,
+): T[] {
+  return monId ? courses.filter(c => c.driver_id === monId) : []
+}

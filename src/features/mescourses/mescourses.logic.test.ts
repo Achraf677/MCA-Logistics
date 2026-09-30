@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   bornesPeriode, decalerPeriode, libellePeriode,
   grouperParJour, estAFaire, resteAFaire,
+  etatHoraire, libelleHeure, prochainArret, progression, filtrerMesCourses,
 } from './mescourses.logic'
 
 describe('bornesPeriode', () => {
@@ -132,5 +133,32 @@ describe('estAFaire / resteAFaire', () => {
       { statut: 'planifiee' }, { statut: 'livree' }, { statut: 'en_cours' }, { statut: 'annulee' },
     ])).toEqual({ reste: 2, total: 4 })
     expect(resteAFaire([])).toEqual({ reste: 0, total: 0 })
+  })
+})
+
+describe('revue 01', () => {
+  const maintenant = { jour: '2026-09-30', minutes: 14 * 60 }
+  it('etatHoraire', () => {
+    expect(etatHoraire('2026-09-30', null, maintenant)).toBeNull()
+    expect(etatHoraire('2026-09-30', '13:30:00', maintenant)).toBe('retard')
+    expect(etatHoraire('2026-09-30', '14:45', maintenant)).toBe('bientot')
+    expect(etatHoraire('2026-09-30', '16:00:00', maintenant)).toBe('ok')
+    expect(etatHoraire('2026-09-29', '23:00', maintenant)).toBe('retard')
+    expect(etatHoraire('2026-10-01', '08:00', maintenant)).toBe('ok')
+  })
+  it('libelleHeure', () => {
+    expect(libelleHeure('08:05:00')).toBe('8 h 05')
+    expect(libelleHeure(null)).toBeNull()
+  })
+  it('prochainArret et progression', () => {
+    const a = [{ fait: true }, { fait: false }, { fait: false }]
+    expect(prochainArret(a)).toBe(a[1])
+    expect(prochainArret([{ fait: true }])).toBeNull()
+    expect(progression(a)).toEqual({ faits: 1, total: 3 })
+  })
+  it('filtrerMesCourses', () => {
+    const c = [{ driver_id: 'a' }, { driver_id: 'b' }, { driver_id: null }]
+    expect(filtrerMesCourses(c, 'a')).toEqual([{ driver_id: 'a' }])
+    expect(filtrerMesCourses(c, null)).toEqual([])
   })
 })

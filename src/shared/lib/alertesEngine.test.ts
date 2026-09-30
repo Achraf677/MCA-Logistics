@@ -216,3 +216,18 @@ describe('tickets chauffeurs a traiter', () => {
     expect(trouve(-2)).toBeUndefined()
   })
 })
+
+describe('problèmes terrain', () => {
+  it('une alerte rouge pour les échecs signalés sur course ouverte', () => {
+    const al = buildAlertes({
+      problemesTerrain: [
+        { id: 'a', statut: 'en_cours', probleme_le: '2026-09-30T08:00:00Z' },
+        { id: 'b', statut: 'livree', probleme_le: '2026-09-30T08:00:00Z' },
+        { id: 'c', statut: 'planifiee', probleme_le: null },
+      ],
+    }, new Date('2026-09-30'))
+    const p = al.find(x => x.id === 'problemes-terrain')
+    expect(p?.count).toBe(1)
+    expect(p?.severite).toBe('rouge')
+  })
+})

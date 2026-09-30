@@ -34,3 +34,14 @@
   chauffeur pour président / DG sur PC.
 - Lot 2 (messagerie) : colis multiples avec comptage / scan, mode hors-ligne (file d'envoi),
   relivraison et retour dépôt, prise de poste (véhicule + km départ / fin).
+
+## Lot 1 — livré (PR feat/revue-mes-courses)
+- En-tête sur une ligne : ‹ jour › + Jour/Sem. + réglages (appli GPS) ; « Mois » retiré.
+- Carte « Prochain arrêt » + progression (faits / total), l'arrêt ciblé est encadré.
+- Heure prévue (retard en rouge, < 1 h en orange), nombre de colis, consignes du bureau.
+- Bouton « Problème » : motif + note + photo facultative → `deliveries.probleme_*`
+  (migration 20260930090000), statut inchangé ; alerte rouge dans la cloche ;
+  « Livrer » ensuite lève l'alerte (relivraison).
+- Bouton flottant « Ticket ». « Terminer » → « Livrer / Charger sans preuve ».
+- Président / DG avec fiche équipe : bascule Mes courses / Tous les chauffeurs,
+  nom du chauffeur sur chaque carte en vue « Tous ».

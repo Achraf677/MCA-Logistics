@@ -41,6 +41,19 @@ export interface CourseChauffeur {
   tour_id: string | null
   clients: { name: string; phone: string | null } | null
   vehicles: { label: string; plate: string } | null
+  /** Consignes saisies au bureau (code, étage, horaires d'ouverture…). */
+  notes: string | null
+  /** Heure prévue / limite, « HH:MM:SS ». */
+  arrival_time: string | null
+  nb_colis: number | null
+  /** Fiche équipe du chauffeur (team_members.id). */
+  driver_id: string | null
+  /** Nom du chauffeur — null si la RLS de team_members ne le rend pas. */
+  team_members: { full_name: string } | null
+  /** Échec signalé sur le terrain (migration 20260930090000). */
+  probleme_motif: string | null
+  probleme_note: string | null
+  probleme_le: string | null
 }
 
 /** Pièce jointe à une course, telle que le chauffeur la voit. */
