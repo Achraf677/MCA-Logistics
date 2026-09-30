@@ -10,7 +10,7 @@
 import { Loader2, FileText, X, AlertTriangle } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { formatCents } from '../../shared/lib/money'
-import { buildApercuFacture, buildApercuPayload, type ApercuFactureRow, type ApercuInvalidExtra } from './apercuFacture.logic'
+import { buildApercuFacture, type ApercuFactureRow } from './apercuFacture.logic'
 
 interface Props {
   open: boolean
@@ -24,11 +24,11 @@ export function ApercuFacture({ open, rows, onFacturer, onClose, invoicing }: Pr
   if (!open || rows.length === 0) return null
   const apercu = buildApercuFacture(rows)
 
-  // Lignes supplémentaires que pennylane-invoice REJETTERAIT en l'état (taux
-  // TVA hors barème légal, HT ≤ 0) — l'aperçu doit prévenir AVANT le clic sur
-  // "Facturer", pas laisser l'Edge échouer silencieusement en arrière-plan.
-  const invalidExtras: ApercuInvalidExtra[] = rows.flatMap(r => buildApercuPayload(r).invalidExtras)
-  const hasInvalidExtras = invalidExtras.length > 0
+  // Tout ce que pennylane-invoice REFUSERAIT en l'état (ligne principale à
+  // HT ≤ 0 ou à taux non légal, ligne supplémentaire invalide, clients
+  // mélangés) — l'aperçu prévient AVANT le clic sur « Facturer ».
+  const blocages = apercu.blocages
+  const bloque = blocages.length > 0
 
   return (
     <div
@@ -65,11 +65,6 @@ export function ApercuFacture({ open, rows, onFacturer, onClose, invoicing }: Pr
             <span className="text-[var(--text-muted)]">Client facturé</span>
             <span className="font-medium text-[var(--text)]">{apercu.client_name}</span>
           </div>
-          {apercu.mixed_clients && (
-            <p className="text-[var(--danger)] text-[var(--fs-xs)]">
-              Attention : livraisons de clients différents dans la sélection.
-            </p>
-          )}
 
           {/* Lignes principales — 1 ligne par livraison */}
           <Section title={`Ligne${apercu.main_lines.length > 1 ? 's' : ''} principale${apercu.main_lines.length > 1 ? 's' : ''} (${apercu.main_lines.length})`}>
@@ -95,7 +90,7 @@ export function ApercuFacture({ open, rows, onFacturer, onClose, invoicing }: Pr
                     </td>
                     <td className="py-1.5 text-right font-mono">{formatCents(m.ht_cts)}</td>
                     <td className="py-1.5 pr-2 text-right font-mono text-[var(--text-muted)]">
-                      {m.tva_rate}%
+                      {m.autoliquidation ? 'Autoliq.' : `${String(m.tva_rate).replace('.', ',')} %`}
                     </td>
                     <td className="py-1.5 text-right font-mono">{formatCents(m.tva_cts)}</td>
                     <td className="py-1.5 pr-3 text-right font-mono font-medium">{formatCents(m.ttc_cts)}</td>
@@ -128,7 +123,7 @@ export function ApercuFacture({ open, rows, onFacturer, onClose, invoicing }: Pr
                       <td className="py-1.5 text-right font-mono">{e.quantity}</td>
                       <td className="py-1.5 text-right font-mono">{formatCents(e.ht_unit_cts)}</td>
                       <td className="py-1.5 pr-2 text-right font-mono text-[var(--text-muted)]">
-                        {e.tva_rate}%
+                        {`${String(e.tva_rate).replace('.', ',')} %`}
                       </td>
                       <td className="py-1.5 text-right font-mono">{formatCents(e.tva_total_cts)}</td>
                       <td className="py-1.5 pr-3 text-right font-mono font-medium">{formatCents(e.ttc_total_cts)}</td>
@@ -152,18 +147,18 @@ export function ApercuFacture({ open, rows, onFacturer, onClose, invoicing }: Pr
             N° de facture attribué à la validation (par Pennylane).
           </p>
 
-          {/* Lignes supplémentaires invalides — bloquant, à corriger avant facturation */}
-          {hasInvalidExtras && (
+          {/* Blocages — à corriger avant facturation (lignes invalides exclues des totaux) */}
+          {bloque && (
             <div className="flex items-start gap-2 px-4 py-3 rounded-[var(--r-lg)]
               border border-[var(--danger)]/30 bg-[var(--danger)]/10 text-[var(--fs-sm)]">
               <AlertTriangle size={16} className="text-[var(--danger)] shrink-0 mt-0.5" />
               <div className="flex flex-col gap-1">
                 <span className="text-[var(--text)] font-medium">
-                  {invalidExtras.length} ligne{invalidExtras.length > 1 ? 's' : ''} supplémentaire{invalidExtras.length > 1 ? 's' : ''} invalide{invalidExtras.length > 1 ? 's' : ''} — à corriger avant facturation
+                  Facturation impossible en l'état — à corriger d'abord
                 </span>
-                <ul className="text-[var(--text-muted)] text-[var(--fs-xs)] flex flex-col gap-0.5">
-                  {invalidExtras.map((e, i) => (
-                    <li key={i}>« {e.label} » : {e.reason}</li>
+                <ul className="text-[var(--text-muted)] text-xs flex flex-col gap-0.5">
+                  {blocages.map((b, i) => (
+                    <li key={i}>{b}</li>
                   ))}
                 </ul>
               </div>
@@ -173,8 +168,8 @@ export function ApercuFacture({ open, rows, onFacturer, onClose, invoicing }: Pr
 
         {/* Pied — actions */}
         <div className="flex items-center gap-3 px-5 py-4 border-t border-[var(--border)]">
-          <Button variant="primary" onClick={onFacturer} disabled={invoicing || hasInvalidExtras}
-            title={hasInvalidExtras ? 'Corrigez les lignes supplémentaires invalides avant de facturer' : undefined}>
+          <Button variant="primary" onClick={onFacturer} disabled={invoicing || bloque}
+            title={bloque ? 'Corrigez les points signalés avant de facturer' : undefined}>
             {invoicing && <Loader2 size={14} className="animate-spin" />}
             {invoicing
               ? 'Facturation…'

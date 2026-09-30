@@ -1,11 +1,18 @@
-// Logique pure d'aperçu facture — reproduit EXACTEMENT ce que Pennylane
-// facturera à partir des livraisons sélectionnées. Aucun appel réseau.
+// Logique pure d'aperçu facture — reproduit ce que Pennylane facturera à
+// partir des livraisons sélectionnées. Aucun appel réseau.
 //
-// Contrat d'invariant :
-//   ligne principale HT + Σ(extras HT) = HT total
-//   HT total + Σ(TVA)                  = TTC total
-// Les helpers de shared/lib/money sont la source de vérité (mêmes règles que
-// pennylane-invoice/index.ts côté Edge).
+// MIROIR de supabase/functions/_shared/lignesFacture.ts (côté Edge) : même
+// libellé, même choix de taux (taux stocké s'il est légal et cohérent, sinon
+// TVA/HT au dixième), même autoliquidation (toutes les lignes à 0 %), mêmes
+// refus. Un test de parité (supabase/functions/_shared/lignesFacture.test.ts)
+// compare les deux.
+//
+// Contrat :
+//   - une ligne supplémentaire invalide est EXCLUE des totaux et BLOQUE la
+//     facturation (l'Edge refuserait la facture entière) ;
+//   - une ligne principale à HT ≤ 0 ou à taux non légal bloque aussi ;
+//   - HT total + TVA totale = TTC total (TVA calculée ligne par ligne,
+//     comme Pennylane la calcule à partir du prix unitaire et du taux).
 
 import {
   addTva,
@@ -14,17 +21,25 @@ import {
   type DeliveryExtraLine,
 } from '../../shared/lib/money'
 
+/** Mention légale portée sur la ligne principale d'une facture autoliquidée
+ *  (identique à MENTION_AUTOLIQUIDATION côté Edge). */
+export const MENTION_AUTOLIQUIDATION = 'Autoliquidation — TVA due par le preneur, art. 259-1 du CGI'
+
 /** Source minimale pour buildApercuFacture — miroir de DeliveryRow. */
 export interface ApercuFactureRow {
   id: string
   date: string
   description: string | null
-  delivery_address: string | null
+  delivery_address?: string | null
+  type?: string | null
   client_id: string
   clients?: { name: string } | null
   amount_ht_cts: number | null
   tva_cts: number | null
   amount_ttc_cts: number | null
+  /** Taux stocké en % (colonne numeric → peut arriver en chaîne). */
+  tva_rate?: number | string | null
+  autoliquidation?: boolean | null
   montant_ht_cts?: number | null
   montant_ttc_cts?: number | null
   extra_lines?: DeliveryExtraLine[] | null
@@ -35,9 +50,13 @@ export interface ApercuMainLine {
   date: string
   label: string
   ht_cts: number
-  tva_rate: number  // en % (ex 20). 0 si HT nul.
+  /** Taux en % (0 en autoliquidation). */
+  tva_rate: number
   tva_cts: number
   ttc_cts: number
+  autoliquidation: boolean
+  /** Raison bloquante, null si la ligne partira telle quelle. */
+  blocage: string | null
 }
 
 export interface ApercuExtraLine {
@@ -51,17 +70,26 @@ export interface ApercuExtraLine {
   ttc_total_cts: number
 }
 
+/** Ligne supplémentaire écartée — libellé + raison lisible. */
+export interface ApercuInvalidExtra {
+  label: string
+  reason: string
+}
+
 export interface ApercuFacture {
   /** Nom du client facturé (nom du 1er row — invariant : toutes du même client). */
   client_name: string
   /** Nombre de livraisons regroupées. */
   count: number
-  /** Livraisons dont le client diffère de client_name (ne devrait jamais arriver
-   *  côté UI — la sélection multi verrouille sur le client — mais on le signale
-   *  au cas où l'appelant passe des rows hétérogènes). */
+  /** Livraisons dont le client diffère de client_name. */
   mixed_clients: boolean
   main_lines: ApercuMainLine[]
+  /** Lignes supplémentaires VALIDES uniquement (celles qui partiront). */
   extra_lines: ApercuExtraLine[]
+  /** Lignes supplémentaires refusées — exclues des totaux. */
+  invalid_extras: ApercuInvalidExtra[]
+  /** Raisons qui empêchent de facturer (vide = facturable). */
+  blocages: string[]
   totals: {
     ht_cts: number
     tva_cts: number
@@ -69,21 +97,99 @@ export interface ApercuFacture {
   }
 }
 
-/** Déduit le taux TVA de la ligne principale à partir de HT + TVA stockés. */
-function derivedRatePct(ht_cts: number, tva_cts: number): number {
-  if (ht_cts <= 0) return 0
-  return Math.round(tva_cts / ht_cts * 100)
+// ── Règles partagées avec l'Edge ─────────────────────────────────────────────
+
+/** Taux TVA légaux français acceptés par Pennylane (en dixièmes pour éviter le flottant). */
+const TAUX_LEGAUX_DIXIEMES = [0, 21, 55, 100, 200]
+
+export function estTauxLegal(ratePct: number): boolean {
+  return Number.isFinite(ratePct) && TAUX_LEGAUX_DIXIEMES.includes(Math.round(ratePct * 10))
 }
 
-/** Description humaine par défaut si `description` vide. */
-function fallbackLabel(row: ApercuFactureRow): string {
-  return row.description?.trim() || row.delivery_address?.trim() || 'Transport'
+/** Miroir de `tauxLignePrincipale` (Edge). */
+export function tauxLignePrincipale(
+  htCts: number,
+  tvaCts: number | null,
+  tvaRate: number | string | null | undefined,
+): number {
+  const stocke = tvaRate != null && tvaRate !== '' && Number.isFinite(Number(tvaRate))
+    ? Number(tvaRate) : null
+  const tva = tvaCts ?? Math.round(htCts * (stocke ?? 20) / 100)
+  if (stocke != null && estTauxLegal(stocke)
+      && Math.abs(Math.round(htCts * stocke / 100) - tva) <= 1) {
+    return stocke
+  }
+  if (htCts > 0) return Math.round(tva / htCts * 1000) / 10
+  return stocke ?? 20
+}
+
+/** Miroir de `libelleCourse` (Edge) : description, sinon « Livraison <type> du <date> ». */
+export function libelleCourse(row: Pick<ApercuFactureRow, 'description' | 'type' | 'date'>): string {
+  const desc = row.description?.trim()
+  if (desc) return desc
+  return ['Livraison', row.type ?? '', 'du', row.date ?? ''].filter(s => s !== '').join(' ')
+}
+
+function pct(n: number): string {
+  return String(n).replace('.', ',')
+}
+
+interface LignePrincipaleCalculee {
+  ht: number
+  rate: number
+  tva: number
+  label: string
+  autoliq: boolean
+  blocage: string | null
+}
+
+function lignePrincipale(r: ApercuFactureRow): LignePrincipaleCalculee {
+  const ht = effectiveHtCts(r)
+  const autoliq = r.autoliquidation === true
+  const base = libelleCourse(r)
+  const label = autoliq ? `${base} — ${MENTION_AUTOLIQUIDATION}` : base
+  if (ht <= 0) {
+    return { ht: 0, rate: 0, tva: 0, label, autoliq, blocage: 'Montant HT manquant ou nul' }
+  }
+  if (autoliq) return { ht, rate: 0, tva: 0, label, autoliq, blocage: null }
+  const rate = tauxLignePrincipale(ht, r.tva_cts, r.tva_rate)
+  if (!estTauxLegal(rate)) {
+    return {
+      ht, rate, tva: addTva(ht, rate / 100) - ht, label, autoliq,
+      blocage: `Taux de TVA non légal (${pct(rate)} %) — taux acceptés : 0 ; 2,1 ; 5,5 ; 10 ; 20 %`,
+    }
+  }
+  return { ht, rate, tva: addTva(ht, rate / 100) - ht, label, autoliq, blocage: null }
+}
+
+interface ExtraCalcule {
+  ok: boolean
+  label: string
+  reason?: string
+  qty: number
+  htUnit: number
+  rate: number
+}
+
+function extrasCalcules(lines: DeliveryExtraLine[] | null | undefined, tauxDefaut: number, autoliq: boolean): ExtraCalcule[] {
+  return (lines ?? []).map(l => {
+    const label = (l.label ?? '').trim()
+    const q = Number(l.quantity)
+    const qty = Number.isFinite(q) && q > 0 ? q : 1
+    const htUnit = Number(l.amount_ht_cts)
+    const rawRate = (l as { tva_rate?: unknown }).tva_rate
+    const rate = autoliq ? 0 : (rawRate == null || rawRate === '' ? tauxDefaut : Number(rawRate))
+    if (!label) return { ok: false, label: 'Ligne sans libellé', reason: 'Libellé manquant', qty, htUnit: 0, rate }
+    if (!Number.isFinite(htUnit) || htUnit <= 0) return { ok: false, label, reason: 'Montant HT invalide', qty, htUnit: 0, rate }
+    if (!autoliq && !estTauxLegal(rate)) {
+      return { ok: false, label, reason: `Taux TVA non standard (${pct(rate)} %)`, qty, htUnit, rate }
+    }
+    return { ok: true, label, qty, htUnit: Math.round(htUnit), rate }
+  })
 }
 
 /**
  * Aperçu facture à partir de N livraisons (1..N).
- * Traite chaque livraison indépendamment ; la modale d'aperçu peut regrouper
- * ou lister comme elle veut. Les totaux sont sommés directement.
  */
 export function buildApercuFacture(rows: ApercuFactureRow[]): ApercuFacture {
   const client_name = rows[0]?.clients?.name?.trim() || '—'
@@ -91,63 +197,50 @@ export function buildApercuFacture(rows: ApercuFactureRow[]): ApercuFacture {
 
   const main_lines: ApercuMainLine[] = []
   const extra_lines: ApercuExtraLine[] = []
-  let sumHt = 0, sumTva = 0, sumTtc = 0
+  const invalid_extras: ApercuInvalidExtra[] = []
+  const blocages: string[] = []
+  let sumHt = 0, sumTva = 0
+
+  if (mixed_clients) blocages.push('Livraisons de clients différents dans la sélection')
 
   for (const r of rows) {
-    const ht = effectiveHtCts(r)
-    const ttc = effectiveTtcCts(r)
-    const tva = r.tva_cts != null ? r.tva_cts : Math.max(0, ttc - ht)
-    // Ligne principale (même si HT=0 : Pennylane la reçoit quand même —
-    // c'est la ligne de suivi de la course).
+    const m = lignePrincipale(r)
     main_lines.push({
       delivery_id: r.id,
       date: r.date,
-      label: fallbackLabel(r),
-      ht_cts: ht,
-      tva_rate: derivedRatePct(ht, tva),
-      tva_cts: tva,
-      ttc_cts: ttc,
+      label: m.label,
+      ht_cts: m.ht,
+      tva_rate: m.rate,
+      tva_cts: m.tva,
+      ttc_cts: m.ht + m.tva,
+      autoliquidation: m.autoliq,
+      blocage: m.blocage,
     })
-    sumHt += ht
-    sumTva += tva
-    sumTtc += ttc
+    if (m.blocage) blocages.push(`« ${m.label} » : ${m.blocage}`)
+    else { sumHt += m.ht; sumTva += m.tva }
 
-    // Extras : chaque ligne calculée à l'identique de shared/lib/money
-    // (normalizeQty : qty ≤ 0 → 1, invariant HT+TVA=TTC par ligne).
-    for (const l of r.extra_lines ?? []) {
-      const qty = Number.isFinite(l.quantity) && l.quantity > 0 ? l.quantity : 1
-      const rate = Number(l.tva_rate) || 0
-      const ht_total = Math.round((Number(l.amount_ht_cts) || 0) * qty)
-      const ttc_total = addTva(ht_total, rate / 100)
-      const tva_total = ttc_total - ht_total
+    for (const e of extrasCalcules(r.extra_lines, m.rate, m.autoliq)) {
+      if (!e.ok) {
+        invalid_extras.push({ label: e.label, reason: e.reason ?? 'Ligne invalide' })
+        blocages.push(`Ligne supplémentaire « ${e.label} » : ${e.reason}`)
+        continue
+      }
+      const ht_total = Math.round(e.htUnit * e.qty)
+      const tva_total = addTva(ht_total, e.rate / 100) - ht_total
       extra_lines.push({
         delivery_id: r.id,
-        label: (l.label ?? '').trim() || 'Ligne supplémentaire',
-        quantity: qty,
-        ht_unit_cts: Number(l.amount_ht_cts) || 0,
-        tva_rate: rate,
+        label: e.label,
+        quantity: e.qty,
+        ht_unit_cts: e.htUnit,
+        tva_rate: e.rate,
         ht_total_cts: ht_total,
         tva_total_cts: tva_total,
-        ttc_total_cts: ttc_total,
+        ttc_total_cts: ht_total + tva_total,
       })
       sumHt += ht_total
       sumTva += tva_total
-      sumTtc += ttc_total
     }
   }
-
-  // Sanity-check invariant : HT total + Σ TVA doit être égal au TTC total.
-  // Si l'écart est ≤ 1 ct (arrondis cumulés), on aligne le TTC sur HT+TVA
-  // pour éviter d'afficher un total incohérent à l'utilisateur.
-  const expectedTtc = sumHt + sumTva
-  if (Math.abs(sumTtc - expectedTtc) <= rows.length) {
-    sumTtc = expectedTtc
-  }
-
-  // Cohérence croisée : la somme des lignes détaillées doit être égale
-  // à la valeur ligne principale + extras additionnés séparément
-  // (deliveryTotalHtCts / deliveryTotalTtcCts). Aucune raison de diverger
-  // vu qu'on utilise les mêmes helpers, mais on garde l'assertion en tête.
 
   return {
     client_name,
@@ -155,11 +248,9 @@ export function buildApercuFacture(rows: ApercuFactureRow[]): ApercuFacture {
     mixed_clients,
     main_lines,
     extra_lines,
-    totals: {
-      ht_cts: sumHt,
-      tva_cts: sumTva,
-      ttc_cts: sumTtc,
-    },
+    invalid_extras,
+    blocages,
+    totals: { ht_cts: sumHt, tva_cts: sumTva, ttc_cts: sumHt + sumTva },
   }
 }
 
@@ -173,33 +264,14 @@ export function rowTtcTotalCts(row: ApercuFactureRow): number {
   return effectiveTtcCts(row) + extraLinesTtcCts(row.extra_lines)
 }
 
-// ── Payload réel envoyé à Pennylane (mirroir front de pennylane-invoice) ────────
-//
-// buildApercuFacture (ci-dessus) affiche TOUT tel quel, y compris des lignes
-// supplémentaires que pennylane-invoke/index.ts REJETTERAIT (taux TVA non
-// standard, HT ≤ 0) — l'Edge répond alors 422 en pleine facturation, sans
-// que l'aperçu ait prévenu l'utilisateur. buildApercuPayload reproduit
-// exactement la validation de l'Edge (mêmes codes TVA légaux : 0, 2.1, 5.5,
-// 10, 20 %) pour filtrer ces lignes AVANT que l'utilisateur clique Facturer.
-
-/** Taux TVA légaux français acceptés par Pennylane (voir _shared/pennylane.ts::vatRateCode). */
-const STANDARD_VAT_RATES_PCT = [0, 2.1, 5.5, 10, 20]
-
-function isStandardVatRate(ratePct: number): boolean {
-  return STANDARD_VAT_RATES_PCT.some(r => Math.abs(r - ratePct) < 0.05)
-}
+// ── Payload réel envoyé à Pennylane (miroir front de pennylane-invoice) ────────
 
 export interface ApercuPayloadLine {
   label: string
   quantity: number
   amount_ht_cts: number
-  vat_rate_pct: number
-}
-
-/** Ligne supplémentaire écartée du payload — libellé + raison lisible. */
-export interface ApercuInvalidExtra {
-  label: string
-  reason: string
+  /** Taux en % ; null en autoliquidation (code dédié, pas un taux). */
+  vat_rate_pct: number | null
 }
 
 export interface ApercuPayloadResult {
@@ -207,13 +279,13 @@ export interface ApercuPayloadResult {
   lines: ApercuPayloadLine[]
   /** Extras rejetés — ne seront JAMAIS acceptés par l'Edge en l'état. */
   invalidExtras: ApercuInvalidExtra[]
+  /** Raison bloquante sur la ligne principale (HT ≤ 0, taux non légal), sinon null. */
+  blocagePrincipal: string | null
 }
 
 /**
- * Construit le payload de facturation d'UNE livraison — ligne principale
- * (si HT > 0) + lignes supplémentaires valides. Toute ligne supplémentaire
- * invalide (HT ≤ 0 ou taux TVA hors barème légal) est écartée de `lines` et
- * reportée dans `invalidExtras` pour affichage d'un avertissement.
+ * Payload de facturation d'UNE livraison — ligne principale (si valide) +
+ * lignes supplémentaires valides. Tout ce que l'Edge refuserait est reporté.
  */
 export function buildApercuPayload(
   delivery: ApercuFactureRow,
@@ -222,34 +294,15 @@ export function buildApercuPayload(
   const lines: ApercuPayloadLine[] = []
   const invalidExtras: ApercuInvalidExtra[] = []
 
-  const ht = effectiveHtCts(delivery)
-  if (ht > 0) {
-    const ttc = effectiveTtcCts(delivery)
-    const tva = delivery.tva_cts != null ? delivery.tva_cts : Math.max(0, ttc - ht)
-    lines.push({
-      label: fallbackLabel(delivery),
-      quantity: 1,
-      amount_ht_cts: ht,
-      vat_rate_pct: derivedRatePct(ht, tva),
-    })
+  const m = lignePrincipale(delivery)
+  if (!m.blocage) {
+    lines.push({ label: m.label, quantity: 1, amount_ht_cts: m.ht, vat_rate_pct: m.autoliq ? null : m.rate })
   }
 
-  for (const l of extraLines ?? []) {
-    const label = (l.label ?? '').trim() || 'Ligne supplémentaire'
-    const extraHt = Number(l.amount_ht_cts) || 0
-    const extraRate = Number(l.tva_rate) || 0
-    const qty = Number.isFinite(l.quantity) && l.quantity > 0 ? l.quantity : 1
-
-    if (extraHt <= 0) {
-      invalidExtras.push({ label, reason: 'Montant HT invalide' })
-      continue
-    }
-    if (!isStandardVatRate(extraRate)) {
-      invalidExtras.push({ label, reason: `Taux TVA non standard (${extraRate}%)` })
-      continue
-    }
-    lines.push({ label, quantity: qty, amount_ht_cts: extraHt, vat_rate_pct: extraRate })
+  for (const e of extrasCalcules(extraLines, m.rate, m.autoliq)) {
+    if (!e.ok) { invalidExtras.push({ label: e.label, reason: e.reason ?? 'Ligne invalide' }); continue }
+    lines.push({ label: e.label, quantity: e.qty, amount_ht_cts: e.htUnit, vat_rate_pct: m.autoliq ? null : e.rate })
   }
 
-  return { lines, invalidExtras }
+  return { lines, invalidExtras, blocagePrincipal: m.blocage }
 }

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { buildApercuFacture, buildApercuPayload } from './apercuFacture.logic'
+import {
+  buildApercuFacture, buildApercuPayload, estTauxLegal, tauxLignePrincipale, MENTION_AUTOLIQUIDATION,
+} from './apercuFacture.logic'
+import type { DeliveryExtraLine } from '../../shared/lib/money'
 import type { ApercuFactureRow } from './apercuFacture.logic'
 
 // Le spread final applique les overrides APRÈS les défauts : un `null` passé
@@ -33,11 +36,11 @@ describe('buildApercuFacture — mono livraison sans extras', () => {
     expect(r.totals).toEqual({ ht_cts: 10000, tva_cts: 2000, ttc_cts: 12000 })
   })
 
-  it('fallback description → delivery_address puis "Transport"', () => {
+  it('libellé réel de l’Edge : description, sinon « Livraison <type> du <date> »', () => {
     const r1 = buildApercuFacture([row({ description: null })])
-    expect(r1.main_lines[0].label).toBe('4 pl Kléber, Strasbourg')
-    const r2 = buildApercuFacture([row({ description: '', delivery_address: null })])
-    expect(r2.main_lines[0].label).toBe('Transport')
+    expect(r1.main_lines[0].label).toBe('Livraison du 2026-07-19')
+    const r2 = buildApercuFacture([row({ description: '  ', type: 'professionnel' })])
+    expect(r2.main_lines[0].label).toBe('Livraison professionnel du 2026-07-19')
   })
 
   it('legacy montant_* utilisé si amount_* nul', () => {
@@ -82,13 +85,14 @@ describe('buildApercuFacture — mono livraison avec extras', () => {
     expect(r.totals.ht_cts).toBe(1000)
   })
 
-  it('label vide → "Ligne supplémentaire"', () => {
+  it('label vide → ligne refusée (comme l’Edge), exclue des totaux, bloquante', () => {
     const r = buildApercuFacture([row({
-      amount_ht_cts: 0, tva_cts: 0, amount_ttc_cts: 0,
       extra_lines: [{ label: '', quantity: 2, amount_ht_cts: 100, tva_rate: 20 }],
     })])
-    expect(r.extra_lines[0].label).toBe('Ligne supplémentaire')
-    expect(r.extra_lines[0].ht_total_cts).toBe(200)
+    expect(r.extra_lines).toEqual([])
+    expect(r.invalid_extras).toEqual([{ label: 'Ligne sans libellé', reason: 'Libellé manquant' }])
+    expect(r.totals.ht_cts).toBe(10000)
+    expect(r.blocages.length).toBe(1)
   })
 
   it('multi extras à TVA différente — somme par ligne', () => {
@@ -199,7 +203,7 @@ describe('buildApercuPayload', () => {
     // Principale + seulement l'extra valide → l'extra à 8% est exclu.
     expect(r.lines).toHaveLength(2)
     expect(r.lines.map(l => l.label)).toEqual(['Transport palette', 'Attente 30 min'])
-    expect(r.invalidExtras).toEqual([{ label: 'Forfait spécial', reason: 'Taux TVA non standard (8%)' }])
+    expect(r.invalidExtras).toEqual([{ label: 'Forfait spécial', reason: 'Taux TVA non standard (8 %)' }])
   })
 
   it('extra à HT ≤ 0 → filtré et reporté', () => {
@@ -234,5 +238,114 @@ describe('buildApercuPayload', () => {
     )
     expect(r.lines).toHaveLength(1)
     expect(r.lines[0].label).toBe('utilisé')
+  })
+})
+
+// ── Alignement sur l'Edge (lot « l'argent ne se perd plus ») ─────────────────
+describe('buildApercuFacture — taux, autoliquidation, blocages', () => {
+  it('taux au dixième : 5,5 % stocké reste 5,5 %', () => {
+    const r = buildApercuFacture([row({ amount_ht_cts: 10000, tva_cts: 550, amount_ttc_cts: 10550, tva_rate: 5.5 })])
+    expect(r.main_lines[0].tva_rate).toBe(5.5)
+    expect(r.main_lines[0].tva_cts).toBe(550)
+    expect(r.blocages).toEqual([])
+  })
+
+  it('taux stocké en chaîne (numeric) accepté', () => {
+    const r = buildApercuFacture([row({ amount_ht_cts: 10000, tva_cts: 1000, amount_ttc_cts: 11000, tva_rate: '10.00' })])
+    expect(r.main_lines[0].tva_rate).toBe(10)
+  })
+
+  it('petit montant : le taux stocké évite la dérive d’arrondi (99 cts à 20 %)', () => {
+    const r = buildApercuFacture([row({ amount_ht_cts: 99, tva_cts: 20, amount_ttc_cts: 119, tva_rate: 20 })])
+    expect(r.main_lines[0].tva_rate).toBe(20)
+    expect(r.blocages).toEqual([])
+  })
+
+  it('TVA saisie ne correspondant à aucun taux légal → bloquant, exclue des totaux', () => {
+    const r = buildApercuFacture([row({ amount_ht_cts: 10000, tva_cts: 800, amount_ttc_cts: 10800, tva_rate: 20 })])
+    expect(r.main_lines[0].tva_rate).toBe(8)
+    expect(r.main_lines[0].blocage).toContain('non légal')
+    expect(r.blocages.length).toBe(1)
+    expect(r.totals.ht_cts).toBe(0)
+  })
+
+  it('ligne principale HT ≤ 0 → bloquant', () => {
+    const r = buildApercuFacture([row({ amount_ht_cts: 0, tva_cts: 0, amount_ttc_cts: 0 })])
+    expect(r.main_lines[0].blocage).toBe('Montant HT manquant ou nul')
+    expect(r.blocages.length).toBe(1)
+  })
+
+  it('autoliquidation : TVA 0, TTC = HT, extras à 0 %, mention dans le libellé', () => {
+    const r = buildApercuFacture([row({
+      amount_ht_cts: 10000, tva_cts: 0, amount_ttc_cts: 10000, tva_rate: 0, autoliquidation: true,
+      extra_lines: [{ label: 'Attente', quantity: 1, amount_ht_cts: 3000, tva_rate: 20 }],
+    })])
+    expect(r.main_lines[0].autoliquidation).toBe(true)
+    expect(r.main_lines[0].label).toBe(`Transport palette — ${MENTION_AUTOLIQUIDATION}`)
+    expect(r.main_lines[0].tva_cts).toBe(0)
+    expect(r.extra_lines[0].tva_rate).toBe(0)
+    expect(r.extra_lines[0].tva_total_cts).toBe(0)
+    expect(r.totals).toEqual({ ht_cts: 13000, tva_cts: 0, ttc_cts: 13000 })
+    expect(r.blocages).toEqual([])
+  })
+
+  it('autoliquidation : un extra à taux « non standard » n’est pas bloquant (code autoliq.)', () => {
+    const r = buildApercuFacture([row({
+      tva_rate: 0, tva_cts: 0, autoliquidation: true,
+      extra_lines: [{ label: 'X', quantity: 1, amount_ht_cts: 100, tva_rate: 8 }],
+    })])
+    expect(r.blocages).toEqual([])
+  })
+
+  it('extra invalide : exclu des totaux et bloquant', () => {
+    const r = buildApercuFacture([row({
+      extra_lines: [
+        { label: 'OK', quantity: 1, amount_ht_cts: 1000, tva_rate: 20 },
+        { label: 'KO', quantity: 1, amount_ht_cts: 1000, tva_rate: 8 },
+      ],
+    })])
+    expect(r.extra_lines.map(e => e.label)).toEqual(['OK'])
+    expect(r.totals).toEqual({ ht_cts: 11000, tva_cts: 2200, ttc_cts: 13200 })
+    expect(r.blocages).toEqual(['Ligne supplémentaire « KO » : Taux TVA non standard (8 %)'])
+  })
+
+  it('extra sans taux → prend le taux de la ligne principale (comme l’Edge)', () => {
+    const r = buildApercuFacture([row({
+      tva_rate: 10, tva_cts: 1000, amount_ttc_cts: 11000,
+      extra_lines: [{ label: 'A', quantity: 1, amount_ht_cts: 1000 } as unknown as DeliveryExtraLine],
+    })])
+    expect(r.extra_lines[0].tva_rate).toBe(10)
+  })
+
+  it('clients mélangés → bloquant', () => {
+    const r = buildApercuFacture([row({ id: 'a', clients: { name: 'A' } }), row({ id: 'b', clients: { name: 'B' } })])
+    expect(r.blocages[0]).toContain('clients différents')
+  })
+})
+
+describe('tauxLignePrincipale / estTauxLegal', () => {
+  it('taux légaux', () => {
+    for (const t of [0, 2.1, 5.5, 10, 20]) expect(estTauxLegal(t)).toBe(true)
+    for (const t of [6, 8, 19, 5.4, Number.NaN]) expect(estTauxLegal(t)).toBe(false)
+  })
+  it('sans taux stocké : déduit au dixième', () => {
+    expect(tauxLignePrincipale(1000, 55, null)).toBe(5.5)
+    expect(tauxLignePrincipale(1000, null, null)).toBe(20)
+  })
+})
+
+describe('buildApercuPayload — autoliquidation et blocage principal', () => {
+  it('autoliquidation : vat_rate_pct null sur toutes les lignes', () => {
+    const r = buildApercuPayload(row({
+      autoliquidation: true, tva_rate: 0, tva_cts: 0,
+      extra_lines: [{ label: 'A', quantity: 1, amount_ht_cts: 500, tva_rate: 20 }],
+    }))
+    expect(r.lines.map(l => l.vat_rate_pct)).toEqual([null, null])
+    expect(r.blocagePrincipal).toBeNull()
+  })
+  it('taux principal non légal → blocagePrincipal', () => {
+    const r = buildApercuPayload(row({ tva_cts: 800, tva_rate: null }))
+    expect(r.lines).toEqual([])
+    expect(r.blocagePrincipal).toContain('non légal')
   })
 })

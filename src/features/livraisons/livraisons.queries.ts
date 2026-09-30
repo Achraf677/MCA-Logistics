@@ -1,4 +1,6 @@
 import { supabase } from '../../app/providers'
+import { lireErreurEdge } from '../../shared/lib/erreurEdge'
+import type { NatureEchec } from '../../shared/lib/erreurEdge'
 import { canTransition } from './livraisons.logic'
 import type { ComputedAmount } from './livraisons.logic'
 import type { DeliveryFilters, DeliveryInsert, DeliveryStatus } from './livraisons.types'
@@ -68,11 +70,15 @@ export async function deleteDelivery(id: string) {
 /**
  * Orchestre une transition gardée.
  * - Vérifie canTransition() → erreur si saut illégal.
- * - Bloque livree→facturee si montant absent.
- * - Pose invoiced_at (→facturee) ou paid_at (→payee).
- * - À →facturee : tente Edge Function `pennylane-invoice`, sinon sync_pending=true.
- * - À →payee : tente Edge Function `pennylane-register-payment` en best-effort
- *   (encaissement hors rapprochement bancaire, ex. Cocolis). Aucun blocage si KO.
+ * - →livree : pose delivered_at.
+ * - →facturee : N'ÉCRIT PAS le statut. C'est l'Edge `pennylane-invoice` qui le
+ *   passe à `facturee`, et seulement une fois la facture créée chez Pennylane.
+ *   Voir `facturerCourse`.
+ * - →payee : pose paid_at, puis informe Pennylane en best-effort
+ *   (`pennylane-register-payment`). Aucun blocage si KO.
+ *
+ * `amount` n'est plus écrit : la facture est construite par l'Edge depuis les
+ * montants EN BASE. Il ne sert plus qu'au contrôle « montant requis ».
  */
 export async function transitionDelivery(
   id: string,
@@ -84,44 +90,38 @@ export async function transitionDelivery(
     return { data: null, error: new Error(`Transition ${from} → ${to} interdite`) }
   }
 
-  if (to === 'facturee' && (!amount || amount.amount_ht_cts <= 0)) {
-    return { data: null, error: new Error('Montant requis avant de facturer') }
+  if (to === 'facturee') {
+    if (!amount || amount.amount_ht_cts <= 0) {
+      return { data: null, error: new Error('Montant requis avant de facturer') }
+    }
+    const r = await facturerCourse(id)
+    if (!r.ok) return { data: null, error: new Error(r.message) }
+    return getDelivery(id).then(({ data, error }) => ({
+      data, error: error ? new Error(error.message) : null,
+    }))
   }
 
   const now = new Date().toISOString()
   const updates: Record<string, unknown> = { statut: to }
-
-  if (to === 'facturee' && amount) {
-    updates.invoiced_at    = now
-    updates.amount_ht_cts  = amount.amount_ht_cts
-    updates.tva_cts        = amount.tva_cts
-    updates.amount_ttc_cts = amount.amount_ttc_cts
-    // montant_ttc_cts est GENERATED ALWAYS — ne jamais l'écrire.
-    // montant_ht_cts a DEFAULT 0 depuis la migration — ne pas l'écrire non plus.
-  }
-
-  if (to === 'payee') {
-    updates.paid_at = now
-  }
+  if (to === 'livree') updates.delivered_at = now
+  if (to === 'payee')  updates.paid_at = now
 
   const { data, error } = await supabase
     .from('deliveries')
     .update(updates)
     .eq('id', id)
+    .eq('statut', from) // garde : personne n'a changé le statut entre-temps
     .select(WITH_JOINS)
-    .single()
+    .maybeSingle()
 
   if (error) return { data: null, error: new Error(error.message) }
+  if (!data) {
+    return { data: null, error: new Error('Le statut a changé entre-temps (ou droits insuffisants) — rechargez la liste.') }
+  }
 
-  // Push Pennylane à →facturee (crée la facture) ou →payee (enregistre le paiement).
-  if (to === 'facturee') {
-    const pushed = await tryPushPennylane(id)
-    if (!pushed) {
-      // Edge Function absente ou KO → sync_queue (rattrapée par resyncPending).
-      await supabase.from('deliveries').update({ sync_pending: true }).eq('id', id)
-    }
-  } else if (to === 'payee') {
+  if (to === 'payee') {
     // Best-effort : le paiement est déjà effectif côté MCA, on informe Pennylane.
+    // L'Edge déclare la FACTURE entière une seule fois (courses groupées comprises).
     // Un échec ne remonte pas comme erreur (pas de sync_pending détourné : cette
     // colonne est dédiée à la facturation, `resyncPending` ne réagit qu'à ça).
     await tryPushPaymentPennylane(id)
@@ -130,60 +130,166 @@ export async function transitionDelivery(
   return { data, error: null }
 }
 
-async function tryPushPennylane(deliveryId: string): Promise<boolean> {
-  try {
-    const { error } = await supabase.functions.invoke('pennylane-invoice', {
-      body: { delivery_id: deliveryId },
-    })
-    return !error
-  } catch {
-    return false
-  }
-}
-
 async function tryPushPaymentPennylane(deliveryId: string): Promise<boolean> {
   try {
-    const { error } = await supabase.functions.invoke('pennylane-register-payment', {
+    const { data, error } = await supabase.functions.invoke('pennylane-register-payment', {
       body: { delivery_id: deliveryId },
     })
-    return !error
+    return (await lireErreurEdge(data, error)) === null
   } catch {
     return false
   }
 }
 
-// ── Rattrapage Pennylane (resync des livraisons bloquées) ─────────────────────
-// Une livraison passée `facturee` dont l'appel Pennylane a échoué reste
-// sync_pending=true sans pennylane_invoice_id. pennylane-invoice étant idempotent
-// et gérant lui-même sync_pending=false au succès, le resync = re-invoquer.
+// ── Facturation Pennylane ────────────────────────────────────────────────────
+//
+// Trois issues possibles quand on appelle `pennylane-invoice` :
+//   1. Succès : l'Edge a créé la facture ET passé les courses à `facturee`.
+//   2. Refus MÉTIER (4xx, ou Pennylane qui refuse la facture) : rien n'a été
+//      émis. Le statut ne bouge PAS (la course reste `livree`), la cause est
+//      renvoyée telle quelle à l'écran (l'Edge l'a aussi écrite dans
+//      `sync_error` pour une course seule). Il faut corriger, puis refacturer.
+//   3. Échec TECHNIQUE (réseau, délai, 5xx) : on ne sait pas trancher. Repli
+//      `sync_pending = true` + `sync_error` = cause, le statut reste `livree` ;
+//      le bouton « Resynchroniser » de la liste relancera l'appel.
+// Cas particulier : `enregistrement_echoue` — la facture EXISTE chez Pennylane
+// mais l'Edge n'a pas pu l'écrire en base. On l'écrit d'ici ; surtout pas de
+// `sync_pending`, sinon le rattrapage la refacturerait (double facture).
+
+export type ResultatFacturation =
+  | { ok: true; data: Record<string, unknown> | null }
+  | { ok: false; message: string; nature: NatureEchec }
+
+async function appelerFacturation(
+  body: Record<string, unknown>,
+  ids: string[],
+): Promise<ResultatFacturation> {
+  let data: unknown
+  let error: unknown
+  try {
+    const r = await supabase.functions.invoke('pennylane-invoice', { body })
+    data = r.data
+    error = r.error
+  } catch (e) {
+    data = null
+    error = e
+  }
+
+  const echec = await lireErreurEdge(data, error)
+  if (!echec) {
+    const d = data as { data?: Record<string, unknown> } | null
+    return { ok: true, data: d?.data ?? null }
+  }
+
+  if (echec.code === 'enregistrement_echoue' && echec.corps?.pennylane_invoice_id) {
+    const c = echec.corps
+    const now = new Date().toISOString()
+    const { error: upErr } = await supabase.from('deliveries').update({
+      pennylane_invoice_id: String(c.pennylane_invoice_id),
+      pennylane_invoice_number: (c.pennylane_invoice_number as string | null) ?? null,
+      invoice_group_id: (c.invoice_group_id as string | null) ?? null,
+      statut: 'facturee',
+      invoiced_at: now,
+      pennylane_synced_at: now,
+      sync_pending: false,
+      sync_error: null,
+    }).in('id', ids)
+    if (!upErr) return { ok: true, data: c }
+    return {
+      ok: false,
+      nature: 'metier',
+      message: `Facture Pennylane ${String(c.pennylane_invoice_number ?? c.pennylane_invoice_id)} créée `
+        + 'mais non enregistrée ici. NE PAS refacturer : noter ce numéro et prévenir le support.',
+    }
+  }
+
+  return { ok: false, message: echec.message, nature: echec.nature }
+}
+
+/** Facture UNE course (livree → facturee via l'Edge). */
+export async function facturerCourse(id: string): Promise<ResultatFacturation> {
+  const r = await appelerFacturation({ delivery_id: id }, [id])
+  if (!r.ok && r.nature === 'technique') {
+    // Repli : l'état reste `livree`, la course est marquée à resynchroniser.
+    await supabase.from('deliveries')
+      .update({ sync_pending: true, sync_error: `Facturation non aboutie : ${r.message}` })
+      .eq('id', id)
+      .is('pennylane_invoice_id', null)
+    return { ...r, message: `Pennylane injoignable — facturation en attente, à resynchroniser. (${r.message})` }
+  }
+  return r
+}
+
+/**
+ * Facture PLUSIEURS courses du même client sur UNE facture (liste Livraisons).
+ * Aucun repli `sync_pending` ici : le rattrapage re-facture course par course,
+ * il éclaterait la facture groupée en N factures. L'échec est renvoyé tel quel.
+ */
+export async function facturerGroupe(ids: string[]): Promise<ResultatFacturation> {
+  if (ids.length === 0) return { ok: false, message: 'Aucune course sélectionnée.', nature: 'metier' }
+  if (ids.length === 1) return facturerCourse(ids[0])
+  return appelerFacturation({ delivery_ids: ids }, ids)
+}
+
+/**
+ * Répare une course « facturée sans facture » (voir `estFacturationBloquee`) :
+ * retour à `livree`, marqueurs de synchro effacés. Transition EXCEPTIONNELLE,
+ * hors canTransition, gardée ici par les mêmes conditions (et jamais si une
+ * facture Pennylane est rattachée).
+ */
+export async function revenirALivree(id: string) {
+  return supabase.from('deliveries')
+    .update({ statut: 'livree', sync_pending: false, sync_error: null, invoiced_at: null })
+    .eq('id', id)
+    .eq('statut', 'facturee')
+    .eq('sync_pending', true)
+    .is('pennylane_invoice_id', null)
+    .select('id')
+}
+
+// ── Rattrapage Pennylane (resync des livraisons en attente) ───────────────────
+// Une course dont l'appel Pennylane a échoué TECHNIQUEMENT reste `livree` avec
+// sync_pending=true. L'Edge gère sync_pending=false au succès : le resync =
+// re-invoquer. Les courses de l'ancien fonctionnement (`facturee` +
+// sync_pending) sont comptées aussi, pour rester visibles, mais l'Edge les
+// refuse (statut ≠ livree) : elles se réparent par « Revenir à livrée ».
 
 export async function getPendingSyncDeliveries() {
   return supabase
     .from('deliveries')
     .select('id')
-    .eq('statut', 'facturee')
+    .in('statut', ['livree', 'facturee'])
     .eq('sync_pending', true)
     .is('pennylane_invoice_id', null)
 }
 
 export async function resyncPending(): Promise<{ resynced: number; failed: number }> {
-  const { data } = await getPendingSyncDeliveries()
-  const ids = (data as { id: string }[] | null)?.map(d => d.id) ?? []
+  const { data } = await supabase
+    .from('deliveries')
+    .select('id, statut')
+    .in('statut', ['livree', 'facturee'])
+    .eq('sync_pending', true)
+    .is('pennylane_invoice_id', null)
+  const rows = (data as { id: string; statut: string }[] | null) ?? []
 
   let resynced = 0
   let failed = 0
-  for (const id of ids) {
-    try {
-      const { error } = await supabase.functions.invoke('pennylane-invoice', {
-        body: { delivery_id: id },
-      })
-      if (error) failed++
-      else resynced++
-    } catch {
-      failed++
-    }
+  for (const r of rows) {
+    if (r.statut !== 'livree') { failed++; continue } // à réparer : « Revenir à livrée »
+    const res = await facturerCourse(r.id)
+    if (res.ok) resynced++
+    else failed++
   }
   return { resynced, failed }
+}
+
+/** Client par id — sert à la fiche quand le client est INACTIF (absent des sélecteurs). */
+export async function getClientLookup(id: string) {
+  return supabase
+    .from('clients')
+    .select('id, name, tariff_mode, tariff_rate_cts, phone, email, payment_terms, payment_terms_label, tva_intra')
+    .eq('id', id)
+    .maybeSingle()
 }
 
 // ── Clients actifs (pour les sélecteurs du drawer) ────────────────────────────
