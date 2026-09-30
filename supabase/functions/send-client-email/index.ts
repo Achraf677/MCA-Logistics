@@ -1,5 +1,5 @@
 // Edge Function `send-client-email` — envoie au client, par email, la facture
-// Pennylane ORIGINALE (PDF officiel) + le BL (lettre de voiture) en pièces
+// Pennylane ORIGINALE (PDF officiel) + la lettre de voiture (LV) en pièces
 // jointes RÉELLES. verify_jwt=true. Aucune écriture destructive.
 //
 // Canal : Gmail API via l'infra Google OAuth serveur EXISTANTE
@@ -11,9 +11,15 @@
 // Pièces jointes :
 //   (a) Facture : téléchargée via l'API Pennylane (file_url signée, jamais la
 //       copie stockée).
-//   (b) BL : téléchargé depuis Google Drive (documents.drive_file_id, catégorie
-//       'LV') via le même access token Google. Absent → on n'attache que la
-//       facture et on le signale dans la réponse.
+//   (b) LV : dernier document catégorie 'LV' de la livraison. Lu dans Supabase
+//       Storage (bucket `documents`, `storage_path`) via le client service
+//       role ; repli Google Drive (`drive_file_id`) pour les LV archivées avant
+//       le passage à Storage. Pièce nommée `Lettre_de_voiture_<numero>.pdf`.
+//       Absente → on n'attache que la facture et on le signale dans la réponse
+//       (`bl_attached: false`, clé conservée pour les appelants).
+//
+// Token Google : un seul refresh par appel, partagé entre le repli Drive et
+// l'envoi Gmail.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const CORS = {
@@ -57,6 +63,11 @@ function composeBody(input: {
 function invoiceAttachmentName(invoiceNumber: string | null): string {
   const num = (invoiceNumber ?? '').trim().replace(/[^\w-]+/g, '_')
   return num ? `Facture_${num}.pdf` : 'Facture.pdf'
+}
+// Dupliqué depuis src/features/livraisons/lettreVoiture.logic.ts (lvNomFichier).
+function lvAttachmentName(numero: string | null): string {
+  const n = (numero ?? '').trim().replace(/[^\w-]+/g, '_')
+  return n ? `Lettre_de_voiture_${n}.pdf` : 'Lettre_de_voiture.pdf'
 }
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
@@ -158,7 +169,7 @@ Deno.serve(async (req: Request) => {
     // Livraison + client (garde company).
     const { data: delivery } = await service
       .from('deliveries')
-      .select('id, company_id, statut, amount_ttc_cts, montant_ttc_cts, lv_pdf_url, pennylane_invoice_id, pennylane_invoice_number, clients!client_id(name, email)')
+      .select('id, company_id, statut, amount_ttc_cts, montant_ttc_cts, lv_numero, lv_pdf_url, pennylane_invoice_id, pennylane_invoice_number, clients!client_id(name, email)')
       .eq('id', deliveryId)
       .single()
     if (!delivery || delivery.company_id !== companyId) {
@@ -196,37 +207,7 @@ Deno.serve(async (req: Request) => {
       base64: toBase64(invoiceBytes),
     }]
 
-    // ── (b) BL (Drive) — best-effort ──────────────────────────────────────────
-    let blAttached = false
-    if (delivery.lv_pdf_url) {
-      const { data: blDoc } = await service
-        .from('documents')
-        .select('drive_file_id')
-        .eq('entity_type', 'delivery').eq('entity_id', deliveryId).eq('category', 'LV')
-        .order('created_at', { ascending: false })
-        .limit(1).maybeSingle()
-      const { data: tok } = await service
-        .from('google_drive_tokens').select('refresh_token')
-        .eq('company_id', companyId).maybeSingle()
-      if (blDoc?.drive_file_id && tok?.refresh_token) {
-        try {
-          const gToken = await getGoogleAccessToken(tok.refresh_token)
-          const dlRes = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${blDoc.drive_file_id}?alt=media`,
-            { headers: { Authorization: `Bearer ${gToken}` } },
-          )
-          if (dlRes.ok) {
-            attachments.push({
-              filename: 'Bon_de_livraison.pdf',
-              base64: toBase64(new Uint8Array(await dlRes.arrayBuffer())),
-            })
-            blAttached = true
-          }
-        } catch { /* BL best-effort : on continue sans */ }
-      }
-    }
-
-    // ── Envoi via Gmail (même refresh_token Google) ───────────────────────────
+    // ── Token Google (une seule fois : repli Drive + envoi Gmail) ────────────
     const { data: gtok } = await service
       .from('google_drive_tokens').select('refresh_token')
       .eq('company_id', companyId).maybeSingle()
@@ -236,6 +217,42 @@ Deno.serve(async (req: Request) => {
     let gmailToken: string
     try { gmailToken = await getGoogleAccessToken(gtok.refresh_token) }
     catch { return json({ ok: false, error: 'Auth Google échouée — reconnecte le Drive.' }, 502) }
+
+    // ── (b) Lettre de voiture — Storage, repli Drive — best-effort ────────────
+    let blAttached = false
+    if (delivery.lv_pdf_url) {
+      const { data: lvDoc } = await service
+        .from('documents')
+        .select('storage_path, drive_file_id')
+        .eq('company_id', companyId)
+        .eq('entity_type', 'delivery').eq('entity_id', deliveryId).eq('category', 'LV')
+        .order('created_at', { ascending: false })
+        .limit(1).maybeSingle()
+      let lvBytes: Uint8Array | null = null
+      if (lvDoc?.storage_path) {
+        try {
+          const { data: blob, error: dlErr } = await service.storage
+            .from('documents').download(lvDoc.storage_path as string)
+          if (!dlErr && blob) lvBytes = new Uint8Array(await blob.arrayBuffer())
+        } catch { /* repli Drive ci-dessous */ }
+      }
+      if (!lvBytes && lvDoc?.drive_file_id) {
+        try {
+          const dlRes = await fetch(
+            `https://www.googleapis.com/drive/v3/files/${lvDoc.drive_file_id}?alt=media`,
+            { headers: { Authorization: `Bearer ${gmailToken}` } },
+          )
+          if (dlRes.ok) lvBytes = new Uint8Array(await dlRes.arrayBuffer())
+        } catch { /* LV best-effort : on continue sans */ }
+      }
+      if (lvBytes) {
+        attachments.push({
+          filename: lvAttachmentName(delivery.lv_numero as string | null),
+          base64: toBase64(lvBytes),
+        })
+        blAttached = true
+      }
+    }
 
     const subject = composeSubject(delivery.pennylane_invoice_number as string | null)
     const body = composeBody({

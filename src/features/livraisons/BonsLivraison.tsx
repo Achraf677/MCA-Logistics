@@ -3,11 +3,13 @@ import { FileText } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { SkeletonTable } from '../../shared/ui/Skeleton'
+import { useToast } from '../../shared/ui/useToast'
 // Chargé à la demande : c'est le plus gros bloc du site, utile seulement au
 // clic sur une ligne, pas à l'affichage de la liste des bons de livraison.
 const DrawerLivraison = lazy(() =>
   import('./DrawerLivraison').then(m => ({ default: m.DrawerLivraison })))
 import { getDeliveriesWithLv } from './livraisons.queries'
+import { ouvrirPdfLv } from './lettreVoiture.ouvrir'
 import type { DeliveryRow, DeliveryFilters } from './livraisons.types'
 
 type BlFilters = Pick<DeliveryFilters, 'date_from' | 'date_to'>
@@ -26,6 +28,13 @@ export function BonsLivraison() {
   const [filters, setFilters]   = useState<BlFilters>({})
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
+  const { toast } = useToast()
+
+  // `lv_pdf_url` = référence (`doc:<id>` → URL signée) ou ancien lien Drive.
+  const voirPdf = async (row: DeliveryRow) => {
+    const ok = await ouvrirPdfLv(row.lv_pdf_url)
+    if (!ok) toast('PDF introuvable — ouvre la livraison pour regénérer la lettre de voiture.', 'error')
+  }
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -69,8 +78,8 @@ export function BonsLivraison() {
       ) : rows.length === 0 ? (
         <EmptyState
           icon={<FileText size={48} />}
-          title="Aucun bon de livraison"
-          description="Les BL générés depuis l'onglet « Lettre de voiture » d'une livraison apparaîtront ici."
+          title="Aucune lettre de voiture"
+          description="Les lettres de voiture générées depuis l'onglet « Lettre de voiture » d'une livraison apparaîtront ici."
         />
       ) : (
         <>
@@ -79,7 +88,7 @@ export function BonsLivraison() {
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['N° BL', 'Date', 'Client', ''].map(h => (
+                  {['N° LV', 'Date', 'Client', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
@@ -98,7 +107,7 @@ export function BonsLivraison() {
                     <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
                       {row.lv_pdf_url ? (
                         <Button variant="ghost" size="compact"
-                          onClick={() => window.open(row.lv_pdf_url!, '_blank', 'noopener,noreferrer')}>
+                          onClick={() => { void voirPdf(row) }}>
                           Voir PDF
                         </Button>
                       ) : (

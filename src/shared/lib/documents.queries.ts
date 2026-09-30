@@ -144,6 +144,12 @@ export async function listDocuments(options: ListDocumentsOptions = {}) {
   return q
 }
 
+/** Un document par son id (RLS : documents de la société uniquement). */
+export async function getDocument(id: string): Promise<{ data: DocumentRow | null; error: Error | null }> {
+  const { data, error } = await supabase.from('documents').select('*').eq('id', id).maybeSingle()
+  return { data: (data as DocumentRow | null) ?? null, error: error ? new Error(error.message) : null }
+}
+
 /**
  * Lien d'ouverture. Le bucket est privé : on signe une URL valable 1 h.
  * `drive_link` reste lu en dernier recours pour les documents antérieurs à la
