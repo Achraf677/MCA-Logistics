@@ -3,7 +3,10 @@ import {
   TRANSITIONS, canTransition, allowedNextStatuses,
   computeAmount, effectiveHtCts, effectiveTtcCts, formatCents, kpiSummary,
   extraLinesHtCts, extraLinesTvaCts, extraLinesTtcCts,
-  deliveryTotalHtCts, deliveryTotalTtcCts, libelleDelaiPaiement } from './livraisons.logic'
+  deliveryTotalHtCts, deliveryTotalTtcCts, libelleDelaiPaiement,
+  isoLocal, bornesPeriode, dansPeriode, libellePeriode, echeanceFacture, eurosArrondis,
+  dateCourte, heureCourte, villeDe, trajet, nettoyerRecherche, messageDepuisCorps,
+  STATUS_COLORS } from './livraisons.logic'
 import type { ClientTariff } from './livraisons.logic'
 import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
 
@@ -132,32 +135,186 @@ describe('effectiveHtCts / effectiveTtcCts', () => {
 })
 
 // ── d. KPIs ──────────────────────────────────────────────────────────────────────
-describe('kpiSummary', () => {
-  it('agrège correctement (exclut annulée, CA facturé+payé, attente, mois courant)', () => {
-    const now = new Date()
-    const thisMonth = new Date(now.getFullYear(), now.getMonth(), 15).toISOString().slice(0, 10)
-    const old = '2000-01-01'
+describe('période (dates locales)', () => {
+  it('isoLocal ne passe pas par UTC (minuit heure locale = même jour)', () => {
+    expect(isoLocal(new Date(2026, 9, 1, 0, 0, 0))).toBe('2026-10-01')
+    expect(isoLocal(new Date(2026, 8, 30, 23, 59, 59))).toBe('2026-09-30')
+  })
 
+  it('mois : du 1er au dernier jour, y compris le 1er à minuit', () => {
+    expect(bornesPeriode('mois', new Date(2026, 9, 1, 0, 5))).toEqual({ debut: '2026-10-01', fin: '2026-10-31' })
+    expect(bornesPeriode('mois', new Date(2026, 1, 14))).toEqual({ debut: '2026-02-01', fin: '2026-02-28' })
+    expect(bornesPeriode('mois', new Date(2028, 1, 29))).toEqual({ debut: '2028-02-01', fin: '2028-02-29' })
+    expect(bornesPeriode('mois', new Date(2026, 11, 31, 23, 59))).toEqual({ debut: '2026-12-01', fin: '2026-12-31' })
+  })
+
+  it('semaine : lundi → dimanche, à cheval sur deux mois', () => {
+    // mercredi 30/09/2026
+    expect(bornesPeriode('semaine', new Date(2026, 8, 30))).toEqual({ debut: '2026-09-28', fin: '2026-10-04' })
+    // dimanche 04/10/2026 : reste dans la même semaine
+    expect(bornesPeriode('semaine', new Date(2026, 9, 4))).toEqual({ debut: '2026-09-28', fin: '2026-10-04' })
+    // lundi 05/10/2026
+    expect(bornesPeriode('semaine', new Date(2026, 9, 5))).toEqual({ debut: '2026-10-05', fin: '2026-10-11' })
+  })
+
+  it("jour et tout", () => {
+    expect(bornesPeriode('jour', new Date(2026, 8, 30, 0, 1))).toEqual({ debut: '2026-09-30', fin: '2026-09-30' })
+    expect(bornesPeriode('tout', new Date())).toEqual({})
+  })
+
+  it('dansPeriode : bornes incluses, absentes = ouvertes', () => {
+    const p = { debut: '2026-09-01', fin: '2026-09-30' }
+    expect(dansPeriode('2026-09-01', p)).toBe(true)
+    expect(dansPeriode('2026-09-30', p)).toBe(true)
+    expect(dansPeriode('2026-08-31', p)).toBe(false)
+    expect(dansPeriode('2026-10-01', p)).toBe(false)
+    expect(dansPeriode('1999-01-01', {})).toBe(true)
+    expect(dansPeriode('2026-10-01', { debut: '2026-09-01' })).toBe(true)
+  })
+
+  it('libellePeriode', () => {
+    expect(libellePeriode({ debut: '2026-09-01', fin: '2026-09-30' })).toBe('01/09 → 30/09/2026')
+    expect(libellePeriode({ debut: '2025-12-29', fin: '2026-01-04' })).toBe('29/12/2025 → 04/01/2026')
+    expect(libellePeriode({ debut: '2026-09-30', fin: '2026-09-30' })).toBe('30/09/2026')
+    expect(libellePeriode({})).toBe("Tout l'historique")
+    expect(libellePeriode({ debut: '2026-09-01' })).toBe('Depuis le 01/09/2026')
+  })
+})
+
+describe('kpiSummary (période affichée)', () => {
+  const sept = { debut: '2026-09-01', fin: '2026-09-30' }
+
+  it('agrège la période : courses, CA HT, à facturer, à encaisser (hors annulées)', () => {
     const rows: DeliveryRow[] = [
-      row({ statut: 'facturee', date: thisMonth, amount_ht_cts: 10000, amount_ttc_cts: 12000, montant_ttc_cts: null }),
-      row({ statut: 'payee',    date: thisMonth, amount_ht_cts:  4200, amount_ttc_cts:  5000, montant_ttc_cts: null }),
-      row({ statut: 'livree',   date: thisMonth, amount_ttc_cts: 9999, montant_ttc_cts: null }),
-      row({ statut: 'annulee',  date: thisMonth, amount_ttc_cts: 99999, montant_ttc_cts: null }),
-      row({ statut: 'planifiee', date: old,      amount_ttc_cts: 1000,  montant_ttc_cts: null }),
+      row({ statut: 'facturee', date: '2026-09-01', amount_ht_cts: 10000, amount_ttc_cts: 12000, invoiced_at: '2026-09-25', clients: { payment_terms: 30 } as DeliveryRow['clients'] }),
+      row({ statut: 'payee',    date: '2026-09-30', amount_ht_cts:  4200, amount_ttc_cts:  5040 }),
+      row({ statut: 'livree',   date: '2026-09-15', amount_ht_cts:  3000, amount_ttc_cts:  3600 }),
+      row({ statut: 'planifiee', date: '2026-09-20', amount_ht_cts: 1000, amount_ttc_cts:  1200 }),
+      row({ statut: 'en_cours', date: '2026-09-21', amount_ht_cts:  500, amount_ttc_cts:   600 }),
+      row({ statut: 'annulee',  date: '2026-09-10', amount_ht_cts: 99999, amount_ttc_cts: 99999 }),
     ]
+    const k = kpiSummary(rows, sept, '2026-09-30')
+    expect(k.nbCourses).toBe(5)
+    expect(k.nbAFaire).toBe(2)
+    expect(k.nbFaites).toBe(3)
+    expect(k.caHtCts).toBe(18700)
+    expect(k.aFacturerHtCts).toBe(3000)
+    expect(k.nbAFacturer).toBe(1)
+    expect(k.aEncaisserTtcCts).toBe(12000)
+    expect(k.nbAEncaisser).toBe(1)
+    expect(k.nbRetard).toBe(0)
+  })
 
-    const k = kpiSummary(rows)
-    expect(k.nbMois).toBe(3)                  // 3 du mois courant, hors annulée
-    expect(k.caFactureHtCts).toBe(14200)      // HT : facturee 10000 + payee 4200
-    expect(k.caFactureCts).toBe(17000)        // TTC : facturee 12000 + payee 5000
-    expect(k.enAttenteFacturation).toBe(1)    // 1 livree
-    expect(k.enAttentePaiementCts).toBe(12000) // facturee uniquement
+  it('bug corrigé : ni la veille du 1er, ni le mois suivant ne comptent', () => {
+    const rows: DeliveryRow[] = [
+      row({ statut: 'planifiee', date: '2026-08-31', amount_ht_cts: 100 }),
+      row({ statut: 'planifiee', date: '2026-09-01', amount_ht_cts: 100 }),
+      row({ statut: 'planifiee', date: '2026-09-30', amount_ht_cts: 100 }),
+      row({ statut: 'planifiee', date: '2026-10-01', amount_ht_cts: 100 }),
+      row({ statut: 'planifiee', date: '2027-01-15', amount_ht_cts: 100 }),
+    ]
+    const k = kpiSummary(rows, bornesPeriode('mois', new Date(2026, 8, 1, 0, 30)), '2026-09-01')
+    expect(k.nbCourses).toBe(2)
+    expect(k.caHtCts).toBe(200)
+  })
+
+  it('lignes supplémentaires comprises dans le CA et les montants', () => {
+    const rows: DeliveryRow[] = [
+      row({ statut: 'livree', date: '2026-09-02', amount_ht_cts: 10000, amount_ttc_cts: 12000,
+        extra_lines: [{ label: 'Attente', quantity: 2, amount_ht_cts: 1500, tva_rate: 20 }] }),
+    ]
+    const k = kpiSummary(rows, sept, '2026-09-30')
+    expect(k.caHtCts).toBe(13000)
+    expect(k.aFacturerHtCts).toBe(13000)
+  })
+
+  it('retard : échéance = facture + délai client (30 j par défaut), dépassée strictement', () => {
+    const f = (invoiced_at: string, payment_terms?: number | null) => row({
+      statut: 'facturee', date: '2026-09-01', amount_ht_cts: 1000, amount_ttc_cts: 1200, invoiced_at,
+      clients: (payment_terms === undefined ? null : { payment_terms }) as DeliveryRow['clients'],
+    })
+    const k = kpiSummary([
+      f('2026-08-01'),        // échéance 31/08 → en retard
+      f('2026-08-31'),        // échéance 30/09 → pas encore
+      f('2026-09-10', 10),    // échéance 20/09 → en retard
+      f('2026-09-10', null),  // délai absent → 30 j → 10/10
+    ], sept, '2026-09-30')
+    expect(k.nbAEncaisser).toBe(4)
+    expect(k.aEncaisserTtcCts).toBe(4800)
+    expect(k.nbRetard).toBe(2)
+    expect(k.retardTtcCts).toBe(2400)
   })
 
   it('tableau vide → zéros', () => {
-    expect(kpiSummary([])).toEqual({
-      nbMois: 0, caFactureHtCts: 0, caFactureCts: 0, enAttenteFacturation: 0, enAttentePaiementCts: 0,
+    expect(kpiSummary([], {}, '2026-09-30')).toEqual({
+      nbCourses: 0, nbAFaire: 0, nbFaites: 0, caHtCts: 0, aFacturerHtCts: 0, nbAFacturer: 0,
+      aEncaisserTtcCts: 0, nbAEncaisser: 0, retardTtcCts: 0, nbRetard: 0,
     })
+  })
+
+  it('echeanceFacture : passage de mois en date locale', () => {
+    expect(echeanceFacture('2026-01-31T10:00:00Z', 30)).toBe('2026-03-02')
+    expect(echeanceFacture('2026-09-30', 0)).toBe('2026-09-30')
+  })
+})
+
+describe('affichage d\'une ligne', () => {
+  it('eurosArrondis', () => {
+    expect(norm(eurosArrondis(123456))).toBe('1 235 €')
+    expect(norm(eurosArrondis(0))).toBe('0 €')
+  })
+
+  it('dateCourte : année courante sans année', () => {
+    expect(dateCourte('2026-09-30', 2026)).toBe('30/09')
+    expect(dateCourte('2025-12-31', 2026)).toBe('31/12/25')
+  })
+
+  it('heureCourte', () => {
+    expect(heureCourte('14:30:00')).toBe('14:30')
+    expect(heureCourte('9:05')).toBe('09:05')
+    expect(heureCourte(null)).toBeNull()
+    expect(heureCourte('')).toBeNull()
+    expect(heureCourte('bientôt')).toBeNull()
+  })
+
+  it('villeDe : ville après le code postal, sinon dernier morceau', () => {
+    expect(villeDe('12 rue du Port, 67540 Ostwald')).toBe('Ostwald')
+    expect(villeDe('3 avenue de la Liberté, 68000 Colmar, France')).toBe('Colmar')
+    expect(villeDe('Zone industrielle, Molsheim')).toBe('Molsheim')
+    expect(villeDe('Dépôt Nord')).toBe('Dépôt Nord')
+    expect(villeDe(null)).toBe('')
+  })
+
+  it('trajet : court (villes) et complet ; sans enlèvement = Dépôt', () => {
+    expect(trajet('1 rue A, 67000 Strasbourg', '2 rue B, 68100 Mulhouse')).toEqual({
+      court: 'Strasbourg → Mulhouse',
+      complet: '1 rue A, 67000 Strasbourg → 2 rue B, 68100 Mulhouse',
+    })
+    expect(trajet(null, '2 rue B, 68100 Mulhouse').court).toBe('Dépôt → Mulhouse')
+    expect(trajet('', null).court).toBe('Dépôt → —')
+  })
+
+  it('livrée et facturée ont des couleurs distinctes', () => {
+    expect(STATUS_COLORS.livree).not.toBe(STATUS_COLORS.facturee)
+  })
+})
+
+describe('recherche & erreurs Edge', () => {
+  it('nettoyerRecherche retire les caractères spéciaux de PostgREST', () => {
+    expect(nettoyerRecherche('  Dupont, (SARL)  ')).toBe('Dupont SARL')
+    expect(nettoyerRecherche('FA-2026-09-34')).toBe('FA-2026-09-34')
+    expect(nettoyerRecherche('50%*')).toBe('50')
+    expect(nettoyerRecherche(null)).toBe('')
+    expect(nettoyerRecherche('a'.repeat(200))).toHaveLength(80)
+  })
+
+  it('messageDepuisCorps lit { error } / { message } ou le texte', () => {
+    expect(messageDepuisCorps('{"error":"Taux de TVA non légal : 6 %"}')).toBe('Taux de TVA non légal : 6 %')
+    expect(messageDepuisCorps('{"message":"Unauthorized"}')).toBe('Unauthorized')
+    expect(messageDepuisCorps('{"ok":false}')).toBeNull()
+    expect(messageDepuisCorps('Service indisponible')).toBe('Service indisponible')
+    expect(messageDepuisCorps('<html>502</html>')).toBeNull()
+    expect(messageDepuisCorps('')).toBeNull()
   })
 })
 
