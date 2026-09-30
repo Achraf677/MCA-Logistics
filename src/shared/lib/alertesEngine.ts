@@ -11,6 +11,7 @@ import type { ARapprocherCounts } from './aRapprocher'
 import {
   countLivraisonsSansJustif, type DeliveryForJustif, type DocumentForJustif,
 } from './livraisonsSansJustif'
+import { aProblemeOuvert } from './problemeTerrain'
 
 export type AlerteSeverite = 'rouge' | 'orange' | 'info'
 
@@ -18,7 +19,7 @@ export interface AlerteMetier {
   /** Clé stable (dédup / React key). */
   id: string
   /** Domaine fonctionnel (regroupement + libellé). */
-  domaine: 'tresorerie' | 'charges' | 'encaissement' | 'facturation' | 'devis' | 'vehicule' | 'notes_frais'
+  domaine: 'tresorerie' | 'charges' | 'encaissement' | 'facturation' | 'devis' | 'vehicule' | 'notes_frais' | 'livraison'
   /** Libellé précis affiché à l'utilisateur. */
   label: string
   /** Nombre d'éléments concernés. */
@@ -86,6 +87,14 @@ export interface AlertesEngineInput {
   ticketsATraiter?: number
   livraisonsPourJustif?: DeliveryForJustif[]
   documentsLivraison?: DocumentForJustif[]
+  /** Courses signalées en échec par le chauffeur (absent, refus…). */
+  problemesTerrain?: ProblemeTerrainRow[]
+}
+
+export interface ProblemeTerrainRow {
+  id: string
+  statut: string
+  probleme_le: string | null
 }
 
 export interface AlertesEngineOptions {
@@ -244,6 +253,22 @@ function detectTicketsInbox(count: number): AlerteMetier | null {
   }
 }
 
+/**
+ * Échecs signalés sur le terrain et pas encore traités. Rouge : un client
+ * attend sa marchandise, le bureau doit replanifier ou prévenir.
+ */
+function detectProblemesTerrain(rows: ProblemeTerrainRow[]): AlerteMetier | null {
+  const count = rows.filter(aProblemeOuvert).length
+  if (count === 0) return null
+  return {
+    id: 'problemes-terrain',
+    domaine: 'livraison',
+    label: `${count} échec${count > 1 ? 's' : ''} de livraison signalé${count > 1 ? 's' : ''} par le chauffeur`,
+    count, severite: 'rouge',
+    lien: '/livraisons',
+  }
+}
+
 /** Livraisons livrée/facturée/payée sans aucun justificatif (POD, document, LV). Orange. */
 function detectLivraisonsSansJustif(
   deliveries: DeliveryForJustif[],
@@ -334,6 +359,9 @@ export function buildAlertes(
 
   const tickets = detectTicketsInbox(input.ticketsATraiter ?? 0)
   if (tickets) alertes.push(tickets)
+
+  const problemes = detectProblemesTerrain(input.problemesTerrain ?? [])
+  if (problemes) alertes.push(problemes)
 
   // Tri : rouge → orange → info, puis par count décroissant.
   return alertes.sort((a, b) =>

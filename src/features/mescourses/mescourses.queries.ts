@@ -24,7 +24,10 @@ export async function getMesCourses(debut: string, fin: string) {
       'pod_captured_at', 'weight_kg', 'charge_le', 'lv_signatures',
       'expediteur_nom', 'destinataire_nom', 'pod_recipient_name', 'stop_order', 'tour_id',
       'pickup_order', 'expediteur_tel', 'destinataire_tel',
+      'notes', 'arrival_time', 'nb_colis', 'driver_id',
+      'probleme_motif', 'probleme_note', 'probleme_le',
       'clients!client_id(name, phone)',
+      'team_members!driver_id(full_name)',
       'vehicles!vehicle_id(label, plate)',
     ].join(', '))
     .gte('date', debut)
@@ -53,7 +56,9 @@ export async function getMesCourses(debut: string, fin: string) {
 export async function avancerCourse(id: string, cible: 'en_cours' | 'livree') {
   return supabase
     .from('deliveries')
-    .update({ statut: cible })
+    // Livrer lève un éventuel échec signalé plus tôt (relivraison réussie) :
+    // le motif reste en historique, seule l'alerte s'éteint.
+    .update(cible === 'livree' ? { statut: cible, probleme_le: null } : { statut: cible })
     .eq('id', id)
     .select('id, statut')
     .single()
@@ -202,4 +207,29 @@ export async function getDepot(companyId: string) {
     .select('depot_lat, depot_lng')
     .eq('id', companyId)
     .single()
+}
+
+/**
+ * Signale un échec sur un arrêt (absent, refus…). Le STATUT n'est pas touché :
+ * la course reste ouverte, la cloche d'alertes du bureau s'allume et c'est le
+ * bureau qui décide de la suite.
+ */
+export async function signalerProbleme(id: string, motif: string, note: string | null) {
+  return supabase
+    .from('deliveries')
+    .update({ probleme_motif: motif, probleme_note: note, probleme_le: new Date().toISOString() })
+    .eq('id', id)
+}
+
+/**
+ * Fiche équipe de l'utilisateur connecté — sert au filtre « mes courses »
+ * d'un président / DG qui roule aussi. `null` s'il n'a pas de fiche.
+ */
+export async function getMaFicheEquipe(profileId: string) {
+  return supabase
+    .from('team_members')
+    .select('id')
+    .eq('profile_id', profileId)
+    .limit(1)
+    .maybeSingle()
 }

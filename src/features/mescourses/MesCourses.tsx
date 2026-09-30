@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare, AlertTriangle, Info, User, X } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
+import { BoutonIcone, PanneauReglages } from '../../shared/ui/BoutonIcone'
 import { Badge } from '../../shared/ui/Badge'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton } from '../../shared/ui/Skeleton'
@@ -15,7 +16,10 @@ import { canTransition } from '../../shared/lib/livraisonStatuts'
 import {
   getMesCourses, avancerCourse, getDocumentsDesCourses, marquerCharge,
   enregistrerOrdreArretsJour, getTourneesDuChauffeur, changerStatutTournee, getDepot,
+  signalerProbleme, getMaFicheEquipe,
 } from './mescourses.queries'
+import { PanneauProbleme } from './PanneauProbleme'
+import { libelleMotif, aProblemeOuvert } from '../../shared/lib/problemeTerrain'
 // Memes regles que les tournees : ecrites une fois, testees une fois.
 import { planDeChargement } from '../../shared/lib/ordreArrets'
 import { poidsTotal, libellePoids } from '../../shared/lib/poids'
@@ -32,17 +36,24 @@ import { usePermissions } from '../../shared/permissions/usePermissions'
 import { etapeCourante, libelleEtat } from './etapes.logic'
 import { EtapeTerrain } from './EtapeTerrain'
 import {
-  bornesPeriode, decalerPeriode, libellePeriode,
-  grouperParJour, resteAFaire,
+  bornesPeriode, decalerPeriode, libellePeriode, grouperParJour,
+  prochainArret, progression, etatHoraire, libelleHeure, filtrerMesCourses,
   type ModePeriode,
 } from './mescourses.logic'
 import type { CourseChauffeur, DocumentCourse, TourneeChauffeur } from './mescourses.types'
 
+// Pas de « Mois » : un chauffeur regarde sa journée, parfois sa semaine.
 const MODES: Array<{ key: ModePeriode; label: string }> = [
   { key: 'jour',    label: 'Jour' },
-  { key: 'semaine', label: 'Semaine' },
-  { key: 'mois',    label: 'Mois' },
+  { key: 'semaine', label: 'Sem.' },
 ]
+
+/** Heure locale du téléphone, pour l'état « en retard / bientôt ». */
+function maintenantLocal() {
+  const d = new Date()
+  const jour = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { jour, minutes: d.getHours() * 60 + d.getMinutes() }
+}
 
 const aujourdhui = () => new Date().toISOString().slice(0, 10)
 
@@ -58,7 +69,19 @@ const aujourdhui = () => new Date().toISOString().slice(0, 10)
  */
 export function MesCourses() {
   const { toast } = useToast()
-  const { companyId } = useProfile()
+  const { companyId, profile } = useProfile()
+  // Un président / DG / comptable voit TOUTES les courses (RLS). S'il roule
+  // aussi, il veut pouvoir ne garder que les siennes.
+  const voitTout = !!profile && profile.role !== 'chauffeur'
+  const [monId, setMonId] = useState<string | null>(null)
+  const [vue, setVue] = useState<'moi' | 'tous'>('tous')
+  const [reglagesOuverts, setReglagesOuverts] = useState(false)
+  // Rafraîchi chaque minute : « en retard » doit apparaître sans recharger.
+  const [maintenant, setMaintenant] = useState(maintenantLocal)
+  useEffect(() => {
+    const t = window.setInterval(() => setMaintenant(maintenantLocal()), 60_000)
+    return () => window.clearInterval(t)
+  }, [])
   // `tours_update_perm` exige président ou `planning.tournees:update`. On lit
   // ici la MÊME condition que la base : proposer un bouton que la RLS
   // refusera ensuite serait pire que ne pas l'afficher.
@@ -114,6 +137,17 @@ export function MesCourses() {
   useEffect(() => { rechargerTournees() }, [rechargerTournees])
 
   useEffect(() => {
+    if (!voitTout || !profile) return
+    let annule = false
+    getMaFicheEquipe(profile.id).then(({ data }) => {
+      if (annule || !data) return
+      setMonId(data.id)
+      setVue('moi')
+    })
+    return () => { annule = true }
+  }, [voitTout, profile])
+
+  useEffect(() => {
     if (!companyId) return
     let annule = false
     getDepot(companyId).then(({ data }) => {
@@ -141,8 +175,11 @@ export function MesCourses() {
   // useMemo : sans lui, ce tri/filtrage de TOUTES les courses est refait à
   // chaque rendu — y compris quand seul `busyId` change, donc à chaque clic
   // sur « Démarrer »/« Charger »/« Livrer » d'UNE SEULE course.
-  const groupes = useMemo(() => grouperParJour(courses), [courses])
-  const { reste, total } = useMemo(() => resteAFaire(courses), [courses])
+  const visibles = useMemo(
+    () => (voitTout && vue === 'moi' ? filtrerMesCourses(courses, monId) : courses),
+    [courses, voitTout, vue, monId],
+  )
+  const groupes = useMemo(() => grouperParJour(visibles), [visibles])
 
   // Découpage retrait/livraison par jour, calculé une seule fois avec `groupes`
   // plutôt qu'appelé en plein JSX à chaque rendu (ça tournait à chaque clic
@@ -151,6 +188,10 @@ export function MesCourses() {
     () => groupes.map(([jour, duJour]) => ({ jour, duJour, arrets: arretsDuJour(duJour) })),
     [groupes],
   )
+  const tousArrets = useMemo(() => groupesAvecArrets.flatMap(g => g.arrets), [groupesAvecArrets])
+  const prochain = useMemo(() => prochainArret(tousArrets), [tousArrets])
+  const { faits, total } = useMemo(() => progression(tousArrets), [tousArrets])
+  const afficherChauffeur = voitTout && vue === 'tous'
 
   /**
    * Un chauffeur ne peut qu'AVANCER une course : démarrer, puis livrer. La
@@ -237,91 +278,112 @@ export function MesCourses() {
     await rechargerListe()
   }
 
+  /** Échec sur un arrêt : la course reste ouverte, le bureau est alerté. */
+  const signaler = async (c: CourseChauffeur, motif: string, note: string | null) => {
+    setBusyId(c.id)
+    const { error } = await signalerProbleme(c.id, motif, note)
+    setBusyId(null)
+    if (error) { toast(error.message, 'error'); return }
+    toast('Problème signalé au bureau')
+    await rechargerListe()
+  }
+
   return (
     <Shell pageTitle="Mes courses">
       <InstallAppButton />
 
-      {/* Sélecteur de période — collé en haut, toujours atteignable au pouce */}
-      <div className="flex flex-col gap-3 mb-4">
-        <div className="flex items-center gap-1 p-1 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
-          {MODES.map(m => (
-            <button
-              key={m.key}
-              onClick={() => setMode(m.key)}
-              className={`flex-1 min-h-[40px] rounded-[var(--r-md)] text-[var(--fs-sm)] font-medium transition-colors ${
-                mode === m.key
-                  ? 'bg-[var(--brand)] text-white'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              {m.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setAncre(a => decalerPeriode(a, mode, -1))}
-            aria-label="Période précédente"
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-[var(--r-md)]
-              border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-          >
-            <ChevronLeft size={18} />
-          </button>
-
-          <div className="flex-1 text-center">
-            <span className="block text-[var(--fs-sm)] font-medium text-[var(--text)] first-letter:uppercase">
-              {libellePeriode(ancre, mode)}
+      {/* EN-TÊTE COMPACT : une seule ligne avant le premier arrêt. Le choix de
+          l'appli GPS se règle une fois — il vit dans les réglages repliés. */}
+      <div className="flex flex-col gap-2 mb-3">
+        <div className="flex items-center gap-1.5">
+          <BoutonIcone icone={ChevronLeft} libelle="Période précédente" onClick={() => setAncre(a => decalerPeriode(a, mode, -1))} />
+          <div className="flex-1 min-w-0 text-center">
+            <span className="block text-[var(--fs-sm)] font-medium text-[var(--text)] first-letter:uppercase truncate">
+              {mode === 'jour' && ancre === aujourdhui() ? "Aujourd'hui" : libellePeriode(ancre, mode)}
             </span>
             {!loading && (
               <span className="block text-[var(--fs-xs)] text-[var(--text-muted)]">
-                {total === 0
-                  ? 'aucune course'
-                  : `${reste} restante${reste > 1 ? 's' : ''} sur ${total}`}
+                {total === 0 ? 'aucun arrêt' : `${faits} / ${total} arrêt${total > 1 ? 's' : ''} fait${faits > 1 ? 's' : ''}`}
               </span>
             )}
           </div>
-
-          <button
-            onClick={() => setAncre(a => decalerPeriode(a, mode, 1))}
-            aria-label="Période suivante"
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-[var(--r-md)]
-              border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
-          >
-            <ChevronRight size={18} />
-          </button>
+          <BoutonIcone icone={ChevronRight} libelle="Période suivante" onClick={() => setAncre(a => decalerPeriode(a, mode, 1))} />
+          <div className="flex items-center p-0.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
+            {MODES.map(m => (
+              <button key={m.key} onClick={() => setMode(m.key)}
+                className={`min-h-[36px] px-2.5 rounded-[var(--r-sm)] text-[var(--fs-xs)] font-medium transition-colors ${
+                  mode === m.key ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                }`}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <BoutonIcone libelle="Réglages" actif={reglagesOuverts} onClick={() => setReglagesOuverts(o => !o)} />
         </div>
 
+        {/* Président / DG qui roule aussi : ses courses à lui, ou toute l'équipe. */}
+        {voitTout && monId && (
+          <div className="flex items-center gap-1 p-0.5 self-start rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
+            {([['moi', 'Mes courses'], ['tous', 'Tous les chauffeurs']] as const).map(([v, l]) => (
+              <button key={v} onClick={() => setVue(v)}
+                className={`min-h-[32px] px-3 rounded-[var(--r-sm)] text-[var(--fs-xs)] font-medium transition-colors ${
+                  vue === v ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                }`}>
+                {l}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {reglagesOuverts && (
+          <PanneauReglages titre={<><Navigation2 size={13} /> Application GPS (gardée sur ce téléphone)</>}>
+            <div className="flex items-center gap-1 p-1 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
+              {APPS_NAVIGATION.map(a => (
+                <button key={a.cle} onClick={() => changerAppNav(a.cle)}
+                  className={`flex-1 min-h-[36px] rounded-[var(--r-md)] text-[var(--fs-xs)] font-medium transition-colors ${
+                    appNav === a.cle ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}>
+                  {a.libelle}
+                </button>
+              ))}
+            </div>
+          </PanneauReglages>
+        )}
+
         {ancre !== aujourdhui() && (
-          <button
-            onClick={() => setAncre(aujourdhui())}
-            className="self-center text-[var(--fs-xs)] text-[var(--brand)] underline min-h-[32px]"
-          >
+          <button onClick={() => setAncre(aujourdhui())}
+            className="self-center text-[var(--fs-xs)] text-[var(--brand)] underline min-h-[28px]">
             Revenir à aujourd'hui
           </button>
         )}
       </div>
 
-      {/* Choix de l'application de navigation. Garde sur CE telephone : c'est
-          une commodite liee a l'appareil (« ici, j'ai Waze »), pas une donnee
-          de l'entreprise. */}
-      <div className="flex items-center gap-2 mb-4">
-        <Navigation2 size={14} className="text-[var(--text-muted)] shrink-0" />
-        <div className="flex items-center gap-1 p-1 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] flex-1">
-          {APPS_NAVIGATION.map(a => (
-            <button key={a.cle} onClick={() => changerAppNav(a.cle)}
-              className={`flex-1 min-h-[36px] rounded-[var(--r-md)] text-[var(--fs-xs)] font-medium transition-colors ${
-                appNav === a.cle
-                  ? 'bg-[var(--brand)] text-white'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}>
-              {a.libelle}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <ScannerTicket />
+      {/* PROCHAIN ARRÊT : où aller maintenant, sans chercher dans la liste. */}
+      {!loading && prochain && (
+        <button type="button"
+          onClick={() => document.getElementById(`arret-${prochain.cle}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          className="w-full mb-4 flex items-center gap-3 p-3 rounded-[var(--r-lg)] text-left
+            border border-[var(--brand)] bg-[var(--bg-card)]">
+          <span className="flex flex-col min-w-0 flex-1">
+            <span className="text-[var(--fs-xs)] font-semibold uppercase tracking-wide text-[var(--brand)]">
+              Prochain arrêt · {prochain.type === 'retrait' ? 'Retrait' : 'Livraison'}
+              {prochain.course.date !== aujourdhui() && ` · ${libellePeriode(prochain.course.date, 'jour')}`}
+            </span>
+            <span className="text-[var(--fs-sm)] font-medium text-[var(--text)] truncate">
+              {prochain.course.clients?.name ?? '—'}
+            </span>
+            <span className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">
+              {prochain.adresse || 'Adresse manquante'}
+            </span>
+          </span>
+          <span className="flex flex-col items-end gap-1 shrink-0">
+            <span className="text-[var(--fs-xs)] text-[var(--text-muted)] tabular-nums">{faits + 1} / {total}</span>
+            <span className="w-16 h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
+              <span className="block h-full bg-[var(--brand)]" style={{ width: `${total ? (faits / total) * 100 : 0}%` }} />
+            </span>
+          </span>
+        </button>
+      )}
 
       {erreur && (
         <p className="mb-4 text-[var(--fs-sm)] text-[var(--danger)]">{erreur}</p>
@@ -331,11 +393,13 @@ export function MesCourses() {
         <div className="flex flex-col gap-3">
           {[0, 1, 2].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
-      ) : courses.length === 0 ? (
+      ) : visibles.length === 0 ? (
         <EmptyState
           icon={<Package size={28} />}
           title="Aucune course sur cette période"
-          description="Change de période avec les flèches, ou reviens à aujourd'hui."
+          description={voitTout && vue === 'moi'
+            ? "Aucune course à ton nom. Passe sur « Tous les chauffeurs » pour voir l'équipe."
+            : "Change de période avec les flèches, ou reviens à aujourd'hui."}
         />
       ) : (
         <div className="flex flex-col gap-5">
@@ -371,6 +435,10 @@ export function MesCourses() {
                   onDemarrer={() => demarrer(a.course)}
                   onCharger={expediteur => charger(a.course, expediteur)}
                   onLivrer={destinataire => livrer(a.course, destinataire)}
+                  onSignaler={(motif, note) => signaler(a.course, motif, note)}
+                  prochain={prochain?.cle === a.cle}
+                  afficherChauffeur={afficherChauffeur}
+                  maintenant={maintenant}
                   premier={i === 0}
                   dernier={i === tous.length - 1}
                   onDeplacer={sens => deplacerArretDuJour(jour, a.cle, sens)}
@@ -381,6 +449,8 @@ export function MesCourses() {
           ))}
         </div>
       )}
+
+      <ScannerTicket />
     </Shell>
   )
 }
@@ -583,8 +653,8 @@ function formatDuree(min: number): string {
  * permettait pas.
  */
 function CarteArret({
-  arret, busy, documents, onDemarrer, onCharger, onLivrer,
-  premier, dernier, onDeplacer, appNav,
+  arret, busy, documents, onDemarrer, onCharger, onLivrer, onSignaler,
+  premier, dernier, onDeplacer, appNav, prochain, afficherChauffeur, maintenant,
 }: {
   arret: ArretJour<CourseChauffeur>
   busy: boolean
@@ -597,12 +667,23 @@ function CarteArret({
   onDeplacer: (sens: 'haut' | 'bas') => void
   /** Application de navigation choisie par le chauffeur. */
   appNav: AppNavigation
+  onSignaler: (motif: string, note: string | null) => void
+  /** C'est l'arrêt où aller maintenant : mis en avant. */
+  prochain: boolean
+  /** Vue « tous les chauffeurs » : dire à qui est l'arrêt. */
+  afficherChauffeur: boolean
+  maintenant: { jour: string; minutes: number }
 }) {
   const c = arret.course
   const estRetrait = arret.type === 'retrait'
   const etape = etapeCourante(c)
 
   const [panneauOuvert, setPanneauOuvert] = useState(false)
+  const [problemeOuvert, setProblemeOuvert] = useState(false)
+  // L'heure prévue concerne la LIVRAISON (colonne `arrival_time`).
+  const heure = !estRetrait ? libelleHeure(c.arrival_time) : null
+  const horaire = !estRetrait && !arret.fait ? etatHoraire(c.date, c.arrival_time, maintenant) : null
+  const probleme = aProblemeOuvert(c)
   const [messagesOuverts, setMessagesOuverts] = useState(false)
 
   /**
@@ -647,9 +728,11 @@ function CarteArret({
   }
 
   return (
-    <article className={`rounded-[var(--r-lg)] border p-4 flex flex-col gap-3 ${
+    <article id={`arret-${arret.cle}`} className={`scroll-mt-4 rounded-[var(--r-lg)] border p-4 flex flex-col gap-3 ${
       arret.fait
         ? 'border-[var(--border)] opacity-55'
+        : probleme ? 'border-[var(--danger)]'
+        : prochain ? 'border-[var(--brand)] border-2'
         : 'border-[var(--border)]'
     }`}>
       <div className="flex items-start justify-between gap-3">
@@ -661,6 +744,11 @@ function CarteArret({
             {estRetrait ? 'Retrait' : 'Livraison'}
           </span>
           <p className="font-medium text-[var(--text)] break-words">{c.clients?.name ?? '—'}</p>
+          {afficherChauffeur && (
+            <p className="inline-flex items-center gap-1 text-[var(--fs-xs)] text-[var(--text-muted)]">
+              <User size={12} /> {c.team_members?.full_name ?? 'Sans chauffeur'}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {/* L'ordre se change tant qu'il reste quelque chose à faire ici. */}
@@ -692,13 +780,48 @@ function CarteArret({
         </p>
       )}
 
-      {(c.description || c.weight_kg != null) && (
+      {/* HEURE PRÉVUE, colorée quand elle presse : l'urgence d'un express. */}
+      {heure && (
+        <p className={`inline-flex items-center gap-1.5 text-[var(--fs-sm)] font-medium ${
+          horaire === 'retard' ? 'text-[var(--danger)]' : horaire === 'bientot' ? 'text-[var(--warning)]' : 'text-[var(--text)]'
+        }`}>
+          <Clock size={14} /> Prévu à {heure}
+          {horaire === 'retard' && ' · en retard'}
+          {horaire === 'bientot' && ' · dans moins d’une heure'}
+        </p>
+      )}
+
+      {(c.description || c.weight_kg != null || c.nb_colis != null) && (
         <p className="text-[var(--fs-xs)] text-[var(--text-muted)] break-words">
           {[
+            c.nb_colis != null ? `${c.nb_colis} colis` : null,
             c.description,
             c.weight_kg != null ? `${c.weight_kg} kg` : null,
           ].filter(Boolean).join(' · ')}
         </p>
+      )}
+
+      {/* CONSIGNES du bureau : code, étage, horaires… Invisibles jusqu'ici. */}
+      {c.notes?.trim() && !arret.fait && (
+        <p className="flex items-start gap-2 p-2.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)]
+          text-[var(--fs-sm)] text-[var(--text)] whitespace-pre-line break-words">
+          <Info size={15} className="text-[var(--brand)] shrink-0 mt-0.5" /> {c.notes.trim()}
+        </p>
+      )}
+
+      {probleme && !arret.fait && (
+        <div className="flex items-start gap-2 p-2.5 rounded-[var(--r-md)] border border-[var(--danger)]
+          text-[var(--fs-sm)] text-[var(--danger)] break-words">
+          <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+          <span>
+            Signalé : {libelleMotif(c.probleme_motif)}
+            {c.probleme_le && ` à ${new Date(c.probleme_le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`}
+            {c.probleme_note && ` — ${c.probleme_note}`}
+            <span className="block text-[var(--fs-xs)] text-[var(--text-muted)]">
+              Le bureau est prévenu. Tu peux encore livrer si le client revient.
+            </span>
+          </span>
+        </div>
       )}
 
       {documents.length > 0 && !arret.fait && <PiecesJointes documents={documents} />}
@@ -722,7 +845,14 @@ function CarteArret({
           </button>
         )}
 
-        {action && !panneauOuvert && (
+        {!arret.fait && etape !== 'terminee' && !panneauOuvert && !problemeOuvert && (
+          <button type="button" onClick={() => setProblemeOuvert(true)} aria-label="Signaler un problème"
+            className={`${boutonCls} !text-[var(--danger)]`}>
+            <AlertTriangle size={16} /> Problème
+          </button>
+        )}
+
+        {action && !panneauOuvert && !problemeOuvert && (
           <Button variant="primary" className="min-h-[44px] ml-auto" disabled={busy}
             onClick={() => (action === 'demarrer' ? onDemarrer() : setPanneauOuvert(true))}>
             {busy ? '…' : LIBELLE[action]}
@@ -761,6 +891,15 @@ function CarteArret({
             )
           })}
         </div>
+      )}
+
+      {problemeOuvert && !arret.fait && (
+        <PanneauProbleme
+          courseId={c.id}
+          busy={busy}
+          onValider={(motif, note) => { setProblemeOuvert(false); onSignaler(motif, note) }}
+          onAnnuler={() => setProblemeOuvert(false)}
+        />
       )}
 
       {/* La condition sur l'étape n'est pas redondante : après validation, le
@@ -829,57 +968,49 @@ function ScannerTicket() {
     toast('Ticket envoyé — il apparaît côté gestion')
   }
 
-  return (
-    <div className="mb-4 rounded-[var(--r-lg)] border border-dashed border-[var(--border)] p-3">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*,application/pdf"
-        capture="environment"
-        className="hidden"
-        onChange={choisir}
-      />
+  // BOUTON FLOTTANT : toujours sous le pouce, sans occuper la liste. Le
+  // ticket (péage, plein…) arrive à n'importe quel moment de la journée.
+  const fermer = () => { if (!envoi) { setOuvert(false); setNote('') } }
 
-      {!ouvert ? (
-        <button
-          onClick={() => setOuvert(true)}
-          className="w-full min-h-[44px] flex items-center justify-center gap-2 text-[var(--fs-sm)]
-            text-[var(--text-muted)] hover:text-[var(--brand)] transition-colors"
-        >
-          <Camera size={16} /> Scanner un ticket
+  return (
+    <>
+      <input ref={inputRef} type="file" accept="image/*,application/pdf" capture="environment"
+        className="hidden" onChange={choisir} />
+
+      {/* Espace réservé en bas de liste : le bouton ne cache jamais le dernier arrêt. */}
+      <div className="h-20" aria-hidden />
+
+      {!ouvert && (
+        <button onClick={() => setOuvert(true)} aria-label="Scanner un ticket"
+          className="fixed z-20 right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] lg:right-8 lg:bottom-8
+            inline-flex items-center gap-2 h-14 pl-4 pr-5 rounded-full shadow-lg
+            bg-[var(--brand)] text-white text-[var(--fs-sm)] font-medium">
+          <Camera size={20} /> Ticket
         </button>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <input
-            type="text"
-            value={note}
-            onChange={e => setNote(e.target.value)}
-            placeholder="De quoi s'agit-il ? (péage A35, plein Movano…)"
-            className="w-full min-h-[44px] px-3 rounded-[var(--r-md)] bg-[var(--bg)]
-              border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)]
-              focus:outline-none focus:border-[var(--brand)]"
-          />
-          <div className="flex gap-2">
-            <Button
-              variant="primary"
-              className="flex-1 min-h-[44px]"
-              onClick={() => inputRef.current?.click()}
-              disabled={envoi}
-            >
-              {envoi ? 'Envoi…' : 'Prendre la photo'}
-            </Button>
-            <Button
-              variant="secondary"
-              className="min-h-[44px]"
-              onClick={() => { setOuvert(false); setNote('') }}
-              disabled={envoi}
-            >
-              Annuler
+      )}
+
+      {ouvert && (
+        <div className="fixed inset-0 z-30 flex items-end lg:items-center justify-center bg-black/50" onClick={fermer}>
+          <div onClick={e => e.stopPropagation()}
+            className="w-full lg:max-w-md flex flex-col gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]
+              rounded-t-[var(--r-lg)] lg:rounded-[var(--r-lg)] bg-[var(--bg-card)] border border-[var(--border)]">
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--fs-sm)] font-semibold text-[var(--text)]">Scanner un ticket</span>
+              <button onClick={fermer} disabled={envoi} aria-label="Fermer"
+                className="p-2 text-[var(--text-muted)] hover:text-[var(--text)]"><X size={18} /></button>
+            </div>
+            <input type="text" value={note} onChange={e => setNote(e.target.value)}
+              placeholder="De quoi s'agit-il ? (péage A35, plein Movano…)"
+              className="w-full min-h-[44px] px-3 rounded-[var(--r-md)] bg-[var(--bg)]
+                border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)]
+                focus:outline-none focus:border-[var(--brand)]" />
+            <Button variant="primary" className="min-h-[48px]" onClick={() => inputRef.current?.click()} disabled={envoi}>
+              <Camera size={16} /> {envoi ? 'Envoi…' : 'Prendre la photo'}
             </Button>
           </div>
         </div>
       )}
-    </div>
+    </>
   )
 }
 

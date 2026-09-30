@@ -12,7 +12,7 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
   // `await` glisse dans le tableau de Promise.all les ferait partir en serie.
   const { data: { user } } = await supabase.auth.getUser()
 
-  const [aRapprocher, facturesRes, livreesRes, devisRes, vehiculesRes, notesRes, sansJustifRes, docsLivraisonRes, ticketsRes, profilRes, droitChargesRes] = await Promise.all([
+  const [aRapprocher, facturesRes, livreesRes, devisRes, vehiculesRes, notesRes, sansJustifRes, docsLivraisonRes, ticketsRes, profilRes, droitChargesRes, problemesRes] = await Promise.all([
     getARapprocherCounts().catch(() => null),
     // Factures émises non payées (encours) — avec délai de paiement du client.
     supabase
@@ -64,6 +64,12 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
     // Même règle que la policy SQL : président, ou droit `finance.charges`.
     supabase.from('profiles').select('role').eq('id', user?.id ?? '').maybeSingle(),
     supabase.from('user_permissions').select('can_view').eq('resource_key', 'finance.charges').maybeSingle(),
+    // Échecs signalés par les chauffeurs, course encore ouverte.
+    supabase
+      .from('deliveries')
+      .select('id, statut, probleme_le')
+      .not('probleme_le', 'is', null)
+      .in('statut', ['planifiee', 'en_cours']),
   ])
 
   const peutTraiterLesTickets =
@@ -103,6 +109,9 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
     })),
     documentsLivraison: (docsLivraisonRes.data ?? []).map(d => ({
       entity_type: d.entity_type, entity_id: d.entity_id,
+    })),
+    problemesTerrain: (problemesRes.data ?? []).map(d => ({
+      id: d.id, statut: d.statut, probleme_le: d.probleme_le,
     })),
   }
 

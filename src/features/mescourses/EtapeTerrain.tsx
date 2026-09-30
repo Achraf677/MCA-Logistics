@@ -336,7 +336,7 @@ export function EtapeTerrain({
           <button onClick={() => onValider(nom.trim() || null)} disabled={busy || photoEnvoi}
             className="flex-1 min-h-[44px] text-[var(--fs-xs)] text-[var(--text-muted)]
               hover:text-[var(--text)] transition-colors disabled:opacity-40">
-            Terminer
+            {cfg.actionFinale} sans preuve
           </button>
         )}
         <button onClick={onAnnuler} disabled={busy}
