@@ -108,7 +108,7 @@ export function Dashboard() {
       {/* PC : occupe EXACTEMENT la hauteur visible (écran − barre du haut − marges
           de <main>) ; la dernière ligne prend le reste, le graphique et la liste
           s'y ajustent. Plus rien à faire défiler, quelle que soit la résolution. */}
-      <div className="flex flex-col gap-3 min-w-0 lg:h-[calc(100dvh-var(--topbar-h)-2.75rem)]">
+      <div className="flex flex-col gap-3 min-w-0 lg:h-[min(calc(100dvh-var(--topbar-h)-2.75rem),56rem)]">
 
         <p className="min-w-0 truncate leading-tight">
           <span className="font-display text-lg font-semibold">{prenom ? `Bonjour ${prenom}` : 'Bonjour'}</span>

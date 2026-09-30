@@ -147,7 +147,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
         <div className="flex items-center justify-between h-[var(--topbar-h)] px-3 border-b border-[var(--border)] shrink-0">
           {!collapsed && (
             <div className="flex items-center gap-3 min-w-0">
-              <span className="inline-grid place-items-center w-10 h-10 rounded-[var(--r-lg)] shrink-0 font-display font-bold text-white text-[16px]"
+              <span className="inline-grid place-items-center w-10 h-10 rounded-[var(--r-lg)] shrink-0 font-display font-bold text-white text-[calc(16rem/14)]"
                     style={{ background: 'linear-gradient(135deg, var(--brand), var(--brand-deep))' }}>M</span>
               <div className="flex flex-col min-w-0">
                 <span className="font-display font-bold text-[var(--fs-h3)] text-[var(--text)] leading-tight">MCA Logistics</span>
@@ -223,7 +223,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
               {pageTitle}
             </h1>
           </div>
-          <div className="flex-1 max-w-[420px] mx-4 hidden md:block">
+          <div className="flex-1 max-w-[30rem] mx-4 hidden md:block">
             <input
               value={q}
               onChange={e => setQ(e.target.value)}
@@ -251,7 +251,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
         {/* Contenu de l'onglet — tout Shell rendu ici devient « imbriqué » (sous-onglet). */}
         {/* Pas de dégradé ici : c'est le conteneur de scroll, un background-image
             dessus est redessiné à chaque frame. Le halo vient de body::before. */}
-        <main className="flex-1 overflow-auto p-5 md:p-8 lg:p-10">
+        <main className="flex-1 overflow-auto px-4 pt-4 pb-6 md:px-6 md:pt-5 lg:px-8 lg:pt-5 lg:pb-6">
           <div key={location.pathname} className="page-enter">
             <ShellNestContext.Provider value={true}>
               {children}

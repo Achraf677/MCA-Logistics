@@ -29,6 +29,16 @@
   `taille="sm"` 28 px dans les listes ; `actif` = ouvert). Ce qui se règle une fois
   (préférences, affichage) va dans `PanneauReglages`, replié derrière le bouton Réglages
   (roue). Appliquer à chaque onglet revu. Pas d'emoji, pictogrammes lucide.
+- **Site adaptatif (PC)** : la taille racine suit l'écran (`src/index.css`, bloc « Racine
+  adaptative ») — 14 px sur grand écran et mobile, jusqu'à 11 px sur petit écran PC.
+  Base 1rem = 14 px. Écrire les tailles de mise en page en `rem` (jamais de px fixe pour
+  une largeur de colonne / hauteur de bloc) pour qu'elles suivent.
+- **Un onglet de consultation tient sur un écran PC** sans défiler (modèle : Dashboard,
+  hauteur = `100dvh − topbar − marges`, dernière ligne en `flex-1`, listes défilantes
+  à l'intérieur). Sur mobile, une colonne qui défile.
+- ⚠️ `text-[var(--fs-*)]` est compilé par Tailwind v4 en `color:` (pas en taille) : ne pas
+  l'utiliser dans du nouveau code → `text-xs`, `text-sm` ou `text-[length:var(--fs-xs)]`.
+  Les ~700 usages existants : correctif global à décider (PR dédiée).
 
 ## Stack
 React + TypeScript + Tailwind v4 (`@tailwindcss/vite`) · Vite · Supabase (Postgres + RLS + Auth + Storage + Edge Functions). Dev local : `http://localhost:5173`. Repo : branche `main` = source de vérité.
