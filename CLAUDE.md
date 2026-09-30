@@ -17,9 +17,18 @@
 ## Revue onglet par onglet (méthode validée le 30/09/2026)
 - Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation →
   PR + preview Cloudflare → test → merge → onglet suivant.
-- Format des critiques : tirets, pas de tableau, pas de blabla. Critique archivée dans
-  `mca-spec/revue/NN-<onglet>.md`.
+- Format des critiques : tirets, pas de tableau, pas de blabla.
+- **1 onglet = 1 fichier** `mca-spec/revue/NN-<onglet>.md`, qui fait foi et se met à jour à
+  chaque PR sur l'onglet. Plan fixe : 1 Rôle · 2 Qui voit quoi · 3 L'écran de haut en bas ·
+  4 Gestes et écritures · 5 Données lues · 6 Fichiers · 7 Critique · 8 Lots · 9 À tester.
+  Modèle : `01-mes-courses.md`.
 - Ordre : 01 Mes courses, puis les sections du menu dans l'ordre.
+
+## UI — conventions validées
+- Gestes secondaires en pictogramme : `shared/ui/BoutonIcone` (bouton carré bordé, 40 px ;
+  `taille="sm"` 28 px dans les listes ; `actif` = ouvert). Ce qui se règle une fois
+  (préférences, affichage) va dans `PanneauReglages`, replié derrière le bouton Réglages
+  (roue). Appliquer à chaque onglet revu. Pas d'emoji, pictogrammes lucide.
 
 ## Stack
 React + TypeScript + Tailwind v4 (`@tailwindcss/vite`) · Vite · Supabase (Postgres + RLS + Auth + Storage + Edge Functions). Dev local : `http://localhost:5173`. Repo : branche `main` = source de vérité.

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare, Settings2, AlertTriangle, Info, User, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare, AlertTriangle, Info, User, X } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
+import { BoutonIcone, PanneauReglages } from '../../shared/ui/BoutonIcone'
 import { Badge } from '../../shared/ui/Badge'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton } from '../../shared/ui/Skeleton'
@@ -295,9 +296,7 @@ export function MesCourses() {
           l'appli GPS se règle une fois — il vit dans les réglages repliés. */}
       <div className="flex flex-col gap-2 mb-3">
         <div className="flex items-center gap-1.5">
-          <button onClick={() => setAncre(a => decalerPeriode(a, mode, -1))} aria-label="Période précédente" className={navCls}>
-            <ChevronLeft size={18} />
-          </button>
+          <BoutonIcone icone={ChevronLeft} libelle="Période précédente" onClick={() => setAncre(a => decalerPeriode(a, mode, -1))} />
           <div className="flex-1 min-w-0 text-center">
             <span className="block text-[var(--fs-sm)] font-medium text-[var(--text)] first-letter:uppercase truncate">
               {mode === 'jour' && ancre === aujourdhui() ? "Aujourd'hui" : libellePeriode(ancre, mode)}
@@ -308,9 +307,7 @@ export function MesCourses() {
               </span>
             )}
           </div>
-          <button onClick={() => setAncre(a => decalerPeriode(a, mode, 1))} aria-label="Période suivante" className={navCls}>
-            <ChevronRight size={18} />
-          </button>
+          <BoutonIcone icone={ChevronRight} libelle="Période suivante" onClick={() => setAncre(a => decalerPeriode(a, mode, 1))} />
           <div className="flex items-center p-0.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
             {MODES.map(m => (
               <button key={m.key} onClick={() => setMode(m.key)}
@@ -321,10 +318,7 @@ export function MesCourses() {
               </button>
             ))}
           </div>
-          <button onClick={() => setReglagesOuverts(o => !o)} aria-label="Réglages" aria-expanded={reglagesOuverts}
-            className={`${navCls} ${reglagesOuverts ? '!text-[var(--brand)] !border-[var(--brand)]' : ''}`}>
-            <Settings2 size={17} />
-          </button>
+          <BoutonIcone libelle="Réglages" actif={reglagesOuverts} onClick={() => setReglagesOuverts(o => !o)} />
         </div>
 
         {/* Président / DG qui roule aussi : ses courses à lui, ou toute l'équipe. */}
@@ -342,10 +336,7 @@ export function MesCourses() {
         )}
 
         {reglagesOuverts && (
-          <div className="flex flex-col gap-2 p-3 rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)]">
-            <span className="inline-flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
-              <Navigation2 size={13} /> Application GPS (gardée sur ce téléphone)
-            </span>
+          <PanneauReglages titre={<><Navigation2 size={13} /> Application GPS (gardée sur ce téléphone)</>}>
             <div className="flex items-center gap-1 p-1 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
               {APPS_NAVIGATION.map(a => (
                 <button key={a.cle} onClick={() => changerAppNav(a.cle)}
@@ -356,7 +347,7 @@ export function MesCourses() {
                 </button>
               ))}
             </div>
-          </div>
+          </PanneauReglages>
         )}
 
         {ancre !== aujourdhui() && (
@@ -945,9 +936,6 @@ function CarteArret({
     </article>
   )
 }
-
-const navCls = `min-h-[40px] min-w-[40px] shrink-0 flex items-center justify-center rounded-[var(--r-md)]
-  border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors`
 
 const flecheCls = `p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
   hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]

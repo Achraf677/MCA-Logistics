@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, RotateCcw, Settings2 } from 'lucide-react'
+import { Plus, RotateCcw } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { LigneParametre } from '../../shared/ui/LigneParametre'
+import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { IconeFamille } from '../../shared/ui/IconeFamille'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
@@ -98,13 +99,12 @@ export function GestionProduits() {
             actif={p.actif}
             busy={busy}
             actions={(
-              <button
-                className="inline-flex items-center justify-center w-7 h-7 rounded-[var(--r-sm)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]"
-                title="Réglages (unité, stock, périodicité)"
+              <BoutonIcone
+                taille="sm"
+                libelle="Réglages (unité, stock, périodicité)"
+                actif={ouvert === p.code}
                 onClick={() => setOuvert(o => (o === p.code ? null : p.code))}
-              >
-                <Settings2 size={13} />
-              </button>
+              />
             )}
             enfants={ouvert === p.code && (
               <FormReglages
