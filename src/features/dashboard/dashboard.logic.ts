@@ -42,6 +42,8 @@ export function moisDeLaPeriode(periode: PeriodeTendance, ref: Date): Mois[] {
 export interface PointTendance {
   cle: string
   libelle: string
+  debut: string
+  fin: string
   caHtCts: number
   nb: number
   nbFacturee: number
@@ -55,7 +57,7 @@ type LigneLivraison = AmountSource & { date: string; statut: string }
  */
 export function agregerParMois(liste: Mois[], livraisons: LigneLivraison[]): PointTendance[] {
   const points = new Map<string, PointTendance>(liste.map(m => [m.cle, {
-    cle: m.cle, libelle: m.libelle, caHtCts: 0, nb: 0, nbFacturee: 0,
+    cle: m.cle, libelle: m.libelle, debut: m.debut, fin: m.fin, caHtCts: 0, nb: 0, nbFacturee: 0,
   }]))
   for (const l of livraisons) {
     if (l.statut === 'annulee') continue
@@ -66,6 +68,12 @@ export function agregerParMois(liste: Mois[], livraisons: LigneLivraison[]): Poi
     if (l.statut === 'facturee' || l.statut === 'payee') p.nbFacturee += 1
   }
   return [...points.values()]
+}
+
+/** « septembre 2026 » depuis 'AAAA-MM'. */
+export function libelleMoisLong(cle: string): string {
+  const [a, m] = cle.split('-').map(Number)
+  return new Date(a, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
 }
 
 // ── Formats courts (pilotage : l'euro suffit, les centimes encombrent) ───────

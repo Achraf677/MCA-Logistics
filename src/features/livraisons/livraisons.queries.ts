@@ -32,6 +32,11 @@ export async function getDeliveries(filters: DeliveryFilters = {}) {
   return q
 }
 
+/** Une livraison par son id — ouverture directe via `/livraisons?ouvrir=<id>` (Dashboard). */
+export async function getDelivery(id: string) {
+  return supabase.from('deliveries').select(WITH_JOINS).eq('id', id).maybeSingle()
+}
+
 /** Livraisons ayant un bon de livraison (lv_numero attribué) — alimente l'onglet
  *  "Bons de livraison". Aucune nouvelle table/colonne : filtre sur deliveries. */
 export async function getDeliveriesWithLv(filters: Pick<DeliveryFilters, 'date_from' | 'date_to'> = {}) {

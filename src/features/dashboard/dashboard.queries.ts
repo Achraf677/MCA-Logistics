@@ -1,5 +1,4 @@
 import { supabase } from '../../app/providers'
-import type { DeliveryRow } from '../livraisons/livraisons.types'
 import type { CourseDuJour, FactureOuverte } from './dashboard.logic'
 
 /**
@@ -33,13 +32,13 @@ export async function getDashboard(debutPeriode: string, finPeriode: string, auj
       .select('invoiced_at, amount_ttc_cts, clients!client_id(payment_terms)')
       .eq('statut', 'facturee'),
     // Activité récente : les dernières MODIFIÉES, pas les plus lointaines dans
-    // le futur. `*` assumé : la ligne s'ouvre dans le tiroir d'édition.
+    // le futur. Lecture seule : un clic ouvre la livraison dans Livraisons.
     supabase
       .from('deliveries')
-      .select('*, clients!client_id(name), vehicles!vehicle_id(label), team_members!driver_id(full_name)')
+      .select('id, date, statut, amount_ht_cts, clients!client_id(name), team_members!driver_id(full_name)')
       .order('updated_at', { ascending: false })
       .limit(6)
-      .returns<DeliveryRow[]>(),
+      .returns<LigneMois[]>(),
   ])
 
   const erreur = [livraisons, jour, livrees, facturees, recentes].find(r => r.error)?.error ?? null
@@ -55,4 +54,25 @@ export async function getDashboard(debutPeriode: string, finPeriode: string, auj
     }),
     recentes: recentes.data ?? [],
   }
+}
+
+/** Livraisons d'un mois (clic sur une barre), lecture seule, hors annulées. */
+export async function getLivraisonsDuMois(debut: string, fin: string) {
+  return supabase
+    .from('deliveries')
+    .select('id, date, statut, amount_ht_cts, clients!client_id(name), team_members!driver_id(full_name)')
+    .gte('date', debut)
+    .lte('date', fin)
+    .neq('statut', 'annulee')
+    .order('date', { ascending: false })
+    .returns<LigneMois[]>()
+}
+
+export interface LigneMois {
+  id: string
+  date: string
+  statut: string
+  amount_ht_cts: number | null
+  clients: { name: string } | null
+  team_members: { full_name: string } | null
 }
