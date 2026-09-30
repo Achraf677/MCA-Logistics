@@ -1,4 +1,6 @@
+import { Navigate } from 'react-router-dom'
 import { Shell } from '../Shell'
+import { useProfile } from '../providers'
 import { Dashboard } from '../../features/dashboard/Dashboard'
 
 /**
@@ -11,6 +13,11 @@ import { Dashboard } from '../../features/dashboard/Dashboard'
  * cette section, donc l'app s'ouvre toujours sur le Dashboard.
  */
 export function PilotageSection() {
+  const { profile, loading } = useProfile()
+  // Un chauffeur n'a rien à faire ici (montants de la société) : son accueil
+  // est Mes courses. Sans ça, il atterrissait sur un « CA HT du mois ».
+  if (loading) return null
+  if (profile?.role === 'chauffeur') return <Navigate to="/mes-courses" replace />
   return (
     <Shell pageTitle="Pilotage">
       <Dashboard />

@@ -19,7 +19,7 @@ import { useToast }    from '../../shared/ui/useToast'
 import { supabase } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { downloadCSV } from '../../shared/lib/download'
-import { getDeliveries, exportDeliveriesCSV, getPendingSyncDeliveries, resyncPending, sendClientEmail } from './livraisons.queries'
+import { getDeliveries, getDelivery, exportDeliveriesCSV, getPendingSyncDeliveries, resyncPending, sendClientEmail } from './livraisons.queries'
 import {
   STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
   kpiSummary, formatCents, deliveryTotalHtCts, deliveryTotalTtcCts,
@@ -116,6 +116,21 @@ export function Livraisons() {
   }
 
   const openRow = (row: DeliveryRow) => { setSelected(row); setDrawerOpen(true) }
+
+  // Ouverture directe `?ouvrir=<id>` : le Dashboard (consultation seule) envoie
+  // ici pour voir ou modifier une livraison. Le paramètre est retiré aussitôt,
+  // pour qu'un rechargement ne rouvre pas le tiroir.
+  const aOuvrir = searchParams.get('ouvrir')
+  useEffect(() => {
+    if (!aOuvrir) return
+    let annule = false
+    getDelivery(aOuvrir).then(({ data }) => {
+      if (annule) return
+      if (data) { setSelected(data as unknown as DeliveryRow); setDrawerOpen(true) }
+      const p = new URLSearchParams(searchParams); p.delete('ouvrir'); setSearchParams(p, { replace: true })
+    })
+    return () => { annule = true }
+  }, [aOuvrir, searchParams, setSearchParams])
 
   // ── Facturation groupée ────────────────────────────────────────────────────
   const invoiceSelectedRows = rows.filter(r => invoiceIds.has(r.id))

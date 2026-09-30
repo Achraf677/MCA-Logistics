@@ -1,302 +1,335 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
-import { ChevronRight, Euro, Package, FileCheck2, Truck, Users, Building2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import {
+  ChevronRight, Euro, FileClock, Wallet, X, CalendarDays, BarChart3, History,
+  CalendarClock, Truck, CheckCircle2, AlarmClock, AlertTriangle,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
-import { KpiCard } from '../../shared/ui/KpiCard'
+import { useProfile } from '../../app/providers'
 import { Badge } from '../../shared/ui/Badge'
-import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
-import { DriverAvatar } from '../../shared/ui/DriverAvatar'
-import { LineChart } from '../../shared/ui/LineChart'
-import { TabActions } from '../../shared/ui/TabbedSection'
-// Chargé à la demande : c'est le plus gros bloc du site (formulaire à 5
-// onglets + génération de PDF), et cet écran l'importait en dur — donc
-// téléchargé dès l'ouverture de la page d'accueil, même sans jamais l'ouvrir.
-const DrawerLivraison = lazy(() =>
-  import('../livraisons/DrawerLivraison').then(m => ({ default: m.DrawerLivraison })))
-import { getDashboardKpis, getRecentDeliveries, getMonthlyTrend } from './dashboard.queries'
-import type { TrendPeriod } from './dashboard.queries'
-import { formatCents, STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
-import { effectiveHtCts } from '../../shared/lib/money'
-import type { DashboardKpis } from './dashboard.queries'
-import type { DeliveryRow } from '../livraisons/livraisons.types'
+import { BarresMensuelles } from '../../shared/ui/BarresMensuelles'
+import { BoutonIcone, PanneauReglages } from '../../shared/ui/BoutonIcone'
+import { formatCents, effectiveHtCts } from '../../shared/lib/money'
+import { STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
+import { getDashboard, getLivraisonsDuMois, type LigneMois } from './dashboard.queries'
+import {
+  isoLocal, moisDeLaPeriode, agregerParMois, evolution, libelleMoisLong,
+  resumeJour, aEncaisser, resteAFacturer, eurosArrondis, eurosCourts,
+  type PeriodeTendance, type PointTendance, type ResumeJour,
+} from './dashboard.logic'
 
+const PERIODES: Array<{ cle: PeriodeTendance; libelle: string }> = [
+  { cle: '6m', libelle: '6 derniers mois' },
+  { cle: '12m', libelle: '12 derniers mois' },
+  { cle: 'ytd', libelle: 'Depuis janvier' },
+]
+
+interface Donnees {
+  tendance12: PointTendance[]
+  jour: ResumeJour
+  aFacturer: { totalCts: number; nb: number }
+  encaisser: { totalCts: number; retardCts: number; nbRetard: number; nb: number }
+  recentes: LigneMois[]
+}
+
+/**
+ * Accueil — « où en est la société », en 10 secondes. ÉCRAN DE CONSULTATION :
+ * aucune modification ici ; chaque chiffre et chaque ligne mène à l'onglet où
+ * l'on agit (une livraison s'ouvre dans Livraisons via `?ouvrir=<id>`).
+ *
+ * Tout tient sur un écran PC : en-tête · journée + argent · tendance | liste.
+ * La liste de droite montre l'activité récente, ou les livraisons du mois
+ * cliqué sur le graphique. Un chauffeur n'arrive jamais ici (PilotageSection).
+ */
 export function Dashboard() {
   const navigate = useNavigate()
-  const [kpis, setKpis] = useState<DashboardKpis | null>(null)
-  const [recent, setRecent] = useState<DeliveryRow[]>([])
-  const [trend, setTrend] = useState<{ month: string; caHtCts: number; nb: number; nbFacturee: number; nbPayee: number }[]>([])
+  const { profile } = useProfile()
+  const [d, setD] = useState<Donnees | null>(null)
+  const [erreur, setErreur] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [drawerOpen, setDrawerOpen] = useState(false)
-  const [selected, setSelected] = useState<DeliveryRow | null>(null)
-  const [period, setPeriod] = useState<TrendPeriod>('6m')
+  const [periode, setPeriode] = useState<PeriodeTendance>('6m')
+  const [reglages, setReglages] = useState(false)
+  // Mois cliqué sur le graphique (clé 'AAAA-MM') et ses livraisons.
+  const [moisChoisi, setMoisChoisi] = useState<PointTendance | null>(null)
+  const [lignesMois, setLignesMois] = useState<LigneMois[] | null>(null)
+  // Barres plus basses sur téléphone : moins de défilement.
+  const [grandEcran] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [k, r, t] = await Promise.all([
-      getDashboardKpis(),
-      getRecentDeliveries(),
-      getMonthlyTrend('6m'),
-    ])
-    setKpis(k)
-    setRecent(r.data ?? [])
-    setTrend(t)
+    const now = new Date()
+    const aujourdhui = isoLocal(now)
+    const douze = moisDeLaPeriode('12m', now)
+    const r = await getDashboard(douze[0].debut, douze[douze.length - 1].fin, aujourdhui)
+    setErreur(r.erreur?.message ?? null)
+    setD({
+      tendance12: agregerParMois(douze, r.livraisons),
+      jour: resumeJour(r.jour, aujourdhui, now.getHours() * 60 + now.getMinutes()),
+      aFacturer: resteAFacturer(r.livrees),
+      encaisser: aEncaisser(r.facturees, aujourdhui),
+      recentes: r.recentes,
+    })
     setLoading(false)
   }, [])
 
-  const handlePeriodChange = async (p: TrendPeriod) => {
-    setPeriod(p)
-    const t = await getMonthlyTrend(p)
-    setTrend(t)
+  useEffect(() => { void load() }, [load])
+
+  // Découpe en mémoire : changer de période ne refait aucune requête.
+  const tendance = useMemo(() => {
+    if (!d) return []
+    const cles = new Set(moisDeLaPeriode(periode, new Date()).map(m => m.cle))
+    return d.tendance12.filter(p => cles.has(p.cle))
+  }, [d, periode])
+
+  const choisirMois = async (p: PointTendance) => {
+    if (moisChoisi?.cle === p.cle) { fermerMois(); return }
+    setMoisChoisi(p)
+    setLignesMois(null)
+    // Sur téléphone la liste est sous le graphique : on l'amène à l'écran.
+    if (!grandEcran) requestAnimationFrame(() => document.getElementById('liste-dashboard')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    const { data, error } = await getLivraisonsDuMois(p.debut, p.fin)
+    if (error) setErreur(error.message)
+    setLignesMois(data ?? [])
   }
+  const fermerMois = () => { setMoisChoisi(null); setLignesMois(null) }
 
-  useEffect(() => { load() }, [load])
+  const ceMois = d?.tendance12[d.tendance12.length - 1]
+  const moisPrecedent = d?.tendance12[d.tendance12.length - 2]
+  const variation = ceMois && moisPrecedent ? evolution(moisPrecedent.caHtCts, ceMois.caHtCts) : null
+  const ouvrir = (id: string) => navigate(`/livraisons?ouvrir=${id}`)
 
-  const openRow = (row: DeliveryRow) => { setSelected(row); setDrawerOpen(true) }
-
-  const last = trend[trend.length - 1]
-  const prev = trend[trend.length - 2]
-  const deltaCA = (last && prev && prev.caHtCts > 0)
-    ? { value: ((last.caHtCts - prev.caHtCts) / prev.caHtCts * 100).toFixed(1).replace('.', ',') + '%', dir: (last.caHtCts >= prev.caHtCts ? 'up' : 'down') as 'up' | 'down' }
-    : undefined
-  const deltaLiv = (last && prev)
-    ? { value: String(Math.abs(last.nb - prev.nb)), dir: (last.nb >= prev.nb ? 'up' : 'down') as 'up' | 'down' }
-    : undefined
-  const deltaFacturee = (last && prev)
-    ? { value: String(Math.abs(last.nbFacturee - prev.nbFacturee)), dir: (last.nbFacturee >= prev.nbFacturee ? 'up' : 'down') as 'up' | 'down' }
-    : undefined
+  const prenom = profile?.full_name?.trim().split(/\s+/)[0]
+  const dateDuJour = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+  const indexChoisi = moisChoisi ? tendance.findIndex(t => t.cle === moisChoisi.cle) : -1
 
   return (
     <Shell pageTitle="Dashboard">
-      <div className="space-y-6 min-w-0">
+      {/* PC : occupe EXACTEMENT la hauteur visible (écran − barre du haut − marges
+          de <main>) ; la dernière ligne prend le reste, le graphique et la liste
+          s'y ajustent. Plus rien à faire défiler, quelle que soit la résolution. */}
+      <div className="flex flex-col gap-3 min-w-0 lg:h-[min(calc(100dvh-var(--topbar-h)-2.75rem),56rem)]">
 
-        {/* ── En-tête ── */}
-        <div className="flex flex-wrap items-end justify-between gap-4 mb-1">
-          <div className="min-w-0">
-            <h2 className="font-display text-[28px] font-bold tracking-tight leading-none">Vue d'ensemble</h2>
-            <p className="text-[var(--fs-sm)] text-[var(--text-muted)] mt-2 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" style={{ boxShadow: '0 0 8px var(--success)' }} />
-              Activité du mois · mise à jour à l'instant
-            </p>
-          </div>
-          <TabActions>
-            <Button variant="primary" size="compact" onClick={() => { setSelected(null); setDrawerOpen(true) }}>
-              + Nouvelle livraison
-            </Button>
-          </TabActions>
-        </div>
+        <p className="min-w-0 truncate leading-tight">
+          <span className="font-display text-lg font-semibold">{prenom ? `Bonjour ${prenom}` : 'Bonjour'}</span>
+          <span className="ml-2 text-sm text-[var(--text-muted)]">· {dateDuJour}</span>
+        </p>
 
-        {/* ── KPIs ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 [&>*]:min-w-0">
-          {loading ? (
-            [0, 1, 2].map(i => <Skeleton key={i} className="h-[88px]" />)
-          ) : (
-            <>
-              <KpiCard label="CA HT du mois" value={formatCents(kpis!.caHtCts)} tone="success"
-                icon={<Euro size={18} />} delta={deltaCA} spark={trend.map(t => t.caHtCts)} />
-              <KpiCard label="Livraisons" value={kpis!.nbLivraisons} tone="info"
-                icon={<Package size={18} />} delta={deltaLiv} spark={trend.map(t => t.nb)} />
-              <KpiCard label="Facturées" value={kpis!.nbFacturee} tone="violet"
-                icon={<FileCheck2 size={18} />}
-                sub={`/ ${kpis!.nbLivraisons}`}
-                delta={deltaFacturee}
-                progress={kpis!.nbLivraisons ? Math.round((kpis!.nbFacturee / kpis!.nbLivraisons) * 100) : 0}
-                spark={trend.map(t => t.nbFacturee)} />
-            </>
-          )}
-        </div>
+        {erreur && <p className="text-sm text-[var(--danger)]">{erreur}</p>}
 
-        {/* ── Graphe + Référentiels ── */}
-        <div className="grid lg:grid-cols-[1.6fr_1fr] gap-5 stagger [&>*]:min-w-0">
-
-          {/* Courbe CA */}
-          <div className="glass rounded-[var(--r-xl)] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div className="flex items-baseline gap-3">
-                <span className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">
-                  Chiffre d'affaires HT
-                </span>
+        {/* ── Journée + argent : 4 cartes au même gabarit ── */}
+        <div className="grid gap-3 lg:grid-cols-[1.4fr_2fr] [&>*]:min-w-0">
+          <section className={carteCls}>
+            <EnteteCarte icone={<CalendarDays size={14} />} titre="Aujourd'hui"
+              droite={(
+                <button onClick={() => navigate('/calendrier')}
+                  className="inline-flex items-center gap-0.5 text-xs text-[var(--text-muted)] hover:text-[var(--text)]">
+                  Planning <ChevronRight size={13} />
+                </button>
+              )} />
+            {loading || !d ? <Skeleton className="h-[52px]" /> : (
+              <div className="grid grid-cols-5 gap-1.5">
+                <CaseJour icone={<CalendarClock size={13} />} valeur={d.jour.aFaire} libelle="À faire" onClick={() => navigate('/livraisons')} />
+                <CaseJour icone={<Truck size={13} />} valeur={d.jour.enCours} libelle="En cours" onClick={() => navigate('/livraisons')} />
+                <CaseJour icone={<CheckCircle2 size={13} />} valeur={d.jour.livrees} libelle="Livrées" ton="success" onClick={() => navigate('/livraisons')} />
+                <CaseJour icone={<AlarmClock size={13} />} valeur={d.jour.enRetard} libelle="Retard" ton={d.jour.enRetard ? 'danger' : undefined} onClick={() => navigate('/livraisons')} />
+                <CaseJour icone={<AlertTriangle size={13} />} valeur={d.jour.echecs} libelle="Échecs" ton={d.jour.echecs ? 'danger' : undefined} onClick={() => navigate('/livraisons')} />
               </div>
-              {/* Contrôle de période — plus de bascule CA/Livraisons : un seul
-                  graphique, celui qui compte le plus (l'autre était affichable
-                  d'un clic, rarement utilisé, et fait doublon avec le KPI
-                  « Livraisons » juste au-dessus). */}
-              <div className="flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden text-[var(--fs-xs)]">
-                {(['6m', '12m', 'ytd'] as TrendPeriod[]).map(p => (
-                  <button key={p} type="button" onClick={() => handlePeriodChange(p)}
-                    className={`px-3 py-1.5 transition-colors ${period === p
-                      ? 'bg-[var(--brand)] text-white font-semibold'
-                      : 'bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]'}`}>
-                    {p === '6m' ? '6 mois' : p === '12m' ? '12 mois' : 'Année'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {loading
-              ? <Skeleton className="h-[220px]" />
-              : <LineChart
-                  key={period}
-                  points={trend.map(t => ({ label: t.month, value: t.caHtCts }))}
-                  formatValue={formatCents}
-                  formatAxisY={(v: number) => {
-                    if (v === 0) return '0'
-                    const eur = Math.round(v / 100)
-                    return eur >= 1000 ? `${Math.round(eur / 1000)} k€` : `${eur} €`
-                  }}
-                />
-            }
-          </div>
+            )}
+          </section>
 
-          {/* Référentiels */}
-          <div className="glass rounded-[var(--r-xl)] p-3">
-            <div className="px-3 py-2.5 mb-1">
-              <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
-                Référentiels
-              </span>
-            </div>
-            {loading ? (
-              <div className="flex flex-col gap-2 p-1">
-                {[0, 1, 2].map(i => <Skeleton key={i} className="h-16" />)}
-              </div>
-            ) : (
-              <div className="flex flex-col">
-                {[
-                  { icon: <Truck size={18} />, value: kpis!.vehiculesActifs, label: 'Véhicules actifs', path: '/flotte' },
-                  { icon: <Users size={18} />, value: kpis!.chauffeurs, label: 'Chauffeurs actifs', path: '/equipe-hub' },
-                  { icon: <Building2 size={18} />, value: kpis!.clientsActifs, label: 'Clients actifs', path: '/tiers' },
-                ].map(item => (
-                  <button
-                    key={item.path}
-                    onClick={() => navigate(item.path)}
-                    className="w-full flex items-center gap-3 p-3 rounded-[var(--r-md)] hover:bg-[var(--bg-card-hover)] transition-colors text-left"
-                  >
-                    <span className="w-10 h-10 rounded-[var(--r-md)] grid place-items-center bg-[var(--brand-soft)] text-[var(--brand)] shrink-0">
-                      {item.icon}
-                    </span>
-                    <span>
-                      <b className="font-mono text-xl text-[var(--text)]">{item.value}</b>
-                      <small className="block text-[var(--text-muted)] text-[var(--fs-xs)]">{item.label}</small>
-                    </span>
-                    <ChevronRight size={18} className="ml-auto text-[var(--text-disabled)]" />
-                  </button>
-                ))}
-                {/* Le raccourci « À traiter » vivait ici, en double avec la
-                    cloche d'alertes en haut du site — retiré. */}
-              </div>
+          <div className="grid grid-cols-3 gap-3 [&>*]:min-w-0">
+            {loading || !d || !ceMois ? [0, 1, 2].map(i => <Skeleton key={i} className="h-[92px]" />) : (
+              <>
+                <Chiffre libelle="CA HT du mois" court="CA du mois" icone={<Euro size={14} />} valeur={eurosArrondis(ceMois.caHtCts)}
+                  detail={variation
+                    ? <span style={{ color: variation.dir === 'up' ? 'var(--success)' : 'var(--danger)' }}>{variation.dir === 'up' ? '+' : ''}{variation.value} vs mois dernier</span>
+                    : `${ceMois.nb} livraison${ceMois.nb > 1 ? 's' : ''}`}
+                  onClick={() => choisirMois(ceMois)} />
+                <Chiffre libelle="Reste à facturer" court="À facturer" icone={<FileClock size={14} />} valeur={eurosArrondis(d.aFacturer.totalCts)}
+                  ton={d.aFacturer.nb ? 'warning' : undefined}
+                  detail={`${d.aFacturer.nb} livrée${d.aFacturer.nb > 1 ? 's' : ''} · HT`}
+                  onClick={() => navigate('/livraisons')} />
+                <Chiffre libelle="À encaisser" court="À encaisser" icone={<Wallet size={14} />} valeur={eurosArrondis(d.encaisser.totalCts)}
+                  ton={d.encaisser.nbRetard ? 'danger' : undefined}
+                  detail={d.encaisser.nbRetard
+                    ? `dont ${eurosArrondis(d.encaisser.retardCts)} en retard`
+                    : `${d.encaisser.nb} facture${d.encaisser.nb > 1 ? 's' : ''} · TTC`}
+                  onClick={() => navigate('/encaissement')} />
+              </>
             )}
           </div>
         </div>
 
-        {/* ── Dernières livraisons ── */}
-        <div className="glass rounded-[var(--r-xl)] overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
-            <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
-              Dernières livraisons
-            </span>
-            <Button variant="ghost" size="compact" onClick={() => navigate('/livraisons')}>
-              Voir tout <ChevronRight size={13} />
-            </Button>
-          </div>
-
-          {loading ? (
-            <div className="p-4 space-y-2">
-              {[0, 1, 2, 3, 4].map(i => <Skeleton key={i} className="h-12" />)}
-            </div>
-          ) : recent.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 gap-3 text-[var(--text-muted)]">
-              <p className="text-[var(--fs-sm)]">Aucune livraison enregistrée.</p>
-              <Button variant="primary" onClick={() => navigate('/livraisons')}>
-                Créer une livraison
-              </Button>
-            </div>
-          ) : (
-            <>
-              {/* Desktop */}
-              <div className="hidden md:block">
-                <div className="overflow-x-auto">
-                <table className="w-full text-[var(--fs-sm)]">
-                  <thead>
-                    <tr className="bg-[var(--bg-elevated)] text-left">
-                      {['Date', 'Client', 'Chauffeur', 'Montant HT', 'Statut'].map(h => (
-                        <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] text-[var(--text-muted)] uppercase tracking-wide">
-                          {h}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recent.map((row, i) => (
-                      <tr
-                        key={row.id}
-                        onClick={() => openRow(row)}
-                        className={`border-t border-[var(--border)] cursor-pointer transition-colors hover:bg-[var(--bg-card-hover)]
-                          ${i % 2 === 0 ? '' : 'bg-[var(--bg-card)]/40'}`}
-                      >
-                        <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
-                          {new Date(row.date).toLocaleDateString('fr-FR')}
-                        </td>
-                        <td className="px-4 py-3 font-medium text-[var(--text)]">
-                          {row.clients?.name ?? '—'}
-                        </td>
-                        <td className="px-4 py-3 text-[var(--text-muted)]">
-                          {row.team_members?.full_name
-                            ? <span className="inline-flex items-center gap-2">
-                                <DriverAvatar name={row.team_members.full_name} />
-                                {row.team_members.full_name}
-                              </span>
-                            : '—'}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-[var(--text)]">
-                          {formatCents(effectiveHtCts(row))}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>{STATUS_LABELS[row.statut]}</Badge>
-                        </td>
-                      </tr>
+        {/* ── Tendance | liste (activité récente ou mois cliqué) ── */}
+        <div className="grid gap-3 lg:grid-cols-[1.5fr_1fr] lg:flex-1 lg:min-h-0 [&>*]:min-w-0 lg:[&>*]:min-h-0">
+          <section className={`${carteCls} flex flex-col`}>
+            <EnteteCarte icone={<BarChart3 size={14} />} titre="Chiffre d'affaires HT"
+              sous={`${PERIODES.find(p => p.cle === periode)?.libelle} · clique un mois pour ses livraisons`}
+              droite={<BoutonIcone libelle="Réglages du graphique" actif={reglages} onClick={() => setReglages(o => !o)} />} />
+            {reglages && (
+              <div className="mb-3">
+                <PanneauReglages titre="Période">
+                  <div className="flex flex-wrap gap-1">
+                    {PERIODES.map(p => (
+                      <button key={p.cle} type="button" onClick={() => { setPeriode(p.cle); setReglages(false) }}
+                        className={`min-h-[36px] px-3 rounded-[var(--r-md)] text-xs font-medium transition-colors ${
+                          periode === p.cle ? 'bg-[var(--brand)] text-white' : 'border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
+                        }`}>
+                        {p.libelle}
+                      </button>
                     ))}
-                  </tbody>
-                </table>
-                </div>
+                  </div>
+                </PanneauReglages>
               </div>
+            )}
+            {loading
+              ? <Skeleton className="h-[12rem] lg:flex-1" />
+              : <div className="lg:flex-1 lg:min-h-0"><BarresMensuelles
+                  hauteur={grandEcran ? undefined : 140}
+                  points={tendance.map(t => ({ libelle: t.libelle, valeur: t.caHtCts }))}
+                  selection={indexChoisi >= 0 ? indexChoisi : null}
+                  onSelection={i => void choisirMois(tendance[i])}
+                  formatCourt={eurosCourts}
+                  formatLong={formatCents} /></div>}
+          </section>
 
-              {/* Mobile */}
-              <div className="md:hidden flex flex-col gap-2 p-3">
-                {recent.map(row => (
-                  <button
-                    key={row.id}
-                    onClick={() => openRow(row)}
-                    className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 hover:bg-[var(--bg-card-hover)] transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <span className="font-medium text-[var(--text)]">{row.clients?.name ?? '—'}</span>
-                      <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>{STATUS_LABELS[row.statut]}</Badge>
-                    </div>
-                    <div className="flex items-end justify-between gap-2">
-                      <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-                        {new Date(row.date).toLocaleDateString('fr-FR')}
-                        {row.team_members?.full_name && ` · ${row.team_members.full_name}`}
-                      </span>
-                      <span className="font-mono font-semibold text-[var(--text)]">
-                        {formatCents(effectiveHtCts(row))}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+          <section id="liste-dashboard" className={`${carteCls} !p-0 overflow-hidden flex flex-col scroll-mt-4`}>
+            <div className="px-3 pt-3">
+              {moisChoisi ? (
+                <EnteteCarte icone={<BarChart3 size={14} />} titre={libelleMoisLong(moisChoisi.cle)}
+                  sous={lignesMois ? `${lignesMois.length} livraison${lignesMois.length > 1 ? 's' : ''} · ${formatCents(moisChoisi.caHtCts)} HT` : 'Chargement…'}
+                  droite={<BoutonIcone icone={X} libelle="Revenir à l'activité récente" onClick={fermerMois} />} />
+              ) : (
+                <EnteteCarte icone={<History size={14} />} titre="Activité récente"
+                  droite={(
+                    <button onClick={() => navigate('/livraisons')}
+                      className="inline-flex items-center gap-0.5 text-xs text-[var(--text-muted)] hover:text-[var(--text)]">
+                      Tout voir <ChevronRight size={13} />
+                    </button>
+                  )} />
+              )}
+            </div>
+            <ListeLivraisons
+              lignes={moisChoisi ? lignesMois : (loading || !d ? null : d.recentes)}
+              vide={moisChoisi ? 'Aucune livraison ce mois-ci.' : 'Aucune livraison enregistrée.'}
+              onOuvrir={ouvrir}
+              defilante={!!moisChoisi} />
+          </section>
         </div>
-
       </div>
-
-      <Suspense fallback={null}>
-        <DrawerLivraison
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          delivery={selected}
-          onSaved={load}
-        />
-      </Suspense>
     </Shell>
+  )
+}
+
+const carteCls = 'rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] p-3'
+/** Libellé de carte, IDENTIQUE partout (taille en clair : `text-xs`
+ *  est lu par Tailwind comme une couleur, pas comme une taille). */
+const libelleCls = 'text-[11px] sm:text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]'
+
+/** En-tête commun à TOUTES les cartes : pictogramme + libellé, même style partout. */
+function EnteteCarte({ icone, titre, sous, droite }: {
+  icone: React.ReactNode
+  titre: string
+  sous?: string
+  droite?: React.ReactNode
+}) {
+  return (
+    <div className="flex items-start justify-between gap-2 mb-2 min-h-[20px]">
+      <div className="min-w-0">
+        <span className={`inline-flex items-center gap-1.5 ${libelleCls}`}>
+          {icone} {titre}
+        </span>
+        {sous && <span className="block text-[11px] sm:text-xs text-[var(--text-disabled)] truncate">{sous}</span>}
+      </div>
+      {droite}
+    </div>
+  )
+}
+
+/** Liste compacte de livraisons, lecture seule : un clic ouvre la livraison dans Livraisons. */
+function ListeLivraisons({ lignes, vide, onOuvrir, defilante }: {
+  lignes: LigneMois[] | null
+  vide: string
+  onOuvrir: (id: string) => void
+  defilante: boolean
+}) {
+  if (!lignes) return <div className="p-3 space-y-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-10" />)}</div>
+  if (lignes.length === 0) {
+    return <p className="flex-1 flex items-center justify-center py-10 text-sm text-[var(--text-muted)]">{vide}</p>
+  }
+  return (
+    <div className={`flex flex-col divide-y divide-[var(--border)] border-t border-[var(--border)] overflow-y-auto lg:flex-1 lg:min-h-0 ${defilante ? 'max-h-[20rem] lg:max-h-none' : ''}`}>
+      {lignes.map(row => (
+        <button key={row.id} onClick={() => onOuvrir(row.id)}
+          className="w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-[var(--bg-card-hover)] transition-colors">
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-[var(--text)] truncate">{row.clients?.name ?? '—'}</span>
+            <span className="block text-xs text-[var(--text-muted)] truncate">
+              {dateCourte(row.date)}{row.team_members?.full_name && ` · ${row.team_members.full_name}`}
+            </span>
+          </span>
+          <span className="flex flex-col sm:flex-row items-end sm:items-center gap-1 sm:gap-3 shrink-0">
+            <span className="font-mono text-sm text-[var(--text)]">{formatCents(effectiveHtCts(row))}</span>
+            <span className="sm:w-[92px] flex justify-end whitespace-nowrap [&_*]:whitespace-nowrap">
+              <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>{STATUS_LABELS[row.statut]}</Badge>
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/** Un chiffre d'argent : même gabarit que la carte « Aujourd'hui », arrondi à l'euro. */
+function Chiffre({ libelle, court, icone, valeur, detail, ton, onClick }: {
+  libelle: string
+  /** Libellé mobile (un tiers d'écran de large). */
+  court: string
+  icone: React.ReactNode
+  valeur: string
+  detail: React.ReactNode
+  ton?: 'warning' | 'danger'
+  onClick: () => void
+}) {
+  const couleur = ton === 'danger' ? 'var(--danger)' : ton === 'warning' ? 'var(--warning)' : 'var(--text)'
+  return (
+    <button type="button" onClick={onClick}
+      className={`${carteCls} text-left flex flex-col min-w-0 hover:border-[var(--brand)] transition-colors`}>
+      <span className={`inline-flex items-center gap-1.5 mb-2 min-h-[20px] truncate ${libelleCls}`}>
+        <span className="hidden sm:inline-flex">{icone}</span>
+        <span className="sm:hidden">{court}</span><span className="hidden sm:inline">{libelle}</span>
+      </span>
+      <span className="font-mono font-semibold text-base sm:text-2xl leading-tight truncate" style={{ color: couleur }}>{valeur}</span>
+      <span className="mt-auto pt-1 text-[11px] sm:text-xs text-[var(--text-muted)] truncate">{detail}</span>
+    </button>
+  )
+}
+
+/** 'AAAA-MM-JJ' → '30/09' sans passer par UTC. */
+function dateCourte(iso: string): string {
+  const [, m, j] = iso.split('-')
+  return `${j}/${m}`
+}
+
+/** Une case du bloc « Aujourd'hui » : même langage visuel que les chiffres voisins. */
+function CaseJour({ icone, valeur, libelle, ton, onClick }: {
+  icone: React.ReactNode
+  valeur: number
+  libelle: string
+  ton?: 'success' | 'danger'
+  onClick: () => void
+}) {
+  const couleur = ton === 'danger' ? 'var(--danger)' : ton === 'success' ? 'var(--success)' : 'var(--text)'
+  return (
+    <button type="button" onClick={onClick}
+      className={`flex flex-col items-center justify-center gap-0.5 py-1.5 rounded-[var(--r-md)] border transition-colors hover:border-[var(--brand)] ${
+        ton === 'danger' ? 'border-[var(--danger)]/40 bg-[var(--danger)]/10' : 'border-[var(--border)]'
+      }`}>
+      <span className="inline-flex items-center gap-1 text-[11px] sm:text-xs text-[var(--text-muted)] leading-tight">
+        <span className="hidden sm:inline-flex" style={{ color: ton ? couleur : undefined }}>{icone}</span>{libelle}
+      </span>
+      <span className="font-mono font-semibold text-base sm:text-2xl leading-tight" style={{ color: couleur }}>{valeur}</span>
+    </button>
   )
 }
