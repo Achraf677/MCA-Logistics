@@ -13,41 +13,42 @@
 - Président / DG / comptable : toute la société (RLS).
 
 ## 3. L'écran, de haut en bas
-- En-tête compact : « Bonjour <prénom> », date du jour, bouton « + Nouvelle livraison »
-  (visible : il était avant dans un emplacement réservé aux écrans à sous-onglets, donc
-  jamais affiché ici).
-- Bloc « Aujourd'hui » (5 cases cliquables → Livraisons) : À faire · En cours · Livrées ·
-  En retard (heure prévue dépassée ou course d'un jour passé encore ouverte) · Échecs
-  (signalés par un chauffeur). Rouge si > 0. Lien « Planning » → Calendrier.
-- 4 KPI argent (2 colonnes mobile, 4 PC), cliquables :
-  - CA HT du mois (évolution vs mois précédent, nb livraisons, mini-courbe) → Livraisons ;
-  - Reste à facturer (livrées non facturées, HT) → Livraisons ;
-  - À encaisser (facturées, TTC, « dont X en retard » selon délai client) → Encaissement ;
-  - Marge du mois = CA HT − charges HT du mois (date de la charge, hors immobilisations)
-    → Charges.
-- Courbe « Chiffre d'affaires HT » ; période (6 / 12 mois / depuis janvier) derrière le
-  `BoutonIcone` Réglages.
-- « Activité récente » : 8 dernières livraisons MODIFIÉES (tableau PC, liste mobile) →
-  tiroir livraison.
+- Pensé pour tenir sur UN écran PC (1080p) sans défiler ; sur mobile, une colonne.
+- Ligne 1 : « Bonjour <prénom> · date du jour » + « + Nouvelle livraison ».
+- Ligne 2 (PC : 2 blocs côte à côte) :
+  - « Aujourd'hui » : 5 cases cliquables (→ Livraisons) À faire · En cours · Livrées ·
+    Retard (heure prévue dépassée ou course d'un jour passé encore ouverte) · Échecs
+    (signalés par un chauffeur) ; rouge si > 0 ; lien « Planning » → Calendrier ;
+  - 3 chiffres, arrondis à l'euro, cliquables : CA HT du mois (évolution vs mois dernier)
+    → Livraisons · Reste à facturer (livrées non facturées, HT) → Livraisons ·
+    À encaisser (facturées, TTC, « dont X en retard » selon délai client) → Encaissement.
+    Libellés courts sur mobile (« CA du mois », « À facturer »).
+- Ligne 3 (PC : 2 colonnes) :
+  - « Chiffre d'affaires HT » en BARRES mensuelles (`shared/ui/BarresMensuelles`,
+    valeur en k€ au-dessus, mois en cours en couleur marque) ; période 6 / 12 mois /
+    depuis janvier derrière le `BoutonIcone` Réglages ; barres plus basses sur mobile ;
+  - « Activité récente » : 6 dernières livraisons modifiées (client, date · chauffeur,
+    montant, statut) → tiroir livraison.
+- Retiré : marge du mois (à la demande), « Référentiels », courbe lissée.
 
 ## 4. Gestes et écritures
 - Aucun écrit direct : « Nouvelle livraison » et un clic sur une ligne ouvrent le tiroir
   Livraisons. Tout le reste = navigation.
 
-## 5. Données lues (une vague parallèle de 6 requêtes, plus aucune par mois)
-- `deliveries` des 12 derniers mois (date, statut, amount_ht_cts) + `charges` (date,
-  montant_ht_cts, hors immobilisations) → courbe, CA, marge, découpés en mémoire.
+## 5. Données lues (une vague parallèle de 5 requêtes, plus aucune par mois)
+- `deliveries` des 12 derniers mois (date, statut, amount_ht_cts) → barres et CA,
+  découpés en mémoire.
 - `deliveries` du jour + ouvertes des jours passés (date, statut, arrival_time, probleme_le).
 - `deliveries` livrées (amount_ht_cts) ; facturées (invoiced_at, amount_ttc_cts,
   `clients.payment_terms`, 30 j par défaut).
-- 8 dernières modifiées (`*` + client, véhicule, chauffeur) pour le tiroir.
+- 6 dernières modifiées (`*` + client, véhicule, chauffeur) pour le tiroir.
 
 ## 6. Fichiers
 - `src/features/dashboard/Dashboard.tsx`, `dashboard.queries.ts`, `dashboard.logic.ts`
   (+ tests : bornes de mois en heure locale, agrégation, journée, encaissement).
 - `src/app/sections/PilotageSection.tsx` (renvoi chauffeur).
 - Dette baselinée : importe `livraisons` (tiroir, libellés de statut, type).
-- Partagé : `KpiCard`, `LineChart`, `DriverAvatar`, `BoutonIcone`, `money`.
+- Partagé : `BarresMensuelles`, `BoutonIcone`, `Badge`, `money`.
 
 ## 7. Critique (30/09/2026)
 Bon
@@ -79,8 +80,9 @@ Pas bon
   - chauffeur → redirigé sur Mes courses depuis `/` ;
   - bloc « Aujourd'hui » : à faire / en cours / livrées / en retard / échecs signalés,
     cliquable (→ Livraisons / Calendrier) ;
-  - KPI argent : CA HT du mois · Reste à facturer (livrées non facturées) · À encaisser
-    (dont en retard) · Marge du mois (CA − charges HT) ;
+  - chiffres argent : CA HT du mois · Reste à facturer · À encaisser (dont en retard) ;
+    marge retirée à la demande ;
+  - mise en page sur un écran, barres mensuelles au lieu de la courbe lissée ;
   - « Référentiels » supprimé ; « Dernières livraisons » = dernières modifiées / du jour ;
   - en-tête compact (salutation + date du jour, bouton Nouvelle livraison),
     réglages de la courbe derrière `BoutonIcone` ;

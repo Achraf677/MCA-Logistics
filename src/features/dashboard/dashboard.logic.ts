@@ -43,23 +43,19 @@ export interface PointTendance {
   cle: string
   libelle: string
   caHtCts: number
-  chargesHtCts: number
   nb: number
   nbFacturee: number
 }
 
 type LigneLivraison = AmountSource & { date: string; statut: string }
-type LigneCharge = { date: string; montant_ht_cts: number | null }
 
 /**
- * Regroupe livraisons (hors annulées) et charges par mois. Une seule requête
- * par table pour toute la période, au lieu de deux par mois.
+ * Regroupe les livraisons (hors annulées) par mois. Une seule requête pour
+ * toute la période, au lieu de deux par mois.
  */
-export function agregerParMois(
-  liste: Mois[], livraisons: LigneLivraison[], charges: LigneCharge[],
-): PointTendance[] {
+export function agregerParMois(liste: Mois[], livraisons: LigneLivraison[]): PointTendance[] {
   const points = new Map<string, PointTendance>(liste.map(m => [m.cle, {
-    cle: m.cle, libelle: m.libelle, caHtCts: 0, chargesHtCts: 0, nb: 0, nbFacturee: 0,
+    cle: m.cle, libelle: m.libelle, caHtCts: 0, nb: 0, nbFacturee: 0,
   }]))
   for (const l of livraisons) {
     if (l.statut === 'annulee') continue
@@ -69,11 +65,23 @@ export function agregerParMois(
     p.nb += 1
     if (l.statut === 'facturee' || l.statut === 'payee') p.nbFacturee += 1
   }
-  for (const c of charges) {
-    const p = points.get(c.date.slice(0, 7))
-    if (p) p.chargesHtCts += c.montant_ht_cts ?? 0
-  }
   return [...points.values()]
+}
+
+// ── Formats courts (pilotage : l'euro suffit, les centimes encombrent) ───────
+
+const EUROS = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
+
+/** 189459 → « 1 895 € ». */
+export function eurosArrondis(cts: number): string {
+  return EUROS.format(Math.round(cts / 100))
+}
+
+/** 189459 → « 1,9 k€ » ; 85000 → « 850 € ». Pour les étiquettes de barres. */
+export function eurosCourts(cts: number): string {
+  const eur = Math.round(cts / 100)
+  if (Math.abs(eur) < 1000) return `${eur} €`
+  return `${(eur / 1000).toFixed(1).replace('.', ',').replace(/,0$/, '')} k€`
 }
 
 /** Évolution en % entre deux valeurs ; `null` si la base est nulle. */

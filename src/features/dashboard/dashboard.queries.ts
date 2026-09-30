@@ -5,7 +5,7 @@ import type { CourseDuJour, FactureOuverte } from './dashboard.logic'
 /**
  * Tout ce que le Dashboard affiche, en UNE vague de requêtes parallèles.
  *
- * La courbe charge les 12 derniers mois d'un coup (livraisons + charges) et se
+ * La tendance charge les 12 derniers mois de livraisons d'un coup et se
  * découpe ensuite en mémoire (`dashboard.logic.ts`) : changer de période ne
  * refait aucune requête. Avant : deux requêtes PAR MOIS, donc 12 à 24.
  *
@@ -13,18 +13,12 @@ import type { CourseDuJour, FactureOuverte } from './dashboard.logic'
  * vers Mes courses), un président / DG voit toute la société.
  */
 export async function getDashboard(debutPeriode: string, finPeriode: string, aujourdhui: string) {
-  const [livraisons, charges, jour, livrees, facturees, recentes] = await Promise.all([
+  const [livraisons, jour, livrees, facturees, recentes] = await Promise.all([
     supabase
       .from('deliveries')
       .select('date, statut, amount_ht_cts')
       .gte('date', debutPeriode)
       .lte('date', finPeriode),
-    supabase
-      .from('charges')
-      .select('date, montant_ht_cts')
-      .gte('date', debutPeriode)
-      .lte('date', finPeriode)
-      .eq('est_immobilisation', false),
     // Journée : les courses d'aujourd'hui + les ouvertes restées en arrière.
     supabase
       .from('deliveries')
@@ -44,16 +38,15 @@ export async function getDashboard(debutPeriode: string, finPeriode: string, auj
       .from('deliveries')
       .select('*, clients!client_id(name), vehicles!vehicle_id(label), team_members!driver_id(full_name)')
       .order('updated_at', { ascending: false })
-      .limit(8)
+      .limit(6)
       .returns<DeliveryRow[]>(),
   ])
 
-  const erreur = [livraisons, charges, jour, livrees, facturees, recentes].find(r => r.error)?.error ?? null
+  const erreur = [livraisons, jour, livrees, facturees, recentes].find(r => r.error)?.error ?? null
 
   return {
     erreur,
     livraisons: livraisons.data ?? [],
-    charges: charges.data ?? [],
     jour: (jour.data ?? []) as CourseDuJour[],
     livrees: livrees.data ?? [],
     facturees: (facturees.data ?? []).map((f): FactureOuverte => {

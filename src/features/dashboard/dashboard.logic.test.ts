@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  isoLocal, mois, moisDeLaPeriode, agregerParMois, evolution,
+  isoLocal, mois, moisDeLaPeriode, agregerParMois, evolution, eurosArrondis, eurosCourts,
   resumeJour, echeance, aEncaisser, resteAFacturer,
 } from './dashboard.logic'
 
@@ -34,9 +34,9 @@ describe('agregerParMois', () => {
       { date: '2026-09-01', statut: 'facturee', amount_ht_cts: 2000 },
       { date: '2026-09-02', statut: 'annulee', amount_ht_cts: 9999 },
       { date: '2026-03-01', statut: 'payee', amount_ht_cts: 5000 },
-    ], [{ date: '2026-09-10', montant_ht_cts: 300 }, { date: '2026-09-11', montant_ht_cts: null }])
+    ])
     expect(pts[0]).toMatchObject({ cle: '2026-08', caHtCts: 1000, nb: 1, nbFacturee: 0 })
-    expect(pts[1]).toMatchObject({ cle: '2026-09', caHtCts: 2000, nb: 1, nbFacturee: 1, chargesHtCts: 300 })
+    expect(pts[1]).toMatchObject({ cle: '2026-09', caHtCts: 2000, nb: 1, nbFacturee: 1 })
   })
 })
 
@@ -78,5 +78,17 @@ describe('argent', () => {
   })
   it('reste à facturer', () => {
     expect(resteAFacturer([{ amount_ht_cts: 100 }, { amount_ht_cts: 250 }])).toEqual({ totalCts: 350, nb: 2 })
+  })
+})
+
+describe('formats courts', () => {
+  const nbsp = (t: string) => t.replace(/[\u202f\u00a0]/g, ' ')
+  it('euros arrondis', () => {
+    expect(nbsp(eurosArrondis(189459))).toBe('1 895 €')
+  })
+  it('k€', () => {
+    expect(eurosCourts(189459)).toBe('1,9 k€')
+    expect(eurosCourts(85000)).toBe('850 €')
+    expect(eurosCourts(400000)).toBe('4 k€')
   })
 })
