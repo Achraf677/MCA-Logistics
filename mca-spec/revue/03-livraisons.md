@@ -344,3 +344,105 @@
 - Modifier le HT d'une course existante → TVA et TTC recalculés.
 - Chauffeur connecté → impossible de facturer / encaisser (écran ET Edge).
 - 1er et dernier jour du mois → bien comptés ; devis +30 j exacts.
+
+## 10. La saisie, case par case (regard « patron de transport », express + messagerie)
+
+Constat de départ (prod, 30/09) : 35 courses depuis le 22/06, 31 clients (tous au tarif
+« manuel »). Remplissage réel : description 35/35 · adresse d'enlèvement 34/35 · véhicule
+35/35 · chauffeur 35/35 · km 28/35 · type 17/35 · notes 14/35 · destinataire (nom) 10 ·
+marchandise 10 · nb colis 7 · poids réel 7 · heure prévue 6 · tél. expéditeur 4 · tél.
+destinataire 3 · km à vide 3 · « palettes » 1 · lignes supplémentaires 1 · autoliquidation 1.
+→ Ce qui est utile est saisi ; ce qui est caché (onglet LV) ou inutile ne l'est pas.
+
+### 10.1 Principes
+- Une course courante se saisit en moins de 30 secondes ; la messagerie ne se saisit PAS
+  une par une (import du fichier du donneur d'ordre, ou lot).
+- « Obligatoire au bon moment » plutôt que tout à la création : obligatoire pour ENREGISTRER
+  (client, date, adresse de livraison) ; pour PARTIR (chauffeur, véhicule) ; pour la LETTRE
+  DE VOITURE (noms, marchandise, colis, poids) ; pour FACTURER (prix). La fiche affiche
+  ce qui manque pour l'étape suivante au lieu de tout exiger d'un coup.
+- Ce qui ne change pas d'une course à l'autre vient du CLIENT (adresse d'enlèvement
+  habituelle, contact, tarif, TVA / autoliquidation, référence obligatoire, facturation
+  mensuelle), pas d'une ressaisie.
+- Un seul écran de saisie, en 4 blocs dans l'ordre du métier : Ordre · Arrêts ·
+  Marchandise · Exécution & prix. Les onglets Documents / POD / LV restent pour la suite.
+
+### 10.2 Les cases actuelles — verdict
+- Partir d'un modèle : UTILE, garder (0 modèle aujourd'hui car caché) ; à terme remplacé en
+  grande partie par les valeurs par défaut du client.
+- Date planifiée* : OBLIGATOIRE, garder ; défaut = aujourd'hui (corriger le bug UTC) ; il
+  manque l'heure (voir 10.3).
+- Type (particulier / professionnel) : PEU UTILE sous cette forme (17/35). À remplacer par
+  « Prestation » : Express · Messagerie · Course dédiée / mise à disposition · Enlèvement
+  seul. Le particulier / pro relève du DESTINATAIRE (prévenir, étage) → case
+  « Livraison chez un particulier » dans l'arrêt.
+- Client* (payeur) : OBLIGATOIRE, garder ; doit pré-remplir retrait, contact, tarif, TVA.
+- Véhicule : UTILE mais pas à la saisie (se décide au planning) ; défaut = véhicule habituel
+  du chauffeur ; obligatoire « pour partir ».
+- Chauffeur : idem ; obligatoire « pour partir ».
+- Description : AMBIGUË — sert à la fois de libellé de facture et de description de la
+  marchandise. Séparer : « Libellé facture » proposé automatiquement (« Transport
+  Strasbourg → Colmar du 30/09 · réf. X »), modifiable ; « Marchandise » dans son bloc.
+- Adresse d'enlèvement : TRÈS UTILE (34/35) ; pré-remplie par l'adresse habituelle du
+  client ; il manque contact, créneau, consignes et coordonnées GPS (tournées).
+- Adresse de livraison* : OBLIGATOIRE ; il manque (dans le formulaire principal) nom et tél.
+  du destinataire, créneau, consignes d'accès, complément (étage, bâtiment, code).
+- KM en charge : UTILE (tarif, stats) ; doit se calculer TOUT SEUL dès que les deux adresses
+  sont connues (plus de bouton), modifiable.
+- KM à vide : INUTILE en saisie (3/35) → retirer du formulaire ; se calcule sur la journée /
+  tournée pour les stats.
+- Notes : à SCINDER — « Consignes chauffeur » (visibles dans Mes courses) et « Note interne »
+  (bureau seulement). Aujourd'hui une note interne s'affiche au chauffeur.
+- Mode tarifaire forfait / km / palette : INUTILISÉ (100 % manuel) et le « nombre de
+  palettes » est rangé dans le poids → retirer la palette, garder « Prix HT » + calcul auto
+  optionnel depuis une grille client (voir 10.4).
+- Taux TVA / Montant TVA : UTILE mais doit venir du client (20 % par défaut, 0 % +
+  autoliquidation si client UE avec n° TVA intra) ; la TVA manuelle reste possible.
+- Autoliquidation (case par course) : à DÉDUIRE du client (n° TVA intra + pays hors FR),
+  case conservée seulement en exception.
+- Lignes supplémentaires : UTILE, garder ; ajouter un CATALOGUE de suppléments en un clic
+  (attente par ¼ h, hayon, 2e personne, étage, rendez-vous / créneau imposé, urgence,
+  retour, stockage) avec prix par client.
+- Onglet LV — expéditeur nom*, destinataire nom*, marchandise*, colis*, poids réel* : à
+  REMONTER dans le formulaire principal (blocs Arrêts et Marchandise) : ce sont des infos
+  d'exploitation, pas « de lettre de voiture ». SIREN expéditeur : facultatif, replié.
+  Tél. expéditeur / destinataire : dans les arrêts.
+
+### 10.3 Ce qui manque (par ordre d'utilité)
+- Référence client (n° de commande / BL du donneur d'ordre) : indispensable en messagerie
+  et sur la facture ; obligatoire si le client l'exige (réglage client).
+- Créneau par arrêt : heure au plus tôt / au plus tard (retrait ET livraison), et
+  « Urgent / Express » (délai en heures) — alimente Mes courses (retard) et le Dashboard.
+- Contact par arrêt : nom + téléphone (retrait = expéditeur, livraison = destinataire),
+  « prévenir avant d'arriver » (SMS auto plus tard).
+- Consignes d'accès par arrêt : code, étage, quai, horaires d'ouverture, « livraison chez
+  un particulier ».
+- Marchandise : nombre de colis, poids total, volume ou dimensions (option), nature
+  (standard · fragile · palette · encombrant), valeur déclarée (option — plafonds de
+  l'assurance marchandises), « retour de documents / emballages à rapporter ».
+- Plusieurs arrêts / colis pour un même ordre (messagerie, multi-drop) : un ordre = N
+  livraisons, chacune avec son destinataire, ses colis, son statut et sa preuve.
+- Import : fichier du donneur d'ordre (CSV / tableur : destinataire, adresse, tél., colis,
+  poids, référence, créneau) → N livraisons en une fois, rattachées à la date et au client.
+- Facturation : « à la course » ou « relevé mensuel » (réglage client) — la messagerie se
+  facture au mois, au colis / au point / à la tranche de poids.
+
+### 10.4 Réglages à porter par la fiche client (onglet Tiers, revue ultérieure)
+- Adresse d'enlèvement habituelle + contact + consignes.
+- Tarif : prix par défaut, grille (par colis, par point, par tranche de poids, par zone /
+  km), suppléments négociés.
+- TVA : taux par défaut, pays, n° TVA intra → autoliquidation automatique.
+- Référence obligatoire (oui / non), facturation (à la course / mensuelle), délai de
+  paiement (déjà là).
+
+### 10.5 Formulaire cible (à valider avant code)
+- Bloc 1 — Ordre : Client* · Prestation (Express / Messagerie / Dédiée) · Référence client
+  · Date* · Urgent.
+- Bloc 2 — Arrêts : Retrait (adresse pré-remplie, contact, créneau, consignes) ;
+  Livraison* (adresse*, destinataire, tél., créneau, consignes, « particulier ») ;
+  « + Ajouter une livraison » (multi-drop) ; « Importer un fichier » (messagerie).
+- Bloc 3 — Marchandise : colis, poids, nature, volume (option), valeur (option), retour.
+- Bloc 4 — Exécution & prix : chauffeur, véhicule (défauts), km (auto), prix HT (auto ou
+  saisi), suppléments (catalogue), TVA (auto depuis le client), libellé facture (auto).
+- Pied : Consignes chauffeur · Note interne · bandeau « Manque pour : partir / LV /
+  facturer ».

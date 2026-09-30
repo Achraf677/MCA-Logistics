@@ -10,8 +10,9 @@
 ## Métier (à garder en tête sur CHAQUE écran)
 - **Express** (aujourd'hui) : course unitaire enlèvement → livraison, souvent dans la journée,
   parfois urgente (créneau / heure limite). Une course = 2 arrêts (retrait, livraison).
-- **Messagerie** (à venir) : tournées de nombreux colis / arrêts, preuve par colis, échecs de
-  livraison (absent, refus, adresse erronée…), retours au dépôt, relivraison.
+- **Messagerie** (activité ACTUELLE, depuis 09/2026) : tournées de nombreux colis / arrêts,
+  preuve par colis, échecs de livraison (absent, refus, adresse erronée…), retours au dépôt,
+  relivraison. Saisie en volume (import, lot), facturation souvent mensuelle par client.
 - Tout écran doit servir les deux : ne jamais coder « 1 course = 1 colis = 1 arrêt » en dur.
 
 ## Revue onglet par onglet (méthode validée le 30/09/2026)
