@@ -105,9 +105,12 @@ export function Dashboard() {
 
   return (
     <Shell pageTitle="Dashboard">
-      <div className="flex flex-col gap-4 min-w-0">
+      {/* PC : occupe EXACTEMENT la hauteur visible (écran − barre du haut − marges
+          de <main>) ; la dernière ligne prend le reste, le graphique et la liste
+          s'y ajustent. Plus rien à faire défiler, quelle que soit la résolution. */}
+      <div className="flex flex-col gap-3 min-w-0 lg:h-[calc(100dvh-var(--topbar-h)-2.75rem)]">
 
-        <p className="min-w-0 truncate">
+        <p className="min-w-0 truncate leading-tight">
           <span className="font-display text-lg font-semibold">{prenom ? `Bonjour ${prenom}` : 'Bonjour'}</span>
           <span className="ml-2 text-sm text-[var(--text-muted)]">· {dateDuJour}</span>
         </p>
@@ -159,8 +162,8 @@ export function Dashboard() {
         </div>
 
         {/* ── Tendance | liste (activité récente ou mois cliqué) ── */}
-        <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr] [&>*]:min-w-0">
-          <section className={carteCls}>
+        <div className="grid gap-3 lg:grid-cols-[1.5fr_1fr] lg:flex-1 lg:min-h-0 [&>*]:min-w-0 lg:[&>*]:min-h-0">
+          <section className={`${carteCls} flex flex-col`}>
             <EnteteCarte icone={<BarChart3 size={14} />} titre="Chiffre d'affaires HT"
               sous={`${PERIODES.find(p => p.cle === periode)?.libelle} · clique un mois pour ses livraisons`}
               droite={<BoutonIcone libelle="Réglages du graphique" actif={reglages} onClick={() => setReglages(o => !o)} />} />
@@ -181,14 +184,14 @@ export function Dashboard() {
               </div>
             )}
             {loading
-              ? <Skeleton className="h-[278px]" />
-              : <BarresMensuelles
-                  hauteur={grandEcran ? 230 : 140}
+              ? <Skeleton className="h-[12rem] lg:flex-1" />
+              : <div className="lg:flex-1 lg:min-h-0"><BarresMensuelles
+                  hauteur={grandEcran ? undefined : 140}
                   points={tendance.map(t => ({ libelle: t.libelle, valeur: t.caHtCts }))}
                   selection={indexChoisi >= 0 ? indexChoisi : null}
                   onSelection={i => void choisirMois(tendance[i])}
                   formatCourt={eurosCourts}
-                  formatLong={formatCents} />}
+                  formatLong={formatCents} /></div>}
           </section>
 
           <section id="liste-dashboard" className={`${carteCls} !p-0 overflow-hidden flex flex-col scroll-mt-4`}>
@@ -256,7 +259,7 @@ function ListeLivraisons({ lignes, vide, onOuvrir, defilante }: {
     return <p className="flex-1 flex items-center justify-center py-10 text-sm text-[var(--text-muted)]">{vide}</p>
   }
   return (
-    <div className={`flex flex-col divide-y divide-[var(--border)] border-t border-[var(--border)] ${defilante ? 'overflow-y-auto max-h-[318px]' : ''}`}>
+    <div className={`flex flex-col divide-y divide-[var(--border)] border-t border-[var(--border)] overflow-y-auto lg:flex-1 lg:min-h-0 ${defilante ? 'max-h-[20rem] lg:max-h-none' : ''}`}>
       {lignes.map(row => (
         <button key={row.id} onClick={() => onOuvrir(row.id)}
           className="w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-[var(--bg-card-hover)] transition-colors">
