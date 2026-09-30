@@ -64,8 +64,12 @@ Fonctions **pures** :
 ## ⑧ États & cas limites
 - `tariff_mode = manuel` ou tarif absent → montant saisi manuellement obligatoire avant `facturee`.
 - Tentative de facturer sans montant → bloqué, message clair.
-- Pennylane KO à la facturation → statut passe quand même `facturee`, `pennylane_invoice_id` null, entrée `sync_queue` (retry).
-- Client/véhicule/chauffeur désactivé → non proposé dans les sélecteurs (livraisons existantes conservées).
+- Facturation (lot « l'argent ne se perd plus », 30/09/2026) : le front n'écrit plus `facturee` lui-même ; l'Edge `pennylane-invoice` passe la course à `facturee` **seulement** une fois la facture créée chez Pennylane.
+  - Refus métier (4xx, ou Pennylane qui refuse la facture) → statut inchangé (`livree`), cause affichée à l'écran et écrite dans `sync_error` (course seule).
+  - Échec technique (réseau, délai, 5xx) → statut inchangé, `sync_pending = true` + `sync_error` ; « Resynchroniser » relance.
+  - Facture créée mais non enregistrée en base (code `enregistrement_echoue`) → le front écrit lui-même `pennylane_invoice_id` ; jamais de `sync_pending` (sinon double facture).
+  - Transition exceptionnelle **`facturee → livree`** (« Revenir à livrée », onglet Montant & Suivi), hors `TRANSITIONS`, visible seulement si `facturee` + `sync_pending` + aucun `pennylane_invoice_id` (courses bloquées par l'ancien fonctionnement). Efface `sync_pending`, `sync_error`, `invoiced_at`.
+- Client désactivé → non proposé à la création ; une course existante de ce client le charge quand même (« (inactif) ») pour ne jamais perdre ses montants. Véhicule/chauffeur désactivé → non proposé dans les sélecteurs.
 - Liste vide → CTA « + Nouvelle livraison ».
 - Suppression unitaire : réservée au président, possible sur tous les statuts ; `facturee`/`payee` exige une **double vérification** (case à cocher) car Pennylane n'est pas touché. Toujours après confirmation `ConfirmDialog` (jamais de delete au premier clic).
 - Suppression en lot (liste) : réservée au président, les `facturee`/`payee` ne sont **jamais** sélectionnables ; ids re-filtrés avant le DELETE par sécurité.

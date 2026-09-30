@@ -1,5 +1,9 @@
-import { addTva, deliveryTotalHtCts, deliveryTotalTtcCts } from '../../shared/lib/money'
-import type { DeliveryRow } from './livraisons.types'
+import {
+  addTva, deliveryTotalHtCts, deliveryTotalTtcCts,
+  extraLinesHtCts as extraLinesHtCtsLocal,
+  extraLinesTvaCts as extraLinesTvaCtsLocal,
+} from '../../shared/lib/money'
+import type { DeliveryExtraLine, DeliveryRow } from './livraisons.types'
 
 // Réexports pour conserver les imports existants (Livraisons.tsx,
 // DrawerLivraison.tsx, tests…). Les helpers vivent désormais dans
@@ -189,4 +193,142 @@ export function libelleDelaiPaiement(
   if (!etiquette) return `${jours} jours`
   if (jours == null) return etiquette
   return etiquette === String(jours) ? `${jours} jours` : `${etiquette} (${jours} jours)`
+}
+
+// ── Facturation bloquée (transition exceptionnelle facturee → livree) ─────────
+//
+// Avant le lot « l'argent ne se perd plus », le statut passait à `facturee`
+// AVANT l'appel Pennylane. Quand Pennylane refusait (taux non légal, ligne
+// invalide…), la course restait « Facturée » sans facture ni cause, et plus
+// aucun bouton ne permettait de la refacturer.
+//
+// Ces courses se reconnaissent à coup sûr : statut `facturee`, `sync_pending`
+// levé, et AUCUNE facture Pennylane rattachée. Pour elles seules, la fiche
+// propose « Revenir à livrée » — hors machine à états (TRANSITIONS reste
+// inchangée : `facturee → livree` n'y figure pas), parce qu'il ne s'agit pas
+// d'un retour en arrière métier mais de la réparation d'un état qui n'aurait
+// jamais dû exister. Dès qu'une facture existe (`pennylane_invoice_id`), le
+// geste disparaît : une facture émise ne se défait que par un avoir.
+
+export interface EtatFacturation {
+  statut: string
+  sync_pending?: boolean | null
+  pennylane_invoice_id?: string | null
+}
+
+export function estFacturationBloquee(d: EtatFacturation): boolean {
+  return d.statut === 'facturee' && d.sync_pending === true && !d.pennylane_invoice_id
+}
+
+// ── Taux de TVA d'une course existante ────────────────────────────────────────
+
+/**
+ * Taux (en %) à afficher en ouvrant une course. Le taux STOCKÉ fait foi
+ * (5,5 reste 5,5) ; à défaut on le déduit de TVA / HT au dixième ; à défaut 20.
+ * L'ancien calcul arrondissait à l'entier : une course à 5,5 % se rouvrait à 6 %.
+ */
+export function tauxTvaInitial(d: {
+  tva_rate?: number | string | null
+  tva_cts?: number | null
+  amount_ht_cts?: number | null
+  montant_ht_cts?: number | null
+}): number {
+  if (d.tva_rate != null && d.tva_rate !== '') {
+    const n = Number(d.tva_rate)
+    if (Number.isFinite(n) && n >= 0 && n <= 100) return n
+  }
+  const ht = d.amount_ht_cts ?? d.montant_ht_cts ?? 0
+  if (d.tva_cts != null && ht > 0) return Math.round(d.tva_cts / ht * 1000) / 10
+  return 20
+}
+
+// ── Montants à écrire à l'enregistrement ─────────────────────────────────────
+
+export interface MontantsPersistes {
+  amount_ht_cts?: number
+  tva_cts?: number
+  amount_ttc_cts?: number
+  tva_rate?: number
+}
+
+/**
+ * Colonnes de montant à écrire depuis le formulaire. Règle : un montant
+ * EXISTANT n'est JAMAIS effacé faute de calcul. Quand `computed` est nul
+ * (client introuvable, tarif incomplet…), on n'écrit ni HT, ni TVA, ni TTC :
+ * la base garde ses valeurs.
+ *
+ * En AUTOLIQUIDATION : taux 0, TVA 0, TTC = HT (le HT connu : calculé, sinon
+ * celui déjà en base).
+ */
+export function montantsAEcrire(
+  computed: ComputedAmount | null,
+  opts: { autoliquidation: boolean; tauxPct: number; htExistantCts?: number | null },
+): MontantsPersistes {
+  if (opts.autoliquidation) {
+    const ht = computed?.amount_ht_cts ?? opts.htExistantCts ?? null
+    const out: MontantsPersistes = { tva_rate: 0, tva_cts: 0 }
+    if (ht != null) out.amount_ttc_cts = ht
+    if (computed) out.amount_ht_cts = computed.amount_ht_cts
+    return out
+  }
+  if (!computed) return {}
+  return {
+    amount_ht_cts: computed.amount_ht_cts,
+    tva_cts: computed.tva_cts,
+    amount_ttc_cts: computed.amount_ttc_cts,
+    tva_rate: opts.tauxPct,
+  }
+}
+
+// ── Récapitulatif HT / TVA / TTC de la fiche ─────────────────────────────────
+
+export interface RecapMontant {
+  ht_cts: number | null
+  tva_cts: number | null
+  extras_ht_cts: number
+  extras_tva_cts: number
+  /** TTC total (principale + extras), null si rien n'est connu. */
+  ttc_total_cts: number | null
+  /** Taux imposé aux lignes supplémentaires (0 en autoliquidation), sinon null. */
+  taux_extras_force: number | null
+}
+
+/**
+ * Récapitulatif affiché sous le formulaire. En autoliquidation, la TVA n'est
+ * pas facturée — ni sur la ligne principale, ni sur les lignes
+ * supplémentaires, qui partent elles aussi en code autoliquidation : TVA 0,
+ * TTC = HT.
+ */
+export function recapMontant(input: {
+  ht_cts: number | null
+  tva_cts: number | null
+  ttc_cts: number | null
+  extraLines: DeliveryExtraLine[] | null | undefined
+  autoliquidation: boolean
+}): RecapMontant {
+  const lignes = input.extraLines ?? []
+  const extrasHt = extraLinesHtCtsLocal(lignes)
+  if (input.autoliquidation) {
+    const ht = input.ht_cts
+    return {
+      ht_cts: ht,
+      tva_cts: ht != null ? 0 : null,
+      extras_ht_cts: extrasHt,
+      extras_tva_cts: 0,
+      ttc_total_cts: ht != null ? ht + extrasHt : (lignes.length > 0 ? extrasHt : null),
+      taux_extras_force: 0,
+    }
+  }
+  const extrasTva = extraLinesTvaCtsLocal(lignes)
+  const ttc = input.ttc_cts
+  return {
+    ht_cts: input.ht_cts,
+    tva_cts: input.tva_cts,
+    extras_ht_cts: extrasHt,
+    extras_tva_cts: extrasTva,
+    ttc_total_cts: ttc != null
+      ? ttc + extrasHt + extrasTva
+      : (lignes.length > 0 ? extrasHt + extrasTva : null),
+    taux_extras_force: null,
+  }
 }

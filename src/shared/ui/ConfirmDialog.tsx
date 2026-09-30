@@ -7,6 +7,9 @@ interface ConfirmDialogProps {
   title: string
   message: string
   confirmLabel?: string
+  /** Libellé du bouton d'abandon (défaut « Annuler »). À changer quand le geste
+   *  confirmé s'appelle lui-même « Annuler … », pour lever l'ambiguïté. */
+  cancelLabel?: string
   /**
    * Si fourni : affiche une case à cocher (décochée par défaut) avec ce libellé ;
    * le bouton de confirmation reste désactivé tant qu'elle n'est pas cochée
@@ -40,7 +43,7 @@ interface ConfirmDialogProps {
  * inaccessibles. Le portail rend ce cas impossible, quel que soit l'appelant.
  */
 export function ConfirmDialog({
-  open, title, message, confirmLabel = 'Supprimer', acknowledgeLabel, optionLabel,
+  open, title, message, confirmLabel = 'Supprimer', cancelLabel = 'Annuler', acknowledgeLabel, optionLabel,
   onConfirm, onCancel, loading = false,
 }: ConfirmDialogProps) {
   const [acked, setAcked] = useState(false)
@@ -109,7 +112,7 @@ export function ConfirmDialog({
         )}
 
         <div className="flex items-center justify-end gap-2">
-          <Button variant="secondary" onClick={onCancel} disabled={loading}>Annuler</Button>
+          <Button variant="secondary" onClick={onCancel} disabled={loading}>{cancelLabel}</Button>
           <Button
             variant="primary"
             onClick={() => onConfirm(option)}
