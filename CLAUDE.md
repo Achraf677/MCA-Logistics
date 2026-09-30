@@ -58,7 +58,7 @@ src/
 
 ## État actuel (codé & testé)
 Le site est en production avec **8 sections** (menu principal, `src/app/sections/`), chacune à
-sous-onglets : **Pilotage** (Dashboard, Rentabilité, Statistiques) · **Livraisons** (Livraisons,
+sous-onglets : **Pilotage** (Dashboard seul — Rentabilité et Statistiques retirées) · **Livraisons** (Livraisons,
 Bons de livraison, Calendrier) · **Finance** (Trésorerie, Charges, Encaissement, TVA, Relances) ·
 **Flotte** (Véhicules, Carburant, Entretiens, Inspections, Incidents) · **Planning** ·
 **Tiers** (Clients, Fournisseurs, Devis) · **Équipe** (Équipe, Heures) · **Système** (Paramètres,
