@@ -15,7 +15,7 @@ export function LivraisonsSection() {
           { key: 'livraisons', label: 'Livraisons',        element: <Livraisons />,    permKey: 'livraisons.livraisons' },
           { key: 'devis',      label: 'Devis',             element: <Devis />,         permKey: 'livraisons.devis'      },
           { key: 'modeles',    label: 'Modèles',           element: <Modeles />,       permKey: 'livraisons.modeles'    },
-          { key: 'bl',         label: 'Bons de livraison', element: <BonsLivraison />, permKey: 'livraisons.livraisons' },
+          { key: 'bl',         label: 'Lettres de voiture', element: <BonsLivraison />, permKey: 'livraisons.livraisons' },
         ]}
       />
     </Shell>

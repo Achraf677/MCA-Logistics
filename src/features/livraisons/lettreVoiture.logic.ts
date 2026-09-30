@@ -27,7 +27,7 @@ export interface LvDeliveryInput {
   marchandise_desc: string | null
   nb_colis: number | null
   poids_kg_reel: number | null
-  // Prix (TTC prioritaire ; sinon HT ; sinon montant_ttc_cts legacy)
+  // Prix (TTC prioritaire, y compris legacy montant_ttc_cts ; sinon HT)
   amount_ttc_cts: number | null
   amount_ht_cts: number | null
   montant_ttc_cts?: number | null
@@ -87,7 +87,10 @@ export interface LettreVoitureData {
   vehicule_nom: string | null
   vehicule_immat: string
   chauffeur: string
-  prix_ttc_formate: string | null
+  /** Prix formaté (« 120,00 € »), ou null si aucun montant. */
+  prix_formate: string | null
+  /** Base du prix imprimé : TTC si connu, sinon HT (jamais « TTC » sur un HT). */
+  prix_base: 'TTC' | 'HT' | null
 }
 
 export interface LettreVoitureResult {
@@ -145,11 +148,14 @@ export function buildLettreVoiture(inputs: {
   need('Immatriculation du véhicule', immat.length > 0)
   need('Nom du chauffeur', chauffeur.length > 0)
 
-  // Prix : TTC prioritaire, sinon HT, sinon legacy montant_ttc_cts. Le prix
+  // Prix : TTC prioritaire (amount_ttc_cts, puis legacy montant_ttc_cts), sinon HT. Le prix
   // n'est pas juridiquement obligatoire sur toutes les LV (peut être « port dû »
   // ou « port payé ») — on l'affiche s'il existe, on ne bloque pas l'utilisateur.
-  const prix_cts = delivery.amount_ttc_cts ?? delivery.amount_ht_cts ?? delivery.montant_ttc_cts ?? null
-  const prix_ttc_formate = prix_cts != null ? formatMoney(prix_cts) : null
+  // Le libellé suit la source réellement retenue : un HT n'est jamais imprimé « TTC ».
+  const ttc_cts = delivery.amount_ttc_cts ?? delivery.montant_ttc_cts ?? null
+  const prix_cts = ttc_cts ?? delivery.amount_ht_cts ?? null
+  const prix_base: 'TTC' | 'HT' | null = ttc_cts != null ? 'TTC' : prix_cts != null ? 'HT' : null
+  const prix_formate = prix_cts != null ? formatMoney(prix_cts) : null
 
   const data: LettreVoitureData = {
     numero: delivery.lv_numero,
@@ -177,7 +183,8 @@ export function buildLettreVoiture(inputs: {
     vehicule_nom,
     vehicule_immat: immat,
     chauffeur,
-    prix_ttc_formate,
+    prix_formate,
+    prix_base,
   }
 
   return { data, missing }
@@ -203,4 +210,42 @@ export function lvNumero(
     if (Number.isFinite(v) && v > max) max = v
   }
   return `${prefix}${max + 1}`
+}
+
+// ── Référence du PDF archivé (deliveries.lv_pdf_url) ──────────────────────────
+//
+// Depuis le passage à Supabase Storage, uploadDocument ne renvoie plus de lien
+// Drive (drive_link toujours null). La colonne `lv_pdf_url` reçoit donc une
+// RÉFÉRENCE au document archivé : `doc:<uuid de la ligne documents>`. Le lien
+// d'ouverture (URL signée, bucket privé) est calculé à la demande, jamais
+// stocké : une URL signée expire, l'id du document non.
+// Les anciennes valeurs `https://…` (liens Drive) restent ouvertes telles quelles.
+
+const PREFIXE_DOC = 'doc:'
+
+export type LvPdfRef =
+  | { kind: 'document'; documentId: string }
+  | { kind: 'url'; url: string }
+
+/** Valeur à écrire dans `lv_pdf_url` pour un document archivé. */
+export function lvPdfRefDocument(documentId: string): string {
+  return `${PREFIXE_DOC}${documentId}`
+}
+
+/** Lit `lv_pdf_url` : référence document, ancien lien http(s), ou null (vide / illisible). */
+export function parseLvPdfRef(value: string | null | undefined): LvPdfRef | null {
+  const v = (value ?? '').trim()
+  if (!v) return null
+  if (v.startsWith(PREFIXE_DOC)) {
+    const id = v.slice(PREFIXE_DOC.length).trim()
+    return id ? { kind: 'document', documentId: id } : null
+  }
+  if (/^https?:\/\//i.test(v)) return { kind: 'url', url: v }
+  return null
+}
+
+/** Nom de la pièce jointe / du fichier : `Lettre_de_voiture_<numero>.pdf`. */
+export function lvNomFichier(numero: string | null | undefined): string {
+  const n = (numero ?? '').trim().replace(/[^\w-]+/g, '_')
+  return n ? `Lettre_de_voiture_${n}.pdf` : 'Lettre_de_voiture.pdf'
 }

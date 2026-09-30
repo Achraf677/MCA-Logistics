@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { buildLettreVoiture, lvNumero } from './lettreVoiture.logic'
+import {
+  buildLettreVoiture, lvNumero, parseLvPdfRef, lvPdfRefDocument, lvNomFichier,
+} from './lettreVoiture.logic'
 import type {
   LvDeliveryInput, LvCompanyInput, LvVehicleInput, LvDriverInput, LvClientInput,
 } from './lettreVoiture.logic'
@@ -54,7 +56,8 @@ describe('buildLettreVoiture', () => {
     expect(data.vehicule_nom).toBe('MOVANO')
     expect(data.vehicule_immat).toBe('FT-123-AB')
     expect(data.chauffeur).toBe('Achraf Chikri')
-    expect(data.prix_ttc_formate).toBeTruthy()
+    expect(data.prix_formate).toBeTruthy()
+    expect(data.prix_base).toBe('TTC')
   })
 
   it('immatriculation : utilise vehicle.plate, jamais vehicle.label', () => {
@@ -141,14 +144,35 @@ describe('buildLettreVoiture', () => {
       delivery: baseDelivery({ amount_ttc_cts: null, amount_ht_cts: 8000 }),
       company: baseCompany(), vehicle: veh, driver: drv, client: cli,
     })
-    expect(r1.data.prix_ttc_formate).toBeTruthy()
+    expect(r1.data.prix_formate).toBeTruthy()
+    // Un HT n'est jamais imprimé « TTC ».
+    expect(r1.data.prix_base).toBe('HT')
     expect(r1.missing).toEqual([])
 
     const r2 = buildLettreVoiture({
       delivery: baseDelivery({ amount_ttc_cts: null, amount_ht_cts: null, montant_ttc_cts: 9500 }),
       company: baseCompany(), vehicle: veh, driver: drv, client: cli,
     })
-    expect(r2.data.prix_ttc_formate).toBeTruthy()
+    expect(r2.data.prix_formate).toBeTruthy()
+    expect(r2.data.prix_base).toBe('TTC')
+
+    // Aucun montant → ni prix ni libellé, et ce n'est pas bloquant.
+    const r3 = buildLettreVoiture({
+      delivery: baseDelivery({ amount_ttc_cts: null, amount_ht_cts: null, montant_ttc_cts: null }),
+      company: baseCompany(), vehicle: veh, driver: drv, client: cli,
+    })
+    expect(r3.data.prix_formate).toBeNull()
+    expect(r3.data.prix_base).toBeNull()
+    expect(r3.missing).toEqual([])
+  })
+
+  it('legacy montant_ttc_cts prioritaire sur le HT (c\'est un TTC)', () => {
+    const r = buildLettreVoiture({
+      delivery: baseDelivery({ amount_ttc_cts: null, amount_ht_cts: 8000, montant_ttc_cts: 9600 }),
+      company: baseCompany(), vehicle: veh, driver: drv, client: cli,
+    })
+    expect(r.data.prix_base).toBe('TTC')
+    expect(r.data.prix_formate).toContain('96')
   })
 
   it('livraison entièrement vide → cumul de mentions manquantes', () => {
@@ -202,5 +226,36 @@ describe('lvNumero', () => {
 
   it('robuste contre les grands numéros', () => {
     expect(lvNumero(['LV-2026-999'], 2026)).toBe('LV-2026-1000')
+  })
+})
+
+// ── Référence du PDF archivé ─────────────────────────────────────────────────
+describe('parseLvPdfRef / lvPdfRefDocument', () => {
+  it('aller-retour sur une référence document', () => {
+    const ref = lvPdfRefDocument('0b6c2f1e-1111-4222-8333-944455556666')
+    expect(ref).toBe('doc:0b6c2f1e-1111-4222-8333-944455556666')
+    expect(parseLvPdfRef(ref)).toEqual({ kind: 'document', documentId: '0b6c2f1e-1111-4222-8333-944455556666' })
+  })
+
+  it('ancien lien Drive https → ouvert tel quel', () => {
+    expect(parseLvPdfRef('https://drive.google.com/file/d/abc/view'))
+      .toEqual({ kind: 'url', url: 'https://drive.google.com/file/d/abc/view' })
+  })
+
+  it('vide, null, préfixe sans id ou valeur illisible → null', () => {
+    expect(parseLvPdfRef(null)).toBeNull()
+    expect(parseLvPdfRef(undefined)).toBeNull()
+    expect(parseLvPdfRef('   ')).toBeNull()
+    expect(parseLvPdfRef('doc:')).toBeNull()
+    expect(parseLvPdfRef('javascript:alert(1)')).toBeNull()
+  })
+})
+
+describe('lvNomFichier', () => {
+  it('nomme la pièce Lettre_de_voiture_<numero>.pdf', () => {
+    expect(lvNomFichier('LV-2026-12')).toBe('Lettre_de_voiture_LV-2026-12.pdf')
+  })
+  it('numéro absent → nom générique', () => {
+    expect(lvNomFichier(null)).toBe('Lettre_de_voiture.pdf')
   })
 })

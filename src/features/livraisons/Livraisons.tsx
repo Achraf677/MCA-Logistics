@@ -187,7 +187,7 @@ export function Livraisons() {
       return
     }
     await load()
-    toast(data.data?.bl_attached ? 'Email envoyé (facture + BL)' : 'Email envoyé (facture)')
+    toast(data.data?.bl_attached ? 'Email envoyé (facture + lettre de voiture)' : 'Email envoyé (facture)')
   }
 
   // ── Filtres ─────────────────────────────────────────────────────────────────
@@ -331,7 +331,7 @@ export function Livraisons() {
         open={emailConfirm !== null}
         title="Envoyer la facture au client ?"
         message={emailConfirm
-          ? `La facture Pennylane${emailConfirm.lv_pdf_url ? ' et le bon de livraison' : ''} seront envoyés à ${emailConfirm.clients?.email ?? ''}.`
+          ? `La facture Pennylane${emailConfirm.lv_pdf_url ? ' et la lettre de voiture seront envoyées' : ' sera envoyée'} à ${emailConfirm.clients?.email ?? ''}.`
           : ''}
         onConfirm={handleSendEmail}
         onCancel={() => setEmailConfirm(null)}

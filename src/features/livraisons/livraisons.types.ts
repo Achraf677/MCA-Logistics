@@ -106,7 +106,9 @@ export interface Delivery {
   lv_numero: string | null
   /** Signatures collectées (base64 PNG + timestamp + geo optionnelle). */
   lv_signatures: LvSignatures
-  /** URL du PDF LV archivé sur Drive (nouvelle génération). */
+  /** Référence du PDF LV archivé : `doc:<id documents>` (Storage) ou ancien
+   *  lien Drive `https://…`. Jamais une URL signée. Lire via parseLvPdfRef /
+   *  lienPdfLv (lettreVoiture.logic / livraisons.queries). */
   lv_pdf_url: string | null
   /** Horodatage du dernier envoi email au client (migration 20260721140000). */
   email_sent_at: string | null
