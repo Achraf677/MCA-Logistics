@@ -1,302 +1,325 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
-import { ChevronRight, Euro, Package, FileCheck2, Truck, Users, Building2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
+import {
+  ChevronRight, Euro, FileClock, Wallet, TrendingUp, Plus,
+  CalendarClock, Truck, CheckCircle2, AlarmClock, AlertTriangle,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
+import { useProfile } from '../../app/providers'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { DriverAvatar } from '../../shared/ui/DriverAvatar'
 import { LineChart } from '../../shared/ui/LineChart'
-import { TabActions } from '../../shared/ui/TabbedSection'
+import { BoutonIcone, PanneauReglages } from '../../shared/ui/BoutonIcone'
+import { formatCents, effectiveHtCts } from '../../shared/lib/money'
 // Chargé à la demande : c'est le plus gros bloc du site (formulaire à 5
-// onglets + génération de PDF), et cet écran l'importait en dur — donc
-// téléchargé dès l'ouverture de la page d'accueil, même sans jamais l'ouvrir.
+// onglets + génération de PDF), inutile tant qu'on ne l'ouvre pas.
 const DrawerLivraison = lazy(() =>
   import('../livraisons/DrawerLivraison').then(m => ({ default: m.DrawerLivraison })))
-import { getDashboardKpis, getRecentDeliveries, getMonthlyTrend } from './dashboard.queries'
-import type { TrendPeriod } from './dashboard.queries'
-import { formatCents, STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
-import { effectiveHtCts } from '../../shared/lib/money'
-import type { DashboardKpis } from './dashboard.queries'
+import { STATUS_LABELS, STATUS_COLORS } from '../livraisons/livraisons.logic'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
+import { getDashboard } from './dashboard.queries'
+import {
+  isoLocal, moisDeLaPeriode, agregerParMois, evolution,
+  resumeJour, aEncaisser, resteAFacturer,
+  type PeriodeTendance, type PointTendance, type ResumeJour,
+} from './dashboard.logic'
 
+const PERIODES: Array<{ cle: PeriodeTendance; libelle: string }> = [
+  { cle: '6m', libelle: '6 derniers mois' },
+  { cle: '12m', libelle: '12 derniers mois' },
+  { cle: 'ytd', libelle: 'Depuis janvier' },
+]
+
+interface Donnees {
+  tendance12: PointTendance[]
+  jour: ResumeJour
+  aFacturer: { totalCts: number; nb: number }
+  encaisser: { totalCts: number; retardCts: number; nbRetard: number; nb: number }
+  recentes: DeliveryRow[]
+}
+
+/**
+ * Accueil — « où en est la société », en 10 secondes.
+ *
+ * De haut en bas : la JOURNÉE (express : qu'est-ce qui roule, qu'est-ce qui
+ * coince), l'ARGENT (fait, à facturer, à encaisser, marge), la TENDANCE, puis
+ * l'activité récente. Un chauffeur n'arrive jamais ici (PilotageSection le
+ * renvoie sur Mes courses).
+ */
 export function Dashboard() {
   const navigate = useNavigate()
-  const [kpis, setKpis] = useState<DashboardKpis | null>(null)
-  const [recent, setRecent] = useState<DeliveryRow[]>([])
-  const [trend, setTrend] = useState<{ month: string; caHtCts: number; nb: number; nbFacturee: number; nbPayee: number }[]>([])
+  const { profile } = useProfile()
+  const [d, setD] = useState<Donnees | null>(null)
+  const [erreur, setErreur] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
-  const [period, setPeriod] = useState<TrendPeriod>('6m')
+  const [periode, setPeriode] = useState<PeriodeTendance>('6m')
+  const [reglages, setReglages] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [k, r, t] = await Promise.all([
-      getDashboardKpis(),
-      getRecentDeliveries(),
-      getMonthlyTrend('6m'),
-    ])
-    setKpis(k)
-    setRecent(r.data ?? [])
-    setTrend(t)
+    const now = new Date()
+    const aujourdhui = isoLocal(now)
+    const douze = moisDeLaPeriode('12m', now)
+    const r = await getDashboard(douze[0].debut, douze[douze.length - 1].fin, aujourdhui)
+    setErreur(r.erreur?.message ?? null)
+    setD({
+      tendance12: agregerParMois(douze, r.livraisons, r.charges),
+      jour: resumeJour(r.jour, aujourdhui, now.getHours() * 60 + now.getMinutes()),
+      aFacturer: resteAFacturer(r.livrees),
+      encaisser: aEncaisser(r.facturees, aujourdhui),
+      recentes: r.recentes,
+    })
     setLoading(false)
   }, [])
 
-  const handlePeriodChange = async (p: TrendPeriod) => {
-    setPeriod(p)
-    const t = await getMonthlyTrend(p)
-    setTrend(t)
-  }
+  useEffect(() => { void load() }, [load])
 
-  useEffect(() => { load() }, [load])
+  // Découpe en mémoire : changer de période ne refait aucune requête.
+  const tendance = useMemo(() => {
+    if (!d) return []
+    const cles = new Set(moisDeLaPeriode(periode, new Date()).map(m => m.cle))
+    return d.tendance12.filter(p => cles.has(p.cle))
+  }, [d, periode])
 
-  const openRow = (row: DeliveryRow) => { setSelected(row); setDrawerOpen(true) }
+  const ceMois = d?.tendance12[d.tendance12.length - 1]
+  const moisPrecedent = d?.tendance12[d.tendance12.length - 2]
+  const marge = ceMois ? ceMois.caHtCts - ceMois.chargesHtCts : 0
 
-  const last = trend[trend.length - 1]
-  const prev = trend[trend.length - 2]
-  const deltaCA = (last && prev && prev.caHtCts > 0)
-    ? { value: ((last.caHtCts - prev.caHtCts) / prev.caHtCts * 100).toFixed(1).replace('.', ',') + '%', dir: (last.caHtCts >= prev.caHtCts ? 'up' : 'down') as 'up' | 'down' }
-    : undefined
-  const deltaLiv = (last && prev)
-    ? { value: String(Math.abs(last.nb - prev.nb)), dir: (last.nb >= prev.nb ? 'up' : 'down') as 'up' | 'down' }
-    : undefined
-  const deltaFacturee = (last && prev)
-    ? { value: String(Math.abs(last.nbFacturee - prev.nbFacturee)), dir: (last.nbFacturee >= prev.nbFacturee ? 'up' : 'down') as 'up' | 'down' }
-    : undefined
+  const nouvelle = () => { setSelected(null); setDrawerOpen(true) }
+  const ouvrir = (row: DeliveryRow) => { setSelected(row); setDrawerOpen(true) }
+
+  const prenom = profile?.full_name?.trim().split(/\s+/)[0]
+  const dateDuJour = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
 
   return (
     <Shell pageTitle="Dashboard">
-      <div className="space-y-6 min-w-0">
+      <div className="space-y-5 min-w-0">
 
-        {/* ── En-tête ── */}
-        <div className="flex flex-wrap items-end justify-between gap-4 mb-1">
+        {/* ── En-tête compact ── */}
+        <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="font-display text-[28px] font-bold tracking-tight leading-none">Vue d'ensemble</h2>
-            <p className="text-[var(--fs-sm)] text-[var(--text-muted)] mt-2 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--success)]" style={{ boxShadow: '0 0 8px var(--success)' }} />
-              Activité du mois · mise à jour à l'instant
-            </p>
+            <h2 className="font-display text-[var(--fs-h3)] font-semibold leading-tight truncate">
+              {prenom ? `Bonjour ${prenom}` : 'Bonjour'}
+            </h2>
+            <p className="text-[var(--fs-sm)] text-[var(--text-muted)] first-letter:uppercase">{dateDuJour}</p>
           </div>
-          <TabActions>
-            <Button variant="primary" size="compact" onClick={() => { setSelected(null); setDrawerOpen(true) }}>
-              + Nouvelle livraison
-            </Button>
-          </TabActions>
+          <Button variant="primary" size="compact" onClick={nouvelle}>
+            <Plus size={14} /> <span className="hidden sm:inline">Nouvelle livraison</span><span className="sm:hidden">Livraison</span>
+          </Button>
         </div>
 
-        {/* ── KPIs ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-5 [&>*]:min-w-0">
-          {loading ? (
-            [0, 1, 2].map(i => <Skeleton key={i} className="h-[88px]" />)
+        {erreur && <p className="text-[var(--fs-sm)] text-[var(--danger)]">{erreur}</p>}
+
+        {/* ── Aujourd'hui ── */}
+        <section className="glass rounded-[var(--r-xl)] p-3">
+          <div className="flex items-center justify-between px-1 pb-2">
+            <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">Aujourd'hui</span>
+            <button onClick={() => navigate('/calendrier')}
+              className="inline-flex items-center gap-0.5 text-[var(--fs-xs)] text-[var(--text-muted)] hover:text-[var(--text)]">
+              Planning <ChevronRight size={13} />
+            </button>
+          </div>
+          {loading || !d ? <Skeleton className="h-16" /> : (
+            <div className="grid grid-cols-5 gap-1.5">
+              <CaseJour icone={<CalendarClock size={15} />} valeur={d.jour.aFaire} libelle="À faire" onClick={() => navigate('/livraisons')} />
+              <CaseJour icone={<Truck size={15} />} valeur={d.jour.enCours} libelle="En cours" onClick={() => navigate('/livraisons')} />
+              <CaseJour icone={<CheckCircle2 size={15} />} valeur={d.jour.livrees} libelle="Livrées" ton="success" onClick={() => navigate('/livraisons')} />
+              <CaseJour icone={<AlarmClock size={15} />} valeur={d.jour.enRetard} libelle="En retard" ton={d.jour.enRetard ? 'danger' : undefined} onClick={() => navigate('/livraisons')} />
+              <CaseJour icone={<AlertTriangle size={15} />} valeur={d.jour.echecs} libelle="Échecs" ton={d.jour.echecs ? 'danger' : undefined} onClick={() => navigate('/livraisons')} />
+            </div>
+          )}
+        </section>
+
+        {/* ── Argent ── */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-5 [&>*]:min-w-0">
+          {loading || !d || !ceMois ? (
+            [0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[88px]" />)
           ) : (
             <>
-              <KpiCard label="CA HT du mois" value={formatCents(kpis!.caHtCts)} tone="success"
-                icon={<Euro size={18} />} delta={deltaCA} spark={trend.map(t => t.caHtCts)} />
-              <KpiCard label="Livraisons" value={kpis!.nbLivraisons} tone="info"
-                icon={<Package size={18} />} delta={deltaLiv} spark={trend.map(t => t.nb)} />
-              <KpiCard label="Facturées" value={kpis!.nbFacturee} tone="violet"
-                icon={<FileCheck2 size={18} />}
-                sub={`/ ${kpis!.nbLivraisons}`}
-                delta={deltaFacturee}
-                progress={kpis!.nbLivraisons ? Math.round((kpis!.nbFacturee / kpis!.nbLivraisons) * 100) : 0}
-                spark={trend.map(t => t.nbFacturee)} />
+              <Lien onClick={() => navigate('/livraisons')}>
+                <KpiCard label="CA HT du mois" value={formatCents(ceMois.caHtCts)} tone="success"
+                  icon={<Euro size={18} />}
+                  delta={moisPrecedent ? evolution(moisPrecedent.caHtCts, ceMois.caHtCts) ?? undefined : undefined}
+                  sub={`${ceMois.nb} livraison${ceMois.nb > 1 ? 's' : ''}`}
+                  spark={tendance.map(t => t.caHtCts)} />
+              </Lien>
+              <Lien onClick={() => navigate('/livraisons')}>
+                <KpiCard label="Reste à facturer" value={formatCents(d.aFacturer.totalCts)} tone={d.aFacturer.nb ? 'warning' : 'neutral'}
+                  icon={<FileClock size={18} />}
+                  sub={`${d.aFacturer.nb} livrée${d.aFacturer.nb > 1 ? 's' : ''} non facturée${d.aFacturer.nb > 1 ? 's' : ''} · HT`} />
+              </Lien>
+              <Lien onClick={() => navigate('/encaissement')}>
+                <KpiCard label="À encaisser" value={formatCents(d.encaisser.totalCts)} tone={d.encaisser.nbRetard ? 'danger' : 'info'}
+                  icon={<Wallet size={18} />}
+                  sub={d.encaisser.nbRetard
+                    ? `dont ${formatCents(d.encaisser.retardCts)} en retard (${d.encaisser.nbRetard})`
+                    : `${d.encaisser.nb} facture${d.encaisser.nb > 1 ? 's' : ''} · TTC`} />
+              </Lien>
+              <Lien onClick={() => navigate('/charges')}>
+                <KpiCard label="Marge du mois" value={formatCents(marge)} tone={marge >= 0 ? 'violet' : 'danger'}
+                  icon={<TrendingUp size={18} />}
+                  sub={`CA − ${formatCents(ceMois.chargesHtCts)} de charges HT`}
+                  spark={tendance.map(t => t.caHtCts - t.chargesHtCts)} />
+              </Lien>
             </>
           )}
         </div>
 
-        {/* ── Graphe + Référentiels ── */}
-        <div className="grid lg:grid-cols-[1.6fr_1fr] gap-5 stagger [&>*]:min-w-0">
-
-          {/* Courbe CA */}
-          <div className="glass rounded-[var(--r-xl)] p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-              <div className="flex items-baseline gap-3">
-                <span className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">
-                  Chiffre d'affaires HT
-                </span>
-              </div>
-              {/* Contrôle de période — plus de bascule CA/Livraisons : un seul
-                  graphique, celui qui compte le plus (l'autre était affichable
-                  d'un clic, rarement utilisé, et fait doublon avec le KPI
-                  « Livraisons » juste au-dessus). */}
-              <div className="flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden text-[var(--fs-xs)]">
-                {(['6m', '12m', 'ytd'] as TrendPeriod[]).map(p => (
-                  <button key={p} type="button" onClick={() => handlePeriodChange(p)}
-                    className={`px-3 py-1.5 transition-colors ${period === p
-                      ? 'bg-[var(--brand)] text-white font-semibold'
-                      : 'bg-[var(--bg)] text-[var(--text-muted)] hover:bg-[var(--bg-elevated)]'}`}>
-                    {p === '6m' ? '6 mois' : p === '12m' ? '12 mois' : 'Année'}
-                  </button>
-                ))}
-              </div>
-            </div>
-            {loading
-              ? <Skeleton className="h-[220px]" />
-              : <LineChart
-                  key={period}
-                  points={trend.map(t => ({ label: t.month, value: t.caHtCts }))}
-                  formatValue={formatCents}
-                  formatAxisY={(v: number) => {
-                    if (v === 0) return '0'
-                    const eur = Math.round(v / 100)
-                    return eur >= 1000 ? `${Math.round(eur / 1000)} k€` : `${eur} €`
-                  }}
-                />
-            }
-          </div>
-
-          {/* Référentiels */}
-          <div className="glass rounded-[var(--r-xl)] p-3">
-            <div className="px-3 py-2.5 mb-1">
-              <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
-                Référentiels
+        {/* ── Tendance ── */}
+        <section className="glass rounded-[var(--r-xl)] p-4 lg:p-6">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div className="min-w-0">
+              <span className="block font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">Chiffre d'affaires HT</span>
+              <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                {PERIODES.find(p => p.cle === periode)?.libelle}
               </span>
             </div>
-            {loading ? (
-              <div className="flex flex-col gap-2 p-1">
-                {[0, 1, 2].map(i => <Skeleton key={i} className="h-16" />)}
-              </div>
-            ) : (
-              <div className="flex flex-col">
-                {[
-                  { icon: <Truck size={18} />, value: kpis!.vehiculesActifs, label: 'Véhicules actifs', path: '/flotte' },
-                  { icon: <Users size={18} />, value: kpis!.chauffeurs, label: 'Chauffeurs actifs', path: '/equipe-hub' },
-                  { icon: <Building2 size={18} />, value: kpis!.clientsActifs, label: 'Clients actifs', path: '/tiers' },
-                ].map(item => (
-                  <button
-                    key={item.path}
-                    onClick={() => navigate(item.path)}
-                    className="w-full flex items-center gap-3 p-3 rounded-[var(--r-md)] hover:bg-[var(--bg-card-hover)] transition-colors text-left"
-                  >
-                    <span className="w-10 h-10 rounded-[var(--r-md)] grid place-items-center bg-[var(--brand-soft)] text-[var(--brand)] shrink-0">
-                      {item.icon}
-                    </span>
-                    <span>
-                      <b className="font-mono text-xl text-[var(--text)]">{item.value}</b>
-                      <small className="block text-[var(--text-muted)] text-[var(--fs-xs)]">{item.label}</small>
-                    </span>
-                    <ChevronRight size={18} className="ml-auto text-[var(--text-disabled)]" />
-                  </button>
-                ))}
-                {/* Le raccourci « À traiter » vivait ici, en double avec la
-                    cloche d'alertes en haut du site — retiré. */}
-              </div>
-            )}
+            <BoutonIcone libelle="Réglages de la courbe" actif={reglages} onClick={() => setReglages(o => !o)} />
           </div>
-        </div>
+          {reglages && (
+            <div className="mb-3">
+              <PanneauReglages titre="Période">
+                <div className="flex flex-wrap gap-1">
+                  {PERIODES.map(p => (
+                    <button key={p.cle} type="button" onClick={() => { setPeriode(p.cle); setReglages(false) }}
+                      className={`min-h-[36px] px-3 rounded-[var(--r-md)] text-[var(--fs-xs)] font-medium transition-colors ${
+                        periode === p.cle ? 'bg-[var(--brand)] text-white' : 'border border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'
+                      }`}>
+                      {p.libelle}
+                    </button>
+                  ))}
+                </div>
+              </PanneauReglages>
+            </div>
+          )}
+          {loading
+            ? <Skeleton className="h-[220px]" />
+            : <LineChart
+                key={periode}
+                points={tendance.map(t => ({ label: t.libelle, value: t.caHtCts }))}
+                formatValue={formatCents}
+                formatAxisY={(v: number) => {
+                  if (v === 0) return '0'
+                  const eur = Math.round(v / 100)
+                  return eur >= 1000 ? `${Math.round(eur / 1000)} k€` : `${eur} €`
+                }}
+              />}
+        </section>
 
-        {/* ── Dernières livraisons ── */}
-        <div className="glass rounded-[var(--r-xl)] overflow-hidden">
+        {/* ── Activité récente ── */}
+        <section className="glass rounded-[var(--r-xl)] overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)]">
             <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-widest">
-              Dernières livraisons
+              Activité récente
             </span>
             <Button variant="ghost" size="compact" onClick={() => navigate('/livraisons')}>
               Voir tout <ChevronRight size={13} />
             </Button>
           </div>
 
-          {loading ? (
-            <div className="p-4 space-y-2">
-              {[0, 1, 2, 3, 4].map(i => <Skeleton key={i} className="h-12" />)}
-            </div>
-          ) : recent.length === 0 ? (
+          {loading || !d ? (
+            <div className="p-4 space-y-2">{[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}</div>
+          ) : d.recentes.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-3 text-[var(--text-muted)]">
               <p className="text-[var(--fs-sm)]">Aucune livraison enregistrée.</p>
-              <Button variant="primary" onClick={() => navigate('/livraisons')}>
-                Créer une livraison
-              </Button>
+              <Button variant="primary" onClick={nouvelle}>Créer une livraison</Button>
             </div>
           ) : (
             <>
-              {/* Desktop */}
-              <div className="hidden md:block">
-                <div className="overflow-x-auto">
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-[var(--fs-sm)]">
                   <thead>
                     <tr className="bg-[var(--bg-elevated)] text-left">
                       {['Date', 'Client', 'Chauffeur', 'Montant HT', 'Statut'].map(h => (
-                        <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] text-[var(--text-muted)] uppercase tracking-wide">
-                          {h}
-                        </th>
+                        <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] text-[var(--text-muted)] uppercase tracking-wide">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {recent.map((row, i) => (
-                      <tr
-                        key={row.id}
-                        onClick={() => openRow(row)}
-                        className={`border-t border-[var(--border)] cursor-pointer transition-colors hover:bg-[var(--bg-card-hover)]
-                          ${i % 2 === 0 ? '' : 'bg-[var(--bg-card)]/40'}`}
-                      >
-                        <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
-                          {new Date(row.date).toLocaleDateString('fr-FR')}
-                        </td>
-                        <td className="px-4 py-3 font-medium text-[var(--text)]">
-                          {row.clients?.name ?? '—'}
-                        </td>
+                    {d.recentes.map(row => (
+                      <tr key={row.id} onClick={() => ouvrir(row)}
+                        className="border-t border-[var(--border)] cursor-pointer transition-colors hover:bg-[var(--bg-card-hover)]">
+                        <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">{dateCourte(row.date)}</td>
+                        <td className="px-4 py-3 font-medium text-[var(--text)]">{row.clients?.name ?? '—'}</td>
                         <td className="px-4 py-3 text-[var(--text-muted)]">
                           {row.team_members?.full_name
-                            ? <span className="inline-flex items-center gap-2">
-                                <DriverAvatar name={row.team_members.full_name} />
-                                {row.team_members.full_name}
-                              </span>
+                            ? <span className="inline-flex items-center gap-2"><DriverAvatar name={row.team_members.full_name} />{row.team_members.full_name}</span>
                             : '—'}
                         </td>
-                        <td className="px-4 py-3 font-mono text-[var(--text)]">
-                          {formatCents(effectiveHtCts(row))}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>{STATUS_LABELS[row.statut]}</Badge>
-                        </td>
+                        <td className="px-4 py-3 font-mono text-[var(--text)]">{formatCents(effectiveHtCts(row))}</td>
+                        <td className="px-4 py-3"><Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>{STATUS_LABELS[row.statut]}</Badge></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                </div>
               </div>
 
-              {/* Mobile */}
-              <div className="md:hidden flex flex-col gap-2 p-3">
-                {recent.map(row => (
-                  <button
-                    key={row.id}
-                    onClick={() => openRow(row)}
-                    className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 hover:bg-[var(--bg-card-hover)] transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <span className="font-medium text-[var(--text)]">{row.clients?.name ?? '—'}</span>
+              <div className="md:hidden flex flex-col divide-y divide-[var(--border)]">
+                {d.recentes.map(row => (
+                  <button key={row.id} onClick={() => ouvrir(row)}
+                    className="w-full text-left px-4 py-3 hover:bg-[var(--bg-card-hover)] transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-medium text-[var(--text)] truncate">{row.clients?.name ?? '—'}</span>
                       <Badge color={STATUS_COLORS[row.statut] ?? 'muted'}>{STATUS_LABELS[row.statut]}</Badge>
                     </div>
-                    <div className="flex items-end justify-between gap-2">
-                      <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-                        {new Date(row.date).toLocaleDateString('fr-FR')}
-                        {row.team_members?.full_name && ` · ${row.team_members.full_name}`}
+                    <div className="flex items-end justify-between gap-2 mt-0.5">
+                      <span className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">
+                        {dateCourte(row.date)}{row.team_members?.full_name && ` · ${row.team_members.full_name}`}
                       </span>
-                      <span className="font-mono font-semibold text-[var(--text)]">
-                        {formatCents(effectiveHtCts(row))}
-                      </span>
+                      <span className="font-mono text-[var(--fs-sm)] text-[var(--text)]">{formatCents(effectiveHtCts(row))}</span>
                     </div>
                   </button>
                 ))}
               </div>
             </>
           )}
-        </div>
-
+        </section>
       </div>
 
       <Suspense fallback={null}>
-        <DrawerLivraison
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          delivery={selected}
-          onSaved={load}
-        />
+        <DrawerLivraison open={drawerOpen} onClose={() => setDrawerOpen(false)} delivery={selected} onSaved={load} />
       </Suspense>
     </Shell>
+  )
+}
+
+/** 'AAAA-MM-JJ' → '30/09' sans passer par UTC. */
+function dateCourte(iso: string): string {
+  const [, m, j] = iso.split('-')
+  return `${j}/${m}`
+}
+
+/** Rend une carte KPI cliquable sans toucher au composant partagé. */
+function Lien({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} className="text-left min-w-0 rounded-[var(--r-xl)]">
+      {children}
+    </button>
+  )
+}
+
+/** Une case du bloc « Aujourd'hui » : un chiffre, un mot, un clic. */
+function CaseJour({ icone, valeur, libelle, ton, onClick }: {
+  icone: React.ReactNode
+  valeur: number
+  libelle: string
+  ton?: 'success' | 'danger'
+  onClick: () => void
+}) {
+  const couleur = ton === 'danger' ? 'text-[var(--danger)]' : ton === 'success' ? 'text-[var(--success)]' : 'text-[var(--text)]'
+  return (
+    <button type="button" onClick={onClick}
+      className={`flex flex-col items-center gap-0.5 py-2 rounded-[var(--r-md)] transition-colors hover:bg-[var(--bg-card-hover)] ${
+        ton === 'danger' ? 'bg-[var(--danger)]/10' : 'bg-[var(--bg-elevated)]'
+      }`}>
+      <span className={`${ton ? couleur : 'text-[var(--text-muted)]'}`}>{icone}</span>
+      <span className={`font-mono text-xl font-semibold leading-none ${couleur}`}>{valeur}</span>
+      <span className="text-[10px] sm:text-[var(--fs-xs)] text-[var(--text-muted)] text-center leading-tight">{libelle}</span>
+    </button>
   )
 }

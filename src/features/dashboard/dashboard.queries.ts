@@ -1,191 +1,65 @@
 import { supabase } from '../../app/providers'
-import { effectiveHtCts } from '../../shared/lib/money'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
+import type { CourseDuJour, FactureOuverte } from './dashboard.logic'
 
-export interface DashboardKpis {
-  caHtCts: number
-  nbLivraisons: number
-  nbFacturee: number
-  nbPayee: number
-  vehiculesActifs: number
-  chauffeurs: number
-  clientsActifs: number
-}
-
-export async function getDashboardKpis(): Promise<DashboardKpis> {
-  const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
-  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10)
-
-  const [deliveriesRes, vehiclesRes, teamRes, clientsRes] = await Promise.all([
+/**
+ * Tout ce que le Dashboard affiche, en UNE vague de requêtes parallèles.
+ *
+ * La courbe charge les 12 derniers mois d'un coup (livraisons + charges) et se
+ * découpe ensuite en mémoire (`dashboard.logic.ts`) : changer de période ne
+ * refait aucune requête. Avant : deux requêtes PAR MOIS, donc 12 à 24.
+ *
+ * Les montants suivent la RLS : un chauffeur n'arrive jamais ici (redirigé
+ * vers Mes courses), un président / DG voit toute la société.
+ */
+export async function getDashboard(debutPeriode: string, finPeriode: string, aujourdhui: string) {
+  const [livraisons, charges, jour, livrees, facturees, recentes] = await Promise.all([
     supabase
       .from('deliveries')
-      .select('amount_ht_cts, statut')
-      .gte('date', monthStart)
-      .lte('date', monthEnd)
-      .neq('statut', 'annulee'),
-    supabase.from('vehicles').select('id', { count: 'exact' }).eq('status', 'active').limit(1),
-    supabase.from('team_members').select('id', { count: 'exact' }).eq('active', true).limit(1),
-    supabase.from('clients').select('id', { count: 'exact' }).eq('active', true).limit(1),
+      .select('date, statut, amount_ht_cts')
+      .gte('date', debutPeriode)
+      .lte('date', finPeriode),
+    supabase
+      .from('charges')
+      .select('date, montant_ht_cts')
+      .gte('date', debutPeriode)
+      .lte('date', finPeriode)
+      .eq('est_immobilisation', false),
+    // Journée : les courses d'aujourd'hui + les ouvertes restées en arrière.
+    supabase
+      .from('deliveries')
+      .select('date, statut, arrival_time, probleme_le')
+      .or(`date.eq.${aujourdhui},and(date.lt.${aujourdhui},statut.in.(planifiee,en_cours))`),
+    supabase
+      .from('deliveries')
+      .select('amount_ht_cts')
+      .eq('statut', 'livree'),
+    supabase
+      .from('deliveries')
+      .select('invoiced_at, amount_ttc_cts, clients!client_id(payment_terms)')
+      .eq('statut', 'facturee'),
+    // Activité récente : les dernières MODIFIÉES, pas les plus lointaines dans
+    // le futur. `*` assumé : la ligne s'ouvre dans le tiroir d'édition.
+    supabase
+      .from('deliveries')
+      .select('*, clients!client_id(name), vehicles!vehicle_id(label), team_members!driver_id(full_name)')
+      .order('updated_at', { ascending: false })
+      .limit(8)
+      .returns<DeliveryRow[]>(),
   ])
 
-  const deliveries = deliveriesRes.data ?? []
-  const nb = deliveries.length
-  const caHtCts = deliveries.reduce((s, d) => s + effectiveHtCts(d), 0)
-  const nbFacturee = deliveries.filter(d => d.statut === 'facturee' || d.statut === 'payee').length
-  const nbPayee = deliveries.filter(d => d.statut === 'payee').length
+  const erreur = [livraisons, charges, jour, livrees, facturees, recentes].find(r => r.error)?.error ?? null
 
   return {
-    caHtCts,
-    nbLivraisons: nb,
-    nbFacturee,
-    nbPayee,
-    vehiculesActifs: vehiclesRes.count ?? 0,
-    chauffeurs: teamRes.count ?? 0,
-    clientsActifs: clientsRes.count ?? 0,
+    erreur,
+    livraisons: livraisons.data ?? [],
+    charges: charges.data ?? [],
+    jour: (jour.data ?? []) as CourseDuJour[],
+    livrees: livrees.data ?? [],
+    facturees: (facturees.data ?? []).map((f): FactureOuverte => {
+      const client = (Array.isArray(f.clients) ? f.clients[0] : f.clients) as { payment_terms?: number | null } | null
+      return { invoiced_at: f.invoiced_at, amount_ttc_cts: f.amount_ttc_cts, payment_terms: client?.payment_terms ?? 30 }
+    }),
+    recentes: recentes.data ?? [],
   }
-}
-
-export async function getRecentDeliveries() {
-  return supabase
-    .from('deliveries')
-    .select('*, clients!client_id(name), vehicles!vehicle_id(label), team_members!driver_id(full_name)')
-    .order('date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .limit(8)
-    .returns<DeliveryRow[]>()
-}
-
-export interface ActionItems {
-  facturesImpayees: number
-  montantImpayeCts: number
-  chargesNonCategorisees: number
-  carburantARapprocher: number
-  entretienARapprocher: number
-  entretienAVenir: number
-  qontoDebitsATraiter: number
-  montantQontoATraiterCts: number
-}
-
-export async function getActionItems(): Promise<ActionItems> {
-  const today = new Date().toISOString().slice(0, 10)
-
-  // Vague 1 : requêtes indépendantes en parallèle
-  const [
-    impayeesRes,
-    nonCatRes,
-    carburantCatsRes,
-    entretienCatsRes,
-    fuelLinkedRes,
-    maintLinkedRes,
-    aVenirRes,
-    qontoDebitsRes,
-  ] = await Promise.all([
-    supabase.from('deliveries').select('amount_ht_cts').eq('statut', 'facturee'),
-    supabase.from('charges').select('id', { count: 'exact', head: true }).is('category_id', null).eq('est_immobilisation', false),
-    supabase.from('charge_categories').select('id').eq('type', 'carburant'),
-    supabase.from('charge_categories').select('id').eq('type', 'entretien'),
-    supabase.from('fuel_logs').select('charge_id').not('charge_id', 'is', null),
-    supabase.from('vehicle_maintenances').select('charge_id').not('charge_id', 'is', null),
-    supabase.from('vehicle_maintenances')
-      .select('id', { count: 'exact', head: true })
-      .not('next_due_date', 'is', null)
-      .gte('next_due_date', today),
-    supabase.from('qonto_transactions')
-      .select('amount_cts')
-      .eq('side', 'debit')
-      .is('charge_id', null)
-      .is('justif_type', null),
-  ])
-
-  const impayees        = impayeesRes.data ?? []
-  const carburantCatIds = (carburantCatsRes.data ?? []).map(c => c.id)
-  const entretienCatIds = (entretienCatsRes.data ?? []).map(c => c.id)
-  const fuelLinkedIds   = new Set((fuelLinkedRes.data ?? []).map(r => r.charge_id).filter(Boolean))
-  const maintLinkedIds  = new Set((maintLinkedRes.data ?? []).map(r => r.charge_id).filter(Boolean))
-
-  // Vague 2 : charges par catégorie (dépend des catIds)
-  const [carburantChargesRes, entretienChargesRes] = await Promise.all([
-    carburantCatIds.length
-      ? supabase.from('charges').select('id').in('category_id', carburantCatIds).eq('est_immobilisation', false)
-      : Promise.resolve({ data: [] as { id: string }[] }),
-    entretienCatIds.length
-      ? supabase.from('charges').select('id').in('category_id', entretienCatIds).eq('est_immobilisation', false)
-      : Promise.resolve({ data: [] as { id: string }[] }),
-  ])
-
-  const qontoDebits = qontoDebitsRes.data ?? []
-
-  return {
-    facturesImpayees:        impayees.length,
-    montantImpayeCts:        impayees.reduce((s, d) => s + (d.amount_ht_cts ?? 0), 0),
-    chargesNonCategorisees:  nonCatRes.count ?? 0,
-    carburantARapprocher:    (carburantChargesRes.data ?? []).filter(c => !fuelLinkedIds.has(c.id)).length,
-    entretienARapprocher:    (entretienChargesRes.data ?? []).filter(c => !maintLinkedIds.has(c.id)).length,
-    entretienAVenir:         aVenirRes.count ?? 0,
-    qontoDebitsATraiter:     qontoDebits.length,
-    montantQontoATraiterCts: qontoDebits.reduce((s, t) => s + (t.amount_cts ?? 0), 0),
-  }
-}
-
-export type TrendPeriod = '6m' | '12m' | 'ytd'
-
-export async function getMonthlyTrend(period: TrendPeriod = '6m') {
-  const now = new Date()
-
-  // Construire la liste des mois à interroger
-  let slots: { start: string; end: string; label: string }[]
-
-  if (period === 'ytd') {
-    const currentMonth = now.getMonth() // 0-based
-    slots = Array.from({ length: currentMonth + 1 }, (_, i) => {
-      const d = new Date(now.getFullYear(), i, 1)
-      return {
-        start: d.toISOString().slice(0, 10),
-        end: new Date(now.getFullYear(), i + 1, 0).toISOString().slice(0, 10),
-        label: d.toLocaleDateString('fr-FR', { month: 'short' }),
-      }
-    })
-  } else {
-    const count = period === '12m' ? 12 : 6
-    slots = Array.from({ length: count }, (_, i) => {
-      const offset = count - 1 - i
-      const d = new Date(now.getFullYear(), now.getMonth() - offset, 1)
-      return {
-        start: d.toISOString().slice(0, 10),
-        end: new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().slice(0, 10),
-        label: d.toLocaleDateString('fr-FR', { month: 'short' }),
-      }
-    })
-  }
-
-  // Requêtes parallèles par slot : livraisons + charges simultanées
-  return Promise.all(slots.map(async ({ start, end, label }) => {
-    const [delivRes, chargesRes] = await Promise.all([
-      supabase
-        .from('deliveries')
-        .select('amount_ht_cts, statut')
-        .gte('date', start)
-        .lte('date', end)
-        .neq('statut', 'annulee'),
-      supabase
-        .from('charges')
-        .select('montant_ht_cts')
-        .gte('date', start)
-        .lte('date', end)
-        .eq('est_immobilisation', false),
-    ])
-    const rows = delivRes.data ?? []
-    const caHtCts = rows.reduce((s, d) => s + effectiveHtCts(d), 0)
-    const chargesHtCts = (chargesRes.data ?? []).reduce((s, c) => s + (c.montant_ht_cts ?? 0), 0)
-    return {
-      month: label,
-      caHtCts,
-      chargesHtCts,
-      margeHtCts: caHtCts - chargesHtCts,
-      nb: rows.length,
-      nbFacturee: rows.filter(d => d.statut === 'facturee' || d.statut === 'payee').length,
-      nbPayee: rows.filter(d => d.statut === 'payee').length,
-    }
-  }))
 }

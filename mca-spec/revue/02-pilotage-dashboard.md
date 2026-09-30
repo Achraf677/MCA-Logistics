@@ -1,7 +1,7 @@
 # 02 — Pilotage › Dashboard
 
 > Un fichier = un onglet (plan fixe, modèle `01-mes-courses.md`).
-> Dernière mise à jour : 30/09/2026 (revue, avant lot 1).
+> Dernière mise à jour : 30/09/2026 (lot 1).
 
 ## 1. Rôle
 - Écran d'accueil de l'app (`/` et `/pilotage`) : savoir en 10 secondes où en est la société.
@@ -9,42 +9,45 @@
 - Doit servir l'express (courses du jour, urgences) et la messagerie (tournées, échecs).
 
 ## 2. Qui voit quoi
-- `/` n'a AUCUN garde : tout compte connecté atterrit ici, chauffeur compris.
-- Chiffres filtrés par la RLS : un chauffeur voit « CA HT du mois » calculé sur SES courses,
-  et le bouton « + Nouvelle livraison ».
-- Président / DG / comptable : toute la société.
+- Chauffeur : renvoyé sur Mes courses depuis `/` et `/pilotage` (jamais de montant).
+- Président / DG / comptable : toute la société (RLS).
 
 ## 3. L'écran, de haut en bas
-- Titre « Vue d'ensemble » (28 px) + « Activité du mois · mise à jour à l'instant » (point
-  vert décoratif) ; bouton « + Nouvelle livraison » (tiroir Livraisons).
-- 3 KPI (2 colonnes sur mobile → le 3e seul sur sa ligne) :
-  - CA HT du mois (évolution vs mois précédent, mini-courbe) ;
-  - Livraisons du mois (toutes, y compris planifiées) ;
-  - Facturées / total du mois, barre de progression.
-- Courbe « Chiffre d'affaires HT » : 6 mois / 12 mois / Année.
-- « Référentiels » : véhicules actifs, chauffeurs actifs, clients actifs (liens).
-- « Dernières livraisons » : 8 lignes triées par date décroissante (tableau PC : date,
-  client, chauffeur, montant HT, statut ; cartes sur mobile) → ouvre le tiroir livraison.
+- En-tête compact : « Bonjour <prénom> », date du jour, bouton « + Nouvelle livraison »
+  (visible : il était avant dans un emplacement réservé aux écrans à sous-onglets, donc
+  jamais affiché ici).
+- Bloc « Aujourd'hui » (5 cases cliquables → Livraisons) : À faire · En cours · Livrées ·
+  En retard (heure prévue dépassée ou course d'un jour passé encore ouverte) · Échecs
+  (signalés par un chauffeur). Rouge si > 0. Lien « Planning » → Calendrier.
+- 4 KPI argent (2 colonnes mobile, 4 PC), cliquables :
+  - CA HT du mois (évolution vs mois précédent, nb livraisons, mini-courbe) → Livraisons ;
+  - Reste à facturer (livrées non facturées, HT) → Livraisons ;
+  - À encaisser (facturées, TTC, « dont X en retard » selon délai client) → Encaissement ;
+  - Marge du mois = CA HT − charges HT du mois (date de la charge, hors immobilisations)
+    → Charges.
+- Courbe « Chiffre d'affaires HT » ; période (6 / 12 mois / depuis janvier) derrière le
+  `BoutonIcone` Réglages.
+- « Activité récente » : 8 dernières livraisons MODIFIÉES (tableau PC, liste mobile) →
+  tiroir livraison.
 
 ## 4. Gestes et écritures
-- Aucun écrit direct. « + Nouvelle livraison » et un clic sur une ligne ouvrent le tiroir
-  Livraisons (création / modification).
-- Liens vers Flotte, Équipe, Tiers, Livraisons.
+- Aucun écrit direct : « Nouvelle livraison » et un clic sur une ligne ouvrent le tiroir
+  Livraisons. Tout le reste = navigation.
 
-## 5. Données lues
-- `deliveries` du mois (amount_ht_cts, statut), hors annulées.
-- `vehicles` / `team_members` / `clients` : comptes des actifs.
-- Courbe : 2 requêtes PAR MOIS (livraisons + charges) → 12 requêtes en 6 mois, 24 en 12 mois.
-  Les charges sont chargées puis jamais affichées.
-- 8 dernières livraisons avec `*` (toutes les colonnes) + client, véhicule, chauffeur.
+## 5. Données lues (une vague parallèle de 6 requêtes, plus aucune par mois)
+- `deliveries` des 12 derniers mois (date, statut, amount_ht_cts) + `charges` (date,
+  montant_ht_cts, hors immobilisations) → courbe, CA, marge, découpés en mémoire.
+- `deliveries` du jour + ouvertes des jours passés (date, statut, arrival_time, probleme_le).
+- `deliveries` livrées (amount_ht_cts) ; facturées (invoiced_at, amount_ttc_cts,
+  `clients.payment_terms`, 30 j par défaut).
+- 8 dernières modifiées (`*` + client, véhicule, chauffeur) pour le tiroir.
 
 ## 6. Fichiers
-- `src/features/dashboard/Dashboard.tsx`, `dashboard.queries.ts` (dont `getActionItems`,
-  ~70 lignes, code mort).
-- `src/app/sections/PilotageSection.tsx`.
-- Dette d'architecture baselinée : importe `livraisons` (tiroir, `formatCents`,
-  `STATUS_LABELS`, types).
-- Partagé : `KpiCard`, `LineChart`, `DriverAvatar`, `money.effectiveHtCts`.
+- `src/features/dashboard/Dashboard.tsx`, `dashboard.queries.ts`, `dashboard.logic.ts`
+  (+ tests : bornes de mois en heure locale, agrégation, journée, encaissement).
+- `src/app/sections/PilotageSection.tsx` (renvoi chauffeur).
+- Dette baselinée : importe `livraisons` (tiroir, libellés de statut, type).
+- Partagé : `KpiCard`, `LineChart`, `DriverAvatar`, `BoutonIcone`, `money`.
 
 ## 7. Critique (30/09/2026)
 Bon
@@ -71,7 +74,7 @@ Pas bon
 - Perf : 12 à 24 requêtes pour la courbe, `select *` sur les dernières livraisons, code mort.
 
 ## 8. Lots
-- Lot 1 (proposé) :
+- Lot 1 — FAIT (PR feat/revue-dashboard) :
   - corriger les bornes de mois (dates locales, fonction pure testée) ;
   - chauffeur → redirigé sur Mes courses depuis `/` ;
   - bloc « Aujourd'hui » : à faire / en cours / livrées / en retard / échecs signalés,
@@ -81,8 +84,8 @@ Pas bon
   - « Référentiels » supprimé ; « Dernières livraisons » = dernières modifiées / du jour ;
   - en-tête compact (salutation + date du jour, bouton Nouvelle livraison),
     réglages de la courbe derrière `BoutonIcone` ;
-  - courbe : 2 requêtes au total (plage entière, regroupement en JS dans `*.logic.ts`),
-    suppression du code mort.
+  - courbe : 1 requête par table pour 12 mois, regroupement dans `dashboard.logic.ts` ;
+    `getActionItems` (code mort) supprimé ; bouton « Nouvelle livraison » réellement visible.
 - Lot 2 (plus tard) : solde Qonto + prévision 30 j (depuis Trésorerie), carte des
   chauffeurs du jour, indicateurs messagerie (taux d'échec, colis / tournée).
 
