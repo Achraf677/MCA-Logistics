@@ -1,7 +1,7 @@
 import { supabase } from '../../app/providers'
 import { lireErreurEdge } from '../../shared/lib/erreurEdge'
 import type { NatureEchec } from '../../shared/lib/erreurEdge'
-import { canTransition } from './livraisons.logic'
+import { canTransition, nettoyerRecherche, messageDepuisCorps } from './livraisons.logic'
 import { parseLvPdfRef, lvNumero } from './lettreVoiture.logic'
 import { getDocument, getDownloadUrl } from '../../shared/lib/documents.queries'
 import type { ComputedAmount } from './livraisons.logic'
@@ -21,11 +21,30 @@ export async function sendClientEmail(deliveryId: string) {
   return supabase.functions.invoke('send-client-email', { body: { delivery_id: deliveryId } })
 }
 
+// Liste : mêmes jointures + le délai de paiement du client (retard d'encaissement).
+const LISTE_JOINS = `
+  *,
+  clients!client_id(name, tariff_mode, tariff_rate_cts, email, payment_terms),
+  vehicles!vehicle_id(label, plate),
+  team_members!driver_id(full_name)
+`.trim()
+
+/**
+ * Livraisons filtrées. Tout est fait CÔTÉ BASE (pas de filtrage en mémoire sur
+ * tout l'historique) :
+ * - `q` : recherche insensible à la casse dans la description, les deux
+ *   adresses, le n° de facture et le NOM DU CLIENT. Le nom étant dans une autre
+ *   table, on cherche d'abord les clients correspondants (1 petite requête),
+ *   puis on les ajoute au `or(…)` par `client_id.in.(…)`.
+ * - `echecs` : courses ouvertes (planifiée / en cours) avec un problème signalé
+ *   par le chauffeur, quelle que soit la date.
+ */
 export async function getDeliveries(filters: DeliveryFilters = {}) {
   let q = supabase
     .from('deliveries')
-    .select(WITH_JOINS)
+    .select(LISTE_JOINS)
     .order('date', { ascending: false })
+    .order('arrival_time', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: false })
 
   if (filters.status && filters.status !== 'all') q = q.eq('statut', filters.status)
@@ -34,8 +53,67 @@ export async function getDeliveries(filters: DeliveryFilters = {}) {
   if (filters.driver_id)  q = q.eq('driver_id', filters.driver_id)
   if (filters.date_from)  q = q.gte('date', filters.date_from)
   if (filters.date_to)    q = q.lte('date', filters.date_to)
+  if (filters.echecs)     q = q.not('probleme_le', 'is', null).in('statut', ['planifiee', 'en_cours'])
+
+  const texte = nettoyerRecherche(filters.q)
+  if (texte) {
+    const motif = `*${texte}*`
+    const { data: clients } = await supabase.from('clients').select('id').ilike('name', `%${texte}%`).limit(200)
+    const ids = ((clients as { id: string }[] | null) ?? []).map(c => c.id)
+    const conditions = [
+      `description.ilike.${motif}`,
+      `pickup_address.ilike.${motif}`,
+      `delivery_address.ilike.${motif}`,
+      `pennylane_invoice_number.ilike.${motif}`,
+      ...(ids.length ? [`client_id.in.(${ids.join(',')})`] : []),
+    ]
+    q = q.or(conditions.join(','))
+  }
 
   return q
+}
+
+/** Nombre de courses ouvertes avec un échec terrain signalé (pastille du filtre « Échecs »). */
+export async function compterEchecs() {
+  return supabase
+    .from('deliveries')
+    .select('id', { count: 'exact', head: true })
+    .not('probleme_le', 'is', null)
+    .in('statut', ['planifiee', 'en_cours'])
+}
+
+/** Listes des filtres Client / Chauffeur : tous les clients (même inactifs,
+ *  l'historique en contient), les chauffeurs actifs d'abord. */
+export async function getListesFiltres() {
+  const [clients, chauffeurs] = await Promise.all([
+    supabase.from('clients').select('id, name').order('name'),
+    supabase.from('team_members').select('id, full_name, active').eq('role', 'chauffeur')
+      .order('active', { ascending: false }).order('full_name'),
+  ])
+  return {
+    clients: (clients.data as { id: string; name: string }[] | null) ?? [],
+    chauffeurs: (chauffeurs.data as { id: string; full_name: string }[] | null) ?? [],
+  }
+}
+
+/**
+ * Message PRÉCIS d'un échec d'Edge Function. Sur une réponse non-2xx,
+ * supabase-js ne donne que « Edge Function returned a non-2xx status code » :
+ * le vrai motif (`{ error: "…" }`) est dans `error.context` (la Response).
+ * Local à la feature (un helper partagé pourra le remplacer).
+ */
+export async function messageErreurEdge(error: unknown, data?: unknown, repli = 'Erreur inattendue.'): Promise<string> {
+  const d = data as { error?: unknown } | null | undefined
+  if (d && typeof d.error === 'string' && d.error.trim()) return d.error
+  const ctx = (error as { context?: unknown } | null)?.context as Response | undefined
+  if (ctx && typeof ctx.clone === 'function') {
+    try {
+      const m = messageDepuisCorps(await ctx.clone().text())
+      if (m) return m
+    } catch { /* corps déjà lu ou illisible : repli ci-dessous */ }
+  }
+  const msg = (error as Error | null)?.message
+  return msg?.trim() || repli
 }
 
 /** Une livraison par son id — ouverture directe via `/livraisons?ouvrir=<id>` (Dashboard). */
