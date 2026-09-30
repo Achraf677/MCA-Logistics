@@ -116,6 +116,7 @@ export function DrawerModele({ open, onClose, template, onSaved }: Props) {
   // ── Enregistrer ───────────────────────────────────────────────────────────
 
   const handleSave = async () => {
+    if (!can('livraisons.modeles', template ? 'update' : 'create')) { toast('Droit insuffisant', 'error'); return }
     if (!form.label.trim()) { toast('Le libellé est requis', 'error'); return }
 
     setSaving(true)
@@ -170,6 +171,8 @@ export function DrawerModele({ open, onClose, template, onSaved }: Props) {
   }
 
   const canDelete = isEdit && can('livraisons.modeles', 'delete')
+  // Enregistrer : droit « créer » pour un nouveau modèle, « modifier » sinon.
+  const canSave   = can('livraisons.modeles', isEdit ? 'update' : 'create')
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -292,10 +295,12 @@ export function DrawerModele({ open, onClose, template, onSaved }: Props) {
 
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[var(--border)]">
-          <Button variant="primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Enregistrement…' : 'Enregistrer'}
-          </Button>
-          <Button variant="secondary" onClick={onClose}>Annuler</Button>
+          {canSave && (
+            <Button variant="primary" onClick={handleSave} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          )}
+          <Button variant="secondary" onClick={onClose}>{canSave ? 'Annuler' : 'Fermer'}</Button>
           {canDelete && (
             <Button variant="ghost" onClick={() => setConfirmDelete(true)}
               className="ml-auto text-[var(--danger)]">

@@ -11,6 +11,7 @@ import { tripSummary } from './modeles.logic'
 import { DrawerModele } from './DrawerModele'
 import type { DeliveryTemplate } from './modeles.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -24,6 +25,8 @@ function htOf(t: DeliveryTemplate): number | null {
 
 export function Modeles() {
   const { toast } = useToast()
+  const { can } = usePermissions()
+  const peutCreer = can('livraisons.modeles', 'create')
 
   const [templates, setTemplates]   = useState<DeliveryTemplate[]>([])
   const [loading, setLoading]       = useState(true)
@@ -63,13 +66,13 @@ export function Modeles() {
   const handleSaved = () => load()
 
   const handleAction = (key: ActionKey) => {
-    if (key === 'nouveau') openNew()
+    if (key === 'nouveau' && peutCreer) openNew()
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <Shell pageTitle="Modèles" actions={['nouveau']} onAction={handleAction}>
+    <Shell pageTitle="Modèles" actions={peutCreer ? ['nouveau'] : []} onAction={handleAction}>
       <div className="flex flex-col gap-5">
 
         {loading ? (

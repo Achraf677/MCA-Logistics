@@ -143,7 +143,8 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
   // ── Statut courant ─────────────────────────────────────────────────────────
 
   const statut: QuoteStatus = quote?.statut ?? 'brouillon'
-  const isReadOnly = isEdit && statut !== 'brouillon'
+  const isReadOnly = (isEdit && statut !== 'brouillon')
+    || !can('livraisons.devis', isEdit ? 'update' : 'create')
   const isTerminal = ['refuse', 'facture', 'expire', 'transforme'].includes(statut)
   const expired    = isExpiredDisplay(quote?.valid_until ?? null, statut)
 
@@ -296,6 +297,12 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
   }
 
   const canDelete  = isEdit && can('livraisons.devis', 'delete')
+  // Droits d'écran (la RLS et l'Edge `pennylane-quote` les revérifient côté serveur).
+  const canSave    = can('livraisons.devis', isEdit ? 'update' : 'create')
+  const canSend    = isEdit && can('livraisons.devis', 'create')   // émettre le devis chez Pennylane
+  const canUpdate  = isEdit && can('livraisons.devis', 'update')   // accepté / refusé / facturer / n°
+  // Transformer : modifie le devis ET crée une livraison (RLS livraisons.livraisons).
+  const canTransform = canUpdate && can('livraisons.livraisons', 'create')
   const isInvoiced = statut === 'facture' || !!quote?.pennylane_invoice_id
   const isLinked   = !!quote?.pennylane_quote_id || !!quote?.pennylane_invoice_id
 
@@ -333,9 +340,11 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
                 </span>
               : <div className="ml-auto flex items-center gap-2">
                   <span className="font-mono text-[var(--fs-xs)] text-[var(--text-muted)] italic">N° en attente</span>
-                  <Button variant="ghost" size="compact" onClick={handleSyncNumber} disabled={syncing}>
-                    {syncing ? '…' : 'Synchroniser le n°'}
-                  </Button>
+                  {can('livraisons.devis', 'update') && (
+                    <Button variant="ghost" size="compact" onClick={handleSyncNumber} disabled={syncing}>
+                      {syncing ? '…' : 'Synchroniser le n°'}
+                    </Button>
+                  )}
                 </div>
           )}
         </div>
@@ -465,10 +474,12 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
           {/* Brouillon : enregistrer + envoyer */}
           {statut === 'brouillon' && (
             <>
-              <Button variant="primary" onClick={handleSave} disabled={saving || actioning}>
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
-              </Button>
-              {isEdit && (
+              {canSave && (
+                <Button variant="primary" onClick={handleSave} disabled={saving || actioning}>
+                  {saving ? 'Enregistrement…' : 'Enregistrer'}
+                </Button>
+              )}
+              {canSend && (
                 <Button variant="secondary" onClick={handleSend} disabled={saving || actioning}>
                   {actioning ? '…' : 'Envoyer chez Pennylane'}
                 </Button>
@@ -480,13 +491,17 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
           {/* Envoyé : marquer accepté / refusé */}
           {statut === 'envoye' && (
             <>
-              <Button variant="primary" onClick={() => handleMark('accepte')} disabled={actioning}>
-                {actioning ? '…' : 'Marquer accepté'}
-              </Button>
-              <Button variant="secondary" onClick={() => handleMark('refuse')} disabled={actioning}
-                className="text-[var(--danger)] border-[var(--danger)]/40">
-                Marquer refusé
-              </Button>
+              {canUpdate && (
+                <>
+                  <Button variant="primary" onClick={() => handleMark('accepte')} disabled={actioning}>
+                    {actioning ? '…' : 'Marquer accepté'}
+                  </Button>
+                  <Button variant="secondary" onClick={() => handleMark('refuse')} disabled={actioning}
+                    className="text-[var(--danger)] border-[var(--danger)]/40">
+                    Marquer refusé
+                  </Button>
+                </>
+              )}
               <Button variant="secondary" onClick={onClose}>Fermer</Button>
             </>
           )}
@@ -494,16 +509,22 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
           {/* Accepté : transformer en livraison + facturer directement + marquer refusé */}
           {statut === 'accepte' && (
             <>
-              <Button variant="primary" onClick={handleTransform} disabled={actioning}>
-                {actioning ? '…' : 'Transformer en livraison'}
-              </Button>
-              <Button variant="secondary" onClick={handleConvert} disabled={actioning}>
-                Facturer directement
-              </Button>
-              <Button variant="secondary" onClick={() => handleMark('refuse')} disabled={actioning}
-                className="text-[var(--danger)] border-[var(--danger)]/40">
-                Marquer refusé
-              </Button>
+              {canTransform && (
+                <Button variant="primary" onClick={handleTransform} disabled={actioning}>
+                  {actioning ? '…' : 'Transformer en livraison'}
+                </Button>
+              )}
+              {canUpdate && (
+                <>
+                  <Button variant="secondary" onClick={handleConvert} disabled={actioning}>
+                    Facturer directement
+                  </Button>
+                  <Button variant="secondary" onClick={() => handleMark('refuse')} disabled={actioning}
+                    className="text-[var(--danger)] border-[var(--danger)]/40">
+                    Marquer refusé
+                  </Button>
+                </>
+              )}
               <Button variant="secondary" onClick={onClose}>Fermer</Button>
             </>
           )}

@@ -4,6 +4,7 @@ import { Button } from './Button'
 import { ConfirmDialog } from './ConfirmDialog'
 import { useToast } from './useToast'
 import { useProfile } from '../../app/providers'
+import { usePermissions } from '../permissions/usePermissions'
 import {
   uploadDocument, listDocuments, getDownloadUrl, deleteDocument,
 } from '../lib/documents.queries'
@@ -29,7 +30,10 @@ const inputCls = 'field field-sm'
  * Si entityId est absent (création), affiche un message d'attente.
  */
 export function DocumentsPanel({ entityType, entityId }: DocumentsPanelProps) {
-  const { companyId, profile } = useProfile()
+  const { companyId } = useProfile()
+  const { can } = usePermissions()
+  // Corbeille : même droit que la RLS (documents + bucket) → systeme.documents / delete.
+  const peutSupprimer = can('systeme.documents', 'delete')
   const { toast } = useToast()
   const fileRef = useRef<HTMLInputElement>(null)
   const inputId = `doc-panel-${entityType}-${entityId ?? 'new'}`
@@ -214,7 +218,7 @@ export function DocumentsPanel({ entityType, entityId }: DocumentsPanelProps) {
                 >
                   <Download size={13} />
                 </Button>
-                {profile?.role === 'president' && (
+                {peutSupprimer && (
                   <Button
                     variant="icon"
                     onClick={() => setDeleteTarget(doc)}
