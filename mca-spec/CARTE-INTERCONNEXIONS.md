@@ -25,7 +25,9 @@
     pennylane-clients-sync (upsert de colonnes listées). Libs partagées :
     `shared/lib/pays.ts` (UE, autoliquidation), `shared/lib/supplements.ts`.
 - **vehicles / team_members** : flotte (vehicules, carburant, entretiens, inspections, incidents),
-  livraisons, tournees, mescourses, equipe, heures, alertes, devis, modeles.
+  livraisons, tournees, mescourses, equipe, heures, alertes, devis, modeles ; calendrier (lecture
+  des échéances : `ct_expiry`, `insurance_expiry`, `next_revision_date`, `licence_b_expiry`,
+  `medical_visit_expiry` via `calendrier.queries`).
 - **documents** (+ Storage `documents`) : `shared/lib/documents.queries` (tous les panneaux
   Documents), mescourses (photos), parametres ; Edge send-client-email (pièce jointe LV),
   drive-migrate-to-storage ; alertes (sans justificatif).
@@ -35,7 +37,8 @@
 - **quotes** : devis, clients ; Edge pennylane-quote ; alertes.
 - **qonto_transactions** : tresorerie, encaissement, aRapprocher ; Edge qonto-sync.
 - **fuel_logs** : carburant, vehicules, `shared/produitsVehicule.queries`.
-- **vehicle_maintenances** : entretiens, vehicules, alertes.
+- **vehicle_maintenances** : entretiens, vehicules, alertes, calendrier (`next_due_date` du dernier
+  entretien par véhicule et type).
 - **profiles / user_permissions** : `app/providers` (rôle, société), toutes les Edge via
   `_shared/auth.ts` (`exigerPermission`), admins ; RLS `has_permission`, `is_president`.
 
