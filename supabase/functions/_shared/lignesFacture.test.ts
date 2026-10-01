@@ -2,7 +2,7 @@
 // l'aperçu front : ce que l'utilisateur voit doit être ce qui part.
 import { describe, it, expect } from 'vitest';
 import {
-  codeTvaLegal, construireLignes, libelleCourse, tauxLignePrincipale,
+  codeTvaLegal, construireLignes, libelleCourse, tauxLignePrincipale, quantiteColis,
   type CourseAFacturer,
 } from './lignesFacture.ts';
 import { buildApercuPayload } from '../../../src/features/livraisons/apercuFacture.logic.ts';
@@ -59,11 +59,27 @@ describe('libelleCourse', () => {
     expect(libelleCourse({ description: '', type: 'professionnel', date: '2026-07-19' }))
       .toBe('Livraison professionnel du 2026-07-19');
   });
+  it('messagerie : libellé du mois par défaut', () => {
+    expect(libelleCourse({ description: null, type: null, date: '2026-09-30', prestation: 'messagerie' }))
+      .toBe('Messagerie septembre 2026 — colis livrés');
+  });
   it('référence client ajoutée une seule fois', () => {
     expect(libelleCourse({ description: 'Palette', type: null, date: '2026-07-19', reference_client: 'ODT 42' }))
       .toBe('Palette — Réf. ODT 42');
     expect(libelleCourse({ description: 'ODT 42 palette', type: null, date: '2026-07-19', reference_client: 'ODT 42' }))
       .toBe('ODT 42 palette');
+  });
+});
+
+describe('relevé de messagerie', () => {
+  it('quantité = colis, prix unitaire = prix au colis', () => {
+    const r = construireLignes(course({ prestation: 'messagerie', nb_colis: 1240, prix_unitaire_cts: 100, amount_ht_cts: 124000, tva_cts: 24800 }), OPTS);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lignes[0]).toMatchObject({ quantity: 1240, amountHtCts: 100 });
+  });
+  it('incohérent avec le HT : quantité 1', () => {
+    expect(quantiteColis({ prestation: 'messagerie', nb_colis: 10, prix_unitaire_cts: 100, amount_ht_cts: 999 })).toBeNull();
   });
 });
 

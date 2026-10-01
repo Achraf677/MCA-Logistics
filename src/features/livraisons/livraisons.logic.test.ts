@@ -7,7 +7,8 @@ import {
   isoLocal, bornesPeriode, dansPeriode, libellePeriode, echeanceFacture, eurosArrondis,
   dateCourte, heureCourte, villeDe, trajet, nettoyerRecherche, messageDepuisCorps,
   STATUS_COLORS, manquesFiche, libelleCreneau, libelleDuree, heureSaisie, creneauInvalide,
-  blocsPrestation } from './livraisons.logic'
+  blocsPrestation, htMessagerie, finDeMois, libelleMois, resumeMessagerie, estSurLaRoute,
+  moisDe } from './livraisons.logic'
 import type { ClientTariff, FicheASaisir } from './livraisons.logic'
 import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
 
@@ -480,7 +481,7 @@ describe('fiche unique', () => {
     prestation: 'express', client_id: 'c', date: '2026-10-01',
     pickup_address: 'A', delivery_address: 'B', driver_id: 'd', vehicle_id: 'v',
     expediteur_nom: 'E', destinataire_nom: 'D', marchandise_desc: 'Colis', nb_colis: '2',
-    poids_kg_reel: '', volume_m3: '1', ht_cts: 5000,
+    poids_kg_reel: '', volume_m3: '1', ht_cts: 5000, prix_colis: '',
     creneau_retrait_debut: '', creneau_retrait_fin: '', creneau_livraison_debut: '', creneau_livraison_fin: '',
   }
   it('fiche complète : rien ne manque (volume suffit sans poids)', () => {
@@ -515,5 +516,34 @@ describe('fiche unique', () => {
     expect(creneauInvalide('10:00', '10:00')).toBe(true)
     expect(blocsPrestation('mise_a_dispo').retrait).toBe(false)
     expect(blocsPrestation(null).retrait).toBe(true)
+  })
+})
+
+describe('messagerie : nb colis × prix au colis', () => {
+  it('HT exact en centimes, tarif client « colis »', () => {
+    expect(htMessagerie(1240, 100)).toBe(124000)
+    expect(computeAmount({ tariff_mode: 'colis', tariff_rate_cts: 85 }, { colis: 1000 })?.amount_ht_cts).toBe(85000)
+    expect(computeAmount({ tariff_mode: 'colis', tariff_rate_cts: 85 }, {})).toBeNull()
+  })
+  it('mois du relevé', () => {
+    expect(finDeMois('2026-02')).toBe('2026-02-28')
+    expect(finDeMois('2026-09')).toBe('2026-09-30')
+    expect(moisDe('2026-09-30')).toBe('2026-09')
+    expect(libelleMois('2026-09-30')).toBe('septembre 2026')
+  })
+  it('résumé et route', () => {
+    expect(resumeMessagerie(1240, 100)?.replace(/[\u202f\u00a0]/g, ' ')).toBe('1 240 colis × 1,00 €')
+    expect(resumeMessagerie(null, 100)).toBeNull()
+    expect(estSurLaRoute('messagerie')).toBe(false)
+    expect(estSurLaRoute(null)).toBe(true)
+  })
+  it('relevé : ni arrêt, ni LV ; facturer exige colis + prix', () => {
+    const m = manquesFiche({
+      prestation: 'messagerie', client_id: 'c', date: '2026-09-30', pickup_address: '', delivery_address: '',
+      driver_id: '', vehicle_id: '', expediteur_nom: '', destinataire_nom: '', marchandise_desc: '',
+      nb_colis: '', poids_kg_reel: '', volume_m3: '', ht_cts: null, prix_colis: '1',
+      creneau_retrait_debut: '', creneau_retrait_fin: '', creneau_livraison_debut: '', creneau_livraison_fin: '',
+    })
+    expect(m).toEqual({ enregistrer: [], partir: [], lv: [], facturer: ['nombre de colis'] })
   })
 })

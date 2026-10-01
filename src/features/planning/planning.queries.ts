@@ -8,6 +8,8 @@ export async function getDeliveriesForWeek(dateFrom: string, dateTo: string) {
     .gte('date', dateFrom)
     .lte('date', dateTo)
     .neq('statut', 'annulee')
+    // Relevés de messagerie et forfaits : rien à faire sur la route.
+    .or('prestation.is.null,prestation.not.in.(messagerie,forfait)')
     .order('date', { ascending: true })
     .order('created_at', { ascending: true })
     .returns<DeliveryRow[]>()

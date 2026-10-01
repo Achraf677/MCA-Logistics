@@ -32,6 +32,7 @@ export const TARIFF_MODE_LABELS: Record<TariffMode, string> = {
   forfait:  'Forfait',
   km:       'Au kilomètre',
   palette:  'À la palette',
+  colis:    'Au colis (messagerie)',
   manuel:   'Manuel',
 }
 
@@ -59,6 +60,7 @@ export function getTariffLabel(client: Pick<Client, 'tariff_mode' | 'tariff_rate
     case 'forfait':  return `Forfait ${rate}`
     case 'km':       return `${rate} / km`
     case 'palette':  return `${rate} / palette`
+    case 'colis':    return `${rate} / colis`
   }
 }
 

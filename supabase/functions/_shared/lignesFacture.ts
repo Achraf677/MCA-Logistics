@@ -31,6 +31,10 @@ export interface CourseAFacturer {
   description: string | null;
   /** Référence du donneur d'ordre (ODT, n° de commande) — reprise dans le libellé. */
   reference_client?: string | null;
+  /** Messagerie : relevé « nb_colis × prix_unitaire_cts » facturé en quantité. */
+  prestation?: string | null;
+  nb_colis?: number | null;
+  prix_unitaire_cts?: number | null;
   amount_ht_cts: number | null;
   tva_cts: number | null;
   tva_rate: number | string | null;
@@ -77,11 +81,37 @@ export function tauxLignePrincipale(
 }
 
 /** Libellé réel de la ligne principale (hors mention d'autoliquidation). */
+const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+/** « septembre 2026 » depuis 'AAAA-MM-JJ'. */
+export function moisFr(date: string | null): string {
+  const m = /^(\d{4})-(\d{2})/.exec(date ?? '');
+  return m ? `${MOIS_FR[Number(m[2]) - 1]} ${m[1]}` : '';
+}
+
+/**
+ * Relevé de messagerie facturable en QUANTITÉ (« 1 240 × 1,00 € ») : seulement
+ * si nb_colis × prix_unitaire retombe exactement sur le HT stocké. Sinon null
+ * (la ligne part en quantité 1 pour le HT, comme une course).
+ */
+export function quantiteColis(
+  d: Pick<CourseAFacturer, 'prestation' | 'nb_colis' | 'prix_unitaire_cts' | 'amount_ht_cts'>,
+): { quantity: number; unitCts: number } | null {
+  if (d.prestation !== 'messagerie') return null;
+  const n = Number(d.nb_colis);
+  const pu = Number(d.prix_unitaire_cts);
+  if (!Number.isInteger(n) || n <= 0 || !Number.isInteger(pu) || pu <= 0) return null;
+  return n * pu === d.amount_ht_cts ? { quantity: n, unitCts: pu } : null;
+}
+
 export function libelleCourse(
-  d: Pick<CourseAFacturer, 'description' | 'type' | 'date'> & { reference_client?: string | null },
+  d: Pick<CourseAFacturer, 'description' | 'type' | 'date'> & { reference_client?: string | null; prestation?: string | null },
 ): string {
   const desc = d.description?.trim();
-  const base = desc || ['Livraison', d.type ?? '', 'du', d.date ?? ''].filter((s) => s !== '').join(' ');
+  const defaut = d.prestation === 'messagerie'
+    ? `Messagerie ${moisFr(d.date)} — colis livrés`.replace('  ', ' ')
+    : ['Livraison', d.type ?? '', 'du', d.date ?? ''].filter((s) => s !== '').join(' ');
+  const base = desc || defaut;
   // La référence du client sur la facture : c'est elle qu'il rapproche.
   const ref = d.reference_client?.trim();
   return ref && !base.includes(ref) ? `${base} — Réf. ${ref}` : base;
@@ -127,13 +157,14 @@ export function construireLignes(
     };
   }
   const base = libelleCourse(d);
+  const parColis = quantiteColis(d);
   lignes.push({
     ref: d.id,
     // La mention voyage DANS le libellé : seul endroit dont on soit certain
     // qu'il figure sur la facture imprimée.
     label: autoliq ? `${base} — ${opts.mentionAutoliquidation}` : base,
-    quantity: 1,
-    amountHtCts: ht,
+    quantity: parColis?.quantity ?? 1,
+    amountHtCts: parColis?.unitCts ?? ht,
     vatCode: code,
     ratePct: autoliq ? null : taux,
   });

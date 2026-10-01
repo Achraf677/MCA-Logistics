@@ -29,6 +29,7 @@ import {
   tauxTvaInitial, montantsAEcrire, recapMontant, estFacturationBloquee,
   isoLocal, trajet, PRESTATIONS, PRESTATION_LABELS, PRESTATION_AIDES, blocsPrestation,
   heureSaisie, libelleCreneau, libelleDuree, manquesFiche,
+  moisDe, finDeMois, libelleMois, resumeMessagerie,
 } from './livraisons.logic'
 import type { ClientTariff, Prestation } from './livraisons.logic'
 import {
@@ -100,6 +101,8 @@ const EMPTY_FORM = {
   creneau_retrait_fin:     '',
   creneau_livraison_debut: '',
   creneau_livraison_fin:   '',
+  /** Messagerie : prix HT d'UN colis, en euros (pré-rempli par le tarif client). */
+  prix_colis:       '',
   // Marchandise
   marchandise_desc: '',
   nb_colis:         '',
@@ -183,6 +186,7 @@ function formDepuis(d: DeliveryRow): Form {
     creneau_retrait_fin:     heureSaisie(d.creneau_retrait_fin),
     creneau_livraison_debut: heureSaisie(d.creneau_livraison_debut),
     creneau_livraison_fin:   heureSaisie(d.creneau_livraison_fin),
+    prix_colis:       d.prix_unitaire_cts != null ? (d.prix_unitaire_cts / 100).toFixed(2) : '',
     marchandise_desc: s(d.marchandise_desc),
     nb_colis:         s(d.nb_colis),
     poids_kg_reel:    s(d.poids_kg_reel),
@@ -404,6 +408,49 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
 
   const set = (k: keyof Form, v: string) => setForm(p => ({ ...p, [k]: v }))
 
+  /**
+   * Relevé de messagerie : le mois à saisir. Avant le 10, c'est en général le
+   * mois PRÉCÉDENT qu'on relève (colis livrés le mois dernier).
+   */
+  const moisParDefaut = () => {
+    const d = new Date()
+    if (d.getDate() <= 10) d.setMonth(d.getMonth() - 1, 1)
+    return isoLocal(d).slice(0, 7)
+  }
+
+  /**
+   * Choisir la prestation. Messagerie : la date devient la fin du mois relevé
+   * et le prix au colis vient du tarif du client (saisi une seule fois, dans
+   * la fiche client).
+   */
+  const choisirPrestation = (p: Prestation, clientId = form.client_id) => {
+    const client = clients.find(c => c.id === clientId)
+    setForm(f => {
+      const suite = { ...f, prestation: p, client_id: clientId }
+      if (p === 'messagerie') {
+        suite.date = finDeMois(isEdit ? moisDe(f.date) : moisParDefaut())
+        if (!f.prix_colis && client?.tariff_mode === 'colis' && client.tariff_rate_cts != null) {
+          suite.prix_colis = (client.tariff_rate_cts / 100).toFixed(2)
+        }
+      } else if (f.prestation === 'messagerie' && !isEdit) {
+        suite.date = aujourdhui()
+      }
+      return suite
+    })
+  }
+
+  /** Choisir le client : un client « au colis » fait passer une nouvelle fiche en messagerie. */
+  const choisirClient = (id: string) => {
+    const client = clients.find(c => c.id === id)
+    if (!isEdit && client?.tariff_mode === 'colis') { choisirPrestation('messagerie', id); return }
+    setForm(f => ({
+      ...f,
+      client_id: id,
+      prix_colis: f.prestation === 'messagerie' && client?.tariff_mode === 'colis' && client.tariff_rate_cts != null
+        ? (client.tariff_rate_cts / 100).toFixed(2) : f.prix_colis,
+    }))
+  }
+
   /** Copie de la course ouverte → nouvelle course (date du jour, sans preuve ni statut). */
   const dupliquer = () => {
     setCopie(true)
@@ -464,11 +511,21 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
 
   // ── Calcul du montant ─────────────────────────────────────────────────────────
 
+  const prixColisCts = nombreOuNull(form.prix_colis) != null ? Math.round(nombreOuNull(form.prix_colis)! * 100) : null
+  const nbColis = nombreOuNull(form.nb_colis) != null ? Math.round(nombreOuNull(form.nb_colis)!) : null
   const computed = useMemo(() => {
     if (!selectedClient) return null
     const rate = parseFloat(form.tva_rate || '20') / 100
+    const tvaSaisie = form.tva_override !== '' && Number.isFinite(parseFloat(form.tva_override))
+      ? Math.round(parseFloat(form.tva_override) * 100) : null
+    // Relevé de messagerie : HT = colis × prix au colis, quel que soit le tarif du client.
+    if (blocs.releve) {
+      return computeAmount({ tariff_mode: 'colis', tariff_rate_cts: prixColisCts },
+        { colis: nbColis, manual_tva_cts: tvaSaisie }, rate)
+    }
+    // Client « au colis » sur une course hors relevé : prix saisi à la main.
     return computeAmount(
-      selectedClient,
+      selectedClient.tariff_mode === 'colis' ? { tariff_mode: 'manuel', tariff_rate_cts: null } : selectedClient,
       {
         distance_km:   form.km      ? parseFloat(form.km)      : null,
         pallets:       form.pallets ? parseFloat(form.pallets) : null,
@@ -481,7 +538,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       },
       rate,
     )
-  }, [selectedClient, form.km, form.pallets, form.manual_ht, form.tva_override, form.tva_rate])
+  }, [selectedClient, form.km, form.pallets, form.manual_ht, form.tva_override, form.tva_rate, blocs.releve, prixColisCts, nbColis])
 
   // Recalcule le champ TVA quand le HT ou le taux changent, sauf si
   // l'utilisateur a saisi la TVA à la main dans cette session. Le premier
@@ -513,6 +570,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
 
   const manques = useMemo(() => manquesFiche({
     ...form,
+    prestation: form.prestation || 'express',
     ht_cts: computed?.amount_ht_cts ?? (delivery ? effectiveHtCts(delivery) : null),
   }), [form, computed, delivery])
 
@@ -614,6 +672,8 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
         creneau_livraison_debut: blocs.livraison ? (form.creneau_livraison_debut || null) : null,
         creneau_livraison_fin:   blocs.livraison ? (form.creneau_livraison_fin || null) : null,
         volume_m3:        nombreOuNull(form.volume_m3),
+        prix_unitaire_cts: blocs.releve ? prixColisCts : null,
+        ...(blocs.releve ? { nb_colis: nbColis } : {}),
         km:               nombreOuNull(form.km),
         duree_min:        nombreOuNull(form.duree_min) != null ? Math.round(nombreOuNull(form.duree_min)!) : null,
         empty_km:         nombreOuNull(form.empty_km),
@@ -646,7 +706,10 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
           type:           deliveryProp?.type ?? null,
           ...payload,
           company_id:  companyId,
-          statut:      'planifiee',
+          // Un relevé de messagerie constate des colis DÉJÀ livrés : il naît
+          // « Livrée », prêt à facturer, sans preuve unitaire attendue.
+          statut:      blocs.releve ? 'livree' : 'planifiee',
+          ...(blocs.releve ? { delivered_at: new Date().toISOString(), justif_non_requis: true } : {}),
           invoiced_at: null,
           paid_at:     null,
         })
@@ -810,7 +873,11 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
           </Badge>
           <Badge color="muted">{PRESTATION_LABELS[prestation]}</Badge>
           {delivery!.urgent && <Badge color="danger">Urgent</Badge>}
-          <span className="text-sm text-[var(--text)]">{trajet(delivery!.pickup_address, delivery!.delivery_address).court}</span>
+          <span className="text-sm text-[var(--text)]">
+            {blocs.releve
+              ? `${libelleMois(delivery!.date)} · ${resumeMessagerie(delivery!.nb_colis, delivery!.prix_unitaire_cts) ?? ''}`
+              : trajet(delivery!.pickup_address, delivery!.delivery_address).court}
+          </span>
           {delivery!.reference_client && (
             <span className="text-xs text-[var(--text-muted)]">Réf. {delivery!.reference_client}</span>
           )}
@@ -861,7 +928,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                     {PRESTATIONS.map(p => (
                       <button key={p} type="button" role="radio" aria-checked={prestation === p}
                         disabled={ro}
-                        onClick={() => set('prestation', p)}
+                        onClick={() => choisirPrestation(p)}
                         title={PRESTATION_AIDES[p]}
                         className={`h-8 px-3 rounded-[var(--r-pill)] border text-xs transition-colors disabled:opacity-60
                           ${prestation === p
@@ -876,7 +943,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
 
                 <Field label="Client *" error={tenteEnregistrer && !form.client_id ? 'Le client est requis' : undefined}>
                   <ChoixClient clients={clients} value={form.client_id} disabled={ro}
-                    onChange={id => set('client_id', id)} />
+                    onChange={choisirClient} />
                   {selectedClient && (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-muted)]">
                       {(selectedClient.phone || selectedClient.email) && (
@@ -894,6 +961,12 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                     <Input value={form.reference_client} onChange={v => set('reference_client', v)}
                       placeholder="ODT, n° de commande…" disabled={ro} />
                   </Field>
+                  {blocs.releve ? (
+                    <Field label="Mois relevé *">
+                      <Input type="month" value={moisDe(form.date)} disabled={ro}
+                        onChange={v => v && set('date', finDeMois(v))} />
+                    </Field>
+                  ) : (
                   <Field label="Date *" error={tenteEnregistrer && !form.date ? 'La date est requise' : undefined}>
                     <div className="flex gap-2">
                       <Input type="date" value={form.date} onChange={v => set('date', v)} disabled={ro} />
@@ -909,8 +982,37 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                       </button>
                     </div>
                   </Field>
+                  )}
                 </div>
               </Bloc>
+
+              {blocs.releve && (
+                <Bloc titre={`Relevé ${form.date ? libelleMois(form.date) : ''}`}>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Colis livrés dans le mois">
+                      <Input type="number" value={form.nb_colis} onChange={v => set('nb_colis', v)}
+                        placeholder="0" min={0} step={1} disabled={ro} />
+                    </Field>
+                    <Field label="Prix au colis (€ HT)">
+                      <Input type="number" value={form.prix_colis} onChange={v => set('prix_colis', v)}
+                        placeholder="1,00" min={0} step={0.01} disabled={ro} />
+                    </Field>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] px-3 py-2">
+                    <span className="text-sm text-[var(--text-muted)]">
+                      {resumeMessagerie(nbColis, prixColisCts) ?? 'Colis × prix au colis'}
+                    </span>
+                    <span className="font-mono text-sm font-semibold text-[var(--text)]">
+                      {computed ? `${formatMoney(computed.amount_ht_cts)} HT` : '—'}
+                    </span>
+                  </div>
+                  {selectedClient && selectedClient.tariff_mode !== 'colis' && (
+                    <span className="text-xs text-[var(--text-muted)]">
+                      Astuce : mettez ce client au tarif « Au colis » (fiche client) pour que le prix se remplisse tout seul.
+                    </span>
+                  )}
+                </Bloc>
+              )}
 
               {blocs.retrait && (
                 <Bloc titre="Retrait">
@@ -1024,7 +1126,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                 </Bloc>
               )}
 
-              <Bloc titre="Exécution & prix">
+              <Bloc titre={blocs.releve ? 'Facture' : 'Exécution & prix'}>
                 {blocs.execution && (
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Chauffeur">
@@ -1045,7 +1147,9 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                 )}
                 <Field label="Libellé de facture">
                   <Input value={form.description} onChange={v => set('description', v)}
-                    placeholder={`Vide = « Livraison du ${form.date ? new Date(`${form.date}T00:00:00`).toLocaleDateString('fr-FR') : '…'} »`}
+                    placeholder={blocs.releve
+                      ? `Vide = « Messagerie ${form.date ? libelleMois(form.date) : '…'} — colis livrés »`
+                      : `Vide = « Livraison du ${form.date ? new Date(`${form.date}T00:00:00`).toLocaleDateString('fr-FR') : '…'} »`}
                     disabled={ro} />
                   {form.reference_client.trim() && (
                     <span className="text-xs text-[var(--text-muted)]">La référence client est ajoutée sur la facture.</span>
@@ -1053,6 +1157,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                 </Field>
                 <MontantTab
                   integre
+                  releve={blocs.releve}
                   extraLines={extraLines}
                   setExtraLines={setExtraLines}
                   form={form}
@@ -1071,12 +1176,14 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                 />
               </Bloc>
 
-              <Bloc titre="Consignes">
-                <Field label="Consignes chauffeur (visibles dans Mes courses)">
-                  <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
-                    rows={3} disabled={ro} placeholder="Code, étage, appeler avant, 2 personnes…"
-                    className={`${textareaCls} min-h-[4.5rem]`} />
-                </Field>
+              <Bloc titre={blocs.releve ? 'Note' : 'Consignes'}>
+                {!blocs.releve && (
+                  <Field label="Consignes chauffeur (visibles dans Mes courses)">
+                    <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
+                      rows={3} disabled={ro} placeholder="Code, étage, appeler avant, 2 personnes…"
+                      className={`${textareaCls} min-h-[4.5rem]`} />
+                  </Field>
+                )}
                 <Field label="Note interne (bureau seulement)">
                   <textarea value={form.note_interne} onChange={e => set('note_interne', e.target.value)}
                     rows={2} disabled={ro} placeholder="Prix négocié, contexte client…"
@@ -1404,8 +1511,10 @@ function MontantTab({
   form, set, tvaTouched, onTvaChange, onTvaRateChange,
   selectedClient, tvaIntraClient, computed, delivery,
   extraLines, setExtraLines,
-  isReadOnly, saving, onSave, onClose, integre = false,
+  isReadOnly, saving, onSave, onClose, integre = false, releve = false,
 }: {
+  /** Relevé de messagerie : le HT vient de « colis × prix au colis », pas de saisie. */
+  releve?: boolean
   /** Dans le bloc « Exécution & prix » de la fiche : sans boutons ni état Pennylane. */
   integre?: boolean
   form: typeof EMPTY_FORM
@@ -1446,13 +1555,14 @@ function MontantTab({
     <div className="flex flex-col gap-4">
 
       {/* Info tarif — inutile en saisie manuelle dans la fiche (le champ suffit). */}
-      {selectedClient && !(integre && mode === 'manuel') && (
+      {selectedClient && !releve && !(integre && mode === 'manuel') && (
         <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] px-4 py-3
           text-sm text-[var(--text-muted)]">
           Tarif : <span className="font-medium text-[var(--text)]">
             {mode === 'forfait' && 'Forfait fixe'}
             {mode === 'km'      && 'Au kilomètre'}
             {mode === 'palette' && 'À la palette'}
+            {mode === 'colis'   && 'Au colis (messagerie)'}
             {mode === 'manuel'  && 'Saisie manuelle'}
           </span>
           {selectedClient.tariff_rate_cts != null && mode !== 'manuel' && (
@@ -1471,7 +1581,7 @@ function MontantTab({
       )}
 
       {/* Champs de saisie selon le mode tarifaire */}
-      {selectedClient && mode === 'km' && (
+      {selectedClient && !releve && mode === 'km' && (
         <Field label="Distance (km) *">
           <Input type="number" value={form.km} onChange={v => set('km', v)}
             placeholder="0" disabled={isReadOnly} />
@@ -1486,13 +1596,13 @@ function MontantTab({
           « manuel »), donc rien ne ment pour l'instant. Le jour ou l'un y
           passe, il faudra une colonne `pallets` distincte : deux sens dans une
           meme colonne finissent toujours par se croiser. */}
-      {selectedClient && mode === 'palette' && (
+      {selectedClient && !releve && mode === 'palette' && (
         <Field label="Nombre de palettes *">
           <Input type="number" value={form.pallets} onChange={v => set('pallets', v)}
             placeholder="0" disabled={isReadOnly} />
         </Field>
       )}
-      {selectedClient && mode === 'manuel' && (
+      {selectedClient && !releve && (mode === 'manuel' || mode === 'colis') && (
         <Field label={integre ? 'Prix HT (€)' : 'Montant HT (€) *'}>
           <Input type="number" value={form.manual_ht} onChange={v => set('manual_ht', v)}
             placeholder="0.00" disabled={isReadOnly} />

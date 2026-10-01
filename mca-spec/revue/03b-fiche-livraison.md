@@ -183,6 +183,24 @@
 - Ordre de mise en prod : migration AVANT le front et l'Edge `pennylane-invoice`
   (sinon la lecture de `reference_client` échoue).
 
+## 6 bis. Messagerie = relevé mensuel au colis (validé 01/10/2026)
+- Fonctionnement réel : prix HT au colis (ex. 1 €), facturé au mois : nb de colis livrés × prix.
+- Une seule saisie par donnée :
+  - prix au colis → fiche client, tarif « Au colis (messagerie) » (une fois) ;
+  - nb de colis → la fiche livraison, prestation Messagerie (une fois par mois) ;
+  - le prix est recopié sur le relevé (`prix_unitaire_cts`) : changer le tarif ne réécrit pas l'historique.
+- Fiche en Messagerie : Client · Référence · Mois relevé · Colis livrés · Prix au colis →
+  « 1 240 colis × 1,00 € = 1 240,00 € HT », TVA, suppléments, note interne. Rien d'autre.
+- Choisir un client « au colis » bascule une nouvelle fiche en Messagerie, prix pré-rempli ;
+  mois proposé = mois précédent jusqu'au 10, sinon le mois en cours. Date stockée = fin de mois.
+- Le relevé naît « Livrée » (prêt à facturer), sans preuve unitaire attendue.
+- Facture Pennylane : 1 ligne, quantité = colis, PU = prix au colis, libellé
+  « Messagerie septembre 2026 — colis livrés » (+ Réf. client) ; aperçu identique.
+- Partout ailleurs :
+  - liste Livraisons : « Messagerie · 1 240 colis » à la place du trajet ;
+  - Mes courses, tournées, planning, calendrier, journée du Dashboard : relevés exclus ;
+  - CA, à facturer, encaissement, relances : inchangés (le relevé est une ligne comme une autre).
+
 ## 7. Liste longue — vu par un gestionnaire d'exploitation
 ### Saisie
 - Saisie rapide « coller un message » : on colle l'ordre (mail HOPHOP, message Cocolis) →

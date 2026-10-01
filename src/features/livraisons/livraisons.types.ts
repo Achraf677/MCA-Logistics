@@ -137,6 +137,10 @@ export interface Delivery {
   duree_min?: number | null
   /** Note du bureau — jamais montrée au chauffeur (`notes` = consignes chauffeur). */
   note_interne?: string | null
+  /** Messagerie : prix HT d'un colis figé sur le relevé (HT = nb_colis × prix). */
+  prix_unitaire_cts?: number | null
+  /** Horodatage de livraison effective (posé à →livree). */
+  delivered_at?: string | null
   created_at: string
   updated_at: string
 }

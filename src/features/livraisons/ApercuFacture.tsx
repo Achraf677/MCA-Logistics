@@ -87,6 +87,11 @@ export function ApercuFacture({ open, rows, onFacturer, onClose, invoicing }: Pr
                     </td>
                     <td className="py-1.5 pr-2 text-[var(--text)] max-w-xs truncate" title={m.label}>
                       {m.label}
+                      {m.par_colis && (
+                        <span className="block text-xs text-[var(--text-muted)] font-mono">
+                          {m.par_colis.quantity} colis × {formatCents(m.par_colis.unit_cts)}
+                        </span>
+                      )}
                     </td>
                     <td className="py-1.5 text-right font-mono">{formatCents(m.ht_cts)}</td>
                     <td className="py-1.5 pr-2 text-right font-mono text-[var(--text-muted)]">

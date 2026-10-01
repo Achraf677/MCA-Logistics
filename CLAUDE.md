@@ -14,6 +14,12 @@
   preuve par colis, échecs de livraison (absent, refus, adresse erronée…), retours au dépôt,
   relivraison. Saisie en volume (import, lot), facturation souvent mensuelle par client.
 - Tout écran doit servir les deux : ne jamais coder « 1 course = 1 colis = 1 arrêt » en dur.
+- **Facturation messagerie (validée 01/10/2026)** : prix HT AU COLIS (ex. 1 € / colis), fixé UNE
+  fois dans la fiche client (tarif « Au colis », `clients.tariff_mode = 'colis'`). Chaque mois :
+  une ligne `deliveries` de prestation `messagerie` = relevé (mois, `nb_colis`,
+  `prix_unitaire_cts` figé) ; HT = colis × prix ; naît « livrée », facturée en quantité
+  (« 1 240 × 1,00 € »). Ni arrêt ni chauffeur : exclue de Mes courses, tournées, planning,
+  calendrier, journée du Dashboard (filtre `prestation not in (messagerie, forfait)`).
 
 ## Revue onglet par onglet (méthode validée le 30/09/2026)
 - Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation →

@@ -76,13 +76,16 @@ export const TYPE_COLORS: Record<string, 'info' | 'success' | 'warning' | 'muted
 
 /** Interface minimale du client nécessaire au calcul (pas d'import cross-feature) */
 export interface ClientTariff {
-  tariff_mode: 'forfait' | 'km' | 'palette' | 'manuel'
+  /** `colis` : messagerie, tariff_rate_cts = prix HT d'un colis. */
+  tariff_mode: 'forfait' | 'km' | 'palette' | 'colis' | 'manuel'
   tariff_rate_cts: number | null
 }
 
 export interface AmountParams {
   distance_km?: number | null
   pallets?: number | null
+  /** Nombre de colis (tarif au colis). */
+  colis?: number | null
   manual_ht_cts?: number | null
   /** TVA manuelle en centimes. Si fournie, surcharge le calcul automatique à tvaRate. */
   manual_tva_cts?: number | null
@@ -122,6 +125,10 @@ export function computeAmount(
     case 'palette':
       if (client.tariff_rate_cts == null || params.pallets == null) return null
       amount_ht_cts = Math.round(client.tariff_rate_cts * params.pallets)
+      break
+    case 'colis':
+      if (client.tariff_rate_cts == null || params.colis == null) return null
+      amount_ht_cts = htMessagerie(params.colis, client.tariff_rate_cts)
       break
     case 'manuel':
       if (params.manual_ht_cts == null) return null
@@ -516,13 +523,15 @@ export const PRESTATION_LABELS: Record<Prestation, string> = {
 
 export const PRESTATION_AIDES: Record<Prestation, string> = {
   express:      'Une course : un retrait, une livraison, souvent dans la journée.',
-  messagerie:   'Colis de tournée : colis comptés, preuve par colis.',
+  messagerie:   'Relevé du mois : nombre de colis livrés × prix au colis. Rien d’autre à saisir.',
   dediee:       'Véhicule réservé pour un client, prix au forfait.',
   mise_a_dispo: 'Véhicule et chauffeur à disposition sur un lieu, à l’heure ou à la journée.',
   forfait:      'Facturation globale (mois, période) : aucun arrêt à saisir.',
 }
 
 export interface BlocsPrestation {
+  /** Relevé de messagerie : mois + nombre de colis × prix au colis, rien d'autre. */
+  releve: boolean
   /** Bloc « Retrait » affiché. */
   retrait: boolean
   /** Bloc « Livraison » (ou « Lieu ») affiché. */
@@ -539,12 +548,14 @@ export interface BlocsPrestation {
 
 export function blocsPrestation(p: Prestation | null | undefined): BlocsPrestation {
   switch (p ?? 'express') {
+    case 'messagerie':
+      return { releve: true, retrait: false, livraison: false, titreLivraison: 'Livraison', adresseExigee: false, marchandise: false, execution: false }
     case 'forfait':
-      return { retrait: false, livraison: false, titreLivraison: 'Livraison', adresseExigee: false, marchandise: false, execution: false }
+      return { releve: false, retrait: false, livraison: false, titreLivraison: 'Livraison', adresseExigee: false, marchandise: false, execution: false }
     case 'mise_a_dispo':
-      return { retrait: false, livraison: true, titreLivraison: 'Lieu de mise à disposition', adresseExigee: true, marchandise: false, execution: true }
+      return { releve: false, retrait: false, livraison: true, titreLivraison: 'Lieu de mise à disposition', adresseExigee: true, marchandise: false, execution: true }
     default:
-      return { retrait: true, livraison: true, titreLivraison: 'Livraison', adresseExigee: true, marchandise: true, execution: true }
+      return { releve: false, retrait: true, livraison: true, titreLivraison: 'Livraison', adresseExigee: true, marchandise: true, execution: true }
   }
 }
 
@@ -597,6 +608,8 @@ export interface FicheASaisir {
   volume_m3: string
   /** HT de la ligne principale en centimes (0 / null = absent). */
   ht_cts: number | null
+  /** Messagerie : prix d'un colis en euros (saisie). */
+  prix_colis: string
   creneau_retrait_debut: string
   creneau_retrait_fin: string
   creneau_livraison_debut: string
@@ -646,7 +659,73 @@ export function manquesFiche(f: FicheASaisir): Manques {
   }
 
   const facturer: string[] = []
-  if (!f.ht_cts || f.ht_cts <= 0) facturer.push('prix HT')
+  if (b.releve) {
+    if (!(nombreEntier(f.nb_colis) > 0)) facturer.push('nombre de colis')
+    if (!(nombreDecimal(f.prix_colis) > 0)) facturer.push('prix au colis')
+  } else if (!f.ht_cts || f.ht_cts <= 0) facturer.push('prix HT')
 
   return { enregistrer, partir, lv, facturer }
+}
+
+// ── Messagerie : relevé mensuel « nb colis × prix au colis » ─────────────────
+
+const nombreEntier = (s: string) => { const n = parseInt(s, 10); return Number.isFinite(n) ? n : 0 }
+const nombreDecimal = (s: string) => { const n = parseFloat((s ?? '').replace(',', '.')); return Number.isFinite(n) ? n : 0 }
+
+/** HT d'un relevé : nb de colis × prix d'un colis (centimes, exact). */
+export function htMessagerie(nbColis: number, prixColisCts: number): number {
+  return Math.round(nbColis) * Math.round(prixColisCts)
+}
+
+/** 'AAAA-MM' d'une date 'AAAA-MM-JJ'. */
+export function moisDe(date: string): string {
+  return date.slice(0, 7)
+}
+
+/** Dernier jour du mois 'AAAA-MM' → 'AAAA-MM-JJ' (date du relevé). */
+export function finDeMois(mois: string): string {
+  const [a, m] = mois.split('-').map(Number)
+  const dernier = new Date(a, m, 0).getDate()
+  return `${mois}-${String(dernier).padStart(2, '0')}`
+}
+
+const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+
+/** « septembre 2026 » depuis 'AAAA-MM[-JJ]'. */
+export function libelleMois(date: string): string {
+  const [a, m] = date.split('-').map(Number)
+  return `${MOIS_FR[(m ?? 1) - 1] ?? ''} ${a}`
+}
+
+const ENTIER_FR = new Intl.NumberFormat('fr-FR')
+const EUROS_FR = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 3 })
+
+/** « 1 240 colis × 1,00 € » ; null si l'un manque. */
+export function resumeMessagerie(nbColis: number | null | undefined, prixColisCts: number | null | undefined): string | null {
+  if (nbColis == null || prixColisCts == null) return null
+  return `${ENTIER_FR.format(nbColis)} colis × ${EUROS_FR.format(prixColisCts / 100)}`
+}
+
+/** Une course qui se fait sur la route (arrêts, chauffeur) — pas un relevé ni un forfait. */
+export function estSurLaRoute(prestation: string | null | undefined): boolean {
+  return prestation !== 'messagerie' && prestation !== 'forfait'
+}
+
+/**
+ * Colonne « Trajet » de la liste : un relevé de messagerie n'a pas de trajet,
+ * on y lit le mois et les colis ; un forfait se dit tel quel.
+ */
+export function trajetOuReleve(r: {
+  prestation?: string | null; date: string; nb_colis?: number | null; prix_unitaire_cts?: number | null
+  pickup_address: string | null; delivery_address: string | null
+}): { court: string; complet: string } {
+  if (r.prestation === 'messagerie') {
+    const nb = r.nb_colis != null ? `${ENTIER_FR.format(r.nb_colis)} colis` : 'colis à saisir'
+    return {
+      court: `Messagerie · ${nb}`,
+      complet: `Relevé ${libelleMois(r.date)} : ${resumeMessagerie(r.nb_colis, r.prix_unitaire_cts) ?? nb}`,
+    }
+  }
+  if (r.prestation === 'forfait') return { court: 'Forfait', complet: 'Forfait / relevé, sans arrêt' }
+  return trajet(r.pickup_address, r.delivery_address)
 }

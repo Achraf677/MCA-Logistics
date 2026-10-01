@@ -1,4 +1,5 @@
-export type TariffMode = 'forfait' | 'km' | 'palette' | 'manuel'
+/** `colis` : messagerie — tariff_rate_cts = prix HT d'un colis. */
+export type TariffMode = 'forfait' | 'km' | 'palette' | 'colis' | 'manuel'
 
 export interface Client {
   id: string

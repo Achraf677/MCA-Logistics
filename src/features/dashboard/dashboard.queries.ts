@@ -22,7 +22,9 @@ export async function getDashboard(debutPeriode: string, finPeriode: string, auj
     supabase
       .from('deliveries')
       .select('date, statut, arrival_time, probleme_le')
-      .or(`date.eq.${aujourdhui},and(date.lt.${aujourdhui},statut.in.(planifiee,en_cours))`),
+      .or(`date.eq.${aujourdhui},and(date.lt.${aujourdhui},statut.in.(planifiee,en_cours))`)
+      // Relevés de messagerie et forfaits : pas des courses de la journée.
+      .or('prestation.is.null,prestation.not.in.(messagerie,forfait)'),
     supabase
       .from('deliveries')
       .select('amount_ht_cts')

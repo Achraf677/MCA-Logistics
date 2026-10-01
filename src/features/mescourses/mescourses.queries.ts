@@ -34,6 +34,8 @@ export async function getMesCourses(debut: string, fin: string) {
     ].join(', '))
     .gte('date', debut)
     .lte('date', fin)
+    // Relevés de messagerie et forfaits : rien à faire sur la route.
+    .or('prestation.is.null,prestation.not.in.(messagerie,forfait)')
     .order('date', { ascending: true })
     // `stop_order` d'abord : c'est l'ordre que le chauffeur a impose lui-meme.
     // `nullsFirst: false` place les courses jamais ordonnees APRES celles qui
