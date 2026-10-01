@@ -90,8 +90,11 @@ supabase/
   des deux côtés** (`_shared/lignesFacture.ts` ↔ `livraisons/apercuFacture.logic.ts`).
 
 ## 5. Base de données — pièges (NE PAS réintroduire)
-- `deliveries.montant_*` = GENERATED / legacy → **jamais écrire**. Écrire `amount_ht_cts`,
-  `tva_cts`, `amount_ttc_cts`. Lire `amount_* ?? montant_*`.
+- `deliveries.montant_*` **n'existent PAS en prod** (vérifié le 01/10/2026) → jamais les écrire
+  ni les mettre dans un `select` (la requête échoue et l'écran se vide en silence). Montants :
+  `amount_ht_cts`, `tva_cts`, `amount_ttc_cts`. (`montant_*` existent sur `charges`.)
+- Toute colonne lue / écrite par le front ou une Edge doit EXISTER en prod avant le merge :
+  vérifier dans `information_schema.columns` (le 5e audit du 01/10 en a trouvé 3).
 - `deliveries.statut` ∈ `planifiee, en_cours, livree, facturee, payee, annulee` (check) ;
   nouvelle valeur = migration de la contrainte.
 - `deliveries.notes` = **consignes chauffeur** (visibles dans Mes courses). `note_interne` = bureau.

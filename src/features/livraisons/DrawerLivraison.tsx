@@ -778,7 +778,9 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
         autoliquidation:  !!form.autoliquidation,
         notes:            form.notes.trim() || null,
         note_interne:     form.note_interne.trim() || null,
-        echeance_le:      form.echeance_le || null,
+        // Envoyée seulement si renseignée (ou effacée) : une base pas encore
+        // migrée refuserait sinon TOUT enregistrement à cause de cette colonne.
+        ...(form.echeance_le || instantane.echeance_le ? { echeance_le: form.echeance_le || null } : {}),
         extra_lines:      cleanedExtras,
       }
 

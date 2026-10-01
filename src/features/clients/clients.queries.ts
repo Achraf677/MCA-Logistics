@@ -75,7 +75,7 @@ export async function getFacturedDeliveries(): Promise<{ data: DeliveryForEncour
 export async function getDeliveriesForTiersColumns(): Promise<{ data: DeliveryForTiersColumns[] | null; error: unknown }> {
   const { data, error } = await supabase
     .from('deliveries')
-    .select('id, client_id, statut, date, amount_ttc_cts, montant_ttc_cts, invoiced_at, extra_lines')
+    .select('id, client_id, statut, date, amount_ttc_cts, invoiced_at, extra_lines')
     .in('statut', ['livree', 'facturee', 'payee'])
 
   return { data: data as DeliveryForTiersColumns[] | null, error }

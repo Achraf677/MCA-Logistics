@@ -169,7 +169,7 @@ Deno.serve(async (req: Request) => {
     // Livraison + client (garde company).
     const { data: delivery } = await service
       .from('deliveries')
-      .select('id, company_id, statut, amount_ttc_cts, montant_ttc_cts, lv_numero, lv_pdf_url, pennylane_invoice_id, pennylane_invoice_number, clients!client_id(name, email)')
+      .select('id, company_id, statut, amount_ttc_cts, lv_numero, lv_pdf_url, pennylane_invoice_id, pennylane_invoice_number, clients!client_id(name, email)')
       .eq('id', deliveryId)
       .single()
     if (!delivery || delivery.company_id !== companyId) {
@@ -258,7 +258,7 @@ Deno.serve(async (req: Request) => {
     const body = composeBody({
       invoiceNumber: delivery.pennylane_invoice_number as string | null,
       clientName: client?.name ?? null,
-      amountTtcCts: (delivery.amount_ttc_cts ?? delivery.montant_ttc_cts) as number | null,
+      amountTtcCts: (delivery.amount_ttc_cts ?? null) as number | null,
       hasBl: blAttached,
     })
     const raw = buildMime(to, subject, body, attachments)
