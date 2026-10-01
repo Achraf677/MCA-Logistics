@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **01/10/2026** (lot B : fiche client = défauts des courses).
+> Dernière mise à jour : **01/10/2026** (Planning : lots P1-P4).
 
 ---
 
@@ -177,7 +177,9 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   Modèles). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
   Les specs `mca-spec/tabs/` n'en couvrent qu'une partie : vérifier le code.
 - Revue onglet par onglet (méthode § 13) : 01 Mes courses ✔ · 02 Dashboard ✔ · 03 Livraisons ✔
-  (liste, facturation, lettre de voiture, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie).
+  (liste, facturation, lettre de voiture, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie)
+  · 04 Planning ✔ (lots P1-P4 : vue par chauffeur, affectation rapide, tournées en retard,
+  calendrier enrichi).
 - Fiche livraison : prestation, client avec recherche, référence client (reprise sur la facture),
   urgent, arrêts complets (contact, téléphone, créneaux), trajet auto (IGN), marchandise
   (colis, poids, volume), consignes / note interne, Dupliquer, 3 onglets (Course · Preuves &
@@ -201,7 +203,9 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - **Dépenses véhicule** (Carburant + Entretiens) : plan `mca-spec/tabs/30-depenses-vehicule.md`
   à lire AVANT d'y toucher ; étapes 0-1 faites, étape 2 (table unifiée) attend le « go ».
   Pas d'immobilisation ni de prorata km dans ces écrans.
-- Onglets suivants de la revue : Devis, Modèles, Calendrier / Planning, puis le menu dans l'ordre.
+- Planning : changer chauffeur / jour détache la course de sa tournée (choix à confirmer) ;
+  heure de début de tournée = suggestion tant que `tours.started_at` n'existe pas.
+- Onglets suivants de la revue : Devis, Modèles, puis le menu dans l'ordre.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)
 - Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation → PR +

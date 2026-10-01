@@ -91,8 +91,25 @@
   « affecter à… », contrôle des documents échus à l'affectation.
 - **Lot P3 — Tournées** : reprendre les courses `en_cours` / en retard, lien depuis le
   Planning, heures de tournée → Heures (pointage auto).
-- **Lot P4 — Calendrier** : soit fondu dans le Planning (vue mois de la même grille), soit
-  enrichi (échéances flotte, absences). À décider.
+- **Lot P4 — Calendrier** : enrichi (échéances flotte, absences).
+
+### Fait (PR Planning, 01/10/2026)
+- ✔ P1 : vue « Par chauffeur » (lignes chauffeurs + « Non affecté » × 7 jours) et « Par jour » ;
+  bandeau « À traiter » (sans chauffeur, sans véhicule, non localisées, en retard) ; cartes
+  enrichies (urgent, créneau, ville → ville, colis, statut) ; mobile = liste par jour.
+  `planning.{logic,types}.ts` + tests.
+- ✔ P2 : glisser-déposer (chauffeur / jour), sélection multiple + « Affecter à… », alerte
+  documents échus (permis, visite médicale, CT, assurance) avant d'affecter.
+  **Choix** : changer le chauffeur ou le jour d'une course la **détache de sa tournée**
+  (tour_id, stop_order, arrival_time à null) → à recomposer dans Tournées.
+- ✔ P3 : Tournées reprend les courses planifiées en retard (bouton « Remettre au jour ») ;
+  lien `?date=` depuis le Planning ; « Terminer la tournée » propose la ligne d'heures du
+  chauffeur. **Limite** : pas de colonne `tours.started_at` → l'heure de début est une
+  suggestion (heure de dernière mise à jour de la tournée), à corriger avant d'enregistrer.
+- ✔ P4 : Calendrier mois avec pastilles (nb courses, urgentes, sans chauffeur), échéances
+  flotte / équipe (CT, assurance, révision, entretiens, permis, visite médicale), filtres
+  Tout / Courses / Échéances, tiroir du jour. `calendrier.logic.ts` + 17 tests.
+- Reste : absences / indisponibilités (pas de table), `tours.started_at` (migration).
 
 ## 9. À tester (après chaque lot)
 - Semaine avec courses express, relevé de messagerie (absent), forfait (absent).
