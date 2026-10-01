@@ -138,6 +138,10 @@ const EMPTY_FORM = {
   notes:            '',
   /** Note du bureau, jamais montrée au chauffeur. */
   note_interne:     '',
+  /** Échéance de paiement imposée (AAAA-MM-JJ) ; vide = délai du client. */
+  echeance_le:      '',
+  /** Création d'une course PASSÉE, déjà livrée : naît « Livrée ». */
+  deja_livree:      '',
 }
 type Form = typeof EMPTY_FORM
 
@@ -227,6 +231,8 @@ function formDepuis(d: DeliveryRow): Form {
     autoliquidation:  d.autoliquidation ? '1' : '',
     notes:            s(d.notes),
     note_interne:     s(d.note_interne),
+    echeance_le:      s(d.echeance_le),
+    deja_livree:      '',
   }
 }
 
@@ -250,6 +256,8 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
   const [form, setForm]         = useState<Form>(EMPTY_FORM)
   /** Valeurs à l'ouverture : seuls les champs partagés avec la LV modifiés ici sont réécrits. */
   const formInitial = useRef<Form>(EMPTY_FORM)
+  /** Même instantané, en état : lu au rendu (« modifications non enregistrées »). */
+  const [instantane, setInstantane] = useState<Form>(EMPTY_FORM)
   /** Course dont le formulaire porte les valeurs (id, ou 'nouvelle'). */
   const [formPour, setFormPour] = useState<string | null>(null)
   const [extraLines, setExtraLines] = useState<DeliveryExtraLine[]>([])
@@ -301,7 +309,9 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
     if (!open) return
     let annule = false
     ;(async () => {
-      const { data } = await getActiveClients()
+      const { data, error } = await getActiveClients()
+      // Jamais de liste vide en silence : on dit pourquoi.
+      if (error && !annule) toast(`Liste des clients illisible : ${error.message}`, 'error')
       const liste = (data ?? []).map(versClientLookup)
       if (clientCourantId && !liste.some(c => c.id === clientCourantId)) {
         const { data: inactif } = await getClientLookup(clientCourantId)
@@ -404,6 +414,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       const f = formDepuis(deliveryProp)
       setForm(f)
       formInitial.current = f
+      setInstantane(f)
       trajetCle.current = `${f.pickup_address.trim()}|${f.delivery_address.trim()}`
       setDeliveryCoords({ lat: deliveryProp.delivery_lat ?? null, lng: deliveryProp.delivery_lng ?? null })
       setExtraLines(Array.isArray(deliveryProp.extra_lines) ? deliveryProp.extra_lines : [])
@@ -411,6 +422,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       const f = { ...EMPTY_FORM, date: aujourdhui() }
       setForm(f)
       formInitial.current = f
+      setInstantane(f)
       trajetCle.current = '|'
       setDeliveryCoords({ lat: null, lng: null })
       setExtraLines([])
@@ -432,6 +444,22 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
   }, [deliveryProp, open, initialTab])
 
   const set = (k: keyof Form, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  /**
+   * Prix saisi TTC (ex. montant affiché par une plateforme) : on en déduit le
+   * HT au taux courant, et la TVA = TTC − HT pour retomber exactement sur le
+   * TTC saisi (écart d'arrondi ≤ 1 ct, accepté par la facturation).
+   */
+  const saisirTtc = (ttcCts: number) => {
+    const taux = parseFloat(form.tva_rate || '20') / 100
+    const htCts = form.autoliquidation ? ttcCts : Math.round(ttcCts / (1 + taux))
+    setForm(p => ({
+      ...p,
+      manual_ht: (htCts / 100).toFixed(2),
+      tva_override: form.autoliquidation ? '' : ((ttcCts - htCts) / 100).toFixed(2),
+    }))
+    setTvaTouched(!form.autoliquidation)
+  }
 
   /**
    * Relevé de messagerie : le mois à saisir. Avant le 10, c'est en général le
@@ -499,8 +527,10 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
   /** Copie de la course ouverte → nouvelle course (date du jour, sans preuve ni statut). */
   const dupliquer = () => {
     setCopie(true)
-    setForm(p => ({ ...p, date: aujourdhui(), reference_client: '' }))
+    // Relevé de messagerie : on copie vers le mois courant (fin de mois), pas « aujourd'hui ».
+    setForm(p => ({ ...p, date: p.prestation === 'messagerie' ? finDeMois(moisParDefaut()) : aujourdhui(), reference_client: '', deja_livree: '' }))
     formInitial.current = EMPTY_FORM
+    setInstantane(EMPTY_FORM)
     setFormPour('nouvelle')
     tvaAutoKey.current = 'init'
     setTab('detail')
@@ -559,7 +589,9 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
   const prixColisCts = nombreOuNull(form.prix_colis) != null ? Math.round(nombreOuNull(form.prix_colis)! * 100) : null
   const nbColis = nombreOuNull(form.nb_colis) != null ? Math.round(nombreOuNull(form.nb_colis)!) : null
   const computed = useMemo(() => {
-    if (!selectedClient) return null
+    // Sans client choisi, le prix se saisit quand même (mode manuel) : tout
+    // doit pouvoir se remplir d'une traite, dans n'importe quel ordre.
+    const tarif: ClientTariff = selectedClient ?? { tariff_mode: 'manuel', tariff_rate_cts: null }
     const rate = parseFloat(form.tva_rate || '20') / 100
     const tvaSaisie = form.tva_override !== '' && Number.isFinite(parseFloat(form.tva_override))
       ? Math.round(parseFloat(form.tva_override) * 100) : null
@@ -570,7 +602,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
     }
     // Client « au colis » sur une course hors relevé : prix saisi à la main.
     return computeAmount(
-      selectedClient.tariff_mode === 'colis' ? { tariff_mode: 'manuel', tariff_rate_cts: null } : selectedClient,
+      tarif.tariff_mode === 'colis' ? { tariff_mode: 'manuel', tariff_rate_cts: null } : tarif,
       {
         distance_km:   form.km      ? parseFloat(form.km)      : null,
         pallets:       form.pallets ? parseFloat(form.pallets) : null,
@@ -591,7 +623,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
   // d'une course existante n'est pas réécrite tant que rien ne bouge.
   const htCourantCts = computed?.amount_ht_cts ?? 0
   useEffect(() => {
-    if (tvaTouched || !selectedClient) return
+    if (tvaTouched) return
     // Formulaire pas encore rechargé pour la course ouverte : ne rien toucher.
     if (formPour !== (delivery?.id ?? 'nouvelle')) return
     const key = `${htCourantCts}|${form.tva_rate}`
@@ -629,6 +661,12 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
     { key: 'preuves', label: 'Preuves & documents' },
     { key: 'montant', label: 'Facturation' },
   ]
+
+  /** La fiche a-t-elle des saisies non enregistrées (form ou suppléments) ? */
+  const ficheModifiee = isEdit && formPour === delivery?.id && (
+    (Object.keys(form) as Array<keyof Form>).some(k => k !== 'tva_override' && form[k] !== instantane[k])
+    || JSON.stringify(extraLines) !== JSON.stringify(Array.isArray(delivery?.extra_lines) ? delivery!.extra_lines : [])
+  )
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
@@ -723,7 +761,11 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
         km:               nombreOuNull(form.km),
         duree_min:        nombreOuNull(form.duree_min) != null ? Math.round(nombreOuNull(form.duree_min)!) : null,
         empty_km:         nombreOuNull(form.empty_km),
-        weight_kg:        nombreOuNull(form.pallets),
+        // `weight_kg` est ce que LIT le chauffeur (Mes courses, tournées) : on y
+        // recopie le poids saisi ; seul un client au tarif palette y garde ses palettes.
+        weight_kg:        selectedClient?.tariff_mode === 'palette'
+          ? nombreOuNull(form.pallets)
+          : (nombreOuNull(form.poids_kg_reel) ?? nombreOuNull(form.pallets)),
         ...partages,
         // Montants : jamais effacés faute de calcul (client introuvable, tarif
         // incomplet). En AUTOLIQUIDATION : taux 0, TVA 0, TTC = HT — forcé ici
@@ -736,6 +778,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
         autoliquidation:  !!form.autoliquidation,
         notes:            form.notes.trim() || null,
         note_interne:     form.note_interne.trim() || null,
+        echeance_le:      form.echeance_le || null,
         extra_lines:      cleanedExtras,
       }
 
@@ -754,8 +797,11 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
           company_id:  companyId,
           // Un relevé de messagerie constate des colis DÉJÀ livrés : il naît
           // « Livrée », prêt à facturer, sans preuve unitaire attendue.
-          statut:      blocs.releve ? 'livree' : 'planifiee',
+          // Course passée saisie après coup : « Déjà livrée » la crée livrée,
+          // prête à facturer, sans rouvrir la fiche pour la faire avancer.
+          statut:      blocs.releve || form.deja_livree ? 'livree' : 'planifiee',
           ...(blocs.releve ? { delivered_at: new Date().toISOString(), justif_non_requis: true } : {}),
+          ...(!blocs.releve && form.deja_livree ? { delivered_at: new Date(`${form.date}T12:00:00`).toISOString() } : {}),
           invoiced_at: null,
           paid_at:     null,
         })
@@ -813,6 +859,14 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
 
   const handleTransition = async (to: DeliveryStatus) => {
     if (!delivery) return
+
+    // La facture part avec ce qui est EN BASE : une saisie non enregistrée
+    // (prix, supplément, référence) serait ignorée sans prévenir.
+    if (to === 'facturee' && ficheModifiee) {
+      toast('Modifications non enregistrées dans l’onglet Course : enregistrez d’abord, puis facturez', 'error')
+      setTab('detail')
+      return
+    }
 
     if (to === 'facturee') {
       const ht = delivery.amount_ht_cts ?? 0
@@ -1036,6 +1090,19 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                   </Field>
                   )}
                 </div>
+                {!isEdit && !blocs.releve && (
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input type="checkbox" checked={!!form.deja_livree}
+                      onChange={e => set('deja_livree', e.target.checked ? '1' : '')}
+                      className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer" />
+                    <span className="text-sm text-[var(--text)]">
+                      Déjà livrée
+                      <span className="block text-xs text-[var(--text-muted)]">
+                        Course passée saisie après coup : elle est créée « Livrée », prête à facturer.
+                      </span>
+                    </span>
+                  </label>
+                )}
               </Bloc>
 
               {blocs.releve && (
@@ -1211,6 +1278,8 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                   integre
                   releve={blocs.releve}
                   catalogue={selectedClient?.supplements ?? []}
+                  onTtcChange={!blocs.releve && (!selectedClient || selectedClient.tariff_mode === 'manuel' || selectedClient.tariff_mode === 'colis')
+                    ? saisirTtc : undefined}
                   extraLines={extraLines}
                   setExtraLines={setExtraLines}
                   form={form}
@@ -1227,6 +1296,22 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                   onSave={handleSave}
                   onClose={onClose}
                 />
+                <Field label="Échéance de paiement">
+                  <div className="flex items-center gap-2">
+                    <div className="w-[11rem]">
+                      <Input type="date" value={form.echeance_le} onChange={v => set('echeance_le', v)} disabled={ro} />
+                    </div>
+                    {form.echeance_le && !ro && (
+                      <button type="button" onClick={() => set('echeance_le', '')}
+                        className="text-xs text-[var(--text-muted)] hover:text-[var(--text)]">Revenir au délai du client</button>
+                    )}
+                  </div>
+                  <span className="text-xs text-[var(--text-muted)]">
+                    {form.echeance_le
+                      ? 'Échéance imposée pour cette facture (plafonnée à 30 jours après la facture, L441-11).'
+                      : `Vide = délai du client${selectedClient ? ` (${libelleDelaiPaiement(selectedClient)})` : ''}, 30 jours maximum après la facture.`}
+                  </span>
+                </Field>
               </Bloc>
 
               <Bloc titre={blocs.releve ? 'Note' : 'Consignes'}>
@@ -1564,8 +1649,10 @@ function MontantTab({
   form, set, tvaTouched, onTvaChange, onTvaRateChange,
   selectedClient, tvaIntraClient, computed, delivery,
   extraLines, setExtraLines,
-  isReadOnly, saving, onSave, onClose, integre = false, releve = false, catalogue = [],
+  isReadOnly, saving, onSave, onClose, integre = false, releve = false, catalogue = [], onTtcChange,
 }: {
+  /** Saisie par le TTC (prix « tout compris » d'une plateforme) → HT et TVA déduits. */
+  onTtcChange?: (ttcCts: number) => void
   /** Suppléments du client (fiche client), ajoutés en un clic. */
   catalogue?: Supplement[]
   /** Relevé de messagerie : le HT vient de « colis × prix au colis », pas de saisie. */
@@ -1629,11 +1716,6 @@ function MontantTab({
         </div>
       )}
 
-      {!selectedClient && (
-        <p className="text-sm text-[var(--text-muted)] italic">
-          Choisissez d'abord le client : le prix suit son tarif.
-        </p>
-      )}
 
       {/* Champs de saisie selon le mode tarifaire */}
       {selectedClient && !releve && mode === 'km' && (
@@ -1657,7 +1739,7 @@ function MontantTab({
             placeholder="0" disabled={isReadOnly} />
         </Field>
       )}
-      {selectedClient && !releve && (mode === 'manuel' || mode === 'colis') && (
+      {!releve && (mode === 'manuel' || mode === 'colis') && (
         <Field label={integre ? 'Prix HT (€)' : 'Montant HT (€) *'}>
           <Input type="number" value={form.manual_ht} onChange={v => set('manual_ht', v)}
             placeholder="0.00" disabled={isReadOnly} />
@@ -1665,7 +1747,7 @@ function MontantTab({
       )}
 
       {/* AUTOLIQUIDATION — avant les champs de TVA, parce qu'elle les annule. */}
-      {selectedClient && (
+      {(selectedClient || integre) && (
         <div className="rounded-[var(--r-md)] border border-[var(--border)] p-3 flex flex-col gap-2">
           <label className="flex items-start gap-2 cursor-pointer">
             <input
@@ -1706,8 +1788,8 @@ function MontantTab({
 
       {/* Taux TVA + montant TVA éditable — masqués en autoliquidation : afficher
           un taux modifiable sous une case qui l'annule ne peut que tromper. */}
-      {selectedClient && !form.autoliquidation && (
-        <div className="grid grid-cols-2 gap-3 items-start">
+      {(selectedClient || integre) && !form.autoliquidation && (
+        <div className={`grid gap-3 items-start ${onTtcChange ? 'grid-cols-3' : 'grid-cols-2'}`}>
           <Field label="Taux TVA">
             <TvaRateInput
               value={parseFloat(form.tva_rate || '20')}
@@ -1715,7 +1797,7 @@ function MontantTab({
               disabled={isReadOnly}
             />
           </Field>
-          <Field label={`Montant TVA (€)${tvaTouched ? ' ✎' : ' — auto'}`}>
+          <Field label={`TVA (€)${tvaTouched ? ' ✎' : ' — auto'}`}>
             <Input
               type="number"
               value={form.tva_override}
@@ -1724,12 +1806,17 @@ function MontantTab({
               disabled={isReadOnly}
             />
           </Field>
+          {onTtcChange && (
+            <Field label="TTC (€)">
+              <ChampTtc ttcCts={computed?.amount_ttc_cts ?? null} onCommit={onTtcChange} disabled={isReadOnly} />
+            </Field>
+          )}
         </div>
       )}
 
       {/* Lignes supplémentaires — attente, retour à vide, forfait…                  */}
       {/* Toutes sont regroupées avec la ligne principale sur la même facture.      */}
-      {selectedClient && (
+      {(selectedClient || integre) && (
         <ExtraLinesEditor
           catalogue={catalogue}
           lines={extraLines}
@@ -2539,5 +2626,23 @@ function ExtraLineRow({
         </Field>
       </div>
     </div>
+  )
+}
+
+/** TTC saisissable : texte libre pendant la frappe, appliqué à la sortie du champ. */
+function ChampTtc({ ttcCts, onCommit, disabled }: { ttcCts: number | null; onCommit: (cts: number) => void; disabled?: boolean }) {
+  const affiche = ttcCts != null && ttcCts > 0 ? (ttcCts / 100).toFixed(2) : ''
+  const [brut, setBrut] = useState<string | null>(null)
+  return (
+    <input type="text" inputMode="decimal" className="field" disabled={disabled}
+      value={brut ?? affiche} placeholder="0.00"
+      onChange={e => { if (/^[0-9]*[.,]?[0-9]*$/.test(e.target.value)) setBrut(e.target.value) }}
+      onBlur={() => {
+        if (brut != null) {
+          const n = parseFloat(brut.replace(',', '.'))
+          if (Number.isFinite(n) && n > 0) onCommit(Math.round(n * 100))
+        }
+        setBrut(null)
+      }} />
   )
 }

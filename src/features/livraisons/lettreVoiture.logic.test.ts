@@ -126,7 +126,16 @@ describe('buildLettreVoiture', () => {
       company: baseCompany(), vehicle: veh, driver: drv, client: cli,
     })
     expect(missing).toContain('Nombre de colis (> 0)')
-    expect(missing).toContain('Poids réel en kg (> 0)')
+    expect(missing).toContain('Poids réel (kg) ou volume (m³)')
+  })
+
+  it('volume seul suffit (poids OU volume, arrêté du 9/11/1999)', () => {
+    const { missing, data } = buildLettreVoiture({
+      delivery: baseDelivery({ poids_kg_reel: null, volume_m3: 2.5 }),
+      company: baseCompany(), vehicle: veh, driver: drv, client: cli,
+    })
+    expect(missing).not.toContain('Poids réel (kg) ou volume (m³)')
+    expect(data?.marchandise.volume_m3).toBe(2.5)
   })
 
   it('véhicule / chauffeur absents → mentions manquantes', () => {

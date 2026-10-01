@@ -373,24 +373,42 @@ export async function resyncPending(): Promise<{ resynced: number; failed: numbe
 // Une seule chaîne littérale : supabase-js en déduit le type des lignes.
 const CLIENT_FICHE_COLS = 'id, name, tariff_mode, tariff_rate_cts, phone, email, payment_terms, payment_terms_label, tva_intra, pays, retrait_adresse, retrait_contact, retrait_tel, chauffeur_habituel_id, vehicule_habituel_id, prestation_defaut, reference_obligatoire, supplements' as const
 
+const CLIENT_BASE_COLS = 'id, name, tariff_mode, tariff_rate_cts, phone, email, payment_terms, payment_terms_label, tva_intra' as const
+
 /** Client par id — sert à la fiche quand le client est INACTIF (absent des sélecteurs). */
 export async function getClientLookup(id: string) {
-  return supabase
+  const complet = await supabase
     .from('clients')
     .select(CLIENT_FICHE_COLS)
     .eq('id', id)
     .maybeSingle()
+  if (complet.error?.code === '42703') {
+    return supabase.from('clients').select(CLIENT_BASE_COLS).eq('id', id).maybeSingle()
+  }
+  return complet
 }
 
 // ── Clients actifs (pour les sélecteurs du drawer) ────────────────────────────
 export async function getActiveClients() {
-  return supabase
+  const complet = await supabase
     .from('clients')
     // `payment_terms` et `tva_intra` : le delai de paiement s'affiche des la
     // creation, et le numero de TVA conditionne l'autoliquidation.
     .select(CLIENT_FICHE_COLS)
     .eq('active', true)
     .order('name')
+  // Base en retard sur le front (migration pas encore appliquée, preview) :
+  // une colonne manquante (42703) vidait la liste SANS message. On relit les
+  // colonnes de base : la liste reste là, seuls les défauts manquent.
+  if (complet.error?.code === '42703') {
+    console.warn('getActiveClients : colonnes absentes en base, lecture minimale', complet.error.message)
+    return supabase
+      .from('clients')
+      .select(CLIENT_BASE_COLS)
+      .eq('active', true)
+      .order('name')
+  }
+  return complet
 }
 
 // ── Véhicules actifs ──────────────────────────────────────────────────────────

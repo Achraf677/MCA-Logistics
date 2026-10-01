@@ -108,7 +108,7 @@ Deno.serve(async (req: Request) => {
   const { data: rows, error: dErr } = await supabase
     .from('deliveries')
     .select(
-      'id, company_id, client_id, statut, date, description, reference_client, prestation, nb_colis, prix_unitaire_cts, type, amount_ht_cts, tva_cts, tva_rate, pennylane_invoice_id, extra_lines, autoliquidation',
+      'id, company_id, client_id, statut, date, description, reference_client, prestation, nb_colis, prix_unitaire_cts, echeance_le, type, amount_ht_cts, tva_cts, tva_rate, pennylane_invoice_id, extra_lines, autoliquidation',
     )
     .in('id', ids);
 
@@ -133,7 +133,11 @@ Deno.serve(async (req: Request) => {
    * `sync_error` : elle reste lisible dans la fiche après fermeture du toast.
    * Jamais sur une course qui porte déjà une facture.
    */
+  let verrouPris = false;
   const echec = async (status: number, body: Record<string, unknown>): Promise<Response> => {
+    if (verrouPris) {
+      try { await supabase.from('deliveries').update({ facturation_verrou: null }).in('id', ids); } catch { /* expire seul */ }
+    }
     if (single && typeof body.error === 'string') {
       try {
         await supabase
@@ -194,6 +198,32 @@ Deno.serve(async (req: Request) => {
     if (d.autoliquidation === true) factureAutoliquidee = true;
   }
 
+  // ── Verrou : une seule facturation à la fois pour ces courses ───────────────
+  // Sans lui, un double clic (ou « Resynchroniser » pendant une facturation)
+  // créait DEUX factures Pennylane. On « prend » les courses atomiquement :
+  // livrées, sans facture, sans verrou (ou verrou de plus de 5 min, abandonné).
+  const verrouExpire = new Date(Date.now() - 5 * 60_000).toISOString();
+  const { data: prises } = await supabase
+    .from('deliveries')
+    .update({ facturation_verrou: new Date().toISOString() })
+    .in('id', ids)
+    .eq('statut', 'livree')
+    .is('pennylane_invoice_id', null)
+    .or(`facturation_verrou.is.null,facturation_verrou.lt.${verrouExpire}`)
+    .select('id');
+  if ((prises?.length ?? 0) !== ids.length) {
+    if ((prises?.length ?? 0) > 0) {
+      await supabase.from('deliveries').update({ facturation_verrou: null })
+        .in('id', (prises ?? []).map((p) => p.id));
+    }
+    return jsonResponse({
+      ok: false,
+      error: 'Facturation déjà en cours pour cette course (ou déjà facturée) : patientez quelques secondes puis rechargez.',
+    }, 409);
+  }
+
+  verrouPris = true;
+
   // ── Client Pennylane (créé/récupéré une seule fois) ──────────────────────────
   const { data: client, error: cErr } = await supabase
     .from('clients')
@@ -221,7 +251,7 @@ Deno.serve(async (req: Request) => {
     ? client.tva_intra.replace(/\s+/g, '').toUpperCase()
     : null;
 
-  let draftInvoiceId: number;
+  let draftInvoiceId = 0;
   let invoiceNumber: string | null;
   let invoiceDate: string;
   try {
@@ -259,9 +289,21 @@ Deno.serve(async (req: Request) => {
     // ── Date et échéance ─────────────────────────────────────────────────────
     // payment_terms_label (select façon Pennylane) prime si renseigné — gère
     // notamment "30 jours fin de mois", indiscernable du seul entier payment_terms.
-    invoiceDate = invoiceDateOverride ?? new Date().toISOString().slice(0, 10);
+    // Date du jour à PARIS (en UTC, une facture émise avant 2 h était datée de la veille).
+    invoiceDate = invoiceDateOverride ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date());
+    // Échéance : celle de l'auto-facture si fournie (dates du donneur d'ordre),
+    // sinon celle imposée sur la course (la plus proche), sinon le délai du
+    // client ; les deux dernières plafonnées à 30 j (L441-11) et jamais avant la facture.
+    const plafond = echeanceTransport('30', invoiceDate, 30);
+    const imposees = deliveries
+      .map((d) => d.echeance_le as string | null)
+      .filter((v): v is string => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v))
+      .sort();
+    const borner = (v: string) => (v > plafond ? plafond : v < invoiceDate ? invoiceDate : v);
     const deadlineDate = deadlineOverride
-      ?? echeanceTransport(client.payment_terms_label, invoiceDate, client.payment_terms ?? 30);
+      ?? (imposees.length > 0
+        ? borner(imposees[0])
+        : echeanceTransport(client.payment_terms_label, invoiceDate, client.payment_terms ?? 30));
 
     // ── Lignes de facture : une par livraison + N par ligne supplémentaire ───
     const invoiceLines: InvoiceLine[] = validatedLines.map((ln) => ({
@@ -282,6 +324,15 @@ Deno.serve(async (req: Request) => {
     await finalizeInvoice(token, draftInvoiceId);
     invoiceNumber = await getInvoiceNumber(token, draftInvoiceId);
   } catch (err) {
+    // Brouillon déjà créé chez Pennylane : NE PAS laisser croire à un échec
+    // technique (le rattrapage referait une facture). On le signale avec son id.
+    if (draftInvoiceId > 0) {
+      return await echec(409, {
+        code: 'brouillon_non_finalise',
+        error: `Brouillon Pennylane ${draftInvoiceId} créé mais pas finalisé (${(err as Error).message}). `
+          + 'Finalisez-le dans Pennylane ; ne refacturez pas.',
+      });
+    }
     if (err instanceof ExternalApiError) {
       return await echec(502, {
         error: err.status
@@ -329,6 +380,7 @@ Deno.serve(async (req: Request) => {
     pennylane_synced_at: now,
     sync_pending: false,
     sync_error: numberConflict,
+    facturation_verrou: null,
   };
 
   // Écriture vérifiée (2 essais) : toutes les courses doivent être à jour.

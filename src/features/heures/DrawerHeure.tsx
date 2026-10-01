@@ -57,6 +57,8 @@ export function DrawerHeure({ open, onClose, workHour, onSaved }: Props) {
     supabase
       .from('deliveries')
       .select('id, date, clients!client_id(name)')
+      // Relevés de messagerie et forfaits : pas des courses où l'on pointe des heures.
+      .or('prestation.is.null,prestation.not.in.(messagerie,forfait)')
       .order('date', { ascending: false })
       .limit(50)
       .then(({ data }) =>

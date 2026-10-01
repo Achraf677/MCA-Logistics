@@ -139,6 +139,8 @@ export interface Delivery {
   note_interne?: string | null
   /** Messagerie : prix HT d'un colis figé sur le relevé (HT = nb_colis × prix). */
   prix_unitaire_cts?: number | null
+  /** Échéance de paiement imposée pour la facture (null = délai du client). */
+  echeance_le?: string | null
   /** Horodatage de livraison effective (posé à →livree). */
   delivered_at?: string | null
   created_at: string

@@ -21,11 +21,20 @@ alter table public.clients
   add column if not exists supplements jsonb not null default '[]'::jsonb
     check (jsonb_typeof(supplements) = 'array');
 
+-- Échéance de paiement choisie sur la course (sinon : délai du client, plafonné à 30 j).
+alter table public.deliveries
+  add column if not exists echeance_le date,
+  -- Verrou de facturation (pennylane-invoice) : empêche deux factures pour la
+  -- même course (double clic, resynchronisation concurrente). Expire après 5 min.
+  add column if not exists facturation_verrou timestamptz;
+comment on column public.deliveries.echeance_le is 'Échéance de paiement imposée pour la facture de cette course (null = délai du client).';
+
 comment on column public.clients.pays is 'Pays de facturation ISO alpha-2 (FR par défaut).';
 comment on column public.clients.reference_obligatoire is 'Refus de facturer une course sans référence client.';
 comment on column public.clients.supplements is 'Catalogue de suppléments [{label, prix_ht_cts}] proposés en un clic dans la fiche livraison.';
 
 -- DOWN
+-- alter table public.deliveries drop column if exists echeance_le, drop column if exists facturation_verrou;
 -- alter table public.clients
 --   drop column if exists supplements, drop column if exists reference_obligatoire,
 --   drop column if exists prestation_defaut, drop column if exists vehicule_habituel_id,

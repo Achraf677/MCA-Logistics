@@ -27,6 +27,8 @@ export interface LvDeliveryInput {
   marchandise_desc: string | null
   nb_colis: number | null
   poids_kg_reel: number | null
+  /** Volume (m³) : la loi accepte poids OU volume (arrêté du 9/11/1999, art. 4). */
+  volume_m3?: number | null
   // Prix (TTC prioritaire, y compris legacy montant_ttc_cts ; sinon HT)
   amount_ttc_cts: number | null
   amount_ht_cts: number | null
@@ -82,6 +84,8 @@ export interface LettreVoitureData {
     description: string
     nb_colis: number
     poids_kg: number
+    /** m³, 0 si non renseigné. */
+    volume_m3: number
   }
   /** Nom/modèle du véhicule (ex "MOVANO") — affichage seulement, jamais l'immat. */
   vehicule_nom: string | null
@@ -138,7 +142,8 @@ export function buildLettreVoiture(inputs: {
   const poids_kg = Number.isFinite(delivery.poids_kg_reel) ? Number(delivery.poids_kg_reel) : 0
   need('Description de la marchandise', marchandise_desc.length > 0)
   need('Nombre de colis (> 0)', nb_colis > 0)
-  need('Poids réel en kg (> 0)', poids_kg > 0)
+  const volume_m3 = Number.isFinite(Number(delivery.volume_m3)) && Number(delivery.volume_m3) > 0 ? Number(delivery.volume_m3) : 0
+  need('Poids réel (kg) ou volume (m³)', poids_kg > 0 || volume_m3 > 0)
 
   // Véhicule + chauffeur. L'immatriculation vient TOUJOURS de `plate` — le
   // `label` (nom/modèle, ex "MOVANO") n'est qu'un complément d'affichage.
@@ -179,6 +184,7 @@ export function buildLettreVoiture(inputs: {
       description: marchandise_desc,
       nb_colis,
       poids_kg,
+      volume_m3,
     },
     vehicule_nom,
     vehicule_immat: immat,

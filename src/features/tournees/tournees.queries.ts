@@ -115,7 +115,8 @@ export async function unassignDeliveries(ids: string[]) {
 export async function markDelivered(deliveryId: string, when: string) {
   return supabase
     .from('deliveries')
-    .update({ statut: 'livree', delivered_at: when })
+    // Lève l'échec éventuel (relivraison réussie), comme Mes courses.
+    .update({ statut: 'livree', delivered_at: when, probleme_le: null })
     .eq('id', deliveryId)
 }
 
@@ -194,6 +195,8 @@ export async function fetchPlannableDeliveries(companyId: string, date: string) 
     .eq('company_id', companyId)
     .eq('date', date)
     .eq('statut', 'planifiee')
+    // Relevés de messagerie et forfaits : rien à faire sur la route.
+    .or('prestation.is.null,prestation.not.in.(messagerie,forfait)')
     .order('created_at', { ascending: true })
 }
 

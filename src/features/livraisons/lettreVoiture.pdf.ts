@@ -101,7 +101,8 @@ export function buildLettreVoiturePdf({ data, signatures, fileName }: BuildOptio
   y = drawSection(doc, y, 'MARCHANDISE', [
     [`Description`, data.marchandise.description],
     [`Nombre de colis`, String(data.marchandise.nb_colis)],
-    [`Poids réel remis (kg)`, String(data.marchandise.poids_kg)],
+    ...(data.marchandise.poids_kg > 0 ? [[`Poids réel remis (kg)`, String(data.marchandise.poids_kg)] as [string, string]] : []),
+    ...(data.marchandise.volume_m3 > 0 ? [[`Volume (m³)`, String(data.marchandise.volume_m3).replace('.', ',')] as [string, string]] : []),
   ])
 
   y = drawSection(doc, y, 'VÉHICULE / CHAUFFEUR', [

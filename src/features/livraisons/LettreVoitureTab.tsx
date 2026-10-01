@@ -106,7 +106,8 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
       expediteur_tel:    delivery.expediteur_tel ?? '',
       destinataire_tel:  delivery.destinataire_tel ?? '',
       expediteur_siren:  delivery.expediteur_siren ?? '',
-      destinataire_nom:  delivery.destinataire_nom ?? (delivery.clients?.name ?? ''),
+      // Pas de repli sur le nom du client : en sous-traitance, le client n'est PAS le destinataire.
+      destinataire_nom:  delivery.destinataire_nom ?? '',
       marchandise_desc:  delivery.marchandise_desc ?? (delivery.description ?? ''),
       nb_colis:          delivery.nb_colis != null ? String(delivery.nb_colis) : '',
       poids_kg_reel:     delivery.poids_kg_reel != null ? String(delivery.poids_kg_reel) : '',
@@ -139,6 +140,7 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
         marchandise_desc:  form.marchandise_desc,
         nb_colis:          form.nb_colis ? parseInt(form.nb_colis, 10) : null,
         poids_kg_reel:     form.poids_kg_reel ? parseFloat(form.poids_kg_reel) : null,
+        volume_m3:         delivery.volume_m3 ?? null,
         amount_ttc_cts:    delivery.amount_ttc_cts,
         amount_ht_cts:     delivery.amount_ht_cts,
         montant_ttc_cts:   delivery.montant_ttc_cts,
