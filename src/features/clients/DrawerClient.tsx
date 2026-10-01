@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Plus, X, Archive } from 'lucide-react'
+import { BoutonIcone } from '../../shared/ui/BoutonIcone'
+import type { ReactNode } from 'react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -7,7 +9,7 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import {
   createClient, updateClient, deactivateClient, deleteClient,
-  countDeliveriesForClient, countQuotesForClient, getClientDeliveries,
+  countDeliveriesForClient, countQuotesForClient, getClientDeliveries, getChoixExecution,
 } from './clients.queries'
 import {
   CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, CLIENT_TYPES, champsProfessionnels, validateSiret,
@@ -15,7 +17,11 @@ import {
 } from './clients.logic'
 import { formatMoney } from '../../shared/lib/money'
 import { normalizeClientName } from '../../shared/lib/normalizeClientName'
-import { PAYMENT_TERM_OPTIONS, paymentTermDays, resolvePaymentTermCode } from '../../shared/lib/paymentTerms'
+import { PAYMENT_TERM_OPTIONS, paymentTermDays, resolvePaymentTermCode, delaiConforme } from '../../shared/lib/paymentTerms'
+import { PAYS, estUE, autoliquidationParDefaut } from '../../shared/lib/pays'
+import { SUPPLEMENTS_USUELS, lireSupplements } from '../../shared/lib/supplements'
+import type { Supplement } from '../../shared/lib/supplements'
+import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
 import type { Client, ClientInsert, DeliveryForEncours, TariffMode } from './clients.types'
 import { useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
@@ -33,7 +39,15 @@ const EMPTY_FORM: Partial<ClientInsert> = {
   postal_code: '', email: '', phone: '', type: null,
   payment_terms: 30, payment_terms_label: '30', notes: '', active: true,
   tariff_mode: 'manuel', tariff_rate_cts: null,
+  pays: 'FR', retrait_adresse: '', retrait_contact: '', retrait_tel: '',
+  chauffeur_habituel_id: null, vehicule_habituel_id: null, prestation_defaut: null,
+  reference_obligatoire: false, supplements: [],
 }
+
+const PRESTATIONS_CLIENT: Array<[NonNullable<Client['prestation_defaut']>, string]> = [
+  ['express', 'Express'], ['messagerie', 'Messagerie (relevé au colis)'], ['dediee', 'Course dédiée'],
+  ['mise_a_dispo', 'Mise à disposition'], ['forfait', 'Forfait / relevé'],
+]
 
 type Tab = 'detail' | 'historique' | 'encours' | 'documents'
 
@@ -55,6 +69,13 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
 
   const isEdit = !!client
 
+  // Chauffeurs / véhicules pour les « habituels ».
+  const [choix, setChoix] = useState<{ chauffeurs: Array<{ id: string; full_name: string }>; vehicules: Array<{ id: string; label: string }> }>({ chauffeurs: [], vehicules: [] })
+  useEffect(() => {
+    if (!open) return
+    getChoixExecution().then(setChoix)
+  }, [open])
+
   useEffect(() => {
     if (client) {
       setForm({
@@ -66,6 +87,14 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
         notes: client.notes ?? '', active: client.active,
         tariff_mode: client.tariff_mode ?? 'manuel',
         tariff_rate_cts: client.tariff_rate_cts,
+        pays: client.pays ?? 'FR',
+        retrait_adresse: client.retrait_adresse ?? '', retrait_contact: client.retrait_contact ?? '',
+        retrait_tel: client.retrait_tel ?? '',
+        chauffeur_habituel_id: client.chauffeur_habituel_id ?? null,
+        vehicule_habituel_id: client.vehicule_habituel_id ?? null,
+        prestation_defaut: client.prestation_defaut ?? null,
+        reference_obligatoire: !!client.reference_obligatoire,
+        supplements: lireSupplements(client.supplements),
       })
     } else {
       setForm(EMPTY_FORM)
@@ -103,9 +132,16 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
       // l'enregistrement plutôt que de les laisser en base sous des champs
       // devenus invisibles : une donnée qu'on ne peut plus ni voir ni corriger
       // finirait tôt ou tard sur une facture ou une lettre de voiture.
+      const vide = (s: string | null | undefined) => (s ?? '').trim() || null
       const payload = {
         ...form,
         name: normalizeClientName(form.name!),
+        pays: (form.pays ?? 'FR').toUpperCase(),
+        retrait_adresse: vide(form.retrait_adresse),
+        retrait_contact: vide(form.retrait_contact),
+        retrait_tel: vide(form.retrait_tel),
+        // Suppléments : lignes sans libellé écartées, doublons fusionnés.
+        supplements: lireSupplements(form.supplements),
         ...(estPro ? {} : { siret: null, tva_intra: null }),
       }
       if (isEdit && client) {
@@ -185,7 +221,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
   const encours = computeEncours(deliveries)
 
   return (
-    <Drawer open={open} onClose={onClose} title={isEdit ? client!.name : 'Nouveau client'}>
+    <Drawer open={open} onClose={onClose} title={isEdit ? client!.name : 'Nouveau client'} width="max-w-[min(68rem,100vw)]">
       {/* Tabs */}
       {isEdit && (
         <div className="flex gap-1 mb-5 border-b border-[var(--border)] -mx-5 px-5">
@@ -207,7 +243,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
 
       {/* ── Onglet Détail ── */}
       {tab === 'detail' && (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-4">
           {isEdit && (
             <div className="flex items-center gap-2">
               <Badge color={client!.active ? 'success' : 'muted'}>
@@ -221,150 +257,194 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
             </div>
           )}
 
-          <FieldGroup label="Nom *">
-            <Input value={form.name ?? ''} onChange={v => set('name', v)} placeholder="Nom du client" />
-          </FieldGroup>
+          <div className="grid gap-4 lg:grid-cols-2 items-start">
+            {/* Colonne 1 : qui est le client, comment on le facture */}
+            <div className="flex flex-col gap-4 min-w-0">
+              <Bloc titre="Identité">
+                <FieldGroup label="Nom *">
+                  <Input value={form.name ?? ''} onChange={v => set('name', v)}
+                    placeholder="Celui qui commande ET paie (la plateforme, pas le particulier)" />
+                </FieldGroup>
+                <FieldGroup label="Type">
+                  <select value={form.type ?? ''} onChange={e => set('type', e.target.value || null)} className={inputClass}>
+                    <option value="">— Non précisé —</option>
+                    {CLIENT_TYPES.map(v => <option key={v} value={v}>{CLIENT_TYPE_LABELS[v]}</option>)}
+                  </select>
+                </FieldGroup>
+                {/* SIRET et TVA n'ont de sens que pour un professionnel. */}
+                {estPro && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <FieldGroup label="SIRET" error={siretError}>
+                      <Input value={form.siret ?? ''} onChange={v => { set('siret', v); setSiretError('') }} placeholder="14 chiffres" />
+                    </FieldGroup>
+                    <FieldGroup label="N° TVA intracommunautaire">
+                      <Input value={form.tva_intra ?? ''} onChange={v => set('tva_intra', v)} placeholder="FR…" />
+                    </FieldGroup>
+                  </div>
+                )}
+                <FieldGroup label="Adresse">
+                  <Input value={form.address ?? ''} onChange={v => set('address', v)} placeholder="Rue…" />
+                </FieldGroup>
+                <div className="grid grid-cols-3 gap-3">
+                  <FieldGroup label="Code postal">
+                    <Input value={form.postal_code ?? ''} onChange={v => set('postal_code', v)} />
+                  </FieldGroup>
+                  <FieldGroup label="Ville">
+                    <Input value={form.city ?? ''} onChange={v => set('city', v)} />
+                  </FieldGroup>
+                  <FieldGroup label="Pays">
+                    <select value={form.pays ?? 'FR'} onChange={e => set('pays', e.target.value)} className={inputClass}>
+                      {PAYS.map(p => <option key={p.code} value={p.code}>{p.libelle}</option>)}
+                    </select>
+                  </FieldGroup>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <FieldGroup label="E-mail (factures)">
+                    <Input type="email" value={form.email ?? ''} onChange={v => set('email', v)} />
+                  </FieldGroup>
+                  <FieldGroup label="Téléphone">
+                    <Input type="tel" value={form.phone ?? ''} onChange={v => set('phone', v)} />
+                  </FieldGroup>
+                </div>
+              </Bloc>
 
-          <div className="grid grid-cols-2 gap-3">
-            <FieldGroup label="Type">
-              <select
-                value={form.type ?? ''}
-                onChange={e => set('type', e.target.value || null)}
-                className={inputClass}
-              >
-                <option value="">— Non precise —</option>
-                {CLIENT_TYPES.map(v => (
-                  <option key={v} value={v}>{CLIENT_TYPE_LABELS[v]}</option>
-                ))}
-              </select>
-            </FieldGroup>
-            {estPro && (
-              <FieldGroup label="Délai de paiement">
-                <select
-                  value={form.payment_terms_label ?? '30'}
-                  onChange={e => {
-                    const code = e.target.value
-                    set('payment_terms_label', code)
-                    set('payment_terms', paymentTermDays(code))
-                  }}
-                  className={inputClass}
-                >
-                  {PAYMENT_TERM_OPTIONS.map(o => (
-                    <option key={o.code} value={o.code}>{o.label}</option>
-                  ))}
-                </select>
-              </FieldGroup>
-            )}
-          </div>
-
-          {/* SIRET, TVA et delai de paiement n'ont de sens que pour un
-              professionnel. Pour un particulier ils disparaissent : les
-              afficher grises laisserait croire qu'ils sont attendus. */}
-          {estPro && (
-            <div className="grid grid-cols-2 gap-3">
-              <FieldGroup label="SIRET" error={siretError}>
-                <Input value={form.siret ?? ''} onChange={v => { set('siret', v); setSiretError('') }} placeholder="14 chiffres" />
-              </FieldGroup>
-              <FieldGroup label="N° TVA intracommunautaire">
-                <Input value={form.tva_intra ?? ''} onChange={v => set('tva_intra', v)} placeholder="FR…" />
-              </FieldGroup>
+              <Bloc titre="Facturation">
+                <FieldGroup label="Délai de paiement">
+                  <select
+                    value={form.payment_terms_label ?? '30'}
+                    onChange={e => {
+                      const code = e.target.value
+                      set('payment_terms_label', code)
+                      set('payment_terms', paymentTermDays(code))
+                    }}
+                    className={inputClass}
+                  >
+                    {PAYMENT_TERM_OPTIONS
+                      .filter(o => o.conforme || o.code === (form.payment_terms_label ?? '30'))
+                      .map(o => (
+                        <option key={o.code} value={o.code}>{o.label}{o.conforme ? '' : ' — non conforme'}</option>
+                      ))}
+                  </select>
+                  {!delaiConforme(form.payment_terms_label) && (
+                    <span className="text-xs text-[var(--warning)]">
+                      Transport : 30 jours maximum à compter de la facture (art. L441-11 C. com.).
+                      Les factures partent plafonnées à 30 jours ; choisissez un délai conforme.
+                    </span>
+                  )}
+                </FieldGroup>
+                <Coche checked={!!form.reference_obligatoire}
+                  onChange={v => set('reference_obligatoire', v)}
+                  label="Référence client obligatoire"
+                  aide="Une course sans sa référence (ODT, n° de commande) ne peut pas être facturée." />
+                {estPro && autoliquidationParDefaut(form.pays, form.tva_intra) && (
+                  <span className="text-xs text-[var(--text-muted)]">
+                    Client UE hors France avec n° de TVA : ses courses partent en autoliquidation par défaut.
+                  </span>
+                )}
+                {estPro && (form.pays ?? 'FR') !== 'FR' && !form.tva_intra?.trim() && estUE(form.pays) && (
+                  <span className="text-xs text-[var(--warning)]">
+                    Client UE sans n° de TVA : l'autoliquidation n'est pas possible.
+                  </span>
+                )}
+              </Bloc>
             </div>
-          )}
 
-          <FieldGroup label="Adresse">
-            <Input value={form.address ?? ''} onChange={v => set('address', v)} placeholder="Rue…" />
-          </FieldGroup>
-          <div className="grid grid-cols-3 gap-3">
-            <FieldGroup label="Code postal">
-              <Input value={form.postal_code ?? ''} onChange={v => set('postal_code', v)} />
-            </FieldGroup>
-            <FieldGroup label="Ville" className="col-span-2">
-              <Input value={form.city ?? ''} onChange={v => set('city', v)} />
-            </FieldGroup>
-          </div>
+            {/* Colonne 2 : prix et habitudes, qui pré-remplissent ses courses */}
+            <div className="flex flex-col gap-4 min-w-0">
+              <Bloc titre="Tarif">
+                <div className="grid grid-cols-2 gap-3">
+                  <FieldGroup label="Mode tarifaire">
+                    <select value={form.tariff_mode ?? 'manuel'}
+                      onChange={e => set('tariff_mode', e.target.value as TariffMode)} className={inputClass}>
+                      {(Object.entries(TARIFF_MODE_LABELS) as [TariffMode, string][]).map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
+                      ))}
+                    </select>
+                  </FieldGroup>
+                  {form.tariff_mode !== 'manuel' && (
+                    <FieldGroup label={
+                      form.tariff_mode === 'forfait' ? 'Montant forfait (€ HT)' :
+                      form.tariff_mode === 'km'      ? 'Prix / km (€ HT)' :
+                      form.tariff_mode === 'colis'   ? 'Prix / colis (€ HT)' :
+                                                       'Prix / palette (€ HT)'
+                    }>
+                      <Input type="number"
+                        value={form.tariff_rate_cts ? String(form.tariff_rate_cts / 100) : ''}
+                        onChange={v => set('tariff_rate_cts', v ? Math.round(parseFloat(v) * 100) : null)}
+                        placeholder="0,00" />
+                    </FieldGroup>
+                  )}
+                </div>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {form.tariff_mode === 'colis'
+                    ? 'Messagerie : chaque mois, seul le nombre de colis livrés se saisit ; le prix se remplit tout seul.'
+                    : form.tariff_mode === 'manuel' ? 'Prix saisi course par course.' : 'Le prix des courses se calcule tout seul.'}
+                </span>
+                <EditeurSupplements valeur={form.supplements ?? []} onChange={v => set('supplements', v)} />
+              </Bloc>
 
-          <div className="grid grid-cols-2 gap-3">
-            <FieldGroup label="E-mail">
-              <Input type="email" value={form.email ?? ''} onChange={v => set('email', v)} />
-            </FieldGroup>
-            <FieldGroup label="Téléphone">
-              <Input type="tel" value={form.phone ?? ''} onChange={v => set('phone', v)} />
-            </FieldGroup>
-          </div>
-
-          {/* Tarif */}
-          <div className="pt-3 border-t border-[var(--border)]">
-            <p className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide mb-3">Tarification</p>
-            <div className="grid grid-cols-2 gap-3">
-              <FieldGroup label="Mode tarifaire">
-                <select
-                  value={form.tariff_mode ?? 'manuel'}
-                  onChange={e => set('tariff_mode', e.target.value as TariffMode)}
-                  className={inputClass}
-                >
-                  {(Object.entries(TARIFF_MODE_LABELS) as [TariffMode, string][]).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
-              </FieldGroup>
-              {form.tariff_mode !== 'manuel' && (
-                <FieldGroup label={
-                  form.tariff_mode === 'forfait' ? 'Montant forfait (€)' :
-                  form.tariff_mode === 'km'      ? 'Prix / km (€)' :
-                  form.tariff_mode === 'colis'   ? 'Prix HT / colis (€)' :
-                                                   'Prix / palette (€)'
-                }>
-                  <Input
-                    type="number"
-                    value={form.tariff_rate_cts ? String(form.tariff_rate_cts / 100) : ''}
-                    onChange={v => set('tariff_rate_cts', v ? Math.round(parseFloat(v) * 100) : null)}
-                    placeholder="0,00"
+              <Bloc titre="Habitudes (pré-remplissent ses courses)">
+                <FieldGroup label="Prestation habituelle">
+                  <select value={form.prestation_defaut ?? ''} onChange={e => set('prestation_defaut', e.target.value || null)} className={inputClass}>
+                    <option value="">— Express (par défaut) —</option>
+                    {PRESTATIONS_CLIENT.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </FieldGroup>
+                <FieldGroup label="Retrait habituel — adresse">
+                  <AddressAutocomplete
+                    value={form.retrait_adresse ?? ''}
+                    placeholder="Dépôt du client, entrepôt…"
+                    onChange={v => set('retrait_adresse', v)}
+                    onSelect={s => set('retrait_adresse', s.address)}
                   />
                 </FieldGroup>
-              )}
+                <div className="grid grid-cols-2 gap-3">
+                  <FieldGroup label="Contact au retrait">
+                    <Input value={form.retrait_contact ?? ''} onChange={v => set('retrait_contact', v)} placeholder="Nom" />
+                  </FieldGroup>
+                  <FieldGroup label="Téléphone au retrait">
+                    <Input type="tel" value={form.retrait_tel ?? ''} onChange={v => set('retrait_tel', v)} placeholder="06…" />
+                  </FieldGroup>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <FieldGroup label="Chauffeur habituel">
+                    <select value={form.chauffeur_habituel_id ?? ''} onChange={e => set('chauffeur_habituel_id', e.target.value || null)} className={inputClass}>
+                      <option value="">— Aucun —</option>
+                      {choix.chauffeurs.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                    </select>
+                  </FieldGroup>
+                  <FieldGroup label="Véhicule habituel">
+                    <select value={form.vehicule_habituel_id ?? ''} onChange={e => set('vehicule_habituel_id', e.target.value || null)} className={inputClass}>
+                      <option value="">— Aucun —</option>
+                      {choix.vehicules.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                    </select>
+                  </FieldGroup>
+                </div>
+              </Bloc>
+
+              <Bloc titre="Notes">
+                <textarea value={form.notes ?? ''} onChange={e => set('notes', e.target.value)} rows={3}
+                  className={`${inputClass} field-area resize-none`} placeholder="Notes internes…" />
+              </Bloc>
             </div>
-            {form.tariff_mode === 'colis' && (
-              <p className="text-xs text-[var(--text-muted)] mt-1">
-                Messagerie : chaque mois, seul le nombre de colis livrés se saisit dans Livraisons ;
-                le prix se remplit tout seul.
-              </p>
-            )}
-            {form.tariff_mode === 'manuel' && (
-              <p className="text-[var(--fs-xs)] text-[var(--text-disabled)] mt-1">
-                Montant saisi course par course.
-              </p>
-            )}
           </div>
 
-          <FieldGroup label="Notes">
-            <textarea
-              value={form.notes ?? ''}
-              onChange={e => set('notes', e.target.value)}
-              rows={3}
-              className={`${inputClass} field-area resize-none`}
-              placeholder="Notes internes…"
-            />
-          </FieldGroup>
-
-          <div className="flex items-center gap-2 pt-2 border-t border-[var(--border)]">
+          <div className="sticky -bottom-5 -mx-5 -mb-5 mt-1 px-5 py-3 flex items-center gap-2
+            bg-[var(--bg-elevated)] border-t border-[var(--border)] z-10">
             {can('tiers.clients', isEdit ? 'update' : 'create') && (
               <Button variant="primary" onClick={handleSave} disabled={saving}>
                 {saving ? 'Enregistrement…' : 'Enregistrer'}
               </Button>
             )}
             <Button variant="secondary" onClick={onClose}>Annuler</Button>
-            {isEdit && client!.active && (
-              <Button variant="ghost" onClick={() => setConfirmDeactivate(true)} className="ml-auto text-[var(--danger)]">
-                Désactiver
-              </Button>
-            )}
-            {isEdit && can('tiers.clients', 'delete') && (
-              <Button variant="ghost" onClick={handleDeleteClick}
-                className={`${isEdit && client!.active ? '' : 'ml-auto'} text-[var(--danger)]`}>
-                <Trash2 size={14} />
-                Supprimer
-              </Button>
-            )}
+            <span className="ml-auto flex items-center gap-2">
+              {isEdit && client!.active && (
+                <BoutonIcone icone={Archive} libelle="Désactiver (archiver) ce client" onClick={() => setConfirmDeactivate(true)} />
+              )}
+              {isEdit && can('tiers.clients', 'delete') && (
+                <BoutonIcone icone={Trash2} libelle="Supprimer ce client" onClick={handleDeleteClick} />
+              )}
+            </span>
           </div>
         </div>
       )}
@@ -536,9 +616,71 @@ function FieldGroup({ label, children, error, className = '' }: {
 }) {
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
+      <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
       {children}
-      {error && <span className="text-[var(--danger)] text-[var(--fs-xs)]">{error}</span>}
+      {error && <span className="text-[var(--danger)] text-xs">{error}</span>}
+    </div>
+  )
+}
+
+function Bloc({ titre, children }: { titre: string; children: ReactNode }) {
+  return (
+    <section className="rounded-[var(--r-lg)] border border-[var(--border)] p-3.5 flex flex-col gap-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">{titre}</h3>
+      {children}
+    </section>
+  )
+}
+
+function Coche({ checked, onChange, label, aide }: { checked: boolean; onChange: (v: boolean) => void; label: string; aide?: string }) {
+  return (
+    <label className="flex items-start gap-2 cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}
+        className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer" />
+      <span className="text-sm text-[var(--text)]">
+        {label}
+        {aide && <span className="block text-xs text-[var(--text-muted)]">{aide}</span>}
+      </span>
+    </label>
+  )
+}
+
+/**
+ * Catalogue de suppléments du client : libellé + prix HT. Proposé en un clic
+ * dans chaque fiche livraison de ce client (plus de saisie libre répétée).
+ */
+function EditeurSupplements({ valeur, onChange }: { valeur: Supplement[]; onChange: (v: Supplement[]) => void }) {
+  const maj = (i: number, patch: Partial<Supplement>) => onChange(valeur.map((s, j) => j === i ? { ...s, ...patch } : s))
+  const deja = new Set(valeur.map(s => s.label.trim().toLowerCase()))
+  const usuels = SUPPLEMENTS_USUELS.filter(l => !deja.has(l.toLowerCase()))
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">Suppléments facturables</span>
+      {valeur.map((s, i) => (
+        <div key={i} className="flex items-center gap-2">
+          <input value={s.label} onChange={e => maj(i, { label: e.target.value })} placeholder="Libellé" className={`${inputClass} flex-1`} />
+          <input type="number" min={0} step={0.01}
+            value={s.prix_ht_cts ? String(s.prix_ht_cts / 100) : ''}
+            onChange={e => maj(i, { prix_ht_cts: e.target.value ? Math.round(parseFloat(e.target.value) * 100) : 0 })}
+            placeholder="€ HT" className={`${inputClass} w-[6.5rem]`} />
+          <button type="button" aria-label="Retirer" onClick={() => onChange(valeur.filter((_, j) => j !== i))}
+            className="p-1.5 rounded-[var(--r-sm)] text-[var(--text-muted)] hover:text-[var(--danger)]">
+            <X size={14} />
+          </button>
+        </div>
+      ))}
+      <div className="flex flex-wrap gap-1.5">
+        {usuels.map(l => (
+          <button key={l} type="button" onClick={() => onChange([...valeur, { label: l, prix_ht_cts: 0 }])}
+            className="h-7 px-2.5 rounded-[var(--r-pill)] border border-[var(--border)] text-xs text-[var(--text-muted)] hover:border-[var(--brand)] hover:text-[var(--text)] inline-flex items-center gap-1">
+            <Plus size={11} /> {l}
+          </button>
+        ))}
+        <button type="button" onClick={() => onChange([...valeur, { label: '', prix_ht_cts: 0 }])}
+          className="h-7 px-2.5 rounded-[var(--r-pill)] border border-dashed border-[var(--border)] text-xs text-[var(--text-muted)] hover:text-[var(--text)] inline-flex items-center gap-1">
+          <Plus size={11} /> Autre
+        </button>
+      </div>
     </div>
   )
 }

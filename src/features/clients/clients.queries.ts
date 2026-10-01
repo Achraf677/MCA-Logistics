@@ -107,3 +107,15 @@ export async function exportClientsCSV(filters: ClientFilters = {}) {
   ])
   return [headers, ...rows].map(r => r.join(';')).join('\n')
 }
+
+/** Chauffeurs et véhicules actifs — choix des « habituels » dans la fiche client. */
+export async function getChoixExecution() {
+  const [chauffeurs, vehicules] = await Promise.all([
+    supabase.from('team_members').select('id, full_name').eq('active', true).order('full_name'),
+    supabase.from('vehicles').select('id, label').eq('status', 'active').order('label'),
+  ])
+  return {
+    chauffeurs: (chauffeurs.data ?? []) as Array<{ id: string; full_name: string }>,
+    vehicules: (vehicules.data ?? []) as Array<{ id: string; label: string }>,
+  }
+}

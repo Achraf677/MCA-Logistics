@@ -20,6 +20,9 @@ import { useProfile, supabase } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney, addTva, centimesToEuros } from '../../shared/lib/money'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
+import { autoliquidationParDefaut } from '../../shared/lib/pays'
+import { lireSupplements, SUPPLEMENTS_USUELS } from '../../shared/lib/supplements'
+import type { Supplement } from '../../shared/lib/supplements'
 import {
   STATUS_LABELS, STATUS_COLORS,
   TRANSITION_ACTION_LABELS, libelleDelaiPaiement,
@@ -72,6 +75,16 @@ interface ClientLookup extends ClientTariff {
   payment_terms_label: string | null
   /** Numéro de TVA intracommunautaire — condition de l'autoliquidation. */
   tva_intra: string | null
+  // Défauts de ses courses (fiche client, lot B).
+  pays: string
+  retrait_adresse: string | null
+  retrait_contact: string | null
+  retrait_tel: string | null
+  chauffeur_habituel_id: string | null
+  vehicule_habituel_id: string | null
+  prestation_defaut: Prestation | null
+  reference_obligatoire: boolean
+  supplements: Supplement[]
 }
 
 interface Lookup { id: string; label: string }
@@ -149,6 +162,9 @@ function versClientLookup(c: {
   id: string; name: string; tariff_mode: string | null; tariff_rate_cts: number | null
   phone?: string | null; email?: string | null; payment_terms?: number | null
   payment_terms_label?: string | null; tva_intra?: string | null
+  pays?: string | null; retrait_adresse?: string | null; retrait_contact?: string | null
+  retrait_tel?: string | null; chauffeur_habituel_id?: string | null; vehicule_habituel_id?: string | null
+  prestation_defaut?: string | null; reference_obligatoire?: boolean | null; supplements?: unknown
 }): ClientLookup {
   return {
     id: c.id,
@@ -160,6 +176,15 @@ function versClientLookup(c: {
     payment_terms: c.payment_terms ?? null,
     payment_terms_label: c.payment_terms_label ?? null,
     tva_intra: c.tva_intra ?? null,
+    pays: c.pays ?? 'FR',
+    retrait_adresse: c.retrait_adresse ?? null,
+    retrait_contact: c.retrait_contact ?? null,
+    retrait_tel: c.retrait_tel ?? null,
+    chauffeur_habituel_id: c.chauffeur_habituel_id ?? null,
+    vehicule_habituel_id: c.vehicule_habituel_id ?? null,
+    prestation_defaut: (c.prestation_defaut ?? null) as Prestation | null,
+    reference_obligatoire: !!c.reference_obligatoire,
+    supplements: lireSupplements(c.supplements),
   }
 }
 
@@ -439,16 +464,36 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
     })
   }
 
-  /** Choisir le client : un client « au colis » fait passer une nouvelle fiche en messagerie. */
+  /**
+   * Choisir le client. En CRÉATION, ses habitudes (fiche client) remplissent
+   * les cases encore vides : prestation, retrait habituel et son contact,
+   * chauffeur, véhicule, autoliquidation (client UE identifié). Rien n'écrase
+   * une saisie déjà faite ; en modification, rien n'est pré-rempli.
+   */
   const choisirClient = (id: string) => {
     const client = clients.find(c => c.id === id)
-    if (!isEdit && client?.tariff_mode === 'colis') { choisirPrestation('messagerie', id); return }
-    setForm(f => ({
-      ...f,
-      client_id: id,
-      prix_colis: f.prestation === 'messagerie' && client?.tariff_mode === 'colis' && client.tariff_rate_cts != null
-        ? (client.tariff_rate_cts / 100).toFixed(2) : f.prix_colis,
-    }))
+    if (!client || isEdit) {
+      setForm(f => ({ ...f, client_id: id }))
+      return
+    }
+    const presta: Prestation = client.prestation_defaut
+      ?? (client.tariff_mode === 'colis' ? 'messagerie' : ((form.prestation || 'express') as Prestation))
+    // Date et prix au colis suivent la prestation (relevé : fin de mois, tarif client).
+    choisirPrestation(presta, id)
+    setForm(f => {
+      const ou = (actuel: string, defaut: string | null) => actuel.trim() ? actuel : (defaut ?? '')
+      return {
+        ...f,
+        client_id: id,
+        prestation: presta,
+        pickup_address: ou(f.pickup_address, client.retrait_adresse),
+        expediteur_nom: ou(f.expediteur_nom, client.retrait_contact),
+        expediteur_tel: ou(f.expediteur_tel, client.retrait_tel),
+        driver_id: ou(f.driver_id, client.chauffeur_habituel_id),
+        vehicle_id: ou(f.vehicle_id, client.vehicule_habituel_id),
+        autoliquidation: autoliquidationParDefaut(client.pays, client.tva_intra) ? '1' : f.autoliquidation,
+      }
+    })
   }
 
   /** Copie de la course ouverte → nouvelle course (date du jour, sans preuve ni statut). */
@@ -571,8 +616,9 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
   const manques = useMemo(() => manquesFiche({
     ...form,
     prestation: form.prestation || 'express',
+    reference_exigee: !!selectedClient?.reference_obligatoire,
     ht_cts: computed?.amount_ht_cts ?? (delivery ? effectiveHtCts(delivery) : null),
-  }), [form, computed, delivery])
+  }), [form, computed, delivery, selectedClient])
 
   // ── Permissions ───────────────────────────────────────────────────────────────
 
@@ -775,6 +821,12 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
         setTab('detail')
         return
       }
+      // Le client exige sa référence sur la facture (fiche client).
+      if (selectedClient?.reference_obligatoire && !delivery.reference_client?.trim()) {
+        toast('Ce client exige sa référence sur la facture — saisissez-la dans l’onglet Course', 'error')
+        setTab('detail')
+        return
+      }
       // Dernier moment ou la preuve peut encore etre obtenue : apres, le client
       // est loin et la facture est partie. L'alerte de la cloche arrive, elle,
       // des semaines plus tard — trop tard pour faire quoi que ce soit.
@@ -957,7 +1009,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                 </Field>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field label="Référence client">
+                  <Field label={selectedClient?.reference_obligatoire ? 'Référence client *' : 'Référence client'}>
                     <Input value={form.reference_client} onChange={v => set('reference_client', v)}
                       placeholder="ODT, n° de commande…" disabled={ro} />
                   </Field>
@@ -1158,6 +1210,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                 <MontantTab
                   integre
                   releve={blocs.releve}
+                  catalogue={selectedClient?.supplements ?? []}
                   extraLines={extraLines}
                   setExtraLines={setExtraLines}
                   form={form}
@@ -1511,8 +1564,10 @@ function MontantTab({
   form, set, tvaTouched, onTvaChange, onTvaRateChange,
   selectedClient, tvaIntraClient, computed, delivery,
   extraLines, setExtraLines,
-  isReadOnly, saving, onSave, onClose, integre = false, releve = false,
+  isReadOnly, saving, onSave, onClose, integre = false, releve = false, catalogue = [],
 }: {
+  /** Suppléments du client (fiche client), ajoutés en un clic. */
+  catalogue?: Supplement[]
   /** Relevé de messagerie : le HT vient de « colis × prix au colis », pas de saisie. */
   releve?: boolean
   /** Dans le bloc « Exécution & prix » de la fiche : sans boutons ni état Pennylane. */
@@ -1676,6 +1731,7 @@ function MontantTab({
       {/* Toutes sont regroupées avec la ligne principale sur la même facture.      */}
       {selectedClient && (
         <ExtraLinesEditor
+          catalogue={catalogue}
           lines={extraLines}
           onChange={setExtraLines}
           defaultTvaRate={parseFloat(form.tva_rate || '20')}
@@ -2260,8 +2316,10 @@ function InfoRow({ label, children }: { label: string; children: ReactNode }) {
 // livraison via le champ JSONB `extra_lines`.
 
 function ExtraLinesEditor({
-  lines, onChange, defaultTvaRate, tauxForce = null, disabled,
+  lines, onChange, defaultTvaRate, tauxForce = null, disabled, catalogue = [],
 }: {
+  /** Suppléments du client ; sans catalogue, les libellés usuels (prix à saisir). */
+  catalogue?: Supplement[]
   lines: DeliveryExtraLine[]
   onChange: Dispatch<SetStateAction<DeliveryExtraLine[]>>
   defaultTvaRate: number
@@ -2283,6 +2341,17 @@ function ExtraLinesEditor({
   const removeLine = (i: number) => {
     onChange(prev => prev.filter((_, j) => j !== i))
   }
+  const ajouter = (s: Supplement) => {
+    onChange(prev => [...prev, {
+      label: s.label,
+      quantity: 1,
+      amount_ht_cts: s.prix_ht_cts,
+      tva_rate: Number.isFinite(defaultTvaRate) ? defaultTvaRate : 20,
+    }])
+  }
+  const proposes: Supplement[] = catalogue.length > 0
+    ? catalogue
+    : SUPPLEMENTS_USUELS.map(label => ({ label, prix_ht_cts: 0 }))
 
   return (
     <div className="flex flex-col gap-2">
@@ -2298,9 +2367,24 @@ function ExtraLinesEditor({
         )}
       </div>
 
+      {!disabled && (
+        <div className="flex flex-wrap gap-1.5">
+          {proposes.map(s => (
+            <button key={s.label} type="button" onClick={() => ajouter(s)}
+              title={s.prix_ht_cts ? `${formatMoney(s.prix_ht_cts)} HT` : 'Prix à saisir'}
+              className="h-7 px-2.5 rounded-[var(--r-pill)] border border-[var(--border)] text-xs text-[var(--text-muted)]
+                hover:border-[var(--brand)] hover:text-[var(--text)] inline-flex items-center gap-1">
+              <Plus size={11} /> {s.label}
+              {s.prix_ht_cts > 0 && <span className="font-mono">{formatMoney(s.prix_ht_cts)}</span>}
+            </button>
+          ))}
+        </div>
+      )}
       {lines.length === 0 ? (
         <p className="text-xs text-[var(--text-muted)] italic">
-          Attente, retour à vide, forfait… — regroupé sur la même facture.
+          {catalogue.length > 0
+            ? 'Suppléments de ce client : un clic les ajoute à la facture.'
+            : 'Suppléments usuels (prix à saisir) — fixez les prix de ce client dans sa fiche.'}
         </p>
       ) : (
         <div className="flex flex-col gap-2">

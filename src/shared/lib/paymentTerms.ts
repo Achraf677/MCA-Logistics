@@ -10,15 +10,21 @@ export interface PaymentTermOption {
   label: string
   /** Jours à ajouter — utilisé pour la logique d'encours existante. */
   days: number
+  /**
+   * Conforme au transport routier : L441-11 C. com. plafonne le délai à
+   * 30 jours à compter de la date d'émission de la facture (« fin de mois »
+   * interdit). Les autres ne restent que pour les anciens clients.
+   */
+  conforme: boolean
 }
 
 export const PAYMENT_TERM_OPTIONS: PaymentTermOption[] = [
-  { code: 'reception',   label: 'À réception',            days: 0 },
-  { code: '15',          label: '15 jours',                days: 15 },
-  { code: '30',          label: '30 jours',                days: 30 },
-  { code: '45',          label: '45 jours',                days: 45 },
-  { code: '60',          label: '60 jours',                days: 60 },
-  { code: '30_fin_mois', label: '30 jours fin de mois',    days: 30 },
+  { code: 'reception',   label: 'À réception',            days: 0,  conforme: true },
+  { code: '15',          label: '15 jours',                days: 15, conforme: true },
+  { code: '30',          label: '30 jours',                days: 30, conforme: true },
+  { code: '45',          label: '45 jours',                days: 45, conforme: false },
+  { code: '60',          label: '60 jours',                days: 60, conforme: false },
+  { code: '30_fin_mois', label: '30 jours fin de mois',    days: 30, conforme: false },
 ]
 
 const DEFAULT_CODE = '30'
@@ -63,4 +69,9 @@ export function computeDeadline(code: string | null | undefined, fromIso: string
   }
   from.setUTCDate(from.getUTCDate() + paymentTermDays(code))
   return from.toISOString().slice(0, 10)
+}
+
+/** Délai conforme au transport (≤ 30 j date de facture) ? Inconnu = conforme (30 j par défaut). */
+export function delaiConforme(code: string | null | undefined): boolean {
+  return PAYMENT_TERM_OPTIONS.find(o => o.code === code)?.conforme ?? true
 }

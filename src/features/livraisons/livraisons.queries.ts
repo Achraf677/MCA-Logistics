@@ -365,11 +365,19 @@ export async function resyncPending(): Promise<{ resynced: number; failed: numbe
   return { resynced, failed }
 }
 
+/**
+ * Colonnes client lues par la fiche livraison : tarif, délai, TVA, et les
+ * DÉFAUTS de ses courses (lot B : pays, retrait habituel, exécution habituelle,
+ * prestation, référence obligatoire, suppléments).
+ */
+// Une seule chaîne littérale : supabase-js en déduit le type des lignes.
+const CLIENT_FICHE_COLS = 'id, name, tariff_mode, tariff_rate_cts, phone, email, payment_terms, payment_terms_label, tva_intra, pays, retrait_adresse, retrait_contact, retrait_tel, chauffeur_habituel_id, vehicule_habituel_id, prestation_defaut, reference_obligatoire, supplements' as const
+
 /** Client par id — sert à la fiche quand le client est INACTIF (absent des sélecteurs). */
 export async function getClientLookup(id: string) {
   return supabase
     .from('clients')
-    .select('id, name, tariff_mode, tariff_rate_cts, phone, email, payment_terms, payment_terms_label, tva_intra')
+    .select(CLIENT_FICHE_COLS)
     .eq('id', id)
     .maybeSingle()
 }
@@ -380,7 +388,7 @@ export async function getActiveClients() {
     .from('clients')
     // `payment_terms` et `tva_intra` : le delai de paiement s'affiche des la
     // creation, et le numero de TVA conditionne l'autoliquidation.
-    .select('id, name, tariff_mode, tariff_rate_cts, phone, email, payment_terms, payment_terms_label, tva_intra')
+    .select(CLIENT_FICHE_COLS)
     .eq('active', true)
     .order('name')
 }

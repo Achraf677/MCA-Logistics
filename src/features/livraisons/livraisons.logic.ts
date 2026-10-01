@@ -594,6 +594,7 @@ export function libelleDuree(min: number | null | undefined): string | null {
 /** Ce que lit le bandeau « Il manque » — valeurs du formulaire, en chaînes. */
 export interface FicheASaisir {
   prestation: Prestation | null | ''
+  reference_client?: string
   client_id: string
   date: string
   pickup_address: string
@@ -610,6 +611,8 @@ export interface FicheASaisir {
   ht_cts: number | null
   /** Messagerie : prix d'un colis en euros (saisie). */
   prix_colis: string
+  /** Le client exige sa référence sur la facture (fiche client). */
+  reference_exigee?: boolean
   creneau_retrait_debut: string
   creneau_retrait_fin: string
   creneau_livraison_debut: string
@@ -663,6 +666,7 @@ export function manquesFiche(f: FicheASaisir): Manques {
     if (!(nombreEntier(f.nb_colis) > 0)) facturer.push('nombre de colis')
     if (!(nombreDecimal(f.prix_colis) > 0)) facturer.push('prix au colis')
   } else if (!f.ht_cts || f.ht_cts <= 0) facturer.push('prix HT')
+  if (f.reference_exigee && !f.reference_client?.trim()) facturer.push('référence client (exigée par le client)')
 
   return { enregistrer, partir, lv, facturer }
 }

@@ -19,3 +19,16 @@ export function computeDeadline(code: string | null | undefined, fromIso: string
   from.setUTCDate(from.getUTCDate() + days);
   return from.toISOString().slice(0, 10);
 }
+
+/**
+ * Échéance PLAFONNÉE au transport : L441-11 C. com. — 30 jours maximum à
+ * compter de la date d'émission de la facture. Un ancien client à 45 / 60 j
+ * ou « 30 j fin de mois » part donc à 30 j.
+ */
+export function echeanceTransport(code: string | null | undefined, fromIso: string, fallbackDays: number): string {
+  const calculee = computeDeadline(code, fromIso, fallbackDays);
+  const plafond = new Date(`${fromIso.slice(0, 10)}T00:00:00Z`);
+  plafond.setUTCDate(plafond.getUTCDate() + 30);
+  const max = plafond.toISOString().slice(0, 10);
+  return calculee > max ? max : calculee;
+}

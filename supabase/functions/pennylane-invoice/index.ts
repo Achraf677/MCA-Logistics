@@ -15,7 +15,7 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError } from '../_shared/http.ts';
 import { centimesToEuros } from '../_shared/money.ts';
-import { computeDeadline } from '../_shared/paymentTerms.ts';
+import { echeanceTransport } from '../_shared/paymentTerms.ts';
 import { construireLignes, type CourseAFacturer, type LigneFacture } from '../_shared/lignesFacture.ts';
 import type { InvoiceLine } from '../_shared/pennylane.ts';
 import {
@@ -197,12 +197,24 @@ Deno.serve(async (req: Request) => {
   // ── Client Pennylane (créé/récupéré une seule fois) ──────────────────────────
   const { data: client, error: cErr } = await supabase
     .from('clients')
-    .select('id, company_id, name, email, pennylane_id, address, postal_code, city, payment_terms, payment_terms_label, tva_intra')
+    .select('id, company_id, name, email, pennylane_id, address, postal_code, city, payment_terms, payment_terms_label, tva_intra, pays, reference_obligatoire')
     .eq('id', uniqueClientIds[0])
     .single();
 
   if (cErr || !client || client.company_id !== companyId) {
     return await echec(404, { error: 'Client de la course introuvable.' });
+  }
+
+  // Le client exige sa référence sur la facture (fiche client) : on refuse
+  // AVANT tout appel Pennylane plutôt que d'émettre une facture qu'il rejettera.
+  if (client.reference_obligatoire === true) {
+    const sansRef = deliveries.filter((d) => !(typeof d.reference_client === 'string' && d.reference_client.trim()));
+    if (sansRef.length > 0) {
+      return await echec(422, {
+        error: `${client.name} exige sa référence sur la facture : ${sansRef.length} course(s) sans référence client. `
+          + 'Saisissez-la dans la fiche de la course, puis refacturez.',
+      });
+    }
   }
 
   const tvaIntra = typeof client.tva_intra === 'string' && client.tva_intra.trim()
@@ -222,12 +234,12 @@ Deno.serve(async (req: Request) => {
           name: client.name,
           emails: client.email ? [client.email] : [],
           external_reference: client.id,
-          // Pas de colonne pays sur `clients` : FR par défaut (seul cas géré).
+          // Pays de la fiche client (FR par défaut).
           billing_address: {
             address: client.address ?? '',
             postal_code: client.postal_code ?? '',
             city: client.city ?? '',
-            country_alpha2: 'FR',
+            country_alpha2: typeof client.pays === 'string' && /^[A-Z]{2}$/.test(client.pays) ? client.pays : 'FR',
           },
           ...(tvaIntra ? { vat_number: tvaIntra } : {}),
         });
@@ -249,7 +261,7 @@ Deno.serve(async (req: Request) => {
     // notamment "30 jours fin de mois", indiscernable du seul entier payment_terms.
     invoiceDate = invoiceDateOverride ?? new Date().toISOString().slice(0, 10);
     const deadlineDate = deadlineOverride
-      ?? computeDeadline(client.payment_terms_label, invoiceDate, client.payment_terms ?? 30);
+      ?? echeanceTransport(client.payment_terms_label, invoiceDate, client.payment_terms ?? 30);
 
     // ── Lignes de facture : une par livraison + N par ligne supplémentaire ───
     const invoiceLines: InvoiceLine[] = validatedLines.map((ln) => ({

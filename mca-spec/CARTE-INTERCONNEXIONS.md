@@ -18,6 +18,12 @@
 - **clients** : clients (écrit), livraisons (tarif, délai, TVA intra), devis, modeles,
   encaissement, tresorerie, copilote / assistant ; Edge pennylane-invoice, pennylane-quote,
   pennylane-clients-sync (écrit).
+  - colonnes « défauts des courses » (lot B : `pays`, `retrait_*`, `chauffeur_habituel_id`,
+    `vehicule_habituel_id`, `prestation_defaut`, `reference_obligatoire`, `supplements`) :
+    écrites par la fiche client ; lues par la fiche livraison (`CLIENT_FICHE_COLS`) et
+    l'Edge pennylane-invoice (`pays`, `reference_obligatoire`). Non touchées par
+    pennylane-clients-sync (upsert de colonnes listées). Libs partagées :
+    `shared/lib/pays.ts` (UE, autoliquidation), `shared/lib/supplements.ts`.
 - **vehicles / team_members** : flotte (vehicules, carburant, entretiens, inspections, incidents),
   livraisons, tournees, mescourses, equipe, heures, alertes, devis, modeles.
 - **documents** (+ Storage `documents`) : `shared/lib/documents.queries` (tous les panneaux
@@ -73,7 +79,8 @@
 ## 4. Règles en miroir front ↔ Edge (à modifier des DEUX côtés, tests des deux côtés)
 - Lignes de facture : `_shared/lignesFacture.ts` ↔ `features/livraisons/apercuFacture.logic.ts`
   (libellé, référence client, relevé en quantité, autoliquidation, taux légaux).
-- Délai de paiement : `_shared/paymentTerms.ts` ↔ `shared/lib/paymentTerms.ts`.
+- Délai de paiement : `_shared/paymentTerms.ts` (`echeanceTransport`, plafond 30 j) ↔
+  `shared/lib/paymentTerms.ts` (`conforme`, `delaiConforme`).
 - Montants / TVA : `_shared/money.ts` ↔ `shared/lib/money.ts`.
 
 ## 5. Imports entre features (exceptions existantes — ne pas en ajouter)
