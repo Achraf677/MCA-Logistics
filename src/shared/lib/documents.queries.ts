@@ -144,6 +144,12 @@ export async function listDocuments(options: ListDocumentsOptions = {}) {
   return q
 }
 
+/** Un document par son id (RLS : documents de la société uniquement). */
+export async function getDocument(id: string): Promise<{ data: DocumentRow | null; error: Error | null }> {
+  const { data, error } = await supabase.from('documents').select('*').eq('id', id).maybeSingle()
+  return { data: (data as DocumentRow | null) ?? null, error: error ? new Error(error.message) : null }
+}
+
 /**
  * Lien d'ouverture. Le bucket est privé : on signe une URL valable 1 h.
  * `drive_link` reste lu en dernier recours pour les documents antérieurs à la
@@ -159,17 +165,36 @@ export async function getDownloadUrl(doc: DocumentRow): Promise<string | null> {
   return doc.drive_link ?? null
 }
 
-/** Supprime le fichier stocké PUIS la ligne en base. */
+/**
+ * Supprime la LIGNE en base PUIS le fichier stocké.
+ *
+ * Ordre volontaire : la ligne est protégée par la RLS (systeme.documents /
+ * delete). Un refus RLS ne lève pas d'erreur côté PostgREST, il supprime
+ * simplement 0 ligne — d'où le `.select()` pour le détecter. Tant que la ligne
+ * n'est pas supprimée, on ne touche pas au fichier (sinon : ligne orpheline
+ * pointant vers un fichier effacé).
+ * Si le fichier ne peut ensuite pas être effacé, il reste orphelin dans le
+ * bucket : sans conséquence visible (plus rien ne le référence).
+ */
 export async function deleteDocument(doc: DocumentRow): Promise<{ error: Error | null }> {
+  const { data: supprimees, error: dbErr } = await supabase
+    .from('documents')
+    .delete()
+    .eq('id', doc.id)
+    .select('id')
+  if (dbErr) return { error: new Error(dbErr.message) }
+  if (!supprimees || supprimees.length === 0) {
+    return { error: new Error('Suppression refusée : droit insuffisant ou document introuvable') }
+  }
+
   if (doc.storage_path) {
     const { error } = await supabase.storage.from(BUCKET).remove([doc.storage_path])
-    // Un fichier déjà absent ne doit pas empêcher de nettoyer la ligne.
+    // Un fichier déjà absent n'est pas une erreur : la ligne est de toute façon partie.
     if (error && !/not found/i.test(error.message)) {
-      return { error: new Error(error.message) }
+      return { error: new Error(`Document retiré, mais fichier non effacé : ${error.message}`) }
     }
   }
-  const { error: dbErr } = await supabase.from('documents').delete().eq('id', doc.id)
-  return { error: dbErr ? new Error(dbErr.message) : null }
+  return { error: null }
 }
 
 /** Somme des size_bytes de la société. */

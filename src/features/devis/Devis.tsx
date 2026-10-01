@@ -12,6 +12,7 @@ import { STATUS_LABELS, STATUS_COLORS, isExpiredDisplay } from './devis.logic'
 import { DrawerDevis } from './DrawerDevis'
 import type { Quote }  from './devis.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,8 @@ function fmtDate(iso: string): string {
 
 export function Devis() {
   const { toast } = useToast()
+  const { can } = usePermissions()
+  const peutCreer = can('livraisons.devis', 'create')
 
   const [quotes, setQuotes]     = useState<Quote[]>([])
   const [loading, setLoading]   = useState(true)
@@ -62,13 +65,13 @@ export function Devis() {
   const handleSaved = () => load()
 
   const handleAction = (key: ActionKey) => {
-    if (key === 'nouveau') openNew()
+    if (key === 'nouveau' && peutCreer) openNew()
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <Shell pageTitle="Devis" actions={['nouveau']} onAction={handleAction}>
+    <Shell pageTitle="Devis" actions={peutCreer ? ['nouveau'] : []} onAction={handleAction}>
       <div className="flex flex-col gap-5">
 
         {loading ? (

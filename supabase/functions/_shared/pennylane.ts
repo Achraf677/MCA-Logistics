@@ -2,6 +2,7 @@
 // Le token n'est JAMAIS loggué. Toute erreur API remonte via ExternalApiError
 // (status + responseBody) pour que l'appelant renvoie { ok:false, error, status, body }.
 import { fetchJson } from './http.ts';
+import { codeTvaLegal } from './lignesFacture.ts';
 
 /** URL de base Pennylane V2 — source unique dans tout le repo. */
 export const PENNYLANE_BASE = 'https://app.pennylane.com/api/external/v2';
@@ -42,19 +43,6 @@ export interface InvoiceLine {
 }
 
 /**
- * Codes TVA légaux français mappés vers les codes Pennylane.
- * Clé = taux en dixièmes de point (20 % → 200) pour éviter les imprécisions flottantes.
- * 20 % → FR_200 · 10 % → FR_100 · 5,5 % → FR_055 · 2,1 % → FR_021 · 0 % → FR_000.
- */
-const LEGAL_VAT_CODES: Record<number, string> = {
-  200: 'FR_200',
-  100: 'FR_100',
-  55: 'FR_055',
-  21: 'FR_021',
-  0: 'FR_000',
-};
-
-/**
  * Code TVA Pennylane de l'AUTOLIQUIDATION.
  *
  * Ce n'est PAS `FR_000`. Un taux à 0 % est une opération taxable au taux zéro ;
@@ -87,8 +75,8 @@ export const MENTION_AUTOLIQUIDATION =
  * atypique/libre — l'appelant doit alors refuser de facturer.
  */
 export function vatRateCode(ratePct: number): string | null {
-  const key = Math.round(ratePct * 10);
-  return LEGAL_VAT_CODES[key] ?? null;
+  // Table des taux légaux : source unique dans lignesFacture.ts (pur, testé).
+  return codeTvaLegal(ratePct);
 }
 
 /** Cherche un client Pennylane par external_reference (= clients.id). Renvoie l'id ou null. */
@@ -116,6 +104,8 @@ export async function createCompanyCustomer(
     emails: string[];
     external_reference: string;
     billing_address: BillingAddress;
+    /** N° de TVA intracommunautaire — indispensable sur une facture autoliquidée. */
+    vat_number?: string;
   },
 ): Promise<number> {
   const data = await fetchJson<Record<string, unknown>>(`${PENNYLANE_BASE}/company_customers`, {
@@ -125,6 +115,41 @@ export async function createCompanyCustomer(
   });
   const customer = (data.customer ?? data.company_customer ?? data) as PennylaneCustomer;
   return customer.id;
+}
+
+/**
+ * Renseigne le n° de TVA intracommunautaire d'un client société existant
+ * (créé avant que le numéro ne soit saisi chez nous). Best-effort : l'appelant
+ * ignore l'échec, la facture reste émise.
+ */
+export async function updateCompanyCustomerVat(
+  token: string,
+  customerId: number,
+  vatNumber: string,
+): Promise<void> {
+  await fetchJson<unknown>(`${PENNYLANE_BASE}/company_customers/${customerId}`, {
+    method: 'PUT',
+    headers: pennylaneHeaders(token),
+    body: { vat_number: vatNumber },
+  });
+}
+
+/** Lit l'état de paiement d'une facture client (champs tolérants : l'API a varié). */
+export async function getInvoicePaymentState(
+  token: string,
+  invoiceId: string | number,
+): Promise<{ paid: boolean | null; remainingEuros: number | null }> {
+  const data = await fetchJson<Record<string, unknown>>(
+    `${PENNYLANE_BASE}/customer_invoices/${invoiceId}`,
+    { headers: pennylaneHeaders(token) },
+  );
+  const inv = (data?.invoice ?? data?.customer_invoice ?? data ?? {}) as Record<string, unknown>;
+  const paid = typeof inv.paid === 'boolean'
+    ? inv.paid
+    : (typeof inv.status === 'string' ? inv.status === 'paid' : null);
+  const brut = inv.remaining_amount_with_tax ?? inv.remaining_amount ?? null;
+  const n = brut == null ? NaN : Number(brut);
+  return { paid, remainingEuros: Number.isFinite(n) ? n : null };
 }
 
 /** Crée une facture client en brouillon. Renvoie l'id de la facture. */

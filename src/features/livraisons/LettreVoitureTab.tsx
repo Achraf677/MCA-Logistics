@@ -8,25 +8,37 @@
 // buildLettreVoiture renvoie des mentions manquantes — on affiche la liste au
 // dessus du bouton pour guider l'utilisateur.
 //
-// Persistance en 2 temps :
-//   1) `saveLvFields()` push les champs (nom expéditeur, colis, poids…) + signatures
-//      au fil de l'eau (chaque validation de signature déclenche un save).
-//   2) `handleGenerate()` construit le PDF, attribue le n° LV (LV-AAAA-N) si
-//      absent, uploade sur Drive via uploadDocument, et écrit lv_pdf_url +
-//      lv_numero sur la livraison.
+// Persistance :
+//   1) `persist()` enregistre les MENTIONS (nom expéditeur, colis, poids…). Il
+//      n'écrit JAMAIS lv_signatures : le chauffeur signe aussi depuis Mes
+//      courses, un écrasement depuis l'état chargé à l'ouverture effacerait sa
+//      signature.
+//   2) Chaque signature (pose ou effacement confirmé) passe par
+//      `ecrireSignatureLv` : relire en base, ne toucher qu'au rôle, écrire.
+//   3) `handleGenerate()` relit les signatures, attribue le n° LV (LV-AAAA-N)
+//      s'il n'y en a pas (index unique + 1 nouvel essai sur collision),
+//      construit le PDF, l'archive dans Storage (uploadDocument, ligne
+//      documents catégorie LV) et écrit `lv_pdf_url = 'doc:<id document>'`.
+//      Numéro et référence sont gardés en état LOCAL : la prop `delivery`
+//      n'est pas rafraîchie par le tiroir, et un 2ᵉ clic ne doit pas
+//      attribuer LV-N+1.
 
 import { useEffect, useMemo, useState } from 'react'
-import { Loader2, FileText, MapPin } from 'lucide-react'
+import { Loader2, FileText, MapPin, ExternalLink } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { SignaturePad, tryGeoloc } from '../../shared/ui/SignaturePad'
 import { useProfile } from '../../app/providers'
 import { uploadDocument } from '../../shared/lib/documents.queries'
 import { getCompany } from '../parametres/parametres.queries'
 import type { CompanyData } from '../parametres/parametres.queries'
-import { buildLettreVoiture, lvNumero } from './lettreVoiture.logic'
-import { updateDelivery, getLvNumerosForYear } from './livraisons.queries'
+import { buildLettreVoiture, lvNomFichier, lvPdfRefDocument } from './lettreVoiture.logic'
+import {
+  updateDelivery, attribuerNumeroLv, lireSignaturesLv, ecrireSignatureLv,
+} from './livraisons.queries'
+import { ouvrirPdfLv } from './lettreVoiture.ouvrir'
 import type { DeliveryRow, LvSignatures, LvSignatureData } from './livraisons.types'
 import { Field } from '../../shared/ui/Field'
 
@@ -68,6 +80,17 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
   const [dirty, setDirty]               = useState(false)
   const [saving, setSaving]             = useState(false)
   const [generating, setGenerating]     = useState(false)
+  /** Rôle dont l'effacement de signature attend confirmation. */
+  const [aEffacer, setAEffacer]         = useState<keyof LvSignatures | null>(null)
+  const [effacement, setEffacement]     = useState(false)
+  // N° LV + référence PDF obtenus dans CE tiroir. Rattachés à l'id de la
+  // livraison : à l'ouverture d'une autre livraison, ils sont ignorés.
+  const [lvLocal, setLvLocal] = useState<{
+    deliveryId: string; numero: string | null; pdfRef: string | null
+  } | null>(null)
+  const local = lvLocal && delivery && lvLocal.deliveryId === delivery.id ? lvLocal : null
+  const numeroCourant = local?.numero ?? delivery?.lv_numero ?? null
+  const pdfRefCourant = local?.pdfRef ?? delivery?.lv_pdf_url ?? null
 
   // Charge la société pour licence transport / SIREN / adresse.
   useEffect(() => {
@@ -119,7 +142,7 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
         amount_ttc_cts:    delivery.amount_ttc_cts,
         amount_ht_cts:     delivery.amount_ht_cts,
         montant_ttc_cts:   delivery.montant_ttc_cts,
-        lv_numero:         delivery.lv_numero,
+        lv_numero:         numeroCourant,
       },
       company: {
         name:              company.name,
@@ -131,14 +154,14 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
       driver:  chauffeurLabel ? { full_name: chauffeurLabel } : null,
       client:  delivery.clients ? { name: delivery.clients.name } : null,
     })
-  }, [delivery, company, form, chauffeurLabel])
+  }, [delivery, company, form, chauffeurLabel, numeroCourant])
 
   // ── Persistance ─────────────────────────────────────────────────────────────
-  // Enregistre le lot { champs + signatures } sans toucher au n° LV ni au PDF.
-  const persist = async (nextSignatures?: LvSignatures) => {
-    if (!delivery) return
+  // Enregistre les mentions, sans toucher aux signatures, au n° LV ni au PDF.
+  // Renvoie false en cas d'échec (message déjà affiché).
+  const persist = async (): Promise<boolean> => {
+    if (!delivery) return false
     setSaving(true)
-    const sig = nextSignatures ?? signatures
     const { error } = await updateDelivery(delivery.id, {
       expediteur_nom:   form.expediteur_nom.trim() || null,
       expediteur_siren: form.expediteur_siren.trim() || null,
@@ -148,36 +171,52 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
       marchandise_desc: form.marchandise_desc.trim() || null,
       nb_colis:         form.nb_colis ? parseInt(form.nb_colis, 10) : null,
       poids_kg_reel:    form.poids_kg_reel ? parseFloat(form.poids_kg_reel) : null,
-      lv_signatures:    sig,
     })
     setSaving(false)
-    if (error) { toast((error as Error).message ?? 'Enregistrement échoué', 'error'); return }
+    if (error) { toast(error.message || 'Enregistrement échoué', 'error'); return false }
     setDirty(false)
     onSaved()
+    return true
   }
 
   // Signature d'un rôle : capture PNG + horodatage + géoloc (best-effort).
+  // Écrite tout de suite (relire → fusionner) pour ne pas la perdre à la fermeture.
   const handleSign = async (role: keyof LvSignatures, png: string) => {
+    if (!delivery) return
     const geo = await tryGeoloc()
     const entry: LvSignatureData = {
       png, ts: new Date().toISOString(),
       ...(geo ? { geo } : {}),
     }
-    const next = { ...signatures, [role]: entry }
-    setSignatures(next)
-    // Persist immédiat pour ne pas perdre la signature en cas de fermeture.
-    await persist(next)
+    setSaving(true)
+    const { data, error } = await ecrireSignatureLv(delivery.id, role, entry)
+    setSaving(false)
+    if (error || !data) { toast(error?.message ?? 'Signature non enregistrée', 'error'); return }
+    setSignatures(data)
     toast(`Signature ${roleLabel(role)} enregistrée`)
+    onSaved()
   }
 
-  const handleClearSignature = async (role: keyof LvSignatures) => {
-    const next = { ...signatures }
-    delete next[role]
-    setSignatures(next)
-    await persist(next)
+  // Effacer une signature VALIDÉE est une perte de preuve : confirmation d'abord.
+  // (Le bouton « Effacer » du pad vierge n'efface que le tracé en cours.)
+  const handleClearSignature = (role: keyof LvSignatures) => {
+    if (!signatures[role]) return
+    setAEffacer(role)
   }
 
-  // ── Génération PDF + upload Drive ──────────────────────────────────────────
+  const confirmerEffacement = async () => {
+    if (!delivery || !aEffacer) return
+    setEffacement(true)
+    const { data, error } = await ecrireSignatureLv(delivery.id, aEffacer, null)
+    setEffacement(false)
+    if (error || !data) { toast(error?.message ?? 'Effacement échoué', 'error'); return }
+    setSignatures(data)
+    toast(`Signature ${roleLabel(aEffacer)} effacée`)
+    setAEffacer(null)
+    onSaved()
+  }
+
+  // ── Génération PDF + archivage Storage ──────────────────────────────────────
   const handleGenerate = async () => {
     if (!delivery || !companyId || !preview) return
     if (preview.missing.length > 0) {
@@ -186,47 +225,58 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
     }
     setGenerating(true)
     try {
-      // Persist d'abord si des champs sont dirty (le PDF utilise les valeurs live).
-      if (dirty) {
-        await persist()
-      }
-      // Numéro : réutilise l'existant, sinon en attribue un.
-      const year = new Date(delivery.date + 'T00:00:00').getFullYear() ||
-        new Date().getFullYear()
-      let numero = delivery.lv_numero
+      // Mentions modifiées : on les enregistre d'abord. Échec → on s'arrête.
+      if (dirty && !(await persist())) return
+
+      // Signatures relues en base : le chauffeur a pu signer depuis l'ouverture.
+      const { data: sigFraiches, error: sErr } = await lireSignaturesLv(delivery.id)
+      if (sErr || !sigFraiches) throw sErr ?? new Error('Lecture des signatures échouée')
+      setSignatures(sigFraiches)
+
+      // Numéro : réutilise l'existant (y compris celui attribué dans ce
+      // tiroir), sinon en réserve un en base AVANT de construire le PDF.
+      let numero = numeroCourant
       if (!numero) {
-        const { data: existants } = await getLvNumerosForYear(year)
-        numero = lvNumero(existants ?? [], year)
+        const year = new Date(delivery.date + 'T00:00:00').getFullYear() ||
+          new Date().getFullYear()
+        const { data: attribue, error: nErr } = await attribuerNumeroLv(delivery.id, year)
+        if (nErr || !attribue) throw nErr ?? new Error('Attribution du numéro LV échouée')
+        numero = attribue
+        setLvLocal({ deliveryId: delivery.id, numero, pdfRef: pdfRefCourant })
       }
-      const dataForPdf = { ...preview.data, numero }
-      const fileName = `${numero}.pdf`
+
       // Import à la demande : jsPDF ne sert qu'à ce clic (génération de la
       // lettre de voiture), occasionnel — pas à l'ouverture du tiroir.
       const { buildLettreVoiturePdf } = await import('./lettreVoiture.pdf')
       const { file } = buildLettreVoiturePdf({
-        data: dataForPdf,
-        signatures,
-        fileName,
+        data: { ...preview.data, numero },
+        signatures: sigFraiches,
+        fileName: lvNomFichier(numero),
       })
-      // Upload Drive (crée aussi une ligne documents catégorie LV).
-      const { data: doc, error } = await uploadDocument(file, companyId, {
+      // Archivage Storage (crée aussi une ligne documents catégorie LV).
+      const { data: doc, error: upErr } = await uploadDocument(file, companyId, {
         entity_type: 'delivery',
         entity_id:   delivery.id,
         category:    'LV',
       })
-      if (error || !doc) throw error ?? new Error('Upload échoué')
-      // Écrit lv_numero + lv_pdf_url sur la livraison.
-      await updateDelivery(delivery.id, {
-        lv_numero:  numero,
-        lv_pdf_url: doc.drive_link,
-      })
+      if (upErr || !doc) throw upErr ?? new Error('Archivage du PDF échoué')
+
+      const ref = lvPdfRefDocument(doc.id)
+      const { error: refErr } = await updateDelivery(delivery.id, { lv_pdf_url: ref })
+      if (refErr) throw new Error(`PDF archivé mais lien non enregistré : ${refErr.message}`)
+      setLvLocal({ deliveryId: delivery.id, numero, pdfRef: ref })
       toast(`Lettre de voiture ${numero} générée`)
       onSaved()
     } catch (e) {
-      toast((e as Error).message ?? 'Génération échouée', 'error')
+      toast((e as Error)?.message || 'Génération échouée', 'error')
     } finally {
       setGenerating(false)
     }
+  }
+
+  const handleOuvrirPdf = async () => {
+    const ok = await ouvrirPdfLv(pdfRefCourant)
+    if (!ok) toast('PDF introuvable — regénère la lettre de voiture.', 'error')
   }
 
   if (!delivery) {
@@ -243,16 +293,20 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
       <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] px-4 py-2.5
         flex items-center gap-3 text-[var(--fs-sm)]">
         <FileText size={14} className="text-[var(--brand)]" />
-        {delivery.lv_numero ? (
+        {numeroCourant ? (
           <>
-            <span className="font-medium text-[var(--text)]">{delivery.lv_numero}</span>
-            {delivery.lv_pdf_url && (
-              <a href={delivery.lv_pdf_url} target="_blank" rel="noopener noreferrer"
-                className="text-[var(--brand)] hover:underline text-[var(--fs-xs)]">
-                Ouvrir le PDF
-              </a>
+            <span className="font-medium text-[var(--text)]">{numeroCourant}</span>
+            {pdfRefCourant ? (
+              <>
+                <button type="button" onClick={handleOuvrirPdf}
+                  className="inline-flex items-center gap-1 text-[var(--brand)] hover:underline text-xs">
+                  <ExternalLink size={12} /> Ouvrir le PDF
+                </button>
+                <Badge color="success">Générée</Badge>
+              </>
+            ) : (
+              <span className="text-xs text-[var(--text-muted)]">Numéro attribué — PDF à générer</span>
             )}
-            <Badge color="success">Générée</Badge>
           </>
         ) : (
           <span className="text-[var(--text-muted)]">
@@ -306,7 +360,7 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
 
       {dirty && (
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="compact" onClick={() => persist()} disabled={saving}>
+          <Button variant="secondary" size="compact" onClick={() => { void persist() }} disabled={saving}>
             {saving ? 'Enregistrement…' : 'Enregistrer les mentions'}
           </Button>
           <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Modifications non sauvegardées</span>
@@ -346,7 +400,7 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
       {/* Mentions manquantes */}
       {preview && preview.missing.length > 0 && (
         <div className="rounded-[var(--r-md)] bg-[var(--danger)]/10 border border-[var(--danger)]/30 px-3 py-2
-          text-[var(--fs-xs) text-[var(--text)] flex flex-col gap-1">
+          text-xs text-[var(--text)] flex flex-col gap-1">
           <span className="font-medium">Mentions manquantes avant génération :</span>
           <ul className="list-disc pl-5 text-[var(--text-muted)]">
             {preview.missing.map(m => <li key={m}>{m}</li>)}
@@ -363,15 +417,27 @@ export function LettreVoitureTab({ delivery, companyId, onSaved }: Props) {
         >
           {generating
             ? <><Loader2 size={14} className="animate-spin" /> Génération…</>
-            : delivery.lv_numero ? 'Regénérer le PDF' : 'Générer la lettre de voiture'}
+            : numeroCourant ? 'Regénérer le PDF' : 'Générer la lettre de voiture'}
         </Button>
-        {delivery.lv_pdf_url && (
-          <a href={delivery.lv_pdf_url} target="_blank" rel="noopener noreferrer"
-            className="text-[var(--fs-xs)] text-[var(--brand)] hover:underline">
-            Re-télécharger le PDF
-          </a>
+        {pdfRefCourant && (
+          <button type="button" onClick={handleOuvrirPdf}
+            className="inline-flex items-center gap-1 text-xs text-[var(--brand)] hover:underline">
+            <ExternalLink size={12} /> Re-télécharger le PDF
+          </button>
         )}
       </div>
+
+      <ConfirmDialog
+        open={aEffacer !== null}
+        title="Effacer la signature ?"
+        message={aEffacer
+          ? `La signature ${roleLabel(aEffacer)} sera supprimée de la lettre de voiture. Il faudra la refaire signer.`
+          : ''}
+        confirmLabel="Effacer la signature"
+        loading={effacement}
+        onConfirm={confirmerEffacement}
+        onCancel={() => setAEffacer(null)}
+      />
     </div>
   )
 }

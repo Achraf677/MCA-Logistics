@@ -106,10 +106,21 @@ export interface Delivery {
   lv_numero: string | null
   /** Signatures collectées (base64 PNG + timestamp + geo optionnelle). */
   lv_signatures: LvSignatures
-  /** URL du PDF LV archivé sur Drive (nouvelle génération). */
+  /** Référence du PDF LV archivé : `doc:<id documents>` (Storage) ou ancien
+   *  lien Drive `https://…`. Jamais une URL signée. Lire via parseLvPdfRef /
+   *  lienPdfLv (lettreVoiture.logic / livraisons.queries). */
   lv_pdf_url: string | null
   /** Horodatage du dernier envoi email au client (migration 20260721140000). */
   email_sent_at: string | null
+  /** Heure prévue / limite « HH:MM[:SS] » (lue seulement ici). */
+  arrival_time?: string | null
+  /**
+   * Dernier problème signalé par le chauffeur (migration 20260930090000) :
+   * motif (voir shared/lib/problemeTerrain), note, horodatage (null = levé).
+   */
+  probleme_motif?: string | null
+  probleme_note?: string | null
+  probleme_le?: string | null
   created_at: string
   updated_at: string
 }
@@ -131,7 +142,11 @@ export type LvSignatures = {
 }
 
 export interface DeliveryRow extends Delivery {
-  clients: { name: string; tariff_mode: string; tariff_rate_cts: number | null; email: string | null } | null
+  clients: {
+    name: string; tariff_mode: string; tariff_rate_cts: number | null; email: string | null
+    /** Délai de paiement (jours) — lu par la liste pour le retard d'encaissement. */
+    payment_terms?: number | null
+  } | null
   vehicles: { label: string; plate: string } | null
   team_members: { full_name: string } | null
 }
@@ -199,4 +214,8 @@ export interface DeliveryFilters {
   client_id?: string
   vehicle_id?: string
   driver_id?: string
+  /** Recherche libre : client, adresses, description, n° de facture. */
+  q?: string
+  /** Échecs terrain : courses ouvertes avec un problème signalé (toutes dates). */
+  echecs?: boolean
 }

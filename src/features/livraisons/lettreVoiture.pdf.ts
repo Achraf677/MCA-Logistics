@@ -108,8 +108,8 @@ export function buildLettreVoiturePdf({ data, signatures, fileName }: BuildOptio
     ...(data.vehicule_nom ? [[`Véhicule`, data.vehicule_nom] as [string, string]] : []),
     [`Plaque d'immatriculation`, data.vehicule_immat],
     [`Chauffeur`, data.chauffeur],
-    ...(data.prix_ttc_formate
-      ? [[`Prix du transport (TTC)`, data.prix_ttc_formate] as [string, string]]
+    ...(data.prix_formate && data.prix_base
+      ? [[`Prix du transport (${data.prix_base})`, data.prix_formate] as [string, string]]
       : []),
   ])
 

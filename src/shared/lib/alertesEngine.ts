@@ -265,7 +265,7 @@ function detectProblemesTerrain(rows: ProblemeTerrainRow[]): AlerteMetier | null
     domaine: 'livraison',
     label: `${count} échec${count > 1 ? 's' : ''} de livraison signalé${count > 1 ? 's' : ''} par le chauffeur`,
     count, severite: 'rouge',
-    lien: '/livraisons',
+    lien: '/livraisons?filtre=echecs',
   }
 }
 
