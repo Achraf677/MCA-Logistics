@@ -8,7 +8,8 @@
 ## 1. Tables → lecteurs / écrivains
 - **deliveries** (le cœur, ~80 accès) :
   - front : livraisons (écrit tout), mescourses (statut, preuves, problème terrain),
-    tournees (tour_id, stop_order, arrival_time), planning, calendrier (via livraisons.queries),
+    tournees (tour_id, stop_order, arrival_time ; `date` quand une course en retard est
+    remise dans la tournée du jour — lot P3), planning, calendrier (via livraisons.queries),
     dashboard, encaissement, relances, alertes, clients (encours), equipe, heures, devis
     (crée une course depuis un devis), copilote / assistant (création IA) ;
   - shared : `alertesEngine.queries` (à facturer, sans justificatif, retards), `pod.queries` ;
@@ -32,6 +33,9 @@
 - **charges** : charges, fournisseurs, tresorerie, `shared` rapprochement / aRapprocher / alertes ;
   Edge pennylane-sync, lire-facture, lire-releve, suggest-categorie-ia.
 - **tours** : tournees, mescourses ; Edge optimize-tour(s).
+- **work_hours** : heures (écrit tout), equipe ; tournees (lot P3 : après « Terminer la
+  tournée », propose d'insérer la ligne du chauffeur — date, début, fin — si aucune ligne
+  n'existe déjà pour ce chauffeur ce jour-là).
 - **quotes** : devis, clients ; Edge pennylane-quote ; alertes.
 - **qonto_transactions** : tresorerie, encaissement, aRapprocher ; Edge qonto-sync.
 - **fuel_logs** : carburant, vehicules, `shared/produitsVehicule.queries`.
