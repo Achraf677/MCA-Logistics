@@ -170,9 +170,9 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 6. Commit dédié « Mémoire : … » poussé avec le reste.
 
 ## 11. État actuel (01/10/2026)
-- 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Bons
-  de livraison, Calendrier) · **Finance** (Trésorerie, Charges, Encaissement, TVA, Relances) ·
-  **Flotte** (Véhicules, Carburant, Entretiens, Inspections, Incidents) · **Planning** · **Tiers**
+- 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis,
+  Modèles, Lettres de voiture) · **Finance** (Trésorerie, Charges, Encaissement, TVA, Relances) ·
+  **Flotte** (Véhicules, Carburant, Entretiens, Inspections, Incidents) · **Planning** (Tournées, Planning, Calendrier) · **Tiers**
   (Clients, Fournisseurs, Devis) · **Équipe** (Équipe, Heures) · **Système** (Paramètres, Admins,
   Modèles). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
   Les specs `mca-spec/tabs/` n'en couvrent qu'une partie : vérifier le code.
