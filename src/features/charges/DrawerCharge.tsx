@@ -133,7 +133,10 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
   const tvaAmtCts = Math.round(parseFloat(form.tva_amount || '0') * 100)
   const sign = isAvoir ? -1 : 1
 
-  const montants = tvaTouched && tvaAmtCts > 0
+  // TVA saisie à la main, y compris 0 (charge sans TVA, autoliquidée) : avant,
+  // un 0 tapé faisait revenir au taux (20 %) et enregistrait une TVA fausse.
+  const tvaSaisie = tvaTouched && form.tva_amount.trim() !== '' && Number.isFinite(parseFloat(form.tva_amount))
+  const montants = tvaSaisie
     ? fromHtAndManualTva(absHtCts, tvaAmtCts)
     : fromHtAndRate(absHtCts, tvaRate)
 
@@ -406,7 +409,8 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
 
         <div className="grid grid-cols-2 gap-3">
           <Field label="Montant HT (€) *">
-            <Input type="number" value={form.montant_ht} onChange={v => set('montant_ht', v)} placeholder="0.00" />
+            {/* Charge venue de Pennylane : montants figés comme la TVA (la synchro les réécrirait). */}
+            <Input type="number" value={form.montant_ht} onChange={v => set('montant_ht', v)} placeholder="0.00" disabled={isPennylane} />
           </Field>
           <Field label="TVA (%)">
             <TvaRateInput

@@ -75,3 +75,13 @@ export function computeDeadline(code: string | null | undefined, fromIso: string
 export function delaiConforme(code: string | null | undefined): boolean {
   return PAYMENT_TERM_OPTIONS.find(o => o.code === code)?.conforme ?? true
 }
+
+/**
+ * Délai EFFECTIF en jours pour calculer une échéance en transport : le délai
+ * du client, plafonné à 30 jours (L441-11 C. com. — les factures partent à
+ * 30 j max, voir l'Edge pennylane-invoice). Sert aux retards, relances, encours.
+ */
+export function delaiTransportJours(jours: number | null | undefined): number {
+  const n = Number.isFinite(Number(jours)) ? Math.max(0, Number(jours)) : 30
+  return Math.min(jours == null ? 30 : n, 30)
+}

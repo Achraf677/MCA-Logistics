@@ -89,7 +89,9 @@ export function Encaissement() {
             <KpiCard
               label="Autres entrées"
               value={formatCents(kpis.totalAutresCts)}
-              sub="hors chiffre d'affaires"
+              sub={kpis.nbNonIdentifies > 0
+                ? `hors CA · ${kpis.nbNonIdentifies} entrée(s) à identifier : ${formatCents(kpis.totalNonIdentifieCts)}`
+                : "hors chiffre d'affaires"}
               tone="neutral"
               icon={<TrendingUp size={18} />}
             />

@@ -50,9 +50,15 @@ export function buildEntreesUnifiees(
 
 export function kpiSummaryUnifie(entrees: EntreeUnifiee[]) {
   const clients = entrees.filter(e => e.nature === 'client')
-  const autres  = entrees.filter(e => e.nature !== 'client')
+  // « Non identifié » n'est PAS une autre entrée : c'est souvent un virement
+  // client pas encore rapproché, déjà compté dans « Encaissé clients » via la
+  // facture payée. L'additionner aux autres entrées le comptait deux fois.
+  const autres  = entrees.filter(e => e.nature !== 'client' && e.nature !== 'non_identifie')
+  const nonIdentifies = entrees.filter(e => e.nature === 'non_identifie')
   return {
     totalClientsCts: clients.reduce((s, e) => s + e.montant_cts, 0),
     totalAutresCts:  autres.reduce((s, e) => s + e.montant_cts, 0),
+    totalNonIdentifieCts: nonIdentifies.reduce((s, e) => s + e.montant_cts, 0),
+    nbNonIdentifies: nonIdentifies.length,
   }
 }

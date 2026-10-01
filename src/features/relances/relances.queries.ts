@@ -1,3 +1,4 @@
+import { delaiTransportJours } from '../../shared/lib/paymentTerms'
 import { supabase } from '../../app/providers'
 import { deliveryTotalTtcCts, type DeliveryExtraLine } from '../../shared/lib/money'
 import { computeEcheance, computeJoursRetard, computePalier } from './relances.logic'
@@ -21,7 +22,7 @@ export async function getOverdueInvoices(): Promise<{ data: RelanceRow[] | null;
     // dans le montant relancé (sinon on relance un TTC inférieur au dû).
     .select(`
       id, client_id, pennylane_invoice_id, pennylane_invoice_number,
-      amount_ttc_cts, extra_lines,
+      amount_ttc_cts, extra_lines, autoliquidation,
       invoiced_at,
       clients!client_id(name, email, payment_terms)
     `)
@@ -34,7 +35,8 @@ export async function getOverdueInvoices(): Promise<{ data: RelanceRow[] | null;
   for (const raw of data as unknown as RawRow[]) {
     const client = raw.clients
     if (!client) continue
-    const pt = client.payment_terms ?? 30
+    // Échéance réelle des factures : délai client plafonné à 30 j (L441-11).
+    const pt = delaiTransportJours(client.payment_terms)
     const echeance_date = computeEcheance(raw.invoiced_at, pt)
     const jours_retard = computeJoursRetard(echeance_date)
     if (jours_retard < 0) continue

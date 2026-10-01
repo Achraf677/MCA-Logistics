@@ -90,3 +90,13 @@ describe('computeDeadline', () => {
     expect(computeDeadline(null, '2026-07-01')).toBe('2026-07-31')
   })
 })
+
+describe('delaiTransportJours (L441-11)', () => {
+  it('plafonne à 30 j, défaut 30', async () => {
+    const { delaiTransportJours } = await import('./paymentTerms')
+    expect(delaiTransportJours(60)).toBe(30)
+    expect(delaiTransportJours(15)).toBe(15)
+    expect(delaiTransportJours(null)).toBe(30)
+    expect(delaiTransportJours(0)).toBe(0)
+  })
+})
