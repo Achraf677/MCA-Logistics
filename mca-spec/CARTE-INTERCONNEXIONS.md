@@ -8,7 +8,9 @@
 ## 1. Tables → lecteurs / écrivains
 - **deliveries** (le cœur, ~80 accès) :
   - front : livraisons (écrit tout), mescourses (statut, preuves, problème terrain),
-    tournees (tour_id, stop_order, arrival_time), planning, calendrier (via livraisons.queries),
+    tournees (tour_id, stop_order, arrival_time), planning (écrit `driver_id`, `date` par
+    glisser-déposer / action groupée ; détache de sa tournée : tour_id, stop_order, arrival_time
+    à null), calendrier (via livraisons.queries),
     dashboard, encaissement, relances, alertes, clients (encours), equipe, heures, devis
     (crée une course depuis un devis), copilote / assistant (création IA) ;
   - shared : `alertesEngine.queries` (à facturer, sans justificatif, retards), `pod.queries` ;
@@ -25,7 +27,7 @@
     pennylane-clients-sync (upsert de colonnes listées). Libs partagées :
     `shared/lib/pays.ts` (UE, autoliquidation), `shared/lib/supplements.ts`.
 - **vehicles / team_members** : flotte (vehicules, carburant, entretiens, inspections, incidents),
-  livraisons, tournees, mescourses, equipe, heures, alertes, devis, modeles.
+  livraisons, tournees, planning (échéances permis / visite médicale / CT / assurance à l'affectation), mescourses, equipe, heures, alertes, devis, modeles.
 - **documents** (+ Storage `documents`) : `shared/lib/documents.queries` (tous les panneaux
   Documents), mescourses (photos), parametres ; Edge send-client-email (pièce jointe LV),
   drive-migrate-to-storage ; alertes (sans justificatif).
