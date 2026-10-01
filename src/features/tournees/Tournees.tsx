@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Route, Clock, MapPin, AlertTriangle, ArrowUp, ArrowDown, PackageOpen } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
+import { Badge } from '../../shared/ui/Badge'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile, supabase } from '../../app/providers'
@@ -11,10 +13,13 @@ import {
   getCompanyDepot, getActiveVehicles, getActiveDrivers,
   fetchPlannableDeliveries, getDeliveriesForDate, fetchToursByDate,
   dispatchAndOptimize, repartirDansMonOrdre,
+  fetchLateDeliveries, replanifierRetardsAffectes,
 } from './tournees.queries'
 import {
   isGeocoded, canDispatch, groupToursWithStops, totalsAcrossTours,
   deplacerArret, planDeChargement,
+  coursesEnRetard, fusionnerPool, estEnRetard, libelleRetard, dateDepuisParam,
+  type TourDeliveryAvecTournee,
 } from './tournees.logic'
 import { TourCard, formatDuration } from './TourCard'
 import { colorForIndex } from './tours.palette'
@@ -29,7 +34,10 @@ export function Tournees() {
   const { companyId } = useProfile()
   const { toast } = useToast()
 
-  const [date, setDate] = useState(toLocalISO(new Date()))
+  // `?date=AAAA-MM-JJ` (lien « Composer la tournée de ce jour » du Planning),
+  // lu au montage seulement : ensuite, c'est le champ Date qui commande.
+  const [params] = useSearchParams()
+  const [date, setDate] = useState(() => dateDepuisParam(params.get('date')) ?? toLocalISO(new Date()))
 
   const [vehicles, setVehicles] = useState<Lookup[]>([])
   const [drivers, setDrivers]   = useState<Lookup[]>([])
@@ -79,23 +87,33 @@ export function Tournees() {
   const loadBoard = useCallback(async () => {
     if (!companyId) return
     setLoadingList(true)
-    const [poolRes, allRes, toursRes] = await Promise.all([
+    // Retards : seulement si on compose aujourd'hui ou plus tard (replanifier
+    // une course en retard vers une date passée n'aurait pas de sens).
+    const aujourdHui = toLocalISO(new Date())
+    const avecRetards = date >= aujourdHui
+    const [poolRes, allRes, toursRes, retardsRes] = await Promise.all([
       fetchPlannableDeliveries(companyId, date),
       getDeliveriesForDate(companyId, date),
       fetchToursByDate(companyId, date),
+      avecRetards ? fetchLateDeliveries(companyId, aujourdHui) : Promise.resolve({ data: [], error: null }),
     ])
-    const poolList = (poolRes.data as unknown as TourDelivery[]) ?? []
+    if (retardsRes.error) toast(`Courses en retard non chargées : ${retardsRes.error.message}`, 'error')
+    const retards = coursesEnRetard(
+      (retardsRes.data as unknown as TourDeliveryAvecTournee[]) ?? [], aujourdHui,
+    )
+    const poolList = fusionnerPool((poolRes.data as unknown as TourDelivery[]) ?? [], retards)
     setPool(poolList)
     setOrdrePool(poolList.map(d => d.id))
     setAllDeliveries((allRes.data as unknown as TourDelivery[]) ?? [])
     setTours((toursRes.data as unknown as Tour[]) ?? [])
 
-    // Pré-coche les géocodées non encore rattachées (tour_id null).
+    // Pré-coche les géocodées non encore rattachées (tour_id null). Les retards
+    // ne sont JAMAIS pré-cochés : les répartir change leur date, ça se décide.
     setSelectedIds(new Set(
-      poolList.filter(d => isGeocoded(d) && d.tour_id == null).map(d => d.id),
+      poolList.filter(d => isGeocoded(d) && d.tour_id == null && !estEnRetard(d, date)).map(d => d.id),
     ))
     setLoadingList(false)
-  }, [companyId, date])
+  }, [companyId, date, toast])
 
   useEffect(() => { loadBoard() }, [loadBoard])
 
@@ -281,6 +299,11 @@ export function Tournees() {
     setDispatching(true)
     try {
       const data = await dispatchAndOptimize(date, assignments, idsSelectionnesOrdonnes)
+      // L'Edge n'écrit pas `date` : les retards effectivement répartis sont
+      // replanifiés ici au jour de la tournée.
+      const idsRetard = selectedDeliveries.filter(d => estEnRetard(d, date)).map(d => d.id)
+      const { error: replanErr } = await replanifierRetardsAffectes(idsRetard, date)
+      if (replanErr) toast(`Tournée faite, mais date des courses en retard non mise à jour : ${replanErr.message}`, 'error')
       const un = data.unassigned?.length ?? 0
       setUnassignedCount(un)
       toast(un > 0
@@ -393,7 +416,7 @@ export function Tournees() {
             <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-12" />)}</div>
           ) : poolCount === 0 ? (
             <p className="text-[var(--fs-sm)] text-[var(--text-muted)] py-4 text-center">
-              Aucune livraison planifiée pour cette date.
+              Aucune livraison planifiée pour cette date, ni en retard.
             </p>
           ) : (
             <>
@@ -401,7 +424,8 @@ export function Tournees() {
                   l'ordre des arrêts si tu répartis sans optimiser. */}
               <p className="text-[var(--fs-xs)] text-[var(--text-muted)] pb-2">
                 Range-les dans l'ordre où tu veux LIVRER. Le plan de chargement en dessous
-                s'en déduit tout seul.
+                s'en déduit tout seul. Une course « En retard » cochée puis répartie passe
+                à la date de la tournée.
               </p>
               <ul className="flex flex-col divide-y divide-[var(--border)]">
                 {poolOrdonne.map((d, i) => {
@@ -421,9 +445,17 @@ export function Tournees() {
                           {rang ?? '–'}
                         </span>
                         <div className="flex flex-col min-w-0 flex-1">
-                          <span className="text-[var(--fs-sm)] text-[var(--text)] truncate">
-                            {d.clients?.name ?? '—'}
-                            {d.description && <span className="text-[var(--text-muted)]"> · {d.description}</span>}
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm text-[var(--text)] truncate">
+                              {d.clients?.name ?? '—'}
+                              {d.description && <span className="text-[var(--text-muted)]"> · {d.description}</span>}
+                            </span>
+                            {estEnRetard(d, date) && (
+                              <span className="shrink-0"><Badge color="danger">{libelleRetard(d.date)}</Badge></span>
+                            )}
+                            {d.statut === 'en_cours' && (
+                              <span className="shrink-0"><Badge color="warning">En cours</Badge></span>
+                            )}
                           </span>
                           <span className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">{d.delivery_address ?? '—'}</span>
                           {d.pickup_address && (

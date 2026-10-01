@@ -1,6 +1,7 @@
 import { supabase } from '../../app/providers'
 import type { Tour, TourDelivery, TourStatus } from './tournees.types'
 import type { Assignment, DispatchData } from './tournees.types'
+import type { LigneHeuresTournee } from './tournees.logic'
 
 // ── Société / dépôt ───────────────────────────────────────────────────────────
 // (feature étanche : on ne ré-importe pas les queries d'autres features)
@@ -93,10 +94,31 @@ export async function updateTour(id: string, data: Partial<Tour>) {
 
 // ── Assignation des livraisons à une tournée ──────────────────────────────────
 
-/** Assigne une liste de livraisons à une tournée. No-op si liste vide. */
-export async function assignDeliveries(ids: string[], tourId: string) {
+/**
+ * Assigne une liste de livraisons à une tournée. No-op si liste vide.
+ * `date` (celle de la tournée) est écrite aussi : une course en retard mise dans
+ * la tournée du jour est REPLANIFIÉE à ce jour (sans effet pour celles du jour).
+ */
+export async function assignDeliveries(ids: string[], tourId: string, date?: string) {
   if (ids.length === 0) return { error: null }
-  return supabase.from('deliveries').update({ tour_id: tourId }).in('id', ids)
+  return supabase
+    .from('deliveries')
+    .update(date ? { tour_id: tourId, date } : { tour_id: tourId })
+    .in('id', ids)
+}
+
+/**
+ * Replanifie à `date` les courses en retard que l'optimiseur (Edge optimize-tours,
+ * qui n'écrit pas `date`) a effectivement rattachées à une tournée. Celles restées
+ * hors tournée (non réparties) gardent leur date d'origine.
+ */
+export async function replanifierRetardsAffectes(ids: string[], date: string) {
+  if (ids.length === 0) return { error: null }
+  return supabase
+    .from('deliveries')
+    .update({ date })
+    .in('id', ids)
+    .not('tour_id', 'is', null)
 }
 
 /** Détache des livraisons (tour_id, stop_order, arrival_time remis à null). No-op si vide. */
@@ -200,6 +222,41 @@ export async function fetchPlannableDeliveries(companyId: string, date: string) 
     .order('created_at', { ascending: true })
 }
 
+/**
+ * Courses en RETARD : `planifiee` / `en_cours` datées avant `aujourdHui`, même
+ * filtre « sur la route ». La jointure `tours` sert à écarter celles d'une
+ * tournée terminée (filtrage dans `coursesEnRetard`, logic). Plafonné aux 100
+ * plus récentes : des résidus très anciens ne doivent pas noyer le pool.
+ */
+export async function fetchLateDeliveries(companyId: string, aujourdHui: string) {
+  return supabase
+    .from('deliveries')
+    .select(`${DELIVERY_COLS}, tours!tour_id(status)`)
+    .eq('company_id', companyId)
+    .lt('date', aujourdHui)
+    .in('statut', ['planifiee', 'en_cours'])
+    .or('prestation.is.null,prestation.not.in.(messagerie,forfait)')
+    .order('date', { ascending: false })
+    .limit(100)
+}
+
+// ── Heures du chauffeur (table work_hours, onglet Heures) ─────────────────────
+// Requêtes écrites ici (features étanches : pas d'import de features/heures).
+
+/** Lignes d'heures existantes d'un chauffeur à une date (détection de doublon). */
+export async function getHeuresChauffeurJour(companyId: string, memberId: string, date: string) {
+  return supabase
+    .from('work_hours')
+    .select('id, member_id, date')
+    .eq('company_id', companyId)
+    .eq('member_id', memberId)
+    .eq('date', date)
+}
+
+export async function creerHeuresTournee(ligne: LigneHeuresTournee) {
+  return supabase.from('work_hours').insert(ligne).select('id').single()
+}
+
 export type { TourDelivery }
 
 /** Coche ou décoche l'arrêt de retrait d'une course. */
@@ -290,7 +347,7 @@ export async function repartirDansMonOrdre(params: {
     tourId = creee.id as string
   }
 
-  const { error: assignErr } = await assignDeliveries(idsDansLOrdre, tourId)
+  const { error: assignErr } = await assignDeliveries(idsDansLOrdre, tourId, date)
   if (assignErr) return { error: assignErr }
 
   const { error: ordreErr } = await enregistrerOrdreArrets(idsDansLOrdre)

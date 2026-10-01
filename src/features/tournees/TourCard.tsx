@@ -9,12 +9,14 @@ import { formatMoney } from '../../shared/lib/money'
 import { poidsTotal, libellePoids } from '../../shared/lib/poids'
 // Machine d'états unique (réutilisée, pas dupliquée).
 import { canTransition } from '../livraisons/livraisons.logic'
-import { markDelivered, setTourStatus, updateTour, setRetraitAFaire, enregistrerOrdreArrets } from './tournees.queries'
+import { markDelivered, setTourStatus, updateTour, setRetraitAFaire, enregistrerOrdreArrets, getHeuresChauffeurJour } from './tournees.queries'
+import { DialogueHeuresTournee } from './DialogueHeuresTournee'
 import {
   estimateFuelCostCts, googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
   googleMapsAdresseUrl, wazeAdresseUrl, deplacerArret, planDeChargement,
   type NavOptions,
   isDelivered, deliveredProgress, hasUndeliveredStops, canStartTour, canFinishTour,
+  debutTourneeSuggere, heureLocale, aDejaDesHeures,
 } from './tournees.logic'
 import type { Tour, TourDelivery, TourStatus } from './tournees.types'
 
@@ -55,6 +57,8 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
   // Replie par defaut : le plan sert au depot, avant de partir, pas pendant
   // la tournee. L'ouvrir d'office pousserait la liste des arrets hors ecran.
   const [planOuvert, setPlanOuvert] = useState(false)
+  // Proposition « enregistrer les heures du chauffeur » après Terminer.
+  const [heures, setHeures] = useState<{ debut: string; fin: string } | null>(null)
 
   /**
    * Remonte ou descend un arret, puis enregistre l'ordre complet.
@@ -157,13 +161,33 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
   }
 
   const doFinishTour = async () => {
+    // Lu AVANT la mise à jour : le passage en `terminee` réécrit updated_at.
+    const debut = debutTourneeSuggere(tour) ?? ''
+    const fin = heureLocale(new Date().toISOString())
     setLifecycleBusy(true)
     const { error } = await setTourStatus(tour.id, 'terminee')
     setLifecycleBusy(false)
     setConfirmFinish(false)
     if (error) { toast(error.message, 'error'); return }
     toast('Tournée terminée')
+    await proposerHeures(debut, fin)
     await onChanged()
+  }
+
+  /**
+   * Propose (sans rien écrire) la ligne d'heures du chauffeur. Pas de
+   * proposition sans chauffeur, ni si une ligne existe déjà ce jour-là
+   * (deux tournées le même jour, ou heures saisies à la main) : pas de doublon.
+   */
+  const proposerHeures = async (debut: string, fin: string) => {
+    if (!tour.driver_id) return
+    const { data, error } = await getHeuresChauffeurJour(tour.company_id, tour.driver_id, tour.date)
+    if (error) { toast(`Heures non vérifiées : ${error.message}`, 'error'); return }
+    if (aDejaDesHeures(data ?? [], tour.driver_id, tour.date)) {
+      toast(`Heures de ${driverLabel ?? 'ce chauffeur'} déjà saisies ce jour : rien d'ajouté`)
+      return
+    }
+    setHeures({ debut, fin })
   }
 
   const handleFinishTour = () => {
@@ -445,6 +469,20 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
         onCancel={() => setConfirmFinish(false)}
         loading={lifecycleBusy}
       />
+
+      {tour.driver_id && heures && (
+        <DialogueHeuresTournee
+          open
+          companyId={tour.company_id}
+          memberId={tour.driver_id}
+          chauffeur={driverLabel ?? 'chauffeur'}
+          date={tour.date}
+          libelleTournee={vehicleLabel}
+          debutSuggere={heures.debut}
+          finSuggeree={heures.fin}
+          onClose={() => setHeures(null)}
+        />
+      )}
     </div>
   )
 }
