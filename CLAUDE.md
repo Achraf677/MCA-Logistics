@@ -1,131 +1,196 @@
 # CLAUDE.md — Mémoire permanente du projet MCA
 
-> Claude Code lit ce fichier au démarrage de CHAQUE session. Il fait foi.
+> Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
+> Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
+> Dernière mise à jour : **01/10/2026** (PR #34 + #35 mergées : Livraisons, fiche unique, messagerie au colis).
 
-## Identité & vocabulaire
-- Projet : **site de gestion interne MCA Logistics** (PGI/TMS maison). Transport routier sub-3,5 t.
+---
+
+## 0. Les 5 réflexes (à relire avant CHAQUE tâche)
+1. **Lire avant d'écrire** : ce fichier, puis la fiche de revue de l'onglet (`mca-spec/revue/`),
+   puis `mca-spec/CARTE-INTERCONNEXIONS.md` si on touche une table, une colonne, une Edge ou un statut.
+2. **Vérifier les interconnexions** avant de pousser : qui d'autre lit / écrit ce que je change ?
+   (grep `from('<table>')`, le nom de la colonne, la fonction, l'Edge) — voir § 7.
+3. **Une donnée = une seule saisie.** Si une info existe déjà quelque part (fiche client, tarif,
+   paramètres), on la LIT, on ne la redemande pas. Si on la fige (prix sur un relevé), on le dit.
+4. **Ne jamais inventer** une info manquante (métier, légal, chiffre) : demander.
+5. **Rituel de fin** (§ 10) à chaque fin de grosse session : mettre à jour ce fichier, la fiche de
+   revue, la carte des interconnexions. Sans ça, la session suivante repart à l'aveugle.
+
+---
+
+## 1. Identité & vocabulaire
+- Projet : **site de gestion interne MCA Logistics** (PGI/TMS maison). Transport routier sub-3,5 t,
+  Strasbourg / Ostwald. Prod : `app.mcalogistics.fr`.
 - ✘ Ne jamais écrire « DelivPro » (abandonné), ni « v1 / v2 ». **Une seule version : celle-ci.**
 - L'ancien essai abandonné = « ancien essai » / « résidus en base ». Pas « v1 ».
+- Utilisateur : président de la société, étudiant en comptabilité. Réponses **courtes**, en
+  tirets, concrètes. Pas de blabla, pas de tableau dans les critiques.
 
-## Métier (à garder en tête sur CHAQUE écran)
-- **Express** (aujourd'hui) : course unitaire enlèvement → livraison, souvent dans la journée,
-  parfois urgente (créneau / heure limite). Une course = 2 arrêts (retrait, livraison).
-- **Messagerie** (activité ACTUELLE, depuis 09/2026) : tournées de nombreux colis / arrêts,
-  preuve par colis, échecs de livraison (absent, refus, adresse erronée…), retours au dépôt,
-  relivraison. Saisie en volume (import, lot), facturation souvent mensuelle par client.
-- Tout écran doit servir les deux : ne jamais coder « 1 course = 1 colis = 1 arrêt » en dur.
-- **Facturation messagerie (validée 01/10/2026)** : prix HT AU COLIS (ex. 1 € / colis), fixé UNE
-  fois dans la fiche client (tarif « Au colis », `clients.tariff_mode = 'colis'`). Chaque mois :
-  une ligne `deliveries` de prestation `messagerie` = relevé (mois, `nb_colis`,
-  `prix_unitaire_cts` figé) ; HT = colis × prix ; naît « livrée », facturée en quantité
-  (« 1 240 × 1,00 € »). Ni arrêt ni chauffeur : exclue de Mes courses, tournées, planning,
-  calendrier, journée du Dashboard (filtre `prestation not in (messagerie, forfait)`).
+## 2. Métier (à garder en tête sur CHAQUE écran)
+- **Express** : course unitaire retrait → livraison, souvent dans la journée, parfois urgente
+  (créneau / heure limite). Une course = 2 arrêts.
+- **Messagerie** (activité ACTUELLE, depuis 09/2026) — **facturation validée le 01/10/2026** :
+  - prix HT **au colis** (ex. 1 € / colis), saisi UNE fois dans la fiche client
+    (tarif « Au colis (messagerie) », `clients.tariff_mode = 'colis'`, `tariff_rate_cts` = prix) ;
+  - chaque mois, **une** ligne `deliveries` `prestation = 'messagerie'` = **relevé** :
+    mois (date = fin de mois), `nb_colis` livrés, `prix_unitaire_cts` figé ;
+  - HT = colis × prix ; le relevé naît **« livrée »** (prêt à facturer, sans preuve unitaire) ;
+  - facture Pennylane : 1 ligne, quantité = colis, PU = prix au colis ;
+  - ni arrêt ni chauffeur : exclu de Mes courses, Tournées, Planning, Calendrier, journée du
+    Dashboard (filtre `prestation.is.null,prestation.not.in.(messagerie,forfait)`).
+- **Prestations** (`deliveries.prestation`) : `express` · `messagerie` (relevé) · `dediee` ·
+  `mise_a_dispo` (un lieu, début / fin) · `forfait` (aucun arrêt). `null` = ancienne course = express.
+- Tout écran doit servir tous les cas : ne jamais coder « 1 course = 1 colis = 1 arrêt » en dur.
+- Légal transport à respecter : lettre de voiture (arrêté du 9/11/1999 : poids OU volume,
+  état récapitulatif pour les tournées), échéance ≤ 30 j date de facture (L441-11), indexation
+  gazole en pied de facture (L3222-1/2), CMR hors France, e-facture 09/2027 (SIREN client).
 
-## Revue onglet par onglet (méthode validée le 30/09/2026)
-- Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation →
-  PR + preview Cloudflare → test → merge → onglet suivant.
-- Format des critiques : tirets, pas de tableau, pas de blabla.
-- **1 onglet = 1 fichier** `mca-spec/revue/NN-<onglet>.md`, qui fait foi et se met à jour à
-  chaque PR sur l'onglet. Plan fixe : 1 Rôle · 2 Qui voit quoi · 3 L'écran de haut en bas ·
-  4 Gestes et écritures · 5 Données lues · 6 Fichiers · 7 Critique · 8 Lots · 9 À tester.
-  Modèle : `01-mes-courses.md`.
-- Ordre : 01 Mes courses, puis les sections du menu dans l'ordre.
+## 3. Stack & environnements
+- React + TypeScript + Tailwind v4 (`@tailwindcss/vite`) · Vite · Supabase (Postgres + RLS +
+  Auth + Storage + Edge Functions Deno). Vitest pour les tests. Dev local `http://localhost:5173`.
+- Supabase : projet `pzfgtcugmqeqixogwzcu` (eu-west-3). Ancien projet `lkbfvgnhwgbapdtitglu` : **mort**.
+- Front : **anon key uniquement** (`src/app/providers.tsx`). **Service role : JAMAIS côté front**,
+  uniquement dans les Edge (`Deno.env`).
+- **Hébergement : Cloudflare Pages fait foi** (CNAME → `mca-logistics-app.pages.dev`). Netlify
+  (« MCA LOGISTICS APP ») = mort pour le domaine, sert parfois des previews.
+- Preview de PR : `https://<branche>.mca-logistics-app.pages.dev` (commentaire du bot Cloudflare).
+  Ses URL doivent être dans Supabase → Auth → Redirect URLs, sinon la connexion Google renvoie
+  vers la prod et on teste l'ancien code sans le savoir.
+- ⚠️ La preview tape la **base de PROD** : une colonne nouvelle n'existe pour elle qu'une fois la
+  migration appliquée (additive = sans risque, on demande avant).
+- IA : Mistral (UE). Lecture des justificatifs par **vision** (`ministral-14b-2512`,
+  `_shared/mistral.ts#generateJsonFromImage`) ; `/v1/ocr` n'est PAS ouvert (gratuit). Pennylane
+  sert tout en PDF, `public_file_url` expire → `_shared/justificatif.ts#urlFraichePennylane`.
 
-## UI — conventions validées
-- Gestes secondaires en pictogramme : `shared/ui/BoutonIcone` (bouton carré bordé, 40 px ;
-  `taille="sm"` 28 px dans les listes ; `actif` = ouvert). Ce qui se règle une fois
-  (préférences, affichage) va dans `PanneauReglages`, replié derrière le bouton Réglages
-  (roue). Appliquer à chaque onglet revu. Pas d'emoji, pictogrammes lucide.
-- **Site adaptatif (PC)** : la taille racine suit l'écran (`src/index.css`, bloc « Racine
-  adaptative ») — 14 px sur grand écran et mobile, jusqu'à 11 px sur petit écran PC.
-  Base 1rem = 14 px. Écrire les tailles de mise en page en `rem` (jamais de px fixe pour
-  une largeur de colonne / hauteur de bloc) pour qu'elles suivent.
-- **Un onglet de consultation tient sur un écran PC** sans défiler (modèle : Dashboard,
-  hauteur = `100dvh − topbar − marges`, dernière ligne en `flex-1`, listes défilantes
-  à l'intérieur). Sur mobile, une colonne qui défile.
-- ⚠️ `text-[var(--fs-*)]` est compilé par Tailwind v4 en `color:` (pas en taille) : ne pas
-  l'utiliser dans du nouveau code → `text-xs`, `text-sm` ou `text-[length:var(--fs-xs)]`.
-  Les ~700 usages existants : correctif global à décider (PR dédiée).
-
-## Stack
-React + TypeScript + Tailwind v4 (`@tailwindcss/vite`) · Vite · Supabase (Postgres + RLS + Auth + Storage + Edge Functions). Dev local : `http://localhost:5173`. Repo : branche `main` = source de vérité.
-
-## Supabase
-- Project ID : `pzfgtcugmqeqixogwzcu` · Région eu-west-3.
-- Front : **anon key uniquement** via `import.meta.env` (client dans `src/app/providers.tsx`).
-- **Service role : JAMAIS côté front.** Uniquement dans les Edge Functions (`Deno.env`).
-- Ancien projet abandonné `lkbfvgnhwgbapdtitglu` : ne plus utiliser.
-
-## Architecture (règle d'or — non négociable)
+## 4. Architecture (règle d'or)
 ```
 src/
-├── app/        Shell.tsx, routes.tsx, providers.tsx (client Supabase)
-├── shared/     ui/, actions/, lib/ (echeances.ts, money.ts, download.ts)
-├── features/   1 dossier étanche par onglet :
-│   └── <x>/    <X>.tsx, <x>.queries.ts, <x>.types.ts, <x>.logic.ts, Drawer<X>.tsx
-└── integrations/  pennylane.ts, qonto.ts, drive.ts (clients d'API côté Edge Function)
+├── app/        Shell.tsx, routes.tsx, providers.tsx, sections/ (8 sections du menu)
+├── shared/     ui/ (composants), lib/ (logique transverse + quelques queries partagées)
+└── features/   1 dossier par onglet : <X>.tsx, <x>.queries.ts, <x>.types.ts, <x>.logic.ts, Drawer<X>.tsx
+supabase/
+├── migrations/ UP + DOWN (DOWN en commentaire), additives
+└── functions/  Edge Deno ; code commun dans _shared/
 ```
-- **Aucun import entre `features/`.** Couplage interdit.
-- **Tout appel API externe via Edge Function Supabase.** Jamais depuis le navigateur.
-- Calculs métier dans `*.logic.ts` UNIQUEMENT (fonctions pures, sans DB ni DOM).
-- Accès DB dans `*.queries.ts` uniquement. UI depuis `shared/ui/` uniquement.
-- Chaque drawer vit dans SA feature. Réparabilité : supprimer un onglet = supprimer `features/<x>/` + 1 ligne dans `routes.tsx`.
-- Montants toujours en **centimes** (`*_cts`), formatés via `shared/lib/money.ts`.
-- Échéances/validités via `shared/lib/echeances.ts` (date absente → statut `none`).
+- **Aucun nouvel import entre `features/`.** Exceptions EXISTANTES, connues, à ne pas étendre :
+  `assistant` (hub IA, lit tout), `planning` / `calendrier` / `tournees` / `dashboard` → `livraisons`
+  (drawer + types), `livraisons` → `parametres`. Besoin partagé → `shared/lib/`.
+- Calculs métier dans `*.logic.ts` UNIQUEMENT (fonctions pures, testées). DB dans `*.queries.ts`.
+- **Tout appel API externe via une Edge Function.** Jamais depuis le navigateur.
+- Montants en **centimes** (`*_cts`), formatés via `shared/lib/money.ts`. Dates du jour en
+  **local** (`isoLocal`), jamais `toISOString().slice(0,10)` (veille avant 2 h).
+- Échéances via `shared/lib/echeances.ts`. Statuts de livraison via `shared/lib/livraisonStatuts.ts`.
+- Une règle métier qui existe côté Edge ET côté front (ex. lignes de facture) = **miroir testé
+  des deux côtés** (`_shared/lignesFacture.ts` ↔ `livraisons/apercuFacture.logic.ts`).
 
-## État actuel (codé & testé)
-Le site est en production avec **8 sections** (menu principal, `src/app/sections/`), chacune à
-sous-onglets : **Pilotage** (Dashboard seul — Rentabilité et Statistiques retirées) · **Livraisons** (Livraisons,
-Bons de livraison, Calendrier) · **Finance** (Trésorerie, Charges, Encaissement, TVA, Relances) ·
-**Flotte** (Véhicules, Carburant, Entretiens, Inspections, Incidents) · **Planning** ·
-**Tiers** (Clients, Fournisseurs, Devis) · **Équipe** (Équipe, Heures) · **Système** (Paramètres,
-Admins, Modèles). Plus deux écrans hors menu : **Mes courses** (parcours chauffeur, mobile) et la
-cloche **Alertes**. Soit **30 dossiers `features/`** au total — bien au-delà des specs `mca-spec/tabs/`,
-qui n'en couvrent qu'une partie : ne pas s'y fier seule pour savoir ce qui existe déjà, vérifier
-`src/features/` et `src/app/sections/`.
-Cœur historique : Livraisons (machine à états + montant auto + TVA éditable, y compris
-autoliquidation intracommunautaire).
+## 5. Base de données — pièges (NE PAS réintroduire)
+- `deliveries.montant_*` = GENERATED / legacy → **jamais écrire**. Écrire `amount_ht_cts`,
+  `tva_cts`, `amount_ttc_cts`. Lire `amount_* ?? montant_*`.
+- `deliveries.statut` ∈ `planifiee, en_cours, livree, facturee, payee, annulee` (check) ;
+  nouvelle valeur = migration de la contrainte.
+- `deliveries.notes` = **consignes chauffeur** (visibles dans Mes courses). `note_interne` = bureau.
+- `deliveries.weight_kg` = poids kg (lu par le chauffeur) — ne PAS y mettre des palettes.
+- `deliveries.arrival_time` = heure calculée par les **tournées** (remise à null au détachement) ;
+  les créneaux saisis sont `creneau_retrait_*` / `creneau_livraison_*`.
+- `lv_pdf_url` = `doc:<id>` (Storage) ou ancien lien Drive ; jamais une URL signée.
+- `lv_numero` unique par société (index `deliveries_company_lv_numero_uniq`).
+- `clients.tariff_mode` ∈ `forfait, km, palette, colis, manuel`.
+- Migrations : UP **et** DOWN, colonnes nullables / additives, appliquées via MCP Supabase.
 
-## En cours — 29/09/2026 (à lire avant de reprendre)
-- **Lecture des justificatifs : RÉSOLU (gratuit).** Le forfait gratuit Mistral n'ouvre PAS
-  `/v1/ocr` (429 code 1300 permanent). On lit donc via **vision** (`ministral-14b-2512` sur
-  `/chat/completions` + `image_url`, `_shared/mistral.ts#generateJsonFromImage`). Pennylane sert
-  tout en PDF et `public_file_url` EXPIRE : `_shared/justificatif.ts` redemande une URL fraîche
-  (`urlFraichePennylane`) puis ressort la photo JPEG du PDF. Relevés de carte (PDF texte) :
-  Edge `lire-releve` (texte extrait par unpdf → modèle texte). Ne plus parler d'OCR payant.
-- **Chantier en cours : « Dépenses véhicule » (uniformisation Carburant & consommables +
-  Entretien & équipement).** Plan validé : `mca-spec/tabs/30-depenses-vehicule.md` — le lire
-  AVANT toute modif de Carburant / Entretiens / produits. Étapes 0 (PR #29) et 1 (PR #30,
-  Articles & familles + Paramètres en volets) faites ; étape 2 (table unifiée) en attente du
-  « go ». Perf : `.glass` sans backdrop-filter (PR #31) — ne pas remettre de flou sur un
-  élément qui défile. **Pas d'immobilisation ni de prorata km** dans
-  ces écrans (reste en compta).
-- **Hébergement : Cloudflare Pages fait foi pour `app.mcalogistics.fr`, PAS Netlify.**
-  Confirmé par DNS (CNAME → `mca-logistics-app.pages.dev`, IP Cloudflare). Le projet Netlify
-  (espace renommé **« MCA LOGISTICS APP »**, ex-« Vinted Achraf ») a un certificat expiré et une
-  « Pending DNS verification » — mort pour ce domaine, mais sert encore les **previews de PR**
-  (deploy-preview-N--gleaming-marzipan-9f0a30.netlify.app) tant que ses crédits mensuels
-  (quasi épuisés, reset le 10 de chaque mois) ne tombent pas à zéro. Donner systématiquement le
-  lien de preview (Netlify et/ou Cloudflare Pages, présent dans les commentaires bot de la PR)
-  **avant** de merger, sur demande explicite de l'utilisateur.
-  ⚠️ Pour tester une preview : ses URL doivent figurer dans Supabase → Authentication → URL
-  Configuration → Redirect URLs (`https://*.mca-logistics-app.pages.dev/**`,
-  `https://*--gleaming-marzipan-9f0a30.netlify.app/**`), sinon la connexion Google renvoie
-  vers la prod (Site URL) et on teste l'ancien code sans s'en rendre compte.
+## 6. Machine à états Livraisons (source : `shared/lib/livraisonStatuts.ts`)
+- `planifiee→{en_cours, livree, annulee}` · `en_cours→{livree, annulee}` · `livree→{facturee}` ·
+  `facturee→{payee}` · `payee→{}` · `annulee→{}`. Toujours via `canTransition`.
+- **→ facturee : c'est l'Edge `pennylane-invoice` qui écrit le statut**, après avoir créé la
+  facture. Échec → message clair (`ResultatFacturation`), `sync_error` sur la course ; course
+  « facturée sans facture » (ancien fonctionnement) → bouton « Revenir à livrée ».
+- → livree pose `delivered_at`. Un relevé de messagerie est **créé** directement en `livree`.
 
-## Règles base de données — résidus de l'ancien essai (NE PAS réintroduire les bugs)
-- `deliveries.montant_*` sont des colonnes **GENERATED** ou legacy → **ne jamais écrire dedans**. Écrire UNIQUEMENT `amount_ht_cts`, `tva_cts`, `amount_ttc_cts`. Lecture en fallback `amount_* ?? montant_*`.
-- `deliveries.statut` est un `text` contraint par `deliveries_statut_check` =
-  `planifiee, en_cours, livree, facturee, payee, annulee`. Toute nouvelle valeur exige une migration de la contrainte.
-- Migrations : toujours UP **et** DOWN, versionnées dans `supabase/migrations/`. Colonnes ajoutées = nullables/additives.
+## 7. Interconnexions — la règle
+Avant de modifier une table, une colonne, un statut, une Edge ou une règle de calcul :
+1. Ouvrir `mca-spec/CARTE-INTERCONNEXIONS.md` (qui lit / écrit quoi).
+2. Vérifier en vrai : `grep -rn "from('<table>')"`, `grep -rn "<colonne>" src supabase/functions`.
+3. Pour chaque lecteur : faut-il l'adapter (filtre, libellé, calcul, exclusion) ? Le faire dans
+   la même PR, ou le noter dans la PR comme « non concerné, parce que… ».
+4. Edge touchée → l'ordre de mise en prod compte (§ 9). Colonne lue par une Edge → migration AVANT.
+5. Mettre à jour la carte si une dépendance apparaît / disparaît.
+Exemples déjà payés cher : une colonne ajoutée au `select` du front avant la migration casse
+l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquante » chez le chauffeur.
 
-## Machine à états Livraisons (source : livraisons.logic.ts)
-`planifiee→{en_cours,annulee}` · `en_cours→{livree,annulee}` · `livree→{facturee}` · `facturee→{payee}` · `payee→{}` · `annulee→{}`. Toute transition passe par `canTransition`.
-À la transition `→facturee` : le front invoke l'Edge Function **`pennylane-invoice`** `{ delivery_id }` ; si échec → `deliveries.sync_pending = true`.
+## 8. UI — conventions validées
+- Gestes secondaires en pictogramme : `shared/ui/BoutonIcone` (40 px ; `taille="sm"` 28 px en
+  liste ; `actif` = ouvert). Réglages d'affichage dans `PanneauReglages` (roue). Pictos lucide,
+  **pas d'emoji**.
+- **Adaptatif** : racine 14 px (grand écran, mobile) → 11 px (petit PC), `src/index.css`
+  « Racine adaptative ». 1rem = 14 px. Tailles de mise en page en `rem`, jamais en px fixes.
+- **Un onglet de consultation tient sur un écran PC** sans défiler (modèle Dashboard). Mobile :
+  une colonne qui défile.
+- **Fiches de saisie** (modèle : fiche livraison) : tiroir large 2 colonnes PC / 1 mobile, blocs
+  titrés, barre d'actions fixe en bas, validation progressive (seul le strict minimum bloque,
+  le reste en bandeau « Il manque pour… »), valeurs par défaut lues ailleurs (client, paramètres).
+- ⚠️ `text-[var(--fs-*)]` = compilé en `color:` par Tailwind v4 → **interdit** dans du code neuf
+  (`text-xs`, `text-sm`, `text-[length:var(--fs-xs)]`). ~700 usages anciens : correctif global à décider.
+- `.glass` sans backdrop-filter sur ce qui défile (perf).
 
-## Pilotage Claude Code
-- Une étape = une seule chose. Lire UNIQUEMENT les fichiers de l'étape. S'arrêter au critère d'arrêt.
-- Branche par étape (`feat/…` ou `fix/…`). Fin d'étape = commit **+ push -u origin + merge dans main + push main**. Confirmer les hash. Sans push, rien n'est sauvegardé ni vérifiable.
-- Ne jamais inventer une info manquante : demander.
-- Specs des onglets : `mca-spec/tabs/` (format 9 sections — ★☆). Specs intégrations : `mca-spec/integrations/`.
-- Économie de tokens : voir `TOKEN-ECONOMY.md`. Vérifier une étape via le sous-agent `/verificateur`.
+## 9. Workflow Git / mise en prod
+- Branche par étape (`feat/…`, `fix/…`, ou la branche imposée par la session). PR vers `main`.
+- **Merge seulement sur « merge » explicite** de l'utilisateur, après lui avoir donné la preview.
+- Avant de pousser : `npx tsc -b` · `npx vitest run` · `npx eslint src` (0 erreur) · `npx vite build`
+  · relecture adversariale du diff · captures PC (1920 et 1366) + mobile (390) si UI.
+- **Ordre de mise en prod** : 1) migrations (additives) → 2) merge (Cloudflare déploie le front)
+  → 3) Edge Functions touchées (MCP `deploy_edge_function`, fichiers `../_shared/*` inclus,
+  `verify_jwt` inchangé). Aucune migration ni Edge avant accord (« merge » ou demande explicite).
+- Jamais d'identifiant de modèle IA dans un commit / une PR. Confirmer les hash après merge.
+
+## 10. Rituel de fin de grosse session (OBLIGATOIRE)
+À la fin d'une session qui a changé du code, une règle ou une décision :
+1. **Ce fichier** : mettre à jour § 2 (métier), § 5-6 (pièges, statuts), § 11 (état), § 12
+   (en cours / à décider), la date en tête. Supprimer ce qui est devenu faux.
+2. **Fiche de revue** de l'onglet (`mca-spec/revue/NN-*.md`) : écran, gestes, données, lots faits.
+3. **`mca-spec/CARTE-INTERCONNEXIONS.md`** : nouvelles tables / colonnes / lecteurs / Edge.
+4. Vérifier que ce qui est noté « fait » est **mergé ET déployé** (migrations, Edge).
+5. Proposer à l'utilisateur la mise à jour du skill `mca-site` si l'architecture a bougé.
+6. Commit dédié « Mémoire : … » poussé avec le reste.
+
+## 11. État actuel (01/10/2026)
+- 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Bons
+  de livraison, Calendrier) · **Finance** (Trésorerie, Charges, Encaissement, TVA, Relances) ·
+  **Flotte** (Véhicules, Carburant, Entretiens, Inspections, Incidents) · **Planning** · **Tiers**
+  (Clients, Fournisseurs, Devis) · **Équipe** (Équipe, Heures) · **Système** (Paramètres, Admins,
+  Modèles). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
+  Les specs `mca-spec/tabs/` n'en couvrent qu'une partie : vérifier le code.
+- Revue onglet par onglet (méthode § 13) : 01 Mes courses ✔ · 02 Dashboard ✔ · 03 Livraisons ✔
+  (liste, facturation, lettre de voiture, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie).
+- Fiche livraison : prestation, client avec recherche, référence client (reprise sur la facture),
+  urgent, arrêts complets (contact, téléphone, créneaux), trajet auto (IGN), marchandise
+  (colis, poids, volume), consignes / note interne, Dupliquer, 3 onglets (Course · Preuves &
+  documents · Facturation).
+
+## 12. En cours / à décider (mettre à jour à chaque session)
+- **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fiche client (payeur ≠
+  donneur d'ordre, TVA auto, délai ≤ 30 j, référence obligatoire) · C échecs & annulation
+  (relivrer, retour dépôt, avoir) · D tournées de colis (import, scan, LV de tournée) · E facture
+  conforme (indexation gazole, pays client, CMR).
+- Dashboard : compter les **colis** de messagerie (aujourd'hui un relevé = 1 livraison dans les
+  compteurs ; le CA est juste).
+- Devis : pas encore de prix au colis.
+- Correctif global `text-[var(--fs-*)]` : PR dédiée à décider.
+- Chauffeur : supprimer ses propres photos dans l'heure ? (question ouverte)
+- **Dépenses véhicule** (Carburant + Entretiens) : plan `mca-spec/tabs/30-depenses-vehicule.md`
+  à lire AVANT d'y toucher ; étapes 0-1 faites, étape 2 (table unifiée) attend le « go ».
+  Pas d'immobilisation ni de prorata km dans ces écrans.
+- Onglets suivants de la revue : Devis, Modèles, Calendrier / Planning, puis le menu dans l'ordre.
+
+## 13. Revue onglet par onglet (méthode validée le 30/09/2026)
+- Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation → PR +
+  preview → test → merge → onglet suivant.
+- **1 onglet = 1 fichier** `mca-spec/revue/NN-<onglet>.md`, qui fait foi et se met à jour à chaque
+  PR. Plan : 1 Rôle · 2 Qui voit quoi · 3 L'écran de haut en bas · 4 Gestes et écritures ·
+  5 Données lues · 6 Fichiers · 7 Critique · 8 Lots · 9 À tester. Modèle : `01-mes-courses.md`.
+- Se placer en **gestionnaire d'une société de transport** : saisie, cas réels, légal, double saisie.
+
+## 14. Pilotage Claude Code
+- Une étape = une seule chose ; lire seulement les fichiers utiles ; s'arrêter au critère d'arrêt.
+- Sous-agents pour les lectures lourdes / tâches parallèles (contexte isolé) ; vérifier une étape
+  avec `/verificateur`. Économie de tokens : `TOKEN-ECONOMY.md`.
+- Specs onglets : `mca-spec/tabs/` · intégrations : `mca-spec/integrations/` · revue : `mca-spec/revue/`.
