@@ -17,7 +17,7 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
     // Factures émises non payées (encours) — avec délai de paiement du client.
     supabase
       .from('deliveries')
-      .select('id, invoiced_at, amount_ttc_cts, clients!client_id(payment_terms)')
+      .select('id, invoiced_at, amount_ttc_cts, extra_lines, autoliquidation, clients!client_id(payment_terms)')
       .eq('statut', 'facturee'),
     // Livrées non facturées.
     supabase
@@ -87,6 +87,8 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
         amount_ttc_cts: d.amount_ttc_cts,
         // Pas de colonne montant_ttc_cts sur deliveries en prod : la demander vidait l'alerte.
         montant_ttc_cts: null,
+        extra_lines: d.extra_lines,
+        autoliquidation: d.autoliquidation,
         payment_terms: client?.payment_terms ?? 30,
       }
     }),

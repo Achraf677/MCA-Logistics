@@ -1,3 +1,4 @@
+import { delaiTransportJours } from '../../shared/lib/paymentTerms'
 import {
   addTva, deliveryTotalHtCts, deliveryTotalTtcCts,
   extraLinesHtCts as extraLinesHtCtsLocal,
@@ -259,7 +260,7 @@ export function kpiSummary(rows: DeliveryRow[], periode: Periode, aujourdhui: st
       const ttc = deliveryTotalTtcCts(r)
       k.aEncaisserTtcCts += ttc
       k.nbAEncaisser += 1
-      const delai = r.clients?.payment_terms ?? DELAI_PAIEMENT_DEFAUT
+      const delai = delaiTransportJours(r.clients?.payment_terms ?? DELAI_PAIEMENT_DEFAUT)
       if (r.invoiced_at && echeanceFacture(r.invoiced_at, delai) < aujourdhui) {
         k.retardTtcCts += ttc
         k.nbRetard += 1

@@ -1,3 +1,6 @@
+import { deliveryTotalTtcCts } from './money'
+import type { DeliveryExtraLine } from './money'
+import { delaiTransportJours } from './paymentTerms'
 // Moteur d'alertes MÉTIER unifié — PUR (sans DB ni DOM), testable.
 // Source de vérité unique consommée par AlertesBell ET Dashboard.
 //
@@ -40,6 +43,9 @@ export interface FactureImpayeeRow {
   invoiced_at: string | null
   amount_ttc_cts: number | null
   montant_ttc_cts?: number | null
+  /** Lignes supplémentaires : le dû inclut les suppléments facturés. */
+  extra_lines?: DeliveryExtraLine[] | null
+  autoliquidation?: boolean | null
   /** Délai de paiement du client en jours (payment_terms). */
   payment_terms: number | null
 }
@@ -129,8 +135,9 @@ export function joursRestants(iso: string | null | undefined, today: Date): numb
   return e === null ? null : -e
 }
 
-function ttc(r: { amount_ttc_cts?: number | null; montant_ttc_cts?: number | null }): number {
-  return r.amount_ttc_cts ?? r.montant_ttc_cts ?? 0
+function ttc(r: FactureImpayeeRow): number {
+  // Le dû = ligne principale + suppléments (comme Relances et Encaissement).
+  return deliveryTotalTtcCts({ amount_ttc_cts: r.amount_ttc_cts ?? r.montant_ttc_cts ?? 0, extra_lines: r.extra_lines, autoliquidation: r.autoliquidation })
 }
 
 // ── Détecteurs ────────────────────────────────────────────────────────────────
@@ -142,7 +149,7 @@ function detectEncoursRetard(rows: FactureImpayeeRow[], today: Date): AlerteMeti
   for (const r of rows) {
     const ecoule = joursEcoules(r.invoiced_at, today)
     if (ecoule === null) continue
-    const delai = r.payment_terms ?? 30
+    const delai = delaiTransportJours(r.payment_terms)
     if (ecoule > delai) {           // échéance de paiement dépassée
       count++
       montantCts += ttc(r)

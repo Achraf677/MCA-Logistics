@@ -20,13 +20,14 @@ export async function getEncaissements(
     .from('deliveries')
     // extra_lines requis pour que le TTC affiché = ce qui a été facturé
     // (ligne principale + lignes supplémentaires envoyées à Pennylane).
-    .select('id, client_id, amount_ttc_cts, extra_lines, invoiced_at, paid_at, pennylane_invoice_id, clients!client_id(name)')
+    .select('id, client_id, amount_ttc_cts, extra_lines, autoliquidation, invoiced_at, paid_at, pennylane_invoice_id, clients!client_id(name)')
     .eq('statut', 'payee')
     .order('paid_at', { ascending: false })
 
   if (filters.client_id && filters.client_id !== 'all') q = q.eq('client_id', filters.client_id)
   if (filters.date_from) q = q.gte('paid_at', filters.date_from)
-  if (filters.date_to)   q = q.lte('paid_at', filters.date_to)
+  // paid_at / settled_at sont des horodatages : « jusqu'au JJ » = avant le lendemain 0 h.
+  if (filters.date_to)   q = q.lt('paid_at', lendemain(filters.date_to))
 
   const { data, error } = await q
   if (error || !data) return { data: null, error }
@@ -54,7 +55,7 @@ export async function getAutresEntrees(
     .order('settled_at', { ascending: false, nullsFirst: false })
 
   if (filters.date_from) q = q.gte('settled_at', filters.date_from)
-  if (filters.date_to)   q = q.lte('settled_at', filters.date_to)
+  if (filters.date_to)   q = q.lt('settled_at', lendemain(filters.date_to))
 
   const { data, error } = await q
   if (error || !data) return { data: null, error }
@@ -72,4 +73,11 @@ export async function exportEncaissementsCSV(filters: EncaissementFilters = {}) 
     r.pennylane_invoice_id ?? '',
   ])
   return [headers, ...rows].map(r => r.join(';')).join('\n')
+}
+
+/** 'AAAA-MM-JJ' du lendemain (borne exclusive d'un filtre « jusqu'au »). */
+function lendemain(jour: string): string {
+  const [a, m, j] = jour.split('-').map(Number)
+  const d = new Date(a, m - 1, j + 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }

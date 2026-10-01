@@ -65,6 +65,12 @@ export interface DeliveryExtraLine {
 /** Source d'extras minimale — miroir de la colonne JSONB `deliveries.extra_lines`. */
 export interface ExtraLinesSource {
   extra_lines?: DeliveryExtraLine[] | null
+  /**
+   * Facture en autoliquidation : AUCUNE TVA, lignes supplémentaires comprises
+   * (comme l'Edge pennylane-invoice). Sans ce champ, le TTC compterait la TVA
+   * des suppléments que le client ne doit pas.
+   */
+  autoliquidation?: boolean | null
 }
 
 /** Clamp identique à `pennylane-invoice/index.ts` : quantity ≤ 0 ou non finie → 1.
@@ -106,5 +112,6 @@ export function deliveryTotalHtCts(row: AmountSource & ExtraLinesSource): number
 
 /** TTC total facturable = ligne principale + extras. */
 export function deliveryTotalTtcCts(row: AmountSource & ExtraLinesSource): number {
+  if (row.autoliquidation === true) return effectiveTtcCts(row) + extraLinesHtCts(row.extra_lines)
   return effectiveTtcCts(row) + extraLinesTtcCts(row.extra_lines)
 }

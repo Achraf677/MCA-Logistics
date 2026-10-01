@@ -1,3 +1,4 @@
+import { delaiTransportJours } from '../../shared/lib/paymentTerms'
 import type { Client, DeliveryForEncours, DeliveryForTiersColumns, TariffMode } from './clients.types'
 import { formatMoney, deliveryTotalTtcCts } from '../../shared/lib/money'
 
@@ -71,7 +72,7 @@ export function paymentStatusOf(
   if (delivery.statut === 'payee') return 'a_jour'
   if (!delivery.invoiced_at) return 'du'
   const due = new Date(delivery.invoiced_at)
-  due.setDate(due.getDate() + delivery.payment_terms)
+  due.setDate(due.getDate() + delaiTransportJours(delivery.payment_terms))
   return today <= due ? 'du' : 'en_retard'
 }
 

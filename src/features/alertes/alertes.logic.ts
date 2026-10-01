@@ -1,3 +1,4 @@
+import { delaiTransportJours } from '../../shared/lib/paymentTerms'
 // Moteur de détection d'alertes — fonctions PURES (sans DB ni DOM).
 // Calcul des jours via les helpers de dates partagés ; jamais toISOString().slice.
 
@@ -183,7 +184,7 @@ function detectDeliveries(rows: DeliveryAlertRow[], today: Date, t: AlertThresho
 
     // Facture impayée : facturée, échéance (invoiced_at + payment_terms) dépassée, non payée.
     if (d.statut === 'facturee' && d.invoiced_at && !d.paid_at) {
-      const terms = d.payment_terms ?? 30
+      const terms = delaiTransportJours(d.payment_terms)
       const dueDate = addDays(d.invoiced_at, terms)
       const daysLeft = daysLeftUntil(dueDate, today)
       if (daysLeft !== null && daysLeft < 0) {

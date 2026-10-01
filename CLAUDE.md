@@ -116,6 +116,12 @@ supabase/
   facture. Échec → message clair (`ResultatFacturation`), `sync_error` sur la course ; course
   « facturée sans facture » (ancien fonctionnement) → bouton « Revenir à livrée ».
 - → livree pose `delivered_at`. Un relevé de messagerie est **créé** directement en `livree`.
+- **Seule transition « système » hors machine** : `facturee → annulee` posée par l'Edge
+  `pennylane-payment-check` quand la facture est annulée par un avoir chez Pennylane (le site
+  ne la propose jamais à la main ; l'avoir depuis le site = lot C).
+- Échéances, retards, relances, encours : délai client **plafonné à 30 j**
+  (`shared/lib/paymentTerms#delaiTransportJours`) ; TTC dû = `deliveryTotalTtcCts`
+  (suppléments compris, sans TVA en autoliquidation).
 
 ## 7. Interconnexions — la règle
 Avant de modifier une table, une colonne, un statut, une Edge ou une règle de calcul :
