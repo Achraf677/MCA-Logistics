@@ -121,6 +121,22 @@ export interface Delivery {
   probleme_motif?: string | null
   probleme_note?: string | null
   probleme_le?: string | null
+  // ── Fiche unique (migration 20261001090000) ─────────────────────────────
+  /** Type de prestation ; null = ancienne course (lue comme express). */
+  prestation?: 'express' | 'messagerie' | 'dediee' | 'mise_a_dispo' | 'forfait' | null
+  /** Référence du donneur d'ordre (ODT, n° de commande) — reprise sur la facture. */
+  reference_client?: string | null
+  urgent?: boolean
+  /** Créneaux « HH:MM[:SS] » (au plus tôt / au plus tard). */
+  creneau_retrait_debut?: string | null
+  creneau_retrait_fin?: string | null
+  creneau_livraison_debut?: string | null
+  creneau_livraison_fin?: string | null
+  volume_m3?: number | null
+  /** Durée de trajet estimée (IGN), minutes. */
+  duree_min?: number | null
+  /** Note du bureau — jamais montrée au chauffeur (`notes` = consignes chauffeur). */
+  note_interne?: string | null
   created_at: string
   updated_at: string
 }

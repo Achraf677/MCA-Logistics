@@ -26,6 +26,8 @@ export async function getMesCourses(debut: string, fin: string) {
       'pickup_order', 'expediteur_tel', 'destinataire_tel',
       'notes', 'arrival_time', 'nb_colis', 'driver_id',
       'probleme_motif', 'probleme_note', 'probleme_le',
+      'urgent', 'reference_client',
+      'creneau_retrait_debut', 'creneau_retrait_fin', 'creneau_livraison_debut', 'creneau_livraison_fin',
       'clients!client_id(name, phone)',
       'team_members!driver_id(full_name)',
       'vehicles!vehicle_id(label, plate)',

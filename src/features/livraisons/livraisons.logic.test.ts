@@ -6,8 +6,9 @@ import {
   deliveryTotalHtCts, deliveryTotalTtcCts, libelleDelaiPaiement,
   isoLocal, bornesPeriode, dansPeriode, libellePeriode, echeanceFacture, eurosArrondis,
   dateCourte, heureCourte, villeDe, trajet, nettoyerRecherche, messageDepuisCorps,
-  STATUS_COLORS } from './livraisons.logic'
-import type { ClientTariff } from './livraisons.logic'
+  STATUS_COLORS, manquesFiche, libelleCreneau, libelleDuree, heureSaisie, creneauInvalide,
+  blocsPrestation } from './livraisons.logic'
+import type { ClientTariff, FicheASaisir } from './livraisons.logic'
 import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
 
 // Helper : construit un DeliveryRow minimal (seuls les champs lus par la logique comptent).
@@ -471,5 +472,48 @@ describe('libelleDelaiPaiement', () => {
       .toBe('non renseigné')
     expect(libelleDelaiPaiement({ payment_terms: null, payment_terms_label: '  ' }))
       .toBe('non renseigné')
+  })
+})
+
+describe('fiche unique', () => {
+  const base: FicheASaisir = {
+    prestation: 'express', client_id: 'c', date: '2026-10-01',
+    pickup_address: 'A', delivery_address: 'B', driver_id: 'd', vehicle_id: 'v',
+    expediteur_nom: 'E', destinataire_nom: 'D', marchandise_desc: 'Colis', nb_colis: '2',
+    poids_kg_reel: '', volume_m3: '1', ht_cts: 5000,
+    creneau_retrait_debut: '', creneau_retrait_fin: '', creneau_livraison_debut: '', creneau_livraison_fin: '',
+  }
+  it('fiche complète : rien ne manque (volume suffit sans poids)', () => {
+    expect(manquesFiche(base)).toEqual({ enregistrer: [], partir: [], lv: [], facturer: [] })
+  })
+  it('seuls client et date bloquent l’enregistrement', () => {
+    const m = manquesFiche({ ...base, client_id: '', delivery_address: '', driver_id: '', ht_cts: null })
+    expect(m.enregistrer).toEqual(['client'])
+    expect(m.partir).toEqual(['adresse de livraison', 'chauffeur'])
+    expect(m.facturer).toEqual(['prix HT'])
+  })
+  it('créneau fin avant début bloque', () => {
+    expect(manquesFiche({ ...base, creneau_livraison_debut: '14:00', creneau_livraison_fin: '09:00' }).enregistrer)
+      .toEqual(['créneau de livraison (fin avant début)'])
+  })
+  it('forfait : aucun arrêt, aucune LV exigée', () => {
+    const m = manquesFiche({ ...base, prestation: 'forfait', delivery_address: '', pickup_address: '', driver_id: '', vehicle_id: '', nb_colis: '' })
+    expect(m.partir).toEqual([])
+    expect(m.lv).toEqual([])
+  })
+  it('poids ET volume vides : manque pour la LV', () => {
+    expect(manquesFiche({ ...base, volume_m3: '' }).lv).toEqual(['poids ou volume'])
+  })
+  it('libellés de créneau et de durée', () => {
+    expect(libelleCreneau('09:00:00', '12:30:00')).toBe('9h – 12h30')
+    expect(libelleCreneau(null, '14:00')).toBe('avant 14h')
+    expect(libelleCreneau('08:00', null)).toBe('à partir de 8h')
+    expect(libelleCreneau(null, null)).toBeNull()
+    expect(libelleDuree(25)).toBe('25 min')
+    expect(libelleDuree(65)).toBe('1 h 05')
+    expect(heureSaisie('7:05:00')).toBe('07:05')
+    expect(creneauInvalide('10:00', '10:00')).toBe(true)
+    expect(blocsPrestation('mise_a_dispo').retrait).toBe(false)
+    expect(blocsPrestation(null).retrait).toBe(true)
   })
 })

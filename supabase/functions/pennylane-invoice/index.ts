@@ -108,7 +108,7 @@ Deno.serve(async (req: Request) => {
   const { data: rows, error: dErr } = await supabase
     .from('deliveries')
     .select(
-      'id, company_id, client_id, statut, date, description, type, amount_ht_cts, tva_cts, tva_rate, pennylane_invoice_id, extra_lines, autoliquidation',
+      'id, company_id, client_id, statut, date, description, reference_client, type, amount_ht_cts, tva_cts, tva_rate, pennylane_invoice_id, extra_lines, autoliquidation',
     )
     .in('id', ids);
 

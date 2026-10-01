@@ -59,6 +59,12 @@ describe('libelleCourse', () => {
     expect(libelleCourse({ description: '', type: 'professionnel', date: '2026-07-19' }))
       .toBe('Livraison professionnel du 2026-07-19');
   });
+  it('référence client ajoutée une seule fois', () => {
+    expect(libelleCourse({ description: 'Palette', type: null, date: '2026-07-19', reference_client: 'ODT 42' }))
+      .toBe('Palette — Réf. ODT 42');
+    expect(libelleCourse({ description: 'ODT 42 palette', type: null, date: '2026-07-19', reference_client: 'ODT 42' }))
+      .toBe('ODT 42 palette');
+  });
 });
 
 describe('construireLignes', () => {

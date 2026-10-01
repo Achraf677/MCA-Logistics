@@ -30,6 +30,8 @@ export interface ApercuFactureRow {
   id: string
   date: string
   description: string | null
+  /** Référence du donneur d'ordre — reprise dans le libellé (miroir Edge). */
+  reference_client?: string | null
   delivery_address?: string | null
   type?: string | null
   client_id: string
@@ -123,11 +125,15 @@ export function tauxLignePrincipale(
   return stocke ?? 20
 }
 
-/** Miroir de `libelleCourse` (Edge) : description, sinon « Livraison <type> du <date> ». */
-export function libelleCourse(row: Pick<ApercuFactureRow, 'description' | 'type' | 'date'>): string {
+/**
+ * Miroir de `libelleCourse` (Edge) : description, sinon « Livraison <type> du
+ * <date> », suivie de « — Réf. <référence client> » si elle n'y figure pas déjà.
+ */
+export function libelleCourse(row: Pick<ApercuFactureRow, 'description' | 'type' | 'date' | 'reference_client'>): string {
   const desc = row.description?.trim()
-  if (desc) return desc
-  return ['Livraison', row.type ?? '', 'du', row.date ?? ''].filter(s => s !== '').join(' ')
+  const base = desc || ['Livraison', row.type ?? '', 'du', row.date ?? ''].filter(s => s !== '').join(' ')
+  const ref = row.reference_client?.trim()
+  return ref && !base.includes(ref) ? `${base} — Réf. ${ref}` : base
 }
 
 function pct(n: number): string {

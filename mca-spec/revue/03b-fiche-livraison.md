@@ -153,3 +153,92 @@
   (état récapitulatif), relevé mensuel.
 - Lot E — conformité facture : pied carburant, références dans le libellé, pays client,
   CMR.
+
+## 6. Lot A — livré (branche `claude/epic-volta-o6n6oo`, au-dessus de la PR #34)
+- Migration `20261001090000_deliveries_fiche_unique.sql` (additive) : `prestation`,
+  `reference_client`, `urgent`, `creneau_retrait_debut/fin`, `creneau_livraison_debut/fin`,
+  `volume_m3`, `duree_min`, `note_interne`. `notes` = consignes chauffeur (inchangé en base).
+- Fiche large (80 rem) en 2 colonnes PC, 1 colonne mobile :
+  - Ordre : Prestation (5 pastilles + aide), Client avec recherche, délai de paiement,
+    Référence client, Date (locale, plus d'UTC), Urgent ;
+  - Retrait / Livraison : adresse, qui remet / qui reçoit + téléphone, créneau au plus tôt /
+    au plus tard (fin avant début = bloquant) ;
+  - Trajet : km + durée calculés tout seuls (IGN, 1,2 s après la saisie des 2 adresses),
+    bouton Recalculer ;
+  - Marchandise : nature, colis, poids, volume ;
+  - Exécution & prix : chauffeur, véhicule, libellé de facture, prix HT, TVA (taux + montant
+    sur une ligne), autoliquidation, suppléments ;
+  - Consignes chauffeur / Note interne ;
+  - bandeau « Il manque pour partir / la LV / facturer » ; seuls client + date bloquent.
+- Barre d'actions fixe : Enregistrer, Annuler + pictos Modèle, Dupliquer, Supprimer.
+- Dupliquer : copie en création (date du jour, sans référence, sans preuve ni statut).
+- 3 onglets : Course · Preuves & documents (Preuve / LV / Fichiers) · Facturation (suivi +
+  récap + état Pennylane).
+- Selon la prestation : Forfait = aucun arrêt ; Mise à disposition = un seul « Lieu » +
+  début / fin ; les autres = retrait + livraison.
+- Facture : « — Réf. <référence client> » ajouté au libellé (Edge + aperçu, identiques).
+- Mes courses : créneau de l'arrêt + pastille Urgent.
+- Champs partagés avec l'onglet LV (expéditeur, destinataire, marchandise, colis, poids) :
+  réécrits seulement s'ils ont changé dans la fiche (pas d'écrasement de la saisie LV).
+- Ordre de mise en prod : migration AVANT le front et l'Edge `pennylane-invoice`
+  (sinon la lecture de `reference_client` échoue).
+
+## 7. Liste longue — vu par un gestionnaire d'exploitation
+### Saisie
+- Saisie rapide « coller un message » : on colle l'ordre (mail HOPHOP, message Cocolis) →
+  l'IA (Mistral) remplit adresses, contacts, créneau, référence, prix ; on valide.
+- Import d'un PDF d'ordre de transport → même remplissage, PDF rangé en « Ordre client ».
+- Carnet d'adresses par client (retraits / livraisons fréquents) avec contact et consignes.
+- Adresse de retrait par défaut = adresse habituelle du client.
+- Chauffeur / véhicule par défaut = habituels du client, sinon le dernier utilisé.
+- Prix proposé automatiquement : dernier prix du même trajet pour ce client.
+- Grille tarifaire client : au colis, au point, à la tranche de poids, au km, à l'heure.
+- Suppléments en un clic (attente ¼ h, 2e présentation, étage, 2 personnes, urgence, retour).
+- Saisie en lot : coller un tableau (Excel) de N livraisons → N courses en un geste.
+- Course récurrente (tous les lundis, tous les jours ouvrés) générée automatiquement.
+- Raccourcis clavier PC : Ctrl+Entrée enregistrer, Ctrl+D dupliquer, Échap fermer.
+- Brouillon auto : une fiche fermée par erreur se rouvre avec la saisie.
+- Contrôle de doublon : même client + même date + même adresse → avertissement.
+- Adresse non localisée / hors zone habituelle → alerte avant enregistrement.
+- Téléphones : format vérifié (06…/+33), lien d'appel direct.
+- Champ « valeur déclarée » (au-delà du plafond légal 33 €/kg, 1 000 €/colis) + alerte assurance.
+- Marchandise sensible (fragile, frigo, valeur, ADR exclu) → pictogramme chez le chauffeur.
+- Particulier : étage, ascenseur, digicode, 2 personnes, appeler avant (cases, pas du texte).
+- Payeur différent du donneur d'ordre (plateformes) → facture au bon client (lot B).
+### Exploitation
+- Faisabilité du créneau : heure de départ conseillée = créneau − durée du trajet.
+- Charge du chauffeur ce jour-là (nb de courses, heures) visible au moment d'affecter.
+- Capacité du véhicule (volume / charge utile) comparée à la marchandise.
+- Contrôle tachygraphe : un VUL > 2,5 t qui part à l'étranger doit avoir le tachygraphe G2V2.
+- Documents du véhicule / chauffeur échus (assurance, CT, permis) → blocage du départ.
+- Statut « affectée / confirmée par le chauffeur » (accusé de lecture dans Mes courses).
+- Suivi en direct : position du chauffeur, heure d'arrivée estimée envoyée au client.
+- SMS / e-mail automatique au destinataire : « votre livreur arrive entre 14 h et 15 h ».
+- Lien de suivi public pour le client (statut, preuve, sans connexion).
+- Échec terrain → bouton « Relivrer demain » qui crée la course liée avec frais (lot C).
+- Retour au dépôt / à l'expéditeur avec frais, motif et photo.
+- Historique de la course : qui a changé quoi, quand (journal).
+- Commentaires internes horodatés au lieu d'une seule note.
+- Pièces : bon de commande client, photo au chargement, photo à la livraison, signature.
+### Facturation & finance
+- Prix de revient estimé (km × coût/km + heures × coût horaire) et marge affichée.
+- Seuil de marge mini : alerte si la course est sous le coût de revient.
+- Pied de facture carburant (indexation gazole, obligatoire) — lot E.
+- Échéance plafonnée à 30 j date de facture (transport) — lot B.
+- Relevé mensuel : toutes les courses du mois d'un client sur une facture, avec détail.
+- Avoir en un clic sur une course facturée annulée (lot C).
+- Suppléments signalés par le chauffeur (attente constatée) → proposés au bureau.
+- Facture envoyée automatiquement avec preuve de livraison jointe.
+- Relance automatique à échéance + 7 j / + 15 j.
+- E-facture 09/2027 : SIREN client obligatoire dès la fiche client.
+### Pilotage
+- Taux de livraisons dans le créneau, taux d'échec, délai moyen de facturation.
+- Chiffre d'affaires et marge par client, par chauffeur, par véhicule, par prestation.
+- Clients à faible marge, clients payeurs tardifs.
+- Km à vide (retours) suivis par véhicule, pas par course.
+### Messagerie (lot D)
+- Tournée = N arrêts / N colis, import du fichier client, ordre optimisé.
+- Scan code-barres colis (téléphone) au chargement et à la livraison.
+- Preuve par colis, statut par colis (livré, absent, refusé, endommagé).
+- État récapitulatif (LV de tournée, art. 5 de l'arrêté).
+- Facturation au colis / au point, relevé mensuel automatique.

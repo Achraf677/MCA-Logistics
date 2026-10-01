@@ -495,3 +495,158 @@ export function recapMontant(input: {
     taux_extras_force: null,
   }
 }
+
+// ── Fiche unique : prestation, créneaux, ce qui manque à chaque étape ───────
+
+/**
+ * Type de prestation — décide des blocs de la fiche. `null` (anciennes
+ * courses) se lit comme `express`.
+ */
+export type Prestation = 'express' | 'messagerie' | 'dediee' | 'mise_a_dispo' | 'forfait'
+
+export const PRESTATIONS: Prestation[] = ['express', 'messagerie', 'dediee', 'mise_a_dispo', 'forfait']
+
+export const PRESTATION_LABELS: Record<Prestation, string> = {
+  express:      'Express',
+  messagerie:   'Messagerie',
+  dediee:       'Course dédiée',
+  mise_a_dispo: 'Mise à disposition',
+  forfait:      'Forfait / relevé',
+}
+
+export const PRESTATION_AIDES: Record<Prestation, string> = {
+  express:      'Une course : un retrait, une livraison, souvent dans la journée.',
+  messagerie:   'Colis de tournée : colis comptés, preuve par colis.',
+  dediee:       'Véhicule réservé pour un client, prix au forfait.',
+  mise_a_dispo: 'Véhicule et chauffeur à disposition sur un lieu, à l’heure ou à la journée.',
+  forfait:      'Facturation globale (mois, période) : aucun arrêt à saisir.',
+}
+
+export interface BlocsPrestation {
+  /** Bloc « Retrait » affiché. */
+  retrait: boolean
+  /** Bloc « Livraison » (ou « Lieu ») affiché. */
+  livraison: boolean
+  /** Titre du bloc livraison. */
+  titreLivraison: string
+  /** L'adresse de livraison / du lieu est exigée pour partir. */
+  adresseExigee: boolean
+  /** Le bloc marchandise est pertinent. */
+  marchandise: boolean
+  /** Le chauffeur et le véhicule sont exigés pour partir. */
+  execution: boolean
+}
+
+export function blocsPrestation(p: Prestation | null | undefined): BlocsPrestation {
+  switch (p ?? 'express') {
+    case 'forfait':
+      return { retrait: false, livraison: false, titreLivraison: 'Livraison', adresseExigee: false, marchandise: false, execution: false }
+    case 'mise_a_dispo':
+      return { retrait: false, livraison: true, titreLivraison: 'Lieu de mise à disposition', adresseExigee: true, marchandise: false, execution: true }
+    default:
+      return { retrait: true, livraison: true, titreLivraison: 'Livraison', adresseExigee: true, marchandise: true, execution: true }
+  }
+}
+
+/** « HH:MM » depuis une colonne `time` (« HH:MM:SS ») ; '' si vide. */
+export function heureSaisie(t: string | null | undefined): string {
+  const m = /^(\d{1,2}):(\d{2})/.exec(t ?? '')
+  return m ? `${m[1].padStart(2, '0')}:${m[2]}` : ''
+}
+
+/** Créneau incohérent : fin avant (ou égale au) début. Vide d'un côté = valide. */
+export function creneauInvalide(debut: string, fin: string): boolean {
+  return !!debut && !!fin && fin <= debut
+}
+
+/** « 9h – 12h », « avant 14h30 », « à partir de 8h » ; null si vide. */
+export function libelleCreneau(debut: string | null | undefined, fin: string | null | undefined): string | null {
+  const h = (t: string) => {
+    const [hh, mm] = heureSaisie(t).split(':')
+    return `${Number(hh)}h${mm === '00' ? '' : mm}`
+  }
+  const d = heureSaisie(debut), f = heureSaisie(fin)
+  if (d && f) return `${h(d)} – ${h(f)}`
+  if (f) return `avant ${h(f)}`
+  if (d) return `à partir de ${h(d)}`
+  return null
+}
+
+/** « 1 h 05 », « 25 min ». */
+export function libelleDuree(min: number | null | undefined): string | null {
+  if (min == null || !Number.isFinite(min) || min <= 0) return null
+  const m = Math.round(min)
+  if (m < 60) return `${m} min`
+  return `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`
+}
+
+/** Ce que lit le bandeau « Il manque » — valeurs du formulaire, en chaînes. */
+export interface FicheASaisir {
+  prestation: Prestation | null | ''
+  client_id: string
+  date: string
+  pickup_address: string
+  delivery_address: string
+  driver_id: string
+  vehicle_id: string
+  expediteur_nom: string
+  destinataire_nom: string
+  marchandise_desc: string
+  nb_colis: string
+  poids_kg_reel: string
+  volume_m3: string
+  /** HT de la ligne principale en centimes (0 / null = absent). */
+  ht_cts: number | null
+  creneau_retrait_debut: string
+  creneau_retrait_fin: string
+  creneau_livraison_debut: string
+  creneau_livraison_fin: string
+}
+
+export interface Manques {
+  /** Bloque l'enregistrement. */
+  enregistrer: string[]
+  /** Manque pour que le chauffeur puisse partir. */
+  partir: string[]
+  /** Manque pour la lettre de voiture (arrêté du 9/11/1999). */
+  lv: string[]
+  /** Manque pour facturer. */
+  facturer: string[]
+}
+
+/**
+ * Validation PROGRESSIVE : seul l'enregistrement bloque (client + date, et
+ * créneaux cohérents) ; le reste s'affiche comme « il manque pour… » sans
+ * empêcher d'enregistrer une course encore incomplète.
+ */
+export function manquesFiche(f: FicheASaisir): Manques {
+  const b = blocsPrestation(f.prestation || null)
+  const vide = (s: string) => !s || !s.trim()
+  const enregistrer: string[] = []
+  if (vide(f.client_id)) enregistrer.push('client')
+  if (vide(f.date)) enregistrer.push('date')
+  if (creneauInvalide(f.creneau_retrait_debut, f.creneau_retrait_fin)) enregistrer.push('créneau de retrait (fin avant début)')
+  if (creneauInvalide(f.creneau_livraison_debut, f.creneau_livraison_fin)) enregistrer.push('créneau de livraison (fin avant début)')
+
+  const partir: string[] = []
+  if (b.adresseExigee && vide(f.delivery_address)) partir.push(b.retrait ? 'adresse de livraison' : 'adresse du lieu')
+  if (b.execution && vide(f.driver_id)) partir.push('chauffeur')
+  if (b.execution && vide(f.vehicle_id)) partir.push('véhicule')
+
+  const lv: string[] = []
+  if (b.marchandise) {
+    if (vide(f.pickup_address)) lv.push('adresse de retrait')
+    if (vide(f.delivery_address)) lv.push('adresse de livraison')
+    if (vide(f.expediteur_nom)) lv.push('expéditeur')
+    if (vide(f.destinataire_nom)) lv.push('destinataire')
+    if (vide(f.marchandise_desc)) lv.push('nature de la marchandise')
+    if (vide(f.nb_colis)) lv.push('nombre de colis')
+    // Loi : poids OU volume (arrêté du 9/11/1999, art. 4).
+    if (vide(f.poids_kg_reel) && vide(f.volume_m3)) lv.push('poids ou volume')
+  }
+
+  const facturer: string[] = []
+  if (!f.ht_cts || f.ht_cts <= 0) facturer.push('prix HT')
+
+  return { enregistrer, partir, lv, facturer }
+}

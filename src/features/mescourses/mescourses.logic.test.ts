@@ -3,6 +3,7 @@ import {
   bornesPeriode, decalerPeriode, libellePeriode,
   grouperParJour, estAFaire, resteAFaire,
   etatHoraire, libelleHeure, prochainArret, progression, filtrerMesCourses,
+  libelleCreneauArret,
 } from './mescourses.logic'
 
 describe('bornesPeriode', () => {
@@ -160,5 +161,14 @@ describe('revue 01', () => {
     const c = [{ driver_id: 'a' }, { driver_id: 'b' }, { driver_id: null }]
     expect(filtrerMesCourses(c, 'a')).toEqual([{ driver_id: 'a' }])
     expect(filtrerMesCourses(c, null)).toEqual([])
+  })
+})
+
+describe('libelleCreneauArret', () => {
+  it('formes du créneau', () => {
+    expect(libelleCreneauArret('09:00:00', '12:30:00')).toBe('9h – 12h30')
+    expect(libelleCreneauArret(null, '14:00:00')).toBe('avant 14h')
+    expect(libelleCreneauArret('08:15', null)).toBe('à partir de 8h15')
+    expect(libelleCreneauArret(null, null)).toBeNull()
   })
 })

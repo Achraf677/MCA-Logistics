@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare, AlertTriangle, Info, User, X } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare, AlertTriangle, Info, User, X, Zap } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { BoutonIcone, PanneauReglages } from '../../shared/ui/BoutonIcone'
@@ -38,7 +38,7 @@ import { EtapeTerrain } from './EtapeTerrain'
 import {
   bornesPeriode, decalerPeriode, libellePeriode, grouperParJour,
   prochainArret, progression, etatHoraire, libelleHeure, filtrerMesCourses,
-  type ModePeriode,
+  type ModePeriode, libelleCreneauArret,
 } from './mescourses.logic'
 import type { CourseChauffeur, DocumentCourse, TourneeChauffeur } from './mescourses.types'
 
@@ -684,6 +684,9 @@ function CarteArret({
   const heure = !estRetrait ? libelleHeure(c.arrival_time) : null
   const horaire = !estRetrait && !arret.fait ? etatHoraire(c.date, c.arrival_time, maintenant) : null
   const probleme = aProblemeOuvert(c)
+  const creneau = estRetrait
+    ? libelleCreneauArret(c.creneau_retrait_debut, c.creneau_retrait_fin)
+    : libelleCreneauArret(c.creneau_livraison_debut, c.creneau_livraison_fin)
   const [messagesOuverts, setMessagesOuverts] = useState(false)
 
   /**
@@ -788,6 +791,18 @@ function CarteArret({
           <Clock size={14} /> Prévu à {heure}
           {horaire === 'retard' && ' · en retard'}
           {horaire === 'bientot' && ' · dans moins d’une heure'}
+        </p>
+      )}
+
+      {/* CRÉNEAU demandé par le client pour CET arrêt, et l'urgence. */}
+      {!arret.fait && (creneau || c.urgent) && (
+        <p className="inline-flex flex-wrap items-center gap-1.5 text-sm font-medium text-[var(--text)]">
+          {c.urgent && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-pill)] bg-[var(--danger)]/15 text-[var(--danger)] text-xs">
+              <Zap size={12} /> Urgent
+            </span>
+          )}
+          {creneau && <><Clock size={14} /> Créneau {creneau}</>}
         </p>
       )}
 

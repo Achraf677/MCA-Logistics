@@ -184,3 +184,19 @@ export function filtrerMesCourses<T extends { driver_id: string | null }>(
 ): T[] {
   return monId ? courses.filter(c => c.driver_id === monId) : []
 }
+
+/**
+ * Créneau d'un arrêt, saisi au bureau : « 9h – 12h », « avant 14h30 »,
+ * « à partir de 8h » ; null si aucun.
+ */
+export function libelleCreneauArret(debut: string | null | undefined, fin: string | null | undefined): string | null {
+  const h = (t: string | null | undefined) => {
+    const m = /^(\d{1,2}):(\d{2})/.exec(t ?? '')
+    return m ? `${Number(m[1])}h${m[2] === '00' ? '' : m[2]}` : null
+  }
+  const d = h(debut), f = h(fin)
+  if (d && f) return `${d} – ${f}`
+  if (f) return `avant ${f}`
+  if (d) return `à partir de ${d}`
+  return null
+}

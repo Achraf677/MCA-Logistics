@@ -29,6 +29,8 @@ export interface CourseAFacturer {
   date: string | null;
   type: string | null;
   description: string | null;
+  /** Référence du donneur d'ordre (ODT, n° de commande) — reprise dans le libellé. */
+  reference_client?: string | null;
   amount_ht_cts: number | null;
   tva_cts: number | null;
   tva_rate: number | string | null;
@@ -75,10 +77,14 @@ export function tauxLignePrincipale(
 }
 
 /** Libellé réel de la ligne principale (hors mention d'autoliquidation). */
-export function libelleCourse(d: Pick<CourseAFacturer, 'description' | 'type' | 'date'>): string {
+export function libelleCourse(
+  d: Pick<CourseAFacturer, 'description' | 'type' | 'date'> & { reference_client?: string | null },
+): string {
   const desc = d.description?.trim();
-  if (desc) return desc;
-  return ['Livraison', d.type ?? '', 'du', d.date ?? ''].filter((s) => s !== '').join(' ');
+  const base = desc || ['Livraison', d.type ?? '', 'du', d.date ?? ''].filter((s) => s !== '').join(' ');
+  // La référence du client sur la facture : c'est elle qu'il rapproche.
+  const ref = d.reference_client?.trim();
+  return ref && !base.includes(ref) ? `${base} — Réf. ${ref}` : base;
 }
 
 function jourFr(iso: string | null): string {
