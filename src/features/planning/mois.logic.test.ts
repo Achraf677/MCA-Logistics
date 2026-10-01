@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   grilleDuMois, villeDepuisAdresse, coursesParJour, tronquer, construireEcheances,
   echeancesParJour, statutLePlusGrave, joursAvecContenu, estSurLaRoute,
-} from './calendrier.logic'
-import type { CourseSource, VehiculeEcheanceSource, MembreEcheanceSource } from './calendrier.logic'
+} from './mois.logic'
+import type { CourseSource, VehiculeEcheanceSource, MembreEcheanceSource } from './mois.logic'
 
 const course = (p: Partial<CourseSource> & { id: string }): CourseSource => ({
   date: '2026-10-14', driver_id: 'd1', delivery_address: '1 rue X, 67000 Strasbourg',

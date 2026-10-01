@@ -1,4 +1,4 @@
-# 04 — Section Planning (Tournées · Planning · Calendrier)
+# 04 — Section Planning (Tournées · Planning)
 
 > Revue du 01/10/2026, établie à partir du code ; à compléter avec les captures (PC + mobile).
 > Fait foi pour la section ; à mettre à jour à chaque PR qui la touche.
@@ -6,13 +6,15 @@
 ## 1. Rôle
 - Organiser le travail des jours à venir : qui roule, avec quel véhicule, quelles courses, dans
   quel ordre. C'est l'écran du gestionnaire d'exploitation (le chauffeur, lui, a Mes courses).
-- 3 sous-onglets (`src/app/sections/PlanningSection.tsx`, route `/planning-hub`) :
+- 2 sous-onglets (`src/app/sections/PlanningSection.tsx`, route `/planning-hub`) — le Calendrier
+  a été fondu dans le Planning (vue « Mois ») le 01/10/2026 :
   - **Tournées** (`features/tournees`) : composer et optimiser la tournée d'un jour, par véhicule ;
-  - **Planning** (`features/planning`) : la semaine, une colonne par jour ;
-  - **Calendrier** (`features/calendrier`) : le mois, une case par jour.
+  - **Planning** (`features/planning`) : 3 vues — Par chauffeur (semaine), Par jour (semaine),
+    Mois (ex-Calendrier : courses + échéances flotte / équipe). Une seule navigation de dates.
 
 ## 2. Qui voit quoi
-- Droits `planning.tournees` / `planning.planning` / `planning.calendrier` (onglet masqué sinon).
+- Droits `planning.tournees` / `planning.planning` (onglet masqué sinon). Le droit
+  `planning.calendrier` est retiré (personne ne l'avait, vérifié en base le 01/10/2026).
 - Données sous RLS `deliveries` / `tours` : président et DG voient tout ; un chauffeur ne devrait
   pas venir ici (il a Mes courses).
 
@@ -31,14 +33,14 @@
 - Semaine précédente / suivante / Aujourd'hui ; compteur « N livraisons cette semaine ».
 - PC : 7 colonnes ; chaque course = badge statut, client, chauffeur, montant HT.
 - Mobile : liste par jour. Clic = fiche livraison. Bouton « Nouvelle livraison ».
-### Calendrier (mois)
+### Planning — vue Mois (ex-Calendrier)
 - Mois précédent / suivant ; une case par jour avec les noms de clients ; clic = fiche.
 
 ## 4. Gestes et écritures
 - Tournées : crée / met à jour `tours` (véhicule, chauffeur, ordre, tracé, km, durée,
   statut) ; écrit `deliveries.tour_id`, `stop_order`, `arrival_time` ; livrer écrit `statut`,
   `delivered_at`, lève `probleme_le` ; Edge `optimize-tour(s)`, `geocode`.
-- Planning / Calendrier : lecture seule ; écriture uniquement via la fiche livraison.
+- Planning : écrit `driver_id`, `date` (glisser-déposer, action groupée) ; le reste via la fiche.
 
 ## 5. Données lues
 - `deliveries` (filtre « sur la route » : ni relevé de messagerie ni forfait), `tours`,
@@ -46,8 +48,8 @@
 
 ## 6. Fichiers
 - `features/tournees/{Tournees,TourCard,ToursOverviewMap}.tsx`, `tournees.{logic,queries,types}.ts`
-- `features/planning/{Planning.tsx,planning.queries.ts}` (pas de logic / types : à créer)
-- `features/calendrier/Calendrier.tsx` (lit via `livraisons.queries#getDeliveries`)
+- `features/planning/{Planning,VueMois}.tsx`, `planning.{logic,queries,types}.ts`, `mois.logic.ts`
+  (vue Mois : courses via `livraisons.queries#getDeliveries`, échéances via `getSourcesEcheances`)
 
 ## 7. Critique (gestionnaire d'exploitation)
 ### Ce qui est bien
@@ -109,7 +111,12 @@
 - ✔ P4 : Calendrier mois avec pastilles (nb courses, urgentes, sans chauffeur), échéances
   flotte / équipe (CT, assurance, révision, entretiens, permis, visite médicale), filtres
   Tout / Courses / Échéances, tiroir du jour. `calendrier.logic.ts` + 17 tests.
-- Reste : absences / indisponibilités (pas de table), `tours.started_at` (migration).
+- ✔ Regroupement : Calendrier fondu dans le Planning (vue « Mois », `VueMois.tsx`,
+  `mois.logic.ts`, `getSourcesEcheances` dans `planning.queries`) ; échéances (CT, permis…)
+  aussi en pastille sur les en-têtes de jour de la semaine ; mobile : « Semaine | Mois ».
+  Anciens liens `/calendrier` et `?tab=calendrier` → `?tab=planning&vue=mois`.
+- Reste : absences / indisponibilités (pas de table), `tours.started_at` (migration) ;
+  le bandeau « À traiter » et l'affectation rapide restent propres aux vues semaine.
 
 ## 9. À tester (après chaque lot)
 - Semaine avec courses express, relevé de messagerie (absent), forfait (absent).

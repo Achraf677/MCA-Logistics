@@ -122,7 +122,7 @@ export function Dashboard() {
           <section className={carteCls}>
             <EnteteCarte icone={<CalendarDays size={14} />} titre="Aujourd'hui"
               droite={(
-                <button onClick={() => navigate('/calendrier')}
+                <button onClick={() => navigate('/planning-hub?tab=planning')}
                   className="inline-flex items-center gap-0.5 text-xs text-[var(--text-muted)] hover:text-[var(--text)]">
                   Planning <ChevronRight size={13} />
                 </button>

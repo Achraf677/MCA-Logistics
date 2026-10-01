@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **01/10/2026** (Planning : lots P1-P4).
+> Dernière mise à jour : **01/10/2026** (Calendrier fondu dans le Planning).
 
 ---
 
@@ -79,7 +79,7 @@ supabase/
 └── functions/  Edge Deno ; code commun dans _shared/
 ```
 - **Aucun nouvel import entre `features/`.** Exceptions EXISTANTES, connues, à ne pas étendre :
-  `assistant` (hub IA, lit tout), `planning` / `calendrier` / `tournees` / `dashboard` → `livraisons`
+  `assistant` (hub IA, lit tout), `planning` / `tournees` / `dashboard` → `livraisons`
   (drawer + types), `livraisons` → `parametres`. Besoin partagé → `shared/lib/`.
 - Calculs métier dans `*.logic.ts` UNIQUEMENT (fonctions pures, testées). DB dans `*.queries.ts`.
 - **Tout appel API externe via une Edge Function.** Jamais depuis le navigateur.
@@ -172,14 +172,14 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 ## 11. État actuel (01/10/2026)
 - 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis,
   Modèles, Lettres de voiture) · **Finance** (Trésorerie, Charges, Encaissement, TVA, Relances) ·
-  **Flotte** (Véhicules, Carburant, Entretiens, Inspections, Incidents) · **Planning** (Tournées, Planning, Calendrier) · **Tiers**
+  **Flotte** (Véhicules, Carburant, Entretiens, Inspections, Incidents) · **Planning** (Tournées, Planning : vues par chauffeur / par jour / mois — l'ancien Calendrier y est fondu) · **Tiers**
   (Clients, Fournisseurs, Devis) · **Équipe** (Équipe, Heures) · **Système** (Paramètres, Admins,
   Modèles). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
   Les specs `mca-spec/tabs/` n'en couvrent qu'une partie : vérifier le code.
 - Revue onglet par onglet (méthode § 13) : 01 Mes courses ✔ · 02 Dashboard ✔ · 03 Livraisons ✔
   (liste, facturation, lettre de voiture, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie)
   · 04 Planning ✔ (lots P1-P4 : vue par chauffeur, affectation rapide, tournées en retard,
-  calendrier enrichi).
+  calendrier enrichi, puis fondu dans le Planning en vue « Mois »).
 - Fiche livraison : prestation, client avec recherche, référence client (reprise sur la facture),
   urgent, arrêts complets (contact, téléphone, créneaux), trajet auto (IGN), marchandise
   (colis, poids, volume), consignes / note interne, Dupliquer, 3 onglets (Course · Preuves &

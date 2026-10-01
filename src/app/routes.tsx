@@ -89,7 +89,7 @@ export function AppRoutes() {
       <Route path="/planning-hub"  element={guard(features.planningHub,  <PlanningSection />)} />
       <Route path="/tournees"      element={<Navigate to="/planning-hub?tab=tournees"   replace />} />
       <Route path="/planning"      element={<Navigate to="/planning-hub?tab=planning"   replace />} />
-      <Route path="/calendrier"    element={<Navigate to="/planning-hub?tab=calendrier" replace />} />
+      <Route path="/calendrier"    element={<Navigate to="/planning-hub?tab=planning&vue=mois" replace />} />
       {/* Domaine Flotte à sous-onglets ; anciennes routes → redirection (liens préservés) */}
       <Route path="/flotte"        element={guard(features.flotte,       <FlotteSection />)} />
       <Route path="/vehicules"  element={<VersOnglet section="/flotte" tab="vehicules" />} />
