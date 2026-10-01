@@ -62,6 +62,8 @@ interface Props {
   onSaved: () => void
   /** Onglet pré-sélectionné à l'ouverture (ex 'lv' depuis la liste Bons de livraison). Défaut 'detail'. */
   initialTab?: TabDemande
+  /** Nouvelle course : date pré-remplie (AAAA-MM-JJ, ex. jour cliqué dans le Calendrier). Défaut : aujourd'hui. */
+  dateInitiale?: string
 }
 
 interface ClientLookup extends ClientTariff {
@@ -238,7 +240,7 @@ function formDepuis(d: DeliveryRow): Form {
 
 // ── Composant ─────────────────────────────────────────────────────────────────
 
-export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved, initialTab = 'detail' }: Props) {
+export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved, initialTab = 'detail', dateInitiale }: Props) {
   const { companyId } = useProfile()
   const { toast }     = useToast()
 
@@ -419,7 +421,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       setDeliveryCoords({ lat: deliveryProp.delivery_lat ?? null, lng: deliveryProp.delivery_lng ?? null })
       setExtraLines(Array.isArray(deliveryProp.extra_lines) ? deliveryProp.extra_lines : [])
     } else {
-      const f = { ...EMPTY_FORM, date: aujourdhui() }
+      const f = { ...EMPTY_FORM, date: dateInitiale || aujourdhui() }
       setForm(f)
       formInitial.current = f
       setInstantane(f)
@@ -441,7 +443,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       setTab(demande)
       setSousPreuve('pod')
     }
-  }, [deliveryProp, open, initialTab])
+  }, [deliveryProp, open, initialTab, dateInitiale])
 
   const set = (k: keyof Form, v: string) => setForm(p => ({ ...p, [k]: v }))
 
