@@ -26,12 +26,16 @@ export async function getMesCourses(debut: string, fin: string) {
       'pickup_order', 'expediteur_tel', 'destinataire_tel',
       'notes', 'arrival_time', 'nb_colis', 'driver_id',
       'probleme_motif', 'probleme_note', 'probleme_le',
+      'urgent', 'reference_client',
+      'creneau_retrait_debut', 'creneau_retrait_fin', 'creneau_livraison_debut', 'creneau_livraison_fin',
       'clients!client_id(name, phone)',
       'team_members!driver_id(full_name)',
       'vehicles!vehicle_id(label, plate)',
     ].join(', '))
     .gte('date', debut)
     .lte('date', fin)
+    // Relevés de messagerie et forfaits : rien à faire sur la route.
+    .or('prestation.is.null,prestation.not.in.(messagerie,forfait)')
     .order('date', { ascending: true })
     // `stop_order` d'abord : c'est l'ordre que le chauffeur a impose lui-meme.
     // `nullsFirst: false` place les courses jamais ordonnees APRES celles qui

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { Trash2, Loader2, Camera, Plus, X, Mail } from 'lucide-react'
+import { Trash2, Loader2, Camera, Plus, X, Mail, Copy, RefreshCw, Search, Zap, AlertTriangle, MapPin } from 'lucide-react'
 import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { LettreVoitureTab } from './LettreVoitureTab'
 import { ApercuFacture } from './ApercuFacture'
@@ -11,6 +11,7 @@ import type { DocumentRow } from '../../shared/lib/documents.types'
 import { Drawer }      from '../../shared/ui/Drawer'
 import { Button }      from '../../shared/ui/Button'
 import { Badge }       from '../../shared/ui/Badge'
+import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
 import { ContactLinks } from '../../shared/ui/ContactLinks'
@@ -20,14 +21,17 @@ import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney, addTva, centimesToEuros } from '../../shared/lib/money'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import {
-  STATUS_LABELS, STATUS_COLORS, TYPE_LABELS,
+  STATUS_LABELS, STATUS_COLORS,
   TRANSITION_ACTION_LABELS, libelleDelaiPaiement,
   allowedNextStatuses,
   computeAmount,
   effectiveHtCts, effectiveTtcCts,
   tauxTvaInitial, montantsAEcrire, recapMontant, estFacturationBloquee,
+  isoLocal, trajet, PRESTATIONS, PRESTATION_LABELS, PRESTATION_AIDES, blocsPrestation,
+  heureSaisie, libelleCreneau, libelleDuree, manquesFiche,
+  moisDe, finDeMois, libelleMois, resumeMessagerie,
 } from './livraisons.logic'
-import type { ClientTariff } from './livraisons.logic'
+import type { ClientTariff, Prestation } from './livraisons.logic'
 import {
   createDelivery, updateDelivery, transitionDelivery, deleteDelivery,
   getActiveClients, getActiveVehicles, getActiveDrivers, savePod,
@@ -35,11 +39,18 @@ import {
   getClientLookup, revenirALivree,
 } from './livraisons.queries'
 import type { DeliveryTemplateLite } from './livraisons.queries'
-import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus, DeliveryType } from './livraisons.types'
+import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
 
-type Tab = 'detail' | 'montant' | 'documents' | 'pod' | 'lv'
+/**
+ * 3 onglets en modification : la course (tout ce qui se saisit, prix compris),
+ * les preuves (photo, lettre de voiture, fichiers) et la facturation (suivi).
+ * Les anciennes clés ('documents', 'pod', 'lv') restent acceptées en entrée.
+ */
+type Tab = 'detail' | 'preuves' | 'montant'
+type SousPreuve = 'pod' | 'lv' | 'fichiers'
+type TabDemande = Tab | 'documents' | 'pod' | 'lv'
 
 interface Props {
   open: boolean
@@ -47,7 +58,7 @@ interface Props {
   delivery?: DeliveryRow | null
   onSaved: () => void
   /** Onglet pré-sélectionné à l'ouverture (ex 'lv' depuis la liste Bons de livraison). Défaut 'detail'. */
-  initialTab?: Tab
+  initialTab?: TabDemande
 }
 
 interface ClientLookup extends ClientTariff {
@@ -67,18 +78,38 @@ interface Lookup { id: string; label: string }
 
 // ── Formulaire ────────────────────────────────────────────────────────────────
 
-const TODAY = new Date().toISOString().slice(0, 10)
+/** Aujourd'hui en date LOCALE (l'UTC donnait la veille avant 2 h du matin). */
+const aujourdhui = () => isoLocal(new Date())
 
 const EMPTY_FORM = {
-  date:             TODAY,
+  date:             '',
+  prestation:       'express' as Prestation | '',
+  reference_client: '',
+  urgent:           '',
   client_id:        '',
   vehicle_id:       '',
   driver_id:        '',
-  type:             '',
   description:      '',
   pickup_address:   '',
   delivery_address: '',
+  // Arrêts : qui remet / qui reçoit (colonnes de la lettre de voiture).
+  expediteur_nom:   '',
+  expediteur_tel:   '',
+  destinataire_nom: '',
+  destinataire_tel: '',
+  creneau_retrait_debut:   '',
+  creneau_retrait_fin:     '',
+  creneau_livraison_debut: '',
+  creneau_livraison_fin:   '',
+  /** Messagerie : prix HT d'UN colis, en euros (pré-rempli par le tarif client). */
+  prix_colis:       '',
+  // Marchandise
+  marchandise_desc: '',
+  nb_colis:         '',
+  poids_kg_reel:    '',
+  volume_m3:        '',
   km:               '',
+  duree_min:        '',
   empty_km:         '',
   pallets:          '',
   manual_ht:        '',   // HT en euros (mode manuel)
@@ -90,7 +121,27 @@ const EMPTY_FORM = {
    * sont tous des chaînes.
    */
   autoliquidation:  '',
+  /** Consignes CHAUFFEUR (colonne `notes`, affichée dans Mes courses). */
   notes:            '',
+  /** Note du bureau, jamais montrée au chauffeur. */
+  note_interne:     '',
+}
+type Form = typeof EMPTY_FORM
+
+/**
+ * Champs que l'onglet « Lettre de voiture » écrit AUSSI, de son côté. Ils ne
+ * sont renvoyés à l'enregistrement de la fiche que s'ils ont été modifiés ici :
+ * sinon une saisie faite dans la LV serait écrasée par la valeur chargée à
+ * l'ouverture.
+ */
+const CHAMPS_PARTAGES_LV = [
+  'expediteur_nom', 'expediteur_tel', 'destinataire_nom', 'destinataire_tel',
+  'marchandise_desc', 'nb_colis', 'poids_kg_reel',
+] as const
+
+const nombreOuNull = (s: string) => {
+  const n = parseFloat(s.replace(',', '.'))
+  return s.trim() && Number.isFinite(n) ? n : null
 }
 
 /** Ligne `clients` → entrée du sélecteur (actif ou non). */
@@ -112,21 +163,74 @@ function versClientLookup(c: {
   }
 }
 
+/** Formulaire d'une course existante. */
+function formDepuis(d: DeliveryRow): Form {
+  const derivedHt = effectiveHtCts(d)
+  const s = (v: string | number | null | undefined) => v == null ? '' : String(v)
+  return {
+    date:             d.date,
+    prestation:       d.prestation ?? 'express',
+    reference_client: s(d.reference_client),
+    urgent:           d.urgent ? '1' : '',
+    client_id:        d.client_id,
+    vehicle_id:       s(d.vehicle_id),
+    driver_id:        s(d.driver_id),
+    description:      s(d.description),
+    pickup_address:   s(d.pickup_address),
+    delivery_address: s(d.delivery_address),
+    expediteur_nom:   s(d.expediteur_nom),
+    expediteur_tel:   s(d.expediteur_tel),
+    destinataire_nom: s(d.destinataire_nom),
+    destinataire_tel: s(d.destinataire_tel),
+    creneau_retrait_debut:   heureSaisie(d.creneau_retrait_debut),
+    creneau_retrait_fin:     heureSaisie(d.creneau_retrait_fin),
+    creneau_livraison_debut: heureSaisie(d.creneau_livraison_debut),
+    creneau_livraison_fin:   heureSaisie(d.creneau_livraison_fin),
+    prix_colis:       d.prix_unitaire_cts != null ? (d.prix_unitaire_cts / 100).toFixed(2) : '',
+    marchandise_desc: s(d.marchandise_desc),
+    nb_colis:         s(d.nb_colis),
+    poids_kg_reel:    s(d.poids_kg_reel),
+    volume_m3:        s(d.volume_m3),
+    km:               s(d.km),
+    duree_min:        s(d.duree_min),
+    empty_km:         s(d.empty_km),
+    pallets:          s(d.weight_kg),
+    manual_ht:        derivedHt > 0 ? (derivedHt / 100).toFixed(2) : '',
+    tva_override:     d.tva_cts != null ? (d.tva_cts / 100).toFixed(2) : '',
+    // Taux STOCKÉ (5,5 reste 5,5) ; à défaut déduit au dixième ; à défaut 20.
+    tva_rate:         String(tauxTvaInitial(d)),
+    autoliquidation:  d.autoliquidation ? '1' : '',
+    notes:            s(d.notes),
+    note_interne:     s(d.note_interne),
+  }
+}
+
 // ── Composant ─────────────────────────────────────────────────────────────────
 
-export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab = 'detail' }: Props) {
+export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved, initialTab = 'detail' }: Props) {
   const { companyId } = useProfile()
   const { toast }     = useToast()
-  const isEdit        = !!delivery
+
+  /**
+   * « Dupliquer » : la fiche repasse en CRÉATION, pré-remplie avec la course
+   * ouverte (date du jour, aucun statut, aucune preuve). `delivery` vaut alors
+   * null dans tout le composant.
+   */
+  const [copie, setCopie] = useState(false)
+  const delivery = copie ? null : deliveryProp
+  const isEdit   = !!delivery
 
   const [tab, setTab]           = useState<Tab>('detail')
-  const [form, setForm]         = useState(EMPTY_FORM)
+  const [sousPreuve, setSousPreuve] = useState<SousPreuve>('pod')
+  const [form, setForm]         = useState<Form>(EMPTY_FORM)
+  /** Valeurs à l'ouverture : seuls les champs partagés avec la LV modifiés ici sont réécrits. */
+  const formInitial = useRef<Form>(EMPTY_FORM)
   /** Course dont le formulaire porte les valeurs (id, ou 'nouvelle'). */
   const [formPour, setFormPour] = useState<string | null>(null)
   const [extraLines, setExtraLines] = useState<DeliveryExtraLine[]>([])
   const [tvaTouched, setTvaTouched] = useState(false)
   const [saving, setSaving]     = useState(false)
-  const [clientError, setClientError] = useState('')
+  const [tenteEnregistrer, setTenteEnregistrer] = useState(false)
   const [transitioning, setTransitioning] = useState<DeliveryStatus | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [confirmAnnuler, setConfirmAnnuler] = useState(false)
@@ -146,6 +250,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
 
   const [calcLoading, setCalcLoading] = useState(false)
   const [calcError, setCalcError]     = useState<string | null>(null)
+  /** Couple d'adresses dont le trajet est déjà calculé (pas de recalcul à l'ouverture). */
+  const trajetCle = useRef('')
 
   const [clients,  setClients]  = useState<ClientLookup[]>([])
   const [vehicles, setVehicles] = useState<Lookup[]>([])
@@ -165,7 +271,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
   // Client de la course courante : s'il est INACTIF, il n'est pas dans la
   // liste des actifs — sans lui, `computed` restait nul et l'enregistrement
   // effaçait les montants. On le charge à part et on l'ajoute à la liste.
-  const clientCourantId = delivery?.client_id ?? null
+  const clientCourantId = deliveryProp?.client_id ?? null
   useEffect(() => {
     if (!open) return
     let annule = false
@@ -211,7 +317,6 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
       client_id:        t.client_id ?? '',
       vehicle_id:       t.vehicle_id ?? '',
       driver_id:        t.driver_id ?? '',
-      type:             t.type ?? '',
       description:      t.description ?? '',
       pickup_address:   t.pickup_address ?? '',
       delivery_address: t.delivery_address ?? '',
@@ -246,7 +351,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
       delivery_address: form.delivery_address || null,
       amount_ht_cts:    form.manual_ht ? Math.round(parseFloat(form.manual_ht) * 100) : null,
       tva_rate,
-      type:             form.type || null,
+      type:             deliveryProp?.type ?? null,
       weight_kg:        form.pallets  ? Number(form.pallets)  : null,
       km:               form.km       ? Number(form.km)       : null,
       empty_km:         form.empty_km ? Number(form.empty_km) : null,
@@ -263,62 +368,108 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
   // ── Initialisation formulaire ─────────────────────────────────────────────────
 
   useEffect(() => {
-    if (delivery) {
-      const storedTvaCts = delivery.tva_cts ?? null
-      // TVA non « touchée » à l'ouverture : elle se recalcule dès que le HT ou
-      // le taux change. La valeur stockée est gardée tant que rien ne bouge
-      // (voir tvaAutoKey).
-      setTvaTouched(false)
-      tvaAutoKey.current = 'init'
-      // Taux STOCKÉ (5,5 reste 5,5) ; à défaut déduit au dixième ; à défaut 20.
-      const derivedHt = effectiveHtCts(delivery)
-      const derivedRate = tauxTvaInitial(delivery)
-      setForm({
-        date:             delivery.date,
-        client_id:        delivery.client_id,
-        vehicle_id:       delivery.vehicle_id ?? '',
-        driver_id:        delivery.driver_id ?? '',
-        type:             delivery.type ?? '',
-        description:      delivery.description ?? '',
-        pickup_address:   delivery.pickup_address ?? '',
-        delivery_address: delivery.delivery_address ?? '',
-        km:               delivery.km != null ? String(delivery.km) : '',
-        empty_km:         delivery.empty_km != null ? String(delivery.empty_km) : '',
-        pallets:          delivery.weight_kg != null ? String(delivery.weight_kg) : '',
-        manual_ht:        derivedHt > 0 ? (derivedHt / 100).toFixed(2) : '',
-        tva_override:     storedTvaCts != null ? (storedTvaCts / 100).toFixed(2) : '',
-        tva_rate:         String(derivedRate),
-        autoliquidation:  delivery.autoliquidation ? '1' : '',
-        notes:            delivery.notes ?? '',
-      })
-      setDeliveryCoords({ lat: delivery.delivery_lat ?? null, lng: delivery.delivery_lng ?? null })
-      setExtraLines(Array.isArray(delivery.extra_lines) ? delivery.extra_lines : [])
+    setCopie(false)
+    // TVA non « touchée » à l'ouverture : elle se recalcule dès que le HT ou
+    // le taux change. La valeur stockée est gardée tant que rien ne bouge
+    // (voir tvaAutoKey).
+    setTvaTouched(false)
+    tvaAutoKey.current = 'init'
+    setTenteEnregistrer(false)
+    if (deliveryProp) {
+      const f = formDepuis(deliveryProp)
+      setForm(f)
+      formInitial.current = f
+      trajetCle.current = `${f.pickup_address.trim()}|${f.delivery_address.trim()}`
+      setDeliveryCoords({ lat: deliveryProp.delivery_lat ?? null, lng: deliveryProp.delivery_lng ?? null })
+      setExtraLines(Array.isArray(deliveryProp.extra_lines) ? deliveryProp.extra_lines : [])
     } else {
-      setTvaTouched(false)
-      tvaAutoKey.current = 'init'
-      setForm({ ...EMPTY_FORM, date: TODAY })
+      const f = { ...EMPTY_FORM, date: aujourdhui() }
+      setForm(f)
+      formInitial.current = f
+      trajetCle.current = '|'
       setDeliveryCoords({ lat: null, lng: null })
       setExtraLines([])
     }
+    setCalcError(null)
     // Même lot de rendu que setForm : le recalcul auto de la TVA sait ainsi
     // si le formulaire affiché est déjà celui de CETTE course.
-    setFormPour(delivery?.id ?? 'nouvelle')
+    setFormPour(deliveryProp?.id ?? 'nouvelle')
     setSaveAsTplOpen(false)
     setTplLabel('')
-    setTab(initialTab)
-  }, [delivery, open, initialTab])
+    const demande: TabDemande = initialTab
+    if (demande === 'lv' || demande === 'pod' || demande === 'documents') {
+      setTab('preuves')
+      setSousPreuve(demande === 'documents' ? 'fichiers' : demande)
+    } else {
+      setTab(demande)
+      setSousPreuve('pod')
+    }
+  }, [deliveryProp, open, initialTab])
 
-  const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
+  const set = (k: keyof Form, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  /**
+   * Relevé de messagerie : le mois à saisir. Avant le 10, c'est en général le
+   * mois PRÉCÉDENT qu'on relève (colis livrés le mois dernier).
+   */
+  const moisParDefaut = () => {
+    const d = new Date()
+    if (d.getDate() <= 10) d.setMonth(d.getMonth() - 1, 1)
+    return isoLocal(d).slice(0, 7)
+  }
+
+  /**
+   * Choisir la prestation. Messagerie : la date devient la fin du mois relevé
+   * et le prix au colis vient du tarif du client (saisi une seule fois, dans
+   * la fiche client).
+   */
+  const choisirPrestation = (p: Prestation, clientId = form.client_id) => {
+    const client = clients.find(c => c.id === clientId)
+    setForm(f => {
+      const suite = { ...f, prestation: p, client_id: clientId }
+      if (p === 'messagerie') {
+        suite.date = finDeMois(isEdit ? moisDe(f.date) : moisParDefaut())
+        if (!f.prix_colis && client?.tariff_mode === 'colis' && client.tariff_rate_cts != null) {
+          suite.prix_colis = (client.tariff_rate_cts / 100).toFixed(2)
+        }
+      } else if (f.prestation === 'messagerie' && !isEdit) {
+        suite.date = aujourdhui()
+      }
+      return suite
+    })
+  }
+
+  /** Choisir le client : un client « au colis » fait passer une nouvelle fiche en messagerie. */
+  const choisirClient = (id: string) => {
+    const client = clients.find(c => c.id === id)
+    if (!isEdit && client?.tariff_mode === 'colis') { choisirPrestation('messagerie', id); return }
+    setForm(f => ({
+      ...f,
+      client_id: id,
+      prix_colis: f.prestation === 'messagerie' && client?.tariff_mode === 'colis' && client.tariff_rate_cts != null
+        ? (client.tariff_rate_cts / 100).toFixed(2) : f.prix_colis,
+    }))
+  }
+
+  /** Copie de la course ouverte → nouvelle course (date du jour, sans preuve ni statut). */
+  const dupliquer = () => {
+    setCopie(true)
+    setForm(p => ({ ...p, date: aujourdhui(), reference_client: '' }))
+    formInitial.current = EMPTY_FORM
+    setFormPour('nouvelle')
+    tvaAutoKey.current = 'init'
+    setTab('detail')
+    toast('Copie prête : vérifiez la date puis enregistrez')
+  }
 
   // ── Calcul trajet IGN ─────────────────────────────────────────────────────────
 
-  const handleCalcTrajet = async () => {
-    const depart  = form.pickup_address.trim()
-    const arrivee = form.delivery_address.trim()
+  const calculerTrajet = async (depart: string, arrivee: string, silencieux: boolean) => {
     if (!depart || !arrivee) {
-      setCalcError("Renseignez l'adresse d'enlèvement et l'adresse de livraison avant de calculer.")
+      if (!silencieux) setCalcError("Renseignez l'adresse de retrait et l'adresse de livraison avant de calculer.")
       return
     }
+    trajetCle.current = `${depart}|${arrivee}`
     setCalcLoading(true)
     setCalcError(null)
     const { data, error } = await supabase.functions.invoke('route-calc', {
@@ -329,8 +480,27 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
       setCalcError(data?.error ?? error?.message ?? 'Erreur lors du calcul du trajet.')
       return
     }
-    set('km', String(Math.round(data.data.distance_km as number)))
+    setForm(p => ({
+      ...p,
+      km: String(Math.round(data.data.distance_km as number)),
+      duree_min: data.data.duree_min != null ? String(data.data.duree_min) : '',
+    }))
   }
+
+  // Trajet AUTOMATIQUE : dès que les deux adresses sont connues ou changent
+  // (avec un délai, pour ne pas appeler l'IGN à chaque frappe). Rien à
+  // l'ouverture d'une course existante : la clé est déjà celle de ses adresses.
+  const blocs = blocsPrestation(form.prestation || null)
+  const isDetailReadOnly = isEdit && ['facturee', 'payee', 'annulee'].includes(delivery?.statut ?? '')
+  useEffect(() => {
+    if (!open || isDetailReadOnly || !blocs.retrait) return
+    const depart = form.pickup_address.trim()
+    const arrivee = form.delivery_address.trim()
+    if (depart.length < 8 || arrivee.length < 8) return
+    if (`${depart}|${arrivee}` === trajetCle.current) return
+    const t = setTimeout(() => { calculerTrajet(depart, arrivee, true) }, 1200)
+    return () => clearTimeout(t)
+  }, [open, form.pickup_address, form.delivery_address, isDetailReadOnly, blocs.retrait])
 
   // ── Client sélectionné ────────────────────────────────────────────────────────
 
@@ -341,11 +511,21 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
 
   // ── Calcul du montant ─────────────────────────────────────────────────────────
 
+  const prixColisCts = nombreOuNull(form.prix_colis) != null ? Math.round(nombreOuNull(form.prix_colis)! * 100) : null
+  const nbColis = nombreOuNull(form.nb_colis) != null ? Math.round(nombreOuNull(form.nb_colis)!) : null
   const computed = useMemo(() => {
     if (!selectedClient) return null
     const rate = parseFloat(form.tva_rate || '20') / 100
+    const tvaSaisie = form.tva_override !== '' && Number.isFinite(parseFloat(form.tva_override))
+      ? Math.round(parseFloat(form.tva_override) * 100) : null
+    // Relevé de messagerie : HT = colis × prix au colis, quel que soit le tarif du client.
+    if (blocs.releve) {
+      return computeAmount({ tariff_mode: 'colis', tariff_rate_cts: prixColisCts },
+        { colis: nbColis, manual_tva_cts: tvaSaisie }, rate)
+    }
+    // Client « au colis » sur une course hors relevé : prix saisi à la main.
     return computeAmount(
-      selectedClient,
+      selectedClient.tariff_mode === 'colis' ? { tariff_mode: 'manuel', tariff_rate_cts: null } : selectedClient,
       {
         distance_km:   form.km      ? parseFloat(form.km)      : null,
         pallets:       form.pallets ? parseFloat(form.pallets) : null,
@@ -358,7 +538,7 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
       },
       rate,
     )
-  }, [selectedClient, form.km, form.pallets, form.manual_ht, form.tva_override, form.tva_rate])
+  }, [selectedClient, form.km, form.pallets, form.manual_ht, form.tva_override, form.tva_rate, blocs.releve, prixColisCts, nbColis])
 
   // Recalcule le champ TVA quand le HT ou le taux changent, sauf si
   // l'utilisateur a saisi la TVA à la main dans cette session. Le premier
@@ -386,49 +566,32 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
     }
   }, [htCourantCts, form.tva_rate, form.tva_override, tvaTouched, selectedClient, isEdit, formPour, delivery?.id])
 
+  // ── Ce qui manque, étape par étape ───────────────────────────────────────────
+
+  const manques = useMemo(() => manquesFiche({
+    ...form,
+    prestation: form.prestation || 'express',
+    ht_cts: computed?.amount_ht_cts ?? (delivery ? effectiveHtCts(delivery) : null),
+  }), [form, computed, delivery])
+
   // ── Permissions ───────────────────────────────────────────────────────────────
 
-  const lockedStatuses: string[] = ['facturee', 'payee', 'annulee']
-  const isDetailReadOnly  = isEdit && lockedStatuses.includes(delivery?.statut ?? '')
-  const isMontantReadOnly = isEdit && lockedStatuses.includes(delivery?.statut ?? '')
+  const isMontantReadOnly = isDetailReadOnly
 
-  const tabs: { key: Tab; label: string }[] = isEdit
-    ? [
-        { key: 'detail',    label: 'Détail' },
-        { key: 'montant',   label: 'Montant & Suivi' },
-        { key: 'documents', label: 'Documents' },
-        { key: 'pod',       label: 'POD' },
-        { key: 'lv',        label: 'Lettre de voiture' },
-      ]
-    : [{ key: 'detail', label: 'Détail' }, { key: 'montant', label: 'Montant' }]
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'detail',  label: 'Course' },
+    { key: 'preuves', label: 'Preuves & documents' },
+    { key: 'montant', label: 'Facturation' },
+  ]
 
   // ── Handlers ──────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
-    if (!form.client_id) {
-      setClientError('Le client est requis')
-      toast('Le client est requis', 'error')
+    setTenteEnregistrer(true)
+    if (manques.enregistrer.length > 0) {
+      toast(`À compléter : ${manques.enregistrer.join(', ')}`, 'error')
       return
     }
-    setClientError('')
-    if (!form.date)       { toast('La date est requise', 'error'); return }
-
-    // L'adresse de LIVRAISON est obligatoire, et elle ne l'etait pas.
-    //
-    // Une course sans destination n'est pas une course : le chauffeur ne peut
-    // aller nulle part, « Naviguer » n'a rien a viser, et le geocodage ne peut
-    // pas la placer sur la carte — donc les tournees l'ignorent aussi. Elle
-    // s'enregistrait pourtant sans un mot, et le manque ne se voyait qu'une
-    // fois sur le telephone, le jour de la livraison.
-    if (!form.delivery_address.trim()) {
-      toast("L'adresse de livraison est requise", 'error')
-      return
-    }
-
-    // L'adresse d'ENLEVEMENT, elle, reste facultative — et c'est delibere :
-    // une course peut partir du depot avec la marchandise deja chargee. Son
-    // absence est signalee sous le champ, pas ici : bloquer l'enregistrement
-    // casserait le cas legitime, et un toast disparaitrait avant d'etre lu.
 
     setSaving(true)
     try {
@@ -479,22 +642,43 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
         }
       }
 
+      // Champs partagés avec l'onglet Lettre de voiture : seulement s'ils ont
+      // bougé ici (voir CHAMPS_PARTAGES_LV).
+      const partages: Record<string, string | number | null> = {}
+      for (const k of CHAMPS_PARTAGES_LV) {
+        if (form[k] === formInitial.current[k]) continue
+        partages[k] = k === 'nb_colis' || k === 'poids_kg_reel'
+          ? (k === 'nb_colis' ? (nombreOuNull(form[k]) != null ? Math.round(nombreOuNull(form[k])!) : null) : nombreOuNull(form[k]))
+          : (form[k].trim() || null)
+      }
+
       // Seules les colonnes v2 sont écrites pour les montants.
       // montant_ht_cts (DEFAULT 0) et montant_ttc_cts (GENERATED) ne sont JAMAIS écrits.
       const payload = {
         date:             form.date,
+        prestation:       (form.prestation || 'express') as Prestation,
+        reference_client: form.reference_client.trim() || null,
+        urgent:           !!form.urgent,
         client_id:        form.client_id,
         vehicle_id:       form.vehicle_id  || null,
         driver_id:        form.driver_id   || null,
-        type:             (form.type || null) as DeliveryType | null,
-        description:      form.description || null,
-        pickup_address:   form.pickup_address   || null,
-        delivery_address: form.delivery_address || null,
-        delivery_lat,
-        delivery_lng,
-        km:               form.km       ? parseFloat(form.km)       : null,
-        empty_km:         form.empty_km ? parseFloat(form.empty_km) : null,
-        weight_kg:        form.pallets  ? parseFloat(form.pallets)  : null,
+        description:      form.description.trim() || null,
+        pickup_address:   blocs.retrait ? (form.pickup_address.trim() || null) : null,
+        delivery_address: blocs.livraison ? (form.delivery_address.trim() || null) : null,
+        delivery_lat:     blocs.livraison ? delivery_lat : null,
+        delivery_lng:     blocs.livraison ? delivery_lng : null,
+        creneau_retrait_debut:   blocs.retrait ? (form.creneau_retrait_debut || null) : null,
+        creneau_retrait_fin:     blocs.retrait ? (form.creneau_retrait_fin || null) : null,
+        creneau_livraison_debut: blocs.livraison ? (form.creneau_livraison_debut || null) : null,
+        creneau_livraison_fin:   blocs.livraison ? (form.creneau_livraison_fin || null) : null,
+        volume_m3:        nombreOuNull(form.volume_m3),
+        prix_unitaire_cts: blocs.releve ? prixColisCts : null,
+        ...(blocs.releve ? { nb_colis: nbColis } : {}),
+        km:               nombreOuNull(form.km),
+        duree_min:        nombreOuNull(form.duree_min) != null ? Math.round(nombreOuNull(form.duree_min)!) : null,
+        empty_km:         nombreOuNull(form.empty_km),
+        weight_kg:        nombreOuNull(form.pallets),
+        ...partages,
         // Montants : jamais effacés faute de calcul (client introuvable, tarif
         // incomplet). En AUTOLIQUIDATION : taux 0, TVA 0, TTC = HT — forcé ici
         // plutôt que de faire confiance à l'état du formulaire.
@@ -504,7 +688,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
           htExistantCts: delivery?.amount_ht_cts ?? null,
         }),
         autoliquidation:  !!form.autoliquidation,
-        notes:            form.notes || null,
+        notes:            form.notes.trim() || null,
+        note_interne:     form.note_interne.trim() || null,
         extra_lines:      cleanedExtras,
       }
 
@@ -518,14 +703,18 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
           amount_ht_cts:  null,
           tva_cts:        null,
           amount_ttc_cts: null,
+          type:           deliveryProp?.type ?? null,
           ...payload,
           company_id:  companyId,
-          statut:      'planifiee',
+          // Un relevé de messagerie constate des colis DÉJÀ livrés : il naît
+          // « Livrée », prêt à facturer, sans preuve unitaire attendue.
+          statut:      blocs.releve ? 'livree' : 'planifiee',
+          ...(blocs.releve ? { delivered_at: new Date().toISOString(), justif_non_requis: true } : {}),
           invoiced_at: null,
           paid_at:     null,
         })
         if (error) throw error
-        toast('Livraison créée')
+        toast(copie ? 'Copie créée' : 'Livraison créée')
       }
       onSaved()
       onClose()
@@ -582,8 +771,8 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
     if (to === 'facturee') {
       const ht = delivery.amount_ht_cts ?? 0
       if (ht <= 0) {
-        toast("Montant requis avant de facturer — saisissez le montant dans l'onglet Montant", 'error')
-        setTab('montant')
+        toast("Prix requis avant de facturer — saisissez-le dans l'onglet Course", 'error')
+        setTab('detail')
         return
       }
       // Dernier moment ou la preuve peut encore etre obtenue : apres, le client
@@ -655,298 +844,452 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
   // Une livraison facturée/payée exige une double vérification (case à cocher).
   const { can } = usePermissions()
   const canDelete = isEdit && can('livraisons.livraisons', 'delete')
+  const canSave = !isDetailReadOnly && can('livraisons.livraisons', isEdit ? 'update' : 'create')
   const isInvoicedLike = ['facturee', 'payee'].includes(delivery?.statut ?? '')
 
   // ── Render ────────────────────────────────────────────────────────────────────
 
   const drawerTitle = isEdit
     ? `Livraison — ${delivery!.clients?.name ?? '…'}`
-    : 'Nouvelle livraison'
+    : copie ? 'Nouvelle livraison (copie)' : 'Nouvelle livraison'
+
+  const htAffiche = computed?.amount_ht_cts ?? (delivery ? effectiveHtCts(delivery) : 0)
+  const chauffeurNom = drivers.find(d => d.id === form.driver_id)?.label ?? delivery?.team_members?.full_name ?? null
+  const ro = isDetailReadOnly
+  const prestation = (form.prestation || 'express') as Prestation
+  const trajetTxt = [
+    form.km ? `${form.km} km` : null,
+    libelleDuree(nombreOuNull(form.duree_min)),
+  ].filter(Boolean).join(' · ')
 
   return (
-    <Drawer open={open} onClose={onClose} title={drawerTitle} width="max-w-xl">
+    <Drawer open={open} onClose={onClose} title={drawerTitle} width="max-w-[min(80rem,100vw)]">
 
+      {/* Résumé de la course — ce qu'on veut lire sans ouvrir un onglet. */}
       {isEdit && (
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-4">
           <Badge color={STATUS_COLORS[delivery!.statut] ?? 'muted'}>
             {STATUS_LABELS[delivery!.statut] ?? delivery!.statut}
           </Badge>
-          {delivery!.type && (
-            <Badge color="muted">{TYPE_LABELS[delivery!.type] ?? delivery!.type}</Badge>
+          <Badge color="muted">{PRESTATION_LABELS[prestation]}</Badge>
+          {delivery!.urgent && <Badge color="danger">Urgent</Badge>}
+          <span className="text-sm text-[var(--text)]">
+            {blocs.releve
+              ? `${libelleMois(delivery!.date)} · ${resumeMessagerie(delivery!.nb_colis, delivery!.prix_unitaire_cts) ?? ''}`
+              : trajet(delivery!.pickup_address, delivery!.delivery_address).court}
+          </span>
+          {delivery!.reference_client && (
+            <span className="text-xs text-[var(--text-muted)]">Réf. {delivery!.reference_client}</span>
           )}
-          <span className="ml-auto font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
-            {new Date(delivery!.date).toLocaleDateString('fr-FR')}
+          {chauffeurNom && <span className="text-xs text-[var(--text-muted)]">{chauffeurNom}</span>}
+          <span className="ml-auto flex items-center gap-3">
+            {htAffiche > 0 && <span className="font-mono text-sm text-[var(--text)]">{formatMoney(htAffiche)} HT</span>}
+            <span className="font-mono text-xs text-[var(--text-muted)]">
+              {new Date(`${delivery!.date}T00:00:00`).toLocaleDateString('fr-FR')}
+            </span>
           </span>
         </div>
       )}
 
-      <div className="flex gap-0 mb-5 border-b border-[var(--border)]">
-        {tabs.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-[var(--fs-sm)] transition-colors -mb-px
-              ${tab === t.key
-                ? 'text-[var(--brand)] border-b-2 border-[var(--brand)] font-medium'
-                : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {isEdit && (
+        <div className="flex gap-0 mb-5 border-b border-[var(--border)]">
+          {tabs.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`px-4 py-2 text-sm whitespace-nowrap transition-colors -mb-px
+                ${tab === t.key
+                  ? 'text-[var(--brand)] border-b-2 border-[var(--brand)] font-medium'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* ── Onglet Détail ────────────────────────────────────────────────────── */}
+      {/* ── Onglet Course : la fiche unique ─────────────────────────────────── */}
       {tab === 'detail' && (
         <div className="flex flex-col gap-4">
           {/* Pré-remplissage depuis un modèle — création uniquement, masqué si aucun modèle. */}
           {!isEdit && templates.length > 0 && (
-            <Field label="Partir d'un modèle…">
-              <select value={templateId} onChange={e => applyTemplate(e.target.value)}
-                className={inputCls}>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-muted)] shrink-0">Partir d'un modèle</span>
+              <select value={templateId} onChange={e => applyTemplate(e.target.value)} className={`${inputCls} max-w-[20rem]`}>
                 <option value="">— Aucun —</option>
                 {templates.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
-            </Field>
+            </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Date planifiée *">
-              <Input type="date" value={form.date} onChange={v => set('date', v)}
-                disabled={isDetailReadOnly} />
-            </Field>
-            <Field label="Type">
-              <select value={form.type} onChange={e => set('type', e.target.value)}
-                disabled={isDetailReadOnly} className={inputCls}>
-                <option value="">— Aucun —</option>
-                {(['professionnel','particulier'] as const).map(t => (
-                  <option key={t} value={t}>{TYPE_LABELS[t]}</option>
-                ))}
-              </select>
-            </Field>
-          </div>
 
-          <Field label="Client *" error={clientError}>
-            <select value={form.client_id}
-              onChange={e => { set('client_id', e.target.value); setClientError('') }}
-              disabled={isDetailReadOnly} className={inputCls}>
-              <option value="">— Sélectionner un client —</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-            </select>
-            {/* Contact du client sélectionné — tel/email cliquables (si dispo). */}
-            {selectedClient && (selectedClient.phone || selectedClient.email) && (
-              <div className="mt-1.5 text-[var(--fs-xs)]">
-                <ContactLinks phone={selectedClient.phone} email={selectedClient.email} />
-              </div>
-            )}
-            {/* LE DÉLAI DE PAIEMENT, visible dès la création.
-                C'est lui qui fixe la date d'échéance de la facture et qui
-                déclenche l'alerte de retard. Le découvrir au moment de relancer
-                est trop tard : c'est en acceptant la course qu'on décide si ce
-                délai est acceptable. */}
-            {selectedClient && (
-              <p className="mt-1.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
-                Paiement : {libelleDelaiPaiement(selectedClient)}
-              </p>
-            )}
-          </Field>
+          <div className="grid gap-4 lg:grid-cols-2 items-start">
+            {/* Colonne 1 : l'ordre et les arrêts */}
+            <div className="flex flex-col gap-4 min-w-0">
+              <Bloc titre="Ordre">
+                <Field label="Prestation">
+                  <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Prestation">
+                    {PRESTATIONS.map(p => (
+                      <button key={p} type="button" role="radio" aria-checked={prestation === p}
+                        disabled={ro}
+                        onClick={() => choisirPrestation(p)}
+                        title={PRESTATION_AIDES[p]}
+                        className={`h-8 px-3 rounded-[var(--r-pill)] border text-xs transition-colors disabled:opacity-60
+                          ${prestation === p
+                            ? 'bg-[var(--brand)] border-[var(--brand)] text-white font-medium'
+                            : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--brand)] hover:text-[var(--text)]'}`}>
+                        {PRESTATION_LABELS[p]}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="text-xs text-[var(--text-muted)]">{PRESTATION_AIDES[prestation]}</span>
+                </Field>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Véhicule">
-              <select value={form.vehicle_id} onChange={e => set('vehicle_id', e.target.value)}
-                disabled={isDetailReadOnly} className={inputCls}>
-                <option value="">— Aucun —</option>
-                {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
-              </select>
-            </Field>
-            <Field label="Chauffeur">
-              <select value={form.driver_id} onChange={e => set('driver_id', e.target.value)}
-                disabled={isDetailReadOnly} className={inputCls}>
-                <option value="">— Aucun —</option>
-                {drivers.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-              </select>
-            </Field>
-          </div>
+                <Field label="Client *" error={tenteEnregistrer && !form.client_id ? 'Le client est requis' : undefined}>
+                  <ChoixClient clients={clients} value={form.client_id} disabled={ro}
+                    onChange={choisirClient} />
+                  {selectedClient && (
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-muted)]">
+                      {(selectedClient.phone || selectedClient.email) && (
+                        <ContactLinks phone={selectedClient.phone} email={selectedClient.email} />
+                      )}
+                      {/* LE DÉLAI DE PAIEMENT, visible dès la création : c'est en
+                          acceptant la course qu'on décide s'il est acceptable. */}
+                      <span>Paiement : {libelleDelaiPaiement(selectedClient)}</span>
+                    </div>
+                  )}
+                </Field>
 
-          <Field label="Description">
-            <Input value={form.description} onChange={v => set('description', v)}
-              placeholder="Objet de la course…" disabled={isDetailReadOnly} />
-          </Field>
-          {/* Enlèvement : autocomplétion Photon. Pas de colonne pickup_lat/lng en DB —
-              on ne persiste que le texte, les suggestions servent juste à saisir vite/juste. */}
-          <AddressAutocomplete
-            label="Adresse d'enlèvement"
-            value={form.pickup_address}
-            placeholder="Rue, ville…"
-            disabled={isDetailReadOnly}
-            onChange={v => set('pickup_address', v)}
-            onSelect={s => set('pickup_address', s.address)}
-          />
-          {/* Facultative, mais son absence doit se voir ICI plutôt que sur le
-              téléphone du chauffeur le jour de la course. */}
-          {!form.pickup_address.trim() && (
-            <p className="-mt-2 text-[var(--fs-xs)] text-[var(--text-muted)]">
-              Vide = la course part du dépôt, sans arrêt de retrait.
-            </p>
-          )}
-          <AddressAutocomplete
-            label="Adresse de livraison"
-            value={form.delivery_address}
-            placeholder="Rue, ville…"
-            disabled={isDetailReadOnly}
-            onChange={v => {
-              set('delivery_address', v)
-              // Saisie libre : on invalide les coordonnées tant qu'aucune suggestion n'est choisie.
-              setDeliveryCoords({ lat: null, lng: null })
-            }}
-            onSelect={s => {
-              set('delivery_address', s.address)
-              setDeliveryCoords({ lat: s.lat, lng: s.lng })
-            }}
-          />
-          {deliveryCoords.lat != null && deliveryCoords.lng != null && (
-            <p className="-mt-2 text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
-              📍 {deliveryCoords.lat.toFixed(5)}, {deliveryCoords.lng.toFixed(5)}
-            </p>
-          )}
-          {/* ── Section Distance ─────────────────────────────────────────────── */}
-          <div className="flex flex-col gap-3 pt-3 border-t border-[var(--border-soft)]">
-            <p className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
-              Distance
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="KM en charge">
-                <div className="flex gap-2">
-                  <Input type="number" value={form.km} onChange={v => { set('km', v); setCalcError(null) }}
-                    placeholder="0" disabled={isDetailReadOnly} />
-                  {!isDetailReadOnly && (
-                    <button
-                      type="button"
-                      onClick={handleCalcTrajet}
-                      disabled={calcLoading}
-                      title="Calculer le trajet via IGN"
-                      className="flex-shrink-0 h-9 px-3 rounded-[var(--r-md)] border border-[var(--border)]
-                        bg-[var(--bg-elevated)] text-[var(--fs-xs)] text-[var(--text-muted)]
-                        hover:border-[var(--brand)] hover:text-[var(--brand)] transition-colors
-                        disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">
-                      {calcLoading
-                        ? <Loader2 size={13} className="animate-spin" />
-                        : <span>Calculer le trajet</span>}
-                    </button>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Field label="Référence client">
+                    <Input value={form.reference_client} onChange={v => set('reference_client', v)}
+                      placeholder="ODT, n° de commande…" disabled={ro} />
+                  </Field>
+                  {blocs.releve ? (
+                    <Field label="Mois relevé *">
+                      <Input type="month" value={moisDe(form.date)} disabled={ro}
+                        onChange={v => v && set('date', finDeMois(v))} />
+                    </Field>
+                  ) : (
+                  <Field label="Date *" error={tenteEnregistrer && !form.date ? 'La date est requise' : undefined}>
+                    <div className="flex gap-2">
+                      <Input type="date" value={form.date} onChange={v => set('date', v)} disabled={ro} />
+                      <button type="button" disabled={ro}
+                        onClick={() => set('urgent', form.urgent ? '' : '1')}
+                        aria-pressed={!!form.urgent}
+                        title="Course urgente"
+                        className={`shrink-0 h-[calc(36rem/14)] px-2.5 rounded-[var(--r-md)] border text-xs flex items-center gap-1 transition-colors disabled:opacity-60
+                          ${form.urgent
+                            ? 'bg-[var(--danger)]/15 border-[var(--danger)] text-[var(--danger)] font-medium'
+                            : 'border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+                        <Zap size={13} /> Urgent
+                      </button>
+                    </div>
+                  </Field>
                   )}
                 </div>
-              </Field>
-              <Field label="KM à vide">
-                <Input type="number" value={form.empty_km} onChange={v => set('empty_km', v)}
-                  placeholder="0" disabled={isDetailReadOnly} />
-              </Field>
+              </Bloc>
+
+              {blocs.releve && (
+                <Bloc titre={`Relevé ${form.date ? libelleMois(form.date) : ''}`}>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Colis livrés dans le mois">
+                      <Input type="number" value={form.nb_colis} onChange={v => set('nb_colis', v)}
+                        placeholder="0" min={0} step={1} disabled={ro} />
+                    </Field>
+                    <Field label="Prix au colis (€ HT)">
+                      <Input type="number" value={form.prix_colis} onChange={v => set('prix_colis', v)}
+                        placeholder="1,00" min={0} step={0.01} disabled={ro} />
+                    </Field>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] px-3 py-2">
+                    <span className="text-sm text-[var(--text-muted)]">
+                      {resumeMessagerie(nbColis, prixColisCts) ?? 'Colis × prix au colis'}
+                    </span>
+                    <span className="font-mono text-sm font-semibold text-[var(--text)]">
+                      {computed ? `${formatMoney(computed.amount_ht_cts)} HT` : '—'}
+                    </span>
+                  </div>
+                  {selectedClient && selectedClient.tariff_mode !== 'colis' && (
+                    <span className="text-xs text-[var(--text-muted)]">
+                      Astuce : mettez ce client au tarif « Au colis » (fiche client) pour que le prix se remplisse tout seul.
+                    </span>
+                  )}
+                </Bloc>
+              )}
+
+              {blocs.retrait && (
+                <Bloc titre="Retrait">
+                  <AddressAutocomplete
+                    value={form.pickup_address}
+                    placeholder="Rue, ville… (vide = départ du dépôt)"
+                    disabled={ro}
+                    onChange={v => set('pickup_address', v)}
+                    onSelect={s => set('pickup_address', s.address)}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Qui remet">
+                      <Input value={form.expediteur_nom} onChange={v => set('expediteur_nom', v)}
+                        placeholder="Nom, société" disabled={ro} />
+                    </Field>
+                    <Field label="Téléphone">
+                      <Input type="tel" value={form.expediteur_tel} onChange={v => set('expediteur_tel', v)}
+                        placeholder="06…" disabled={ro} />
+                    </Field>
+                  </div>
+                  <Creneau debut={form.creneau_retrait_debut} fin={form.creneau_retrait_fin}
+                    onDebut={v => set('creneau_retrait_debut', v)} onFin={v => set('creneau_retrait_fin', v)}
+                    disabled={ro} />
+                </Bloc>
+              )}
+
+              {blocs.livraison && (
+                <Bloc titre={blocs.titreLivraison}>
+                  <AddressAutocomplete
+                    value={form.delivery_address}
+                    placeholder="Rue, ville…"
+                    disabled={ro}
+                    onChange={v => {
+                      set('delivery_address', v)
+                      // Saisie libre : on invalide les coordonnées tant qu'aucune suggestion n'est choisie.
+                      setDeliveryCoords({ lat: null, lng: null })
+                    }}
+                    onSelect={s => {
+                      set('delivery_address', s.address)
+                      setDeliveryCoords({ lat: s.lat, lng: s.lng })
+                    }}
+                  />
+                  {form.delivery_address.trim() && (
+                    <span className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
+                      <MapPin size={12} />
+                      {deliveryCoords.lat != null ? 'Adresse localisée' : 'Sera localisée à l’enregistrement'}
+                    </span>
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label={prestation === 'mise_a_dispo' ? 'Contact sur place' : 'Qui reçoit'}>
+                      <Input value={form.destinataire_nom} onChange={v => set('destinataire_nom', v)}
+                        placeholder="Nom, société" disabled={ro} />
+                    </Field>
+                    <Field label="Téléphone">
+                      <Input type="tel" value={form.destinataire_tel} onChange={v => set('destinataire_tel', v)}
+                        placeholder="06…" disabled={ro} />
+                    </Field>
+                  </div>
+                  <Creneau debut={form.creneau_livraison_debut} fin={form.creneau_livraison_fin}
+                    onDebut={v => set('creneau_livraison_debut', v)} onFin={v => set('creneau_livraison_fin', v)}
+                    disabled={ro} libelleDebut={prestation === 'mise_a_dispo' ? 'Début' : undefined}
+                    libelleFin={prestation === 'mise_a_dispo' ? 'Fin' : undefined} />
+                </Bloc>
+              )}
+
+              {blocs.retrait && (
+                <div className="flex flex-wrap items-center gap-3 px-1">
+                  <span className="text-xs uppercase tracking-wide font-medium text-[var(--text-muted)]">Trajet</span>
+                  {calcLoading
+                    ? <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />
+                    : <span className="text-sm text-[var(--text)]">{trajetTxt || '—'}</span>}
+                  <div className="flex items-center gap-2 ml-auto">
+                    <span className="text-xs text-[var(--text-muted)]">km</span>
+                    <div className="w-[5.5rem]">
+                      <Input type="number" value={form.km} onChange={v => { set('km', v); setCalcError(null) }}
+                        placeholder="0" disabled={ro} />
+                    </div>
+                    {!ro && (
+                      <BoutonIcone icone={RefreshCw} libelle="Recalculer le trajet (IGN)" taille="sm"
+                        disabled={calcLoading}
+                        onClick={() => calculerTrajet(form.pickup_address.trim(), form.delivery_address.trim(), false)} />
+                    )}
+                  </div>
+                  {calcError && <span className="basis-full text-xs text-[var(--warning)]">{calcError}</span>}
+                </div>
+              )}
             </div>
-            {calcError && (
-              <p className="text-[var(--danger)] text-[var(--fs-xs)]">{calcError}</p>
-            )}
+
+            {/* Colonne 2 : marchandise, exécution & prix, consignes */}
+            <div className="flex flex-col gap-4 min-w-0">
+              {blocs.marchandise && (
+                <Bloc titre="Marchandise">
+                  <Field label="Nature">
+                    <Input value={form.marchandise_desc} onChange={v => set('marchandise_desc', v)}
+                      placeholder="Colis, palette, meuble, documents…" disabled={ro} />
+                  </Field>
+                  <div className="grid grid-cols-3 gap-3">
+                    <Field label="Colis">
+                      <Input type="number" value={form.nb_colis} onChange={v => set('nb_colis', v)}
+                        placeholder="0" min={0} step={1} disabled={ro} />
+                    </Field>
+                    <Field label="Poids (kg)">
+                      <Input type="number" value={form.poids_kg_reel} onChange={v => set('poids_kg_reel', v)}
+                        placeholder="0" min={0} disabled={ro} />
+                    </Field>
+                    <Field label="Volume (m³)">
+                      <Input type="number" value={form.volume_m3} onChange={v => set('volume_m3', v)}
+                        placeholder="0" min={0} step={0.1} disabled={ro} />
+                    </Field>
+                  </div>
+                </Bloc>
+              )}
+
+              <Bloc titre={blocs.releve ? 'Facture' : 'Exécution & prix'}>
+                {blocs.execution && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Chauffeur">
+                      <select value={form.driver_id} onChange={e => set('driver_id', e.target.value)}
+                        disabled={ro} className={inputCls}>
+                        <option value="">— À affecter —</option>
+                        {drivers.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Véhicule">
+                      <select value={form.vehicle_id} onChange={e => set('vehicle_id', e.target.value)}
+                        disabled={ro} className={inputCls}>
+                        <option value="">— À affecter —</option>
+                        {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                )}
+                <Field label="Libellé de facture">
+                  <Input value={form.description} onChange={v => set('description', v)}
+                    placeholder={blocs.releve
+                      ? `Vide = « Messagerie ${form.date ? libelleMois(form.date) : '…'} — colis livrés »`
+                      : `Vide = « Livraison du ${form.date ? new Date(`${form.date}T00:00:00`).toLocaleDateString('fr-FR') : '…'} »`}
+                    disabled={ro} />
+                  {form.reference_client.trim() && (
+                    <span className="text-xs text-[var(--text-muted)]">La référence client est ajoutée sur la facture.</span>
+                  )}
+                </Field>
+                <MontantTab
+                  integre
+                  releve={blocs.releve}
+                  extraLines={extraLines}
+                  setExtraLines={setExtraLines}
+                  form={form}
+                  set={set}
+                  tvaTouched={tvaTouched}
+                  onTvaChange={v => { set('tva_override', v); setTvaTouched(true) }}
+                  onTvaRateChange={r => { set('tva_rate', String(r)); setTvaTouched(false) }}
+                  selectedClient={selectedClient}
+                  tvaIntraClient={selectedClient ? selectedClient.tva_intra : null}
+                  computed={computed}
+                  delivery={delivery}
+                  isReadOnly={isMontantReadOnly}
+                  saving={saving}
+                  onSave={handleSave}
+                  onClose={onClose}
+                />
+              </Bloc>
+
+              <Bloc titre={blocs.releve ? 'Note' : 'Consignes'}>
+                {!blocs.releve && (
+                  <Field label="Consignes chauffeur (visibles dans Mes courses)">
+                    <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
+                      rows={3} disabled={ro} placeholder="Code, étage, appeler avant, 2 personnes…"
+                      className={`${textareaCls} min-h-[4.5rem]`} />
+                  </Field>
+                )}
+                <Field label="Note interne (bureau seulement)">
+                  <textarea value={form.note_interne} onChange={e => set('note_interne', e.target.value)}
+                    rows={2} disabled={ro} placeholder="Prix négocié, contexte client…"
+                    className={`${textareaCls} min-h-[3.5rem]`} />
+                </Field>
+              </Bloc>
+            </div>
           </div>
 
-          <Field label="Notes">
-            <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
-              rows={6} disabled={isDetailReadOnly} placeholder="Notes internes…"
-              className="w-full min-h-[140px] px-3 py-2 rounded-[var(--r-md)] bg-[var(--bg)]
-                border border-[var(--border)] text-[var(--text)] text-[var(--fs-body)]
-                leading-relaxed resize-y focus:outline-none focus:border-[var(--brand)]
-                transition-colors disabled:opacity-50 disabled:cursor-not-allowed" />
-          </Field>
+          {/* Ce qui manque, par étape : n'empêche pas d'enregistrer (sauf client / date). */}
+          {!ro && (manques.partir.length + manques.lv.length + manques.facturer.length) > 0 && (
+            <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 flex flex-col gap-1 text-xs">
+              <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
+                <AlertTriangle size={13} className="text-[var(--warning)]" /> Il manque
+              </span>
+              {manques.partir.length > 0 && <Manque etape="pour partir" liste={manques.partir} />}
+              {manques.lv.length > 0 && <Manque etape="pour la lettre de voiture" liste={manques.lv} />}
+              {manques.facturer.length > 0 && <Manque etape="pour facturer" liste={manques.facturer} />}
+            </div>
+          )}
 
-          <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
-            {!isDetailReadOnly && can('livraisons.livraisons', isEdit ? 'update' : 'create') && (
+          {/* Enregistrer comme modèle (déplié à la demande). */}
+          {saveAsTplOpen && (
+            <div className="flex flex-wrap items-end gap-2 rounded-[var(--r-md)] border border-[var(--border)] p-3">
+              <div className="flex-1 min-w-[12rem]">
+                <Field label="Libellé du modèle *">
+                  <Input value={tplLabel} onChange={setTplLabel} placeholder="Nom du modèle…" />
+                </Field>
+              </div>
+              <Button variant="primary" onClick={handleSaveAsTemplate} disabled={savingTpl}>
+                {savingTpl ? 'Création…' : 'Créer le modèle'}
+              </Button>
+              <Button variant="secondary" onClick={() => { setSaveAsTplOpen(false); setTplLabel('') }} disabled={savingTpl}>
+                Annuler
+              </Button>
+            </div>
+          )}
+
+          {/* Barre d'actions FIXE en bas du tiroir : plus besoin de descendre. */}
+          <div className="sticky -bottom-5 -mx-5 -mb-5 mt-1 px-5 py-3 flex items-center gap-2
+            bg-[var(--bg-elevated)] border-t border-[var(--border)] z-10">
+            {canSave && (
               <Button variant="primary" onClick={handleSave} disabled={saving}>
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
+                {saving ? 'Enregistrement…' : copie ? 'Créer la copie' : 'Enregistrer'}
               </Button>
             )}
             <Button variant="secondary" onClick={onClose}>
-              {isDetailReadOnly ? 'Fermer' : 'Annuler'}
+              {ro ? 'Fermer' : 'Annuler'}
             </Button>
-            {canDelete && (
-              <Button variant="ghost" onClick={() => setConfirmDelete(true)}
-                className="ml-auto text-[var(--danger)]">
-                <Trash2 size={14} />
-                Supprimer
-              </Button>
+            {tenteEnregistrer && manques.enregistrer.length > 0 && (
+              <span className="text-xs text-[var(--danger)]">À compléter : {manques.enregistrer.join(', ')}</span>
             )}
+            <span className="ml-auto flex items-center gap-2">
+              {canSave && !saveAsTplOpen && (
+                <BoutonIcone icone={Plus} libelle="Enregistrer comme modèle" onClick={() => setSaveAsTplOpen(true)} />
+              )}
+              {isEdit && can('livraisons.livraisons', 'create') && (
+                <BoutonIcone icone={Copy} libelle="Dupliquer (nouvelle course pré-remplie)" onClick={dupliquer} />
+              )}
+              {canDelete && (
+                <BoutonIcone icone={Trash2} libelle="Supprimer la livraison" onClick={() => setConfirmDelete(true)} />
+              )}
+            </span>
           </div>
+        </div>
+      )}
 
-          {/* Enregistrer la course courante comme modèle réutilisable (création + édition). */}
-          <div className="pt-3 border-t border-[var(--border)]">
-            {!saveAsTplOpen ? (
-              <Button variant="secondary" onClick={() => setSaveAsTplOpen(true)}>
-                Enregistrer comme modèle
-              </Button>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <Field label="Libellé du modèle *">
-                  <Input value={tplLabel} onChange={setTplLabel}
-                    placeholder="Nom du modèle…" />
-                </Field>
-                <div className="flex items-center gap-2">
-                  <Button variant="primary" onClick={handleSaveAsTemplate} disabled={savingTpl}>
-                    {savingTpl ? 'Création…' : 'Créer le modèle'}
-                  </Button>
-                  <Button variant="secondary"
-                    onClick={() => { setSaveAsTplOpen(false); setTplLabel('') }}
-                    disabled={savingTpl}>
-                    Annuler
-                  </Button>
-                </div>
-              </div>
+      {/* ── Onglet Preuves & documents ──────────────────────────────────────── */}
+      {tab === 'preuves' && (
+        <div className="flex flex-col gap-4">
+          <div className="flex gap-1.5">
+            {([['pod', 'Preuve de livraison'], ['lv', 'Lettre de voiture'], ['fichiers', 'Fichiers']] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setSousPreuve(k)}
+                className={`h-8 px-3 rounded-[var(--r-pill)] border text-xs transition-colors
+                  ${sousPreuve === k
+                    ? 'bg-[var(--brand)] border-[var(--brand)] text-white font-medium'
+                    : 'border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+                {l}
+              </button>
+            ))}
+          </div>
+          <div className="max-w-[48rem]">
+            {sousPreuve === 'pod' && (
+              <PodTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
+            )}
+            {sousPreuve === 'lv' && (
+              <LettreVoitureTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
+            )}
+            {sousPreuve === 'fichiers' && (
+              <DocumentsPanel entityType="delivery" entityId={delivery?.id ?? null} />
             )}
           </div>
         </div>
       )}
 
-      {/* ── Onglet Montant & Suivi (fusionnés) ──────────────────────────────────
-          Souvent consultés ensemble : on regarde où en est la livraison ET
-          son montant au moment de décider de la facturer. Suivi (statut,
-          actions, envoi client) en premier — c'est l'actionnable — puis
-          Montant (détail HT/TVA/TTC) en dessous. */}
-      {tab === 'montant' && (
-        <div className="flex flex-col gap-5">
-          {delivery && (
-            <>
-              <SuiviTab
-                delivery={delivery}
-                transitioning={transitioning}
-                onTransition={handleTransition}
-                onRevenirALivree={handleRevenirALivree}
-              />
-              <div className="border-t border-[var(--border)]" />
-            </>
-          )}
-          <MontantTab
-            extraLines={extraLines}
-            setExtraLines={setExtraLines}
-            form={form}
-            set={set}
-            tvaTouched={tvaTouched}
-            onTvaChange={v => { set('tva_override', v); setTvaTouched(true) }}
-            onTvaRateChange={r => { set('tva_rate', String(r)); setTvaTouched(false) }}
-            selectedClient={selectedClient}
-            tvaIntraClient={selectedClient ? (selectedClient as ClientLookup).tva_intra : null}
-            computed={computed}
+      {/* ── Onglet Facturation : suivi, facture, envoi ──────────────────────── */}
+      {tab === 'montant' && delivery && (
+        <div className="grid gap-6 lg:grid-cols-2 items-start">
+          <SuiviTab
             delivery={delivery}
-            isReadOnly={isMontantReadOnly}
-            saving={saving}
-            onSave={handleSave}
-            onClose={onClose}
+            transitioning={transitioning}
+            onTransition={handleTransition}
+            onRevenirALivree={handleRevenirALivree}
           />
+          <EtatFacture delivery={delivery} extraLines={extraLines} />
         </div>
-      )}
-
-      {/* ── Onglet Documents ─────────────────────────────────────────────────── */}
-      {tab === 'documents' && (
-        <DocumentsPanel entityType="delivery" entityId={delivery?.id ?? null} />
-      )}
-
-      {/* ── Onglet POD ───────────────────────────────────────────────────────── */}
-      {tab === 'pod' && (
-        <PodTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
-      )}
-
-      {/* ── Onglet Lettre de voiture ────────────────────────────────────────── */}
-      {tab === 'lv' && (
-        <LettreVoitureTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
       )}
 
       <ConfirmDialog
@@ -992,14 +1335,188 @@ export function DrawerLivraison({ open, onClose, delivery, onSaved, initialTab =
   )
 }
 
+// ── Petits blocs de la fiche ──────────────────────────────────────────────────
+
+function Bloc({ titre, children }: { titre: string; children: ReactNode }) {
+  return (
+    <section className="rounded-[var(--r-lg)] border border-[var(--border)] p-3.5 flex flex-col gap-3">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">{titre}</h3>
+      {children}
+    </section>
+  )
+}
+
+function Manque({ etape, liste }: { etape: string; liste: string[] }) {
+  return (
+    <span className="text-[var(--text-muted)]">
+      <span className="text-[var(--text)]">{etape} :</span> {liste.join(', ')}
+    </span>
+  )
+}
+
+/** Créneau « au plus tôt / au plus tard » ; résumé lisible à côté. */
+function Creneau({ debut, fin, onDebut, onFin, disabled, libelleDebut = 'Au plus tôt', libelleFin = 'Au plus tard' }: {
+  debut: string; fin: string
+  onDebut: (v: string) => void; onFin: (v: string) => void
+  disabled?: boolean; libelleDebut?: string; libelleFin?: string
+}) {
+  const invalide = !!debut && !!fin && fin <= debut
+  const resume = libelleCreneau(debut, fin)
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-2 gap-3">
+        <Field label={libelleDebut}>
+          <Input type="time" value={debut} onChange={onDebut} disabled={disabled} />
+        </Field>
+        <Field label={libelleFin}>
+          <Input type="time" value={fin} onChange={onFin} disabled={disabled} />
+        </Field>
+      </div>
+      {invalide
+        ? <span className="text-xs text-[var(--danger)]">La fin du créneau est avant son début.</span>
+        : resume && <span className="text-xs text-[var(--text-muted)]">Créneau : {resume}</span>}
+    </div>
+  )
+}
+
+/**
+ * Choix du client avec RECHERCHE : la liste déroulante de 30+ noms ne se
+ * parcourait qu'à l'œil. Liste dans le flux (pas en position absolue) : le
+ * tiroir défile, une liste flottante y serait rognée.
+ */
+function ChoixClient({ clients, value, onChange, disabled }: {
+  clients: Array<{ id: string; label: string }>
+  value: string
+  onChange: (id: string) => void
+  disabled?: boolean
+}) {
+  const choisi = clients.find(c => c.id === value) ?? null
+  const [ouvert, setOuvert] = useState(false)
+  const [q, setQ] = useState('')
+  const filtres = useMemo(() => {
+    const t = q.trim().toLowerCase()
+    const tries = [...clients].sort((a, b) => a.label.localeCompare(b.label, 'fr'))
+    return t ? tries.filter(c => c.label.toLowerCase().includes(t)) : tries
+  }, [clients, q])
+
+  if (!ouvert) {
+    return (
+      <button type="button" disabled={disabled}
+        onClick={() => { setQ(''); setOuvert(true) }}
+        className={`${inputCls} text-left flex items-center justify-between gap-2 disabled:opacity-60`}>
+        <span className={choisi ? 'text-[var(--text)] truncate' : 'text-[var(--text-disabled)]'}>
+          {choisi?.label ?? 'Choisir un client…'}
+        </span>
+        <Search size={14} className="text-[var(--text-muted)] shrink-0" />
+      </button>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher un client…"
+        className={inputCls}
+        onKeyDown={e => {
+          if (e.key === 'Escape') setOuvert(false)
+          if (e.key === 'Enter' && filtres[0]) { e.preventDefault(); onChange(filtres[0].id); setOuvert(false) }
+        }} />
+      <ul className="max-h-[14rem] overflow-y-auto rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)]">
+        {filtres.length === 0 && <li className="px-3 py-2 text-xs text-[var(--text-muted)]">Aucun client</li>}
+        {filtres.map(c => (
+          <li key={c.id}>
+            <button type="button" onClick={() => { onChange(c.id); setOuvert(false) }}
+              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--bg-card-hover)]
+                ${c.id === value ? 'text-[var(--brand)] font-medium' : 'text-[var(--text)]'}`}>
+              {c.label}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button type="button" onClick={() => setOuvert(false)} className="self-start text-xs text-[var(--text-muted)] hover:text-[var(--text)]">
+        Fermer la liste
+      </button>
+    </div>
+  )
+}
+
+/** Facture : récapitulatif des montants + état Pennylane (onglet Facturation). */
+function EtatFacture({ delivery, extraLines }: { delivery: DeliveryRow; extraLines: DeliveryExtraLine[] }) {
+  const recap = recapMontant({
+    ht_cts: effectiveHtCts(delivery),
+    tva_cts: delivery.tva_cts ?? null,
+    ttc_cts: effectiveTtcCts(delivery),
+    extraLines,
+    autoliquidation: !!delivery.autoliquidation,
+  })
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-[var(--r-lg)] border border-[var(--border)] divide-y divide-[var(--border)] overflow-hidden">
+        <InfoRow label="Prix HT"><span className="font-mono">{recap.ht_cts ? formatMoney(recap.ht_cts) : '—'}</span></InfoRow>
+        {extraLines.length > 0 && (
+          <InfoRow label={`Suppléments (${extraLines.length}) — HT`}><span className="font-mono">{formatMoney(recap.extras_ht_cts)}</span></InfoRow>
+        )}
+        <InfoRow label={delivery.autoliquidation ? 'TVA (autoliquidation)' : 'TVA'}>
+          <span className="font-mono">{formatMoney((recap.tva_cts ?? 0) + recap.extras_tva_cts)}</span>
+        </InfoRow>
+        <InfoRow label="Total TTC">
+          <span className="font-mono font-semibold text-[var(--text)]">
+            {recap.ttc_total_cts != null ? formatMoney(recap.ttc_total_cts) : '—'}
+          </span>
+        </InfoRow>
+      </div>
+      <EtatPennylane delivery={delivery} />
+    </div>
+  )
+}
+
+function EtatPennylane({ delivery }: { delivery: DeliveryRow | null }) {
+  if (!delivery) return null
+  return (
+    <>
+      {delivery.pennylane_invoice_id && (
+        <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] px-4 py-2.5
+          flex items-center justify-between text-sm">
+          <span className="text-[var(--text-muted)]">N° facture</span>
+          {delivery.pennylane_invoice_number
+            ? <span className="font-mono text-xs">{delivery.pennylane_invoice_number}</span>
+            : <span className="text-xs text-[var(--text-muted)] italic">— (en attente de finalisation)</span>
+          }
+        </div>
+      )}
+      {delivery.sync_pending && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-[var(--r-md)]
+          bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-xs">
+          <Badge color="warning">Sync en attente</Badge>
+          <span className="text-[var(--text-muted)]">Pennylane sera synchronisé dès que possible.</span>
+        </div>
+      )}
+      {delivery.sync_error && (
+        <div className="flex items-start gap-2 px-3 py-2 rounded-[var(--r-md)]
+          bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-xs">
+          <Badge color="danger">Anomalie</Badge>
+          <span className="text-[var(--text-muted)]">{delivery.sync_error}</span>
+        </div>
+      )}
+    </>
+  )
+}
+
+const textareaCls = `w-full px-3 py-2 rounded-[var(--r-md)] bg-[var(--bg)]
+  border border-[var(--border)] text-[var(--text)] text-sm
+  leading-relaxed resize-y focus:outline-none focus:border-[var(--brand)]
+  transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
+
 // ── Onglet Montant ────────────────────────────────────────────────────────────
 
 function MontantTab({
   form, set, tvaTouched, onTvaChange, onTvaRateChange,
   selectedClient, tvaIntraClient, computed, delivery,
   extraLines, setExtraLines,
-  isReadOnly, saving, onSave, onClose,
+  isReadOnly, saving, onSave, onClose, integre = false, releve = false,
 }: {
+  /** Relevé de messagerie : le HT vient de « colis × prix au colis », pas de saisie. */
+  releve?: boolean
+  /** Dans le bloc « Exécution & prix » de la fiche : sans boutons ni état Pennylane. */
+  integre?: boolean
   form: typeof EMPTY_FORM
   set: (k: keyof typeof EMPTY_FORM, v: string) => void
   tvaTouched: boolean
@@ -1037,14 +1554,15 @@ function MontantTab({
   return (
     <div className="flex flex-col gap-4">
 
-      {/* Info tarif */}
-      {selectedClient && (
+      {/* Info tarif — inutile en saisie manuelle dans la fiche (le champ suffit). */}
+      {selectedClient && !releve && !(integre && mode === 'manuel') && (
         <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] px-4 py-3
-          text-[var(--fs-sm)] text-[var(--text-muted)]">
+          text-sm text-[var(--text-muted)]">
           Tarif : <span className="font-medium text-[var(--text)]">
             {mode === 'forfait' && 'Forfait fixe'}
             {mode === 'km'      && 'Au kilomètre'}
             {mode === 'palette' && 'À la palette'}
+            {mode === 'colis'   && 'Au colis (messagerie)'}
             {mode === 'manuel'  && 'Saisie manuelle'}
           </span>
           {selectedClient.tariff_rate_cts != null && mode !== 'manuel' && (
@@ -1057,13 +1575,13 @@ function MontantTab({
       )}
 
       {!selectedClient && (
-        <p className="text-[var(--fs-sm)] text-[var(--text-muted)] italic">
-          Sélectionnez un client dans l'onglet Détail pour calculer le montant.
+        <p className="text-sm text-[var(--text-muted)] italic">
+          Choisissez d'abord le client : le prix suit son tarif.
         </p>
       )}
 
       {/* Champs de saisie selon le mode tarifaire */}
-      {selectedClient && mode === 'km' && (
+      {selectedClient && !releve && mode === 'km' && (
         <Field label="Distance (km) *">
           <Input type="number" value={form.km} onChange={v => set('km', v)}
             placeholder="0" disabled={isReadOnly} />
@@ -1078,14 +1596,14 @@ function MontantTab({
           « manuel »), donc rien ne ment pour l'instant. Le jour ou l'un y
           passe, il faudra une colonne `pallets` distincte : deux sens dans une
           meme colonne finissent toujours par se croiser. */}
-      {selectedClient && mode === 'palette' && (
+      {selectedClient && !releve && mode === 'palette' && (
         <Field label="Nombre de palettes *">
           <Input type="number" value={form.pallets} onChange={v => set('pallets', v)}
             placeholder="0" disabled={isReadOnly} />
         </Field>
       )}
-      {selectedClient && mode === 'manuel' && (
-        <Field label="Montant HT (€) *">
+      {selectedClient && !releve && (mode === 'manuel' || mode === 'colis') && (
+        <Field label={integre ? 'Prix HT (€)' : 'Montant HT (€) *'}>
           <Input type="number" value={form.manual_ht} onChange={v => set('manual_ht', v)}
             placeholder="0.00" disabled={isReadOnly} />
         </Field>
@@ -1102,9 +1620,9 @@ function MontantTab({
               disabled={isReadOnly}
               className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer"
             />
-            <span className="text-[var(--fs-sm)] text-[var(--text)]">
+            <span className="text-sm text-[var(--text)]">
               Autoliquidation — TVA due par le preneur
-              <span className="block text-[var(--fs-xs)] text-[var(--text-muted)]">
+              <span className="block text-xs text-[var(--text-muted)]">
                 Prestation intracommunautaire B2B (art. 259-1 du CGI). La TVA n'est
                 pas facturée : le TTC vaut le HT.
               </span>
@@ -1116,14 +1634,14 @@ function MontantTab({
               on le dit sans bloquer : le régime relève de celui qui facture,
               pas du logiciel. */}
           {!!form.autoliquidation && !tvaIntraClient?.trim() && (
-            <p className="text-[var(--fs-xs)] text-[var(--warning)]">
+            <p className="text-xs text-[var(--warning)]">
               Ce client n'a pas de numéro de TVA intracommunautaire renseigné. L'autoliquidation
               suppose un preneur assujetti — à vérifier avant d'émettre la facture.
             </p>
           )}
 
           {!!form.autoliquidation && (
-            <p className="text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
+            <p className="text-xs text-[var(--text-muted)] font-mono">
               Mention portée sur la facture : « Autoliquidation — TVA due par le preneur,
               art. 259-1 du CGI »
             </p>
@@ -1134,7 +1652,7 @@ function MontantTab({
       {/* Taux TVA + montant TVA éditable — masqués en autoliquidation : afficher
           un taux modifiable sous une case qui l'annule ne peut que tromper. */}
       {selectedClient && !form.autoliquidation && (
-        <>
+        <div className="grid grid-cols-2 gap-3 items-start">
           <Field label="Taux TVA">
             <TvaRateInput
               value={parseFloat(form.tva_rate || '20')}
@@ -1151,7 +1669,7 @@ function MontantTab({
               disabled={isReadOnly}
             />
           </Field>
-        </>
+        </div>
       )}
 
       {/* Lignes supplémentaires — attente, retour à vide, forfait…                  */}
@@ -1193,42 +1711,20 @@ function MontantTab({
         </div>
       )}
 
-      {/* Pennylane */}
-      {delivery?.pennylane_invoice_id && (
-        <div className="rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] px-4 py-2.5
-          flex items-center justify-between text-[var(--fs-sm)]">
-          <span className="text-[var(--text-muted)]">N° facture</span>
-          {delivery.pennylane_invoice_number
-            ? <span className="font-mono text-[var(--fs-xs)]">{delivery.pennylane_invoice_number}</span>
-            : <span className="text-[var(--fs-xs)] text-[var(--text-muted)] italic">— (en attente de finalisation)</span>
-          }
-        </div>
-      )}
-      {delivery?.sync_pending && (
-        <div className="flex items-center gap-2 px-3 py-2 rounded-[var(--r-md)]
-          bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-[var(--fs-xs)]">
-          <Badge color="warning">Sync en attente</Badge>
-          <span className="text-[var(--text-muted)]">Pennylane sera synchronisé dès que possible.</span>
-        </div>
-      )}
-      {delivery?.sync_error && (
-        <div className="flex items-start gap-2 px-3 py-2 rounded-[var(--r-md)]
-          bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-[var(--fs-xs)]">
-          <Badge color="danger">Anomalie</Badge>
-          <span className="text-[var(--text-muted)]">{delivery.sync_error}</span>
-        </div>
-      )}
+      {!integre && <EtatPennylane delivery={delivery ?? null} />}
 
-      <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
-        {!isReadOnly && canMontant && (
-          <Button variant="primary" onClick={onSave} disabled={saving}>
-            {saving ? 'Enregistrement…' : 'Enregistrer'}
+      {!integre && (
+        <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
+          {!isReadOnly && canMontant && (
+            <Button variant="primary" onClick={onSave} disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          )}
+          <Button variant="secondary" onClick={onClose}>
+            {isReadOnly ? 'Fermer' : 'Annuler'}
           </Button>
-        )}
-        <Button variant="secondary" onClick={onClose}>
-          {isReadOnly ? 'Fermer' : 'Annuler'}
-        </Button>
-      </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1276,18 +1772,18 @@ function SuiviTab({
                 )}
               </div>
               <div className="pb-4">
-                <span className={`text-[var(--fs-sm)] font-medium
+                <span className={`text-sm font-medium
                   ${reached ? 'text-[var(--text)]' : 'text-[var(--text-disabled)]'}`}>
                   {STATUS_LABELS[s]}
                 </span>
-                {isCurrent && <span className="ml-2 text-[var(--fs-xs)] text-[var(--brand)]">← actuel</span>}
+                {isCurrent && <span className="ml-2 text-xs text-[var(--brand)]">← actuel</span>}
                 {s === 'facturee' && delivery.invoiced_at && (
-                  <span className="ml-2 text-[var(--fs-xs)] text-[var(--text-muted)]">
+                  <span className="ml-2 text-xs text-[var(--text-muted)]">
                     {new Date(delivery.invoiced_at).toLocaleDateString('fr-FR')}
                   </span>
                 )}
                 {s === 'payee' && delivery.paid_at && (
-                  <span className="ml-2 text-[var(--fs-xs)] text-[var(--text-muted)]">
+                  <span className="ml-2 text-xs text-[var(--text-muted)]">
                     {new Date(delivery.paid_at).toLocaleDateString('fr-FR')}
                   </span>
                 )}
@@ -1410,13 +1906,13 @@ function EnvoiClientSection({ delivery }: { delivery: DeliveryRow }) {
           Envoyer au client
         </Button>
         {sentAt && (
-          <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+          <span className="text-xs text-[var(--text-muted)]">
             Envoyée le {new Date(sentAt).toLocaleDateString('fr-FR')}
           </span>
         )}
       </div>
       {!email && (
-        <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+        <span className="text-xs text-[var(--text-muted)]">
           Aucun email client — complète la fiche client pour activer l'envoi.
         </span>
       )}
@@ -1545,7 +2041,7 @@ function PodTab({
 
   if (!delivery) {
     return (
-      <p className="text-[var(--fs-sm)] text-[var(--text-muted)] italic py-4 text-center">
+      <p className="text-sm text-[var(--text-muted)] italic py-4 text-center">
         Enregistre d'abord la livraison pour y rattacher une preuve.
       </p>
     )
@@ -1563,12 +2059,12 @@ function PodTab({
         hover:border-[var(--brand)] transition-colors">
       <img src={photoUrl} alt="Photo POD"
         className="w-full max-h-64 object-contain bg-[var(--bg-elevated)]" />
-      <p className="px-3 py-1.5 text-[var(--fs-xs)] text-[var(--text-muted)] text-center">
+      <p className="px-3 py-1.5 text-xs text-[var(--text-muted)] text-center">
         Cliquer pour ouvrir en grand
       </p>
     </a>
   ) : (
-    <p className="text-[var(--fs-sm)] text-[var(--text-muted)] italic">Aucune photo trouvée</p>
+    <p className="text-sm text-[var(--text-muted)] italic">Aucune photo trouvée</p>
   )
 
   if (isCaptured) {
@@ -1576,20 +2072,20 @@ function PodTab({
       <div className="flex flex-col gap-4">
         {/* Bandeau succès */}
         <div className="flex items-center gap-2 px-3 py-2 rounded-[var(--r-md)]
-          bg-[var(--success)]/10 border border-[var(--success)]/30 text-[var(--fs-sm)]">
+          bg-[var(--success)]/10 border border-[var(--success)]/30 text-sm">
           <span className="text-[var(--success)] font-semibold">✓</span>
           <span className="text-[var(--text)]">Preuve de livraison enregistrée</span>
         </div>
 
         {/* Méta */}
         <div className="flex flex-col gap-2 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] p-3">
-          <div className="flex items-center justify-between text-[var(--fs-sm)]">
+          <div className="flex items-center justify-between text-sm">
             <span className="text-[var(--text-muted)]">Réceptionnaire</span>
             <span className="font-medium text-[var(--text)]">{recipientSaved}</span>
           </div>
-          <div className="flex items-center justify-between text-[var(--fs-sm)]">
+          <div className="flex items-center justify-between text-sm">
             <span className="text-[var(--text-muted)]">Horodatage</span>
-            <span className="font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
+            <span className="font-mono text-xs text-[var(--text-muted)]">
               {new Date(capturedAt!).toLocaleString('fr-FR')}
             </span>
           </div>
@@ -1601,7 +2097,7 @@ function PodTab({
         {/* Remplacement de la photo */}
         {!isReadOnly && (
           <div className="pt-2 border-t border-[var(--border)]">
-            <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mb-2">
+            <p className="text-xs text-[var(--text-muted)] mb-2">
               Remplacer la photo :
             </p>
             <input
@@ -1615,7 +2111,7 @@ function PodTab({
             />
             <label htmlFor="pod-file-replace"
               className={`inline-flex items-center gap-2 h-8 px-3 rounded-[var(--r-md)]
-                border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--fs-xs)]
+                border border-[var(--border)] bg-[var(--bg-elevated)] text-xs
                 text-[var(--text-muted)] cursor-pointer
                 hover:border-[var(--brand)] hover:text-[var(--brand)] transition-colors
                 ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
@@ -1645,7 +2141,7 @@ function PodTab({
       </Field>
 
       <div className="flex flex-col gap-1">
-        <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+        <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
           Photo de preuve
         </label>
         <input
@@ -1659,7 +2155,7 @@ function PodTab({
         />
         <label htmlFor="pod-file-add"
           className={`flex items-center gap-2 h-9 px-3 rounded-[var(--r-md)]
-            border border-[var(--border)] bg-[var(--bg)] text-[var(--fs-sm)]
+            border border-[var(--border)] bg-[var(--bg)] text-sm
             text-[var(--text-muted)] cursor-pointer hover:border-[var(--brand)] transition-colors
             ${(uploading || isReadOnly) ? 'opacity-50 pointer-events-none' : ''}`}>
           {uploading
@@ -1680,7 +2176,7 @@ function PodTab({
       </div>
 
       {isReadOnly ? (
-        <p className="text-[var(--fs-sm)] text-[var(--text-muted)] italic">
+        <p className="text-sm text-[var(--text-muted)] italic">
           La livraison est annulée — la preuve n'est pas modifiable.
         </p>
       ) : (
@@ -1698,7 +2194,7 @@ function PodTab({
           finit par être ignorée en bloc — ce qui lui fait rater les vrais oublis. */}
       {!isReadOnly && delivery && (
         <label className="flex items-start gap-2 pt-3 border-t border-[var(--border)]
-          text-[var(--fs-sm)] text-[var(--text)] cursor-pointer">
+          text-sm text-[var(--text)] cursor-pointer">
           <input
             type="checkbox"
             checked={nonRequis}
@@ -1708,7 +2204,7 @@ function PodTab({
           />
           <span>
             Aucun justificatif requis pour cette course
-            <span className="block text-[var(--fs-xs)] text-[var(--text-muted)]">
+            <span className="block text-xs text-[var(--text-muted)]">
               Retire cette livraison de l'alerte « sans justificatif ».
             </span>
           </span>
@@ -1738,11 +2234,11 @@ function Input({
 function Field({ label, children, error }: { label: string; children: ReactNode; error?: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+      <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
         {label}
       </label>
       {children}
-      {error && <span className="text-[var(--danger)] text-[var(--fs-xs)]">{error}</span>}
+      {error && <span className="text-[var(--danger)] text-xs">{error}</span>}
     </div>
   )
 }
@@ -1750,8 +2246,8 @@ function Field({ label, children, error }: { label: string; children: ReactNode;
 function InfoRow({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center justify-between px-4 py-2.5">
-      <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">{label}</span>
-      <span className="text-[var(--fs-sm)]">{children}</span>
+      <span className="text-sm text-[var(--text-muted)]">{label}</span>
+      <span className="text-sm">{children}</span>
     </div>
   )
 }
@@ -1791,7 +2287,7 @@ function ExtraLinesEditor({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+        <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
           Lignes supplémentaires
         </span>
         {!disabled && (
@@ -1803,7 +2299,7 @@ function ExtraLinesEditor({
       </div>
 
       {lines.length === 0 ? (
-        <p className="text-[var(--fs-xs)] text-[var(--text-muted)] italic">
+        <p className="text-xs text-[var(--text-muted)] italic">
           Attente, retour à vide, forfait… — regroupé sur la même facture.
         </p>
       ) : (

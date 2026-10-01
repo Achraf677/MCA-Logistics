@@ -54,6 +54,13 @@ export interface CourseChauffeur {
   probleme_motif: string | null
   probleme_note: string | null
   probleme_le: string | null
+  /** Fiche unique (migration 20261001090000). */
+  urgent: boolean | null
+  reference_client: string | null
+  creneau_retrait_debut: string | null
+  creneau_retrait_fin: string | null
+  creneau_livraison_debut: string | null
+  creneau_livraison_fin: string | null
 }
 
 /** Pièce jointe à une course, telle que le chauffeur la voit. */

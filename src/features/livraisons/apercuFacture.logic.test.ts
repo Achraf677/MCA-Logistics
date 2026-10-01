@@ -349,3 +349,14 @@ describe('buildApercuPayload — autoliquidation et blocage principal', () => {
     expect(r.blocagePrincipal).toContain('non légal')
   })
 })
+
+describe('relevé de messagerie (miroir Edge)', () => {
+  it('payload en quantité de colis', () => {
+    const r = buildApercuPayload({
+      id: 'm1', date: '2026-09-30', description: null, client_id: 'c', prestation: 'messagerie',
+      nb_colis: 1240, prix_unitaire_cts: 100, amount_ht_cts: 124000, tva_cts: 24800, amount_ttc_cts: 148800,
+      tva_rate: 20, extra_lines: [],
+    })
+    expect(r.lines[0]).toMatchObject({ label: 'Messagerie septembre 2026 — colis livrés', quantity: 1240, amount_ht_cts: 100 })
+  })
+})

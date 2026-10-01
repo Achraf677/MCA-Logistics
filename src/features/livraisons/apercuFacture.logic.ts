@@ -30,6 +30,12 @@ export interface ApercuFactureRow {
   id: string
   date: string
   description: string | null
+  /** Référence du donneur d'ordre — reprise dans le libellé (miroir Edge). */
+  reference_client?: string | null
+  /** Messagerie : relevé facturé en quantité (miroir Edge `quantiteColis`). */
+  prestation?: string | null
+  nb_colis?: number | null
+  prix_unitaire_cts?: number | null
   delivery_address?: string | null
   type?: string | null
   client_id: string
@@ -57,6 +63,8 @@ export interface ApercuMainLine {
   autoliquidation: boolean
   /** Raison bloquante, null si la ligne partira telle quelle. */
   blocage: string | null
+  /** Relevé de messagerie : quantité (colis) et prix unitaire envoyés à Pennylane. */
+  par_colis?: { quantity: number; unit_cts: number } | null
 }
 
 export interface ApercuExtraLine {
@@ -123,11 +131,35 @@ export function tauxLignePrincipale(
   return stocke ?? 20
 }
 
-/** Miroir de `libelleCourse` (Edge) : description, sinon « Livraison <type> du <date> ». */
-export function libelleCourse(row: Pick<ApercuFactureRow, 'description' | 'type' | 'date'>): string {
+/**
+ * Miroir de `libelleCourse` (Edge) : description, sinon « Livraison <type> du
+ * <date> », suivie de « — Réf. <référence client> » si elle n'y figure pas déjà.
+ */
+const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+
+function moisFr(date: string | null): string {
+  const m = /^(\d{4})-(\d{2})/.exec(date ?? '')
+  return m ? `${MOIS_FR[Number(m[2]) - 1]} ${m[1]}` : ''
+}
+
+/** Miroir de `quantiteColis` (Edge) : quantité seulement si colis × prix = HT. */
+export function quantiteColis(
+  r: Pick<ApercuFactureRow, 'prestation' | 'nb_colis' | 'prix_unitaire_cts'> & { ht: number },
+): { quantity: number; unit_cts: number } | null {
+  if (r.prestation !== 'messagerie') return null
+  const n = Number(r.nb_colis), pu = Number(r.prix_unitaire_cts)
+  if (!Number.isInteger(n) || n <= 0 || !Number.isInteger(pu) || pu <= 0) return null
+  return n * pu === r.ht ? { quantity: n, unit_cts: pu } : null
+}
+
+export function libelleCourse(row: Pick<ApercuFactureRow, 'description' | 'type' | 'date' | 'reference_client' | 'prestation'>): string {
   const desc = row.description?.trim()
-  if (desc) return desc
-  return ['Livraison', row.type ?? '', 'du', row.date ?? ''].filter(s => s !== '').join(' ')
+  const defaut = row.prestation === 'messagerie'
+    ? `Messagerie ${moisFr(row.date)} — colis livrés`.replace('  ', ' ')
+    : ['Livraison', row.type ?? '', 'du', row.date ?? ''].filter(s => s !== '').join(' ')
+  const base = desc || defaut
+  const ref = row.reference_client?.trim()
+  return ref && !base.includes(ref) ? `${base} — Réf. ${ref}` : base
 }
 
 function pct(n: number): string {
@@ -215,6 +247,7 @@ export function buildApercuFacture(rows: ApercuFactureRow[]): ApercuFacture {
       ttc_cts: m.ht + m.tva,
       autoliquidation: m.autoliq,
       blocage: m.blocage,
+      par_colis: m.blocage ? null : quantiteColis({ ...r, ht: m.ht }),
     })
     if (m.blocage) blocages.push(`« ${m.label} » : ${m.blocage}`)
     else { sumHt += m.ht; sumTva += m.tva }
@@ -296,7 +329,11 @@ export function buildApercuPayload(
 
   const m = lignePrincipale(delivery)
   if (!m.blocage) {
-    lines.push({ label: m.label, quantity: 1, amount_ht_cts: m.ht, vat_rate_pct: m.autoliq ? null : m.rate })
+    const q = quantiteColis({ ...delivery, ht: m.ht })
+    lines.push({
+      label: m.label, quantity: q?.quantity ?? 1, amount_ht_cts: q?.unit_cts ?? m.ht,
+      vat_rate_pct: m.autoliq ? null : m.rate,
+    })
   }
 
   for (const e of extrasCalcules(extraLines, m.rate, m.autoliq)) {

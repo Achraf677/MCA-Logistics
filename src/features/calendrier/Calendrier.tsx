@@ -50,7 +50,8 @@ export function Calendrier() {
   const load = useCallback(async () => {
     setLoading(true)
     const { data } = await getDeliveries({ date_from: monthStart, date_to: monthEnd })
-    setRows((data as unknown as DeliveryRow[]) ?? [])
+    // Relevés de messagerie et forfaits : pas des courses à placer dans le calendrier.
+    setRows(((data as unknown as DeliveryRow[]) ?? []).filter(r => r.prestation !== 'messagerie' && r.prestation !== 'forfait'))
     setLoading(false)
   }, [monthStart, monthEnd])
 

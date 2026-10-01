@@ -311,6 +311,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
                 <FieldGroup label={
                   form.tariff_mode === 'forfait' ? 'Montant forfait (€)' :
                   form.tariff_mode === 'km'      ? 'Prix / km (€)' :
+                  form.tariff_mode === 'colis'   ? 'Prix HT / colis (€)' :
                                                    'Prix / palette (€)'
                 }>
                   <Input
@@ -322,6 +323,12 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
                 </FieldGroup>
               )}
             </div>
+            {form.tariff_mode === 'colis' && (
+              <p className="text-xs text-[var(--text-muted)] mt-1">
+                Messagerie : chaque mois, seul le nombre de colis livrés se saisit dans Livraisons ;
+                le prix se remplit tout seul.
+              </p>
+            )}
             {form.tariff_mode === 'manuel' && (
               <p className="text-[var(--fs-xs)] text-[var(--text-disabled)] mt-1">
                 Montant saisi course par course.

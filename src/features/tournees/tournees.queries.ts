@@ -44,6 +44,8 @@ export async function getDeliveriesForDate(companyId: string, date: string) {
     .eq('company_id', companyId)
     .eq('date', date)
     .in('statut', ['planifiee', 'en_cours', 'livree'])
+    // Relevés de messagerie et forfaits : rien à faire sur la route.
+    .or('prestation.is.null,prestation.not.in.(messagerie,forfait)')
     .order('stop_order', { ascending: true, nullsFirst: false })
 }
 

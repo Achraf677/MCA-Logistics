@@ -29,7 +29,7 @@ import {
 import {
   STATUS_LABELS, STATUS_COLORS,
   kpiSummary, formatCents, deliveryTotalHtCts, deliveryTotalTtcCts,
-  bornesPeriode, libellePeriode, isoLocal, eurosArrondis, dateCourte, heureCourte, trajet,
+  bornesPeriode, libellePeriode, isoLocal, eurosArrondis, dateCourte, heureCourte, trajetOuReleve,
   type RaccourciPeriode, type Periode,
 } from './livraisons.logic'
 import { listDocuments } from '../../shared/lib/documents.queries'
@@ -524,7 +524,7 @@ export function Livraisons() {
                     {tableRows.map(row => {
                       const invoiceable = isInvoiceable(row)
                       const invoiceBlocked = invoiceable && invoiceClientId !== null && row.client_id !== invoiceClientId
-                      const t = trajet(row.pickup_address, row.delivery_address)
+                      const t = trajetOuReleve(row)
                       const heure = heureCourte(row.arrival_time)
                       const ht = deliveryTotalHtCts(row)
                       const ttc = deliveryTotalTtcCts(row)
@@ -577,7 +577,7 @@ export function Livraisons() {
                   {tableRows.map(row => {
                     const invoiceable = isInvoiceable(row)
                     const invoiceBlocked = invoiceable && invoiceClientId !== null && row.client_id !== invoiceClientId
-                    const t = trajet(row.pickup_address, row.delivery_address)
+                    const t = trajetOuReleve(row)
                     const heure = heureCourte(row.arrival_time)
                     const ht = deliveryTotalHtCts(row)
                     return (
