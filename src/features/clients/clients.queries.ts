@@ -75,7 +75,7 @@ export async function getFacturedDeliveries(): Promise<{ data: DeliveryForEncour
 export async function getDeliveriesForTiersColumns(): Promise<{ data: DeliveryForTiersColumns[] | null; error: unknown }> {
   const { data, error } = await supabase
     .from('deliveries')
-    .select('id, client_id, statut, date, amount_ttc_cts, montant_ttc_cts, invoiced_at, extra_lines')
+    .select('id, client_id, statut, date, amount_ttc_cts, invoiced_at, extra_lines')
     .in('statut', ['livree', 'facturee', 'payee'])
 
   return { data: data as DeliveryForTiersColumns[] | null, error }
@@ -106,4 +106,16 @@ export async function exportClientsCSV(filters: ClientFilters = {}) {
     `${c.payment_terms}j`, c.tariff_mode, c.active ? 'Oui' : 'Non',
   ])
   return [headers, ...rows].map(r => r.join(';')).join('\n')
+}
+
+/** Chauffeurs et véhicules actifs — choix des « habituels » dans la fiche client. */
+export async function getChoixExecution() {
+  const [chauffeurs, vehicules] = await Promise.all([
+    supabase.from('team_members').select('id, full_name').eq('active', true).order('full_name'),
+    supabase.from('vehicles').select('id, label').eq('status', 'active').order('label'),
+  ])
+  return {
+    chauffeurs: (chauffeurs.data ?? []) as Array<{ id: string; full_name: string }>,
+    vehicules: (vehicules.data ?? []) as Array<{ id: string; label: string }>,
+  }
 }

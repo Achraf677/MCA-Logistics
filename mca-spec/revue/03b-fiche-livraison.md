@@ -145,8 +145,7 @@
   contacts, consignes / note interne, km auto, barre fixe, validation progressive, LV
   remplie depuis la fiche, 3 onglets en modification. (migrations additives : référence,
   créneaux retrait/livraison, prestation, consignes, volume, payeur.)
-- Lot B — fiche client : défauts (retrait habituel, TVA auto, référence obligatoire, délai
-  plafonné 30 j, payeur), recherche client, suppléments catalogue.
+- Lot B — fiche client : FAIT (§ 6 ter), payeur abandonné au profit de « client = qui paie ».
 - Lot C — échecs et annulation : Relivrer (chaîné), Retour dépôt / expéditeur, Problème
   réglé, frais d'annulation, annulation par avoir.
 - Lot D — multi-arrêts + messagerie : N arrêts / colis, import fichier, LV de tournée
@@ -200,6 +199,25 @@
   - liste Livraisons : « Messagerie · 1 240 colis » à la place du trajet ;
   - Mes courses, tournées, planning, calendrier, journée du Dashboard : relevés exclus ;
   - CA, à facturer, encaissement, relances : inchangés (le relevé est une ligne comme une autre).
+
+## 6 ter. Lot B — fiche client = défauts des courses (01/10/2026)
+- Migration `20261001120000_clients_defauts_fiche.sql` : `pays` (FR), `retrait_adresse /
+  contact / tel`, `chauffeur_habituel_id`, `vehicule_habituel_id`, `prestation_defaut`,
+  `reference_obligatoire`, `supplements` (jsonb `[{label, prix_ht_cts}]`).
+- Fiche client en blocs (2 colonnes PC) : Identité (+ pays) · Facturation (délai, référence
+  obligatoire, autoliquidation) · Tarif + suppléments · Habitudes · Notes ; barre fixe, pictos.
+- Nouvelle course : choisir le client remplit les cases VIDES (prestation, retrait + contact,
+  chauffeur, véhicule, autoliquidation si client UE hors France avec n° de TVA).
+- Suppléments en un clic dans la fiche livraison (catalogue du client, sinon libellés usuels).
+- Référence obligatoire : « Il manque pour facturer », refus dans la fiche ET dans l'Edge
+  (factures groupées comprises).
+- Délai : seuls « à réception / 15 j / 30 j » se choisissent (L441-11) ; les anciens 45 / 60 /
+  fin de mois restent affichés « non conforme » ; l'Edge plafonne l'échéance à 30 j.
+- Facture Pennylane : pays réel du client (fini le FR codé en dur).
+- **Payeur ≠ donneur d'ordre : abandonné.** Règle : le client = celui qui commande ET paie
+  (la plateforme, le commissionnaire) ; le particulier est un contact d'arrêt (qui remet / qui
+  reçoit). Un seul concept, pas de double facturation à gérer. Les ~20 fiches de particuliers
+  jetables pourront être fusionnées / désactivées (à décider).
 
 ## 7. Liste longue — vu par un gestionnaire d'exploitation
 ### Saisie

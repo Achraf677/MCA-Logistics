@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **01/10/2026** (PR #34 + #35 mergées : Livraisons, fiche unique, messagerie au colis).
+> Dernière mise à jour : **01/10/2026** (lot B : fiche client = défauts des courses).
 
 ---
 
@@ -42,6 +42,11 @@
 - **Prestations** (`deliveries.prestation`) : `express` · `messagerie` (relevé) · `dediee` ·
   `mise_a_dispo` (un lieu, début / fin) · `forfait` (aucun arrêt). `null` = ancienne course = express.
 - Tout écran doit servir tous les cas : ne jamais coder « 1 course = 1 colis = 1 arrêt » en dur.
+- **Client = celui qui commande ET paie** (plateforme, commissionnaire). Un particulier livré
+  ou enlevé est un CONTACT d'arrêt (qui remet / qui reçoit), pas un client. Pas de « payeur ».
+- **La fiche client porte les défauts de ses courses** (pays, retrait habituel + contact,
+  chauffeur / véhicule habituels, prestation, référence obligatoire, suppléments + prix) :
+  une nouvelle course les reprend dans ses cases vides.
 - Légal transport à respecter : lettre de voiture (arrêté du 9/11/1999 : poids OU volume,
   état récapitulatif pour les tournées), échéance ≤ 30 j date de facture (L441-11), indexation
   gazole en pied de facture (L3222-1/2), CMR hors France, e-facture 09/2027 (SIREN client).
@@ -85,8 +90,11 @@ supabase/
   des deux côtés** (`_shared/lignesFacture.ts` ↔ `livraisons/apercuFacture.logic.ts`).
 
 ## 5. Base de données — pièges (NE PAS réintroduire)
-- `deliveries.montant_*` = GENERATED / legacy → **jamais écrire**. Écrire `amount_ht_cts`,
-  `tva_cts`, `amount_ttc_cts`. Lire `amount_* ?? montant_*`.
+- `deliveries.montant_*` **n'existent PAS en prod** (vérifié le 01/10/2026) → jamais les écrire
+  ni les mettre dans un `select` (la requête échoue et l'écran se vide en silence). Montants :
+  `amount_ht_cts`, `tva_cts`, `amount_ttc_cts`. (`montant_*` existent sur `charges`.)
+- Toute colonne lue / écrite par le front ou une Edge doit EXISTER en prod avant le merge :
+  vérifier dans `information_schema.columns` (le 5e audit du 01/10 en a trouvé 3).
 - `deliveries.statut` ∈ `planifiee, en_cours, livree, facturee, payee, annulee` (check) ;
   nouvelle valeur = migration de la contrainte.
 - `deliveries.notes` = **consignes chauffeur** (visibles dans Mes courses). `note_interne` = bureau.
@@ -96,6 +104,9 @@ supabase/
 - `lv_pdf_url` = `doc:<id>` (Storage) ou ancien lien Drive ; jamais une URL signée.
 - `lv_numero` unique par société (index `deliveries_company_lv_numero_uniq`).
 - `clients.tariff_mode` ∈ `forfait, km, palette, colis, manuel`.
+- `clients.pays` ISO alpha-2 (FR par défaut) → adresse Pennylane + autoliquidation auto.
+- Délai de paiement transport ≤ 30 j date de facture : options `conforme` seulement ; l'Edge
+  plafonne l'échéance (`echeanceTransport`).
 - Migrations : UP **et** DOWN, colonnes nullables / additives, appliquées via MCP Supabase.
 
 ## 6. Machine à états Livraisons (source : `shared/lib/livraisonStatuts.ts`)
@@ -167,13 +178,18 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   documents · Facturation).
 
 ## 12. En cours / à décider (mettre à jour à chaque session)
-- **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fiche client (payeur ≠
-  donneur d'ordre, TVA auto, délai ≤ 30 j, référence obligatoire) · C échecs & annulation
+- **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
+  classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
+- **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·
+  C échecs & annulation
   (relivrer, retour dépôt, avoir) · D tournées de colis (import, scan, LV de tournée) · E facture
   conforme (indexation gazole, pays client, CMR).
 - Dashboard : compter les **colis** de messagerie (aujourd'hui un relevé = 1 livraison dans les
   compteurs ; le CA est juste).
 - Devis : pas encore de prix au colis.
+- ~20 fiches clients « particuliers » jetables (anciennes courses de plateformes) : fusionner
+  ou désactiver ? (à décider)
+- 1 client au délai 60 j (non conforme) : le repasser à 30 j dans sa fiche.
 - Correctif global `text-[var(--fs-*)]` : PR dédiée à décider.
 - Chauffeur : supprimer ses propres photos dans l'heure ? (question ouverte)
 - **Dépenses véhicule** (Carburant + Entretiens) : plan `mca-spec/tabs/30-depenses-vehicule.md`

@@ -1,3 +1,5 @@
+import type { Supplement } from '../../shared/lib/supplements'
+
 /** `colis` : messagerie — tariff_rate_cts = prix HT d'un colis. */
 export type TariffMode = 'forfait' | 'km' | 'palette' | 'colis' | 'manuel'
 
@@ -22,11 +24,30 @@ export interface Client {
   active: boolean
   tariff_mode: TariffMode
   tariff_rate_cts: number | null
+  // ── Défauts des courses (migration 20261001120000, lot B) ──────────────
+  /** Pays de facturation ISO alpha-2 (FR par défaut). */
+  pays: string
+  retrait_adresse: string | null
+  retrait_contact: string | null
+  retrait_tel: string | null
+  chauffeur_habituel_id: string | null
+  vehicule_habituel_id: string | null
+  prestation_defaut: 'express' | 'messagerie' | 'dediee' | 'mise_a_dispo' | 'forfait' | null
+  /** Refuse de facturer une course sans référence client. */
+  reference_obligatoire: boolean
+  /** Catalogue de suppléments [{label, prix_ht_cts}]. */
+  supplements: Supplement[]
   created_at: string
   updated_at: string
 }
 
-export type ClientInsert = Omit<Client, 'id' | 'created_at' | 'updated_at' | 'pennylane_id'>
+/** Champs « défauts des courses » : facultatifs à la création (défauts en base). */
+type DefautsCourses = 'pays' | 'retrait_adresse' | 'retrait_contact' | 'retrait_tel'
+  | 'chauffeur_habituel_id' | 'vehicule_habituel_id' | 'prestation_defaut'
+  | 'reference_obligatoire' | 'supplements'
+
+export type ClientInsert = Omit<Client, 'id' | 'created_at' | 'updated_at' | 'pennylane_id' | DefautsCourses>
+  & Partial<Pick<Client, DefautsCourses>>
 export type ClientUpdate = Partial<Omit<Client, 'id' | 'company_id' | 'created_at'>>
 
 export interface ClientFilters {

@@ -62,7 +62,8 @@ export async function avancerCourse(id: string, cible: 'en_cours' | 'livree') {
     .from('deliveries')
     // Livrer lève un éventuel échec signalé plus tôt (relivraison réussie) :
     // le motif reste en historique, seule l'alerte s'éteint.
-    .update(cible === 'livree' ? { statut: cible, probleme_le: null } : { statut: cible })
+    // `delivered_at` comme les tournées : une seule façon de « livrer ».
+    .update(cible === 'livree' ? { statut: cible, probleme_le: null, delivered_at: new Date().toISOString() } : { statut: cible })
     .eq('id', id)
     .select('id, statut')
     .single()

@@ -547,3 +547,16 @@ describe('messagerie : nb colis × prix au colis', () => {
     expect(m).toEqual({ enregistrer: [], partir: [], lv: [], facturer: ['nombre de colis'] })
   })
 })
+
+describe('référence exigée par le client', () => {
+  it('manque pour facturer tant qu’elle est vide', () => {
+    const f = {
+      prestation: 'express' as const, client_id: 'c', date: '2026-10-01', pickup_address: 'A', delivery_address: 'B',
+      driver_id: 'd', vehicle_id: 'v', expediteur_nom: 'E', destinataire_nom: 'D', marchandise_desc: 'X', nb_colis: '1',
+      poids_kg_reel: '1', volume_m3: '', ht_cts: 1000, prix_colis: '',
+      creneau_retrait_debut: '', creneau_retrait_fin: '', creneau_livraison_debut: '', creneau_livraison_fin: '',
+    }
+    expect(manquesFiche({ ...f, reference_exigee: true }).facturer).toEqual(['référence client (exigée par le client)'])
+    expect(manquesFiche({ ...f, reference_exigee: true, reference_client: 'ODT 1' }).facturer).toEqual([])
+  })
+})
