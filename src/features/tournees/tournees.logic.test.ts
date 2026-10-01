@@ -6,6 +6,9 @@ import {
   canStartTour, canFinishTour,
   geocodedPool, canDispatch, groupToursWithStops, totalsAcrossTours,
   googleMapsAdresseUrl, wazeAdresseUrl, deplacerArret,
+  estEnRetard, coursesEnRetard, fusionnerPool, libelleRetard, dateDepuisParam,
+  debutTourneeSuggere, construireLigneHeures, aDejaDesHeures, heureLocale,
+  type TourDeliveryAvecTournee,
 } from './tournees.logic'
 import type { Tour, TourDelivery } from './tournees.types'
 
@@ -299,5 +302,90 @@ describe('deplacerArret', () => {
   it('liste d un seul arret : rien ne bouge', () => {
     expect(deplacerArret(['a'], 'a', 'haut')).toEqual(['a'])
     expect(deplacerArret(['a'], 'a', 'bas')).toEqual(['a'])
+  })
+})
+
+// ── Lot P3 : retards ──────────────────────────────────────────────────────────
+
+describe('courses en retard', () => {
+  const r = (p: Partial<TourDeliveryAvecTournee>): TourDeliveryAvecTournee => ({ ...mk(p), tours: p.tours ?? null })
+
+  it('estEnRetard : strictement avant la date de référence', () => {
+    expect(estEnRetard({ date: '2026-09-30' }, '2026-10-01')).toBe(true)
+    expect(estEnRetard({ date: '2026-10-01' }, '2026-10-01')).toBe(false)
+    expect(estEnRetard({ date: '2026-10-02' }, '2026-10-01')).toBe(false)
+  })
+
+  it('garde planifiee / en_cours passées, hors tournée terminée, plus ancienne d abord', () => {
+    const out = coursesEnRetard([
+      r({ id: 'a', date: '2026-09-29', statut: 'planifiee' }),
+      r({ id: 'b', date: '2026-09-20', statut: 'en_cours', tours: { status: 'en_cours' } }),
+      r({ id: 'c', date: '2026-09-28', statut: 'planifiee', tours: { status: 'terminee' } }),
+      r({ id: 'd', date: '2026-09-28', statut: 'livree' }),
+      r({ id: 'e', date: '2026-10-01', statut: 'planifiee' }),
+    ], '2026-10-01')
+    expect(out.map(d => d.id)).toEqual(['b', 'a'])
+    expect('tours' in out[0]).toBe(false)
+  })
+
+  it('fusionnerPool : retards en tête, sans doublon', () => {
+    const out = fusionnerPool([mk({ id: 'j1' }), mk({ id: 'x' })], [mk({ id: 'x' }), mk({ id: 'r1' })])
+    expect(out.map(d => d.id)).toEqual(['x', 'r1', 'j1'])
+  })
+
+  it('libelleRetard : JJ/MM', () => {
+    expect(libelleRetard('2026-09-07')).toBe('En retard (07/09)')
+  })
+
+  it('dateDepuisParam : valide, invalide, absente', () => {
+    expect(dateDepuisParam('2026-10-05')).toBe('2026-10-05')
+    expect(dateDepuisParam('2026-02-30')).toBeNull()
+    expect(dateDepuisParam('05/10/2026')).toBeNull()
+    expect(dateDepuisParam(null)).toBeNull()
+    expect(dateDepuisParam('')).toBeNull()
+  })
+})
+
+// ── Lot P3 : heures de tournée ────────────────────────────────────────────────
+
+describe('heures de tournée', () => {
+  it('debutTourneeSuggere : updated_at d une tournée en cours le jour même', () => {
+    const iso = new Date(2026, 9, 1, 7, 45).toISOString()
+    expect(debutTourneeSuggere({ status: 'en_cours', updated_at: iso, date: '2026-10-01' })).toBe('07:45')
+    expect(debutTourneeSuggere({ status: 'en_cours', updated_at: iso, date: '2026-10-02' })).toBeNull()
+    expect(debutTourneeSuggere({ status: 'optimisee', updated_at: iso, date: '2026-10-01' })).toBeNull()
+    expect(debutTourneeSuggere({ status: 'en_cours', updated_at: '', date: '2026-10-01' })).toBeNull()
+  })
+
+  it('heureLocale : HH:MM', () => {
+    expect(heureLocale(new Date(2026, 9, 1, 9, 5).toISOString())).toBe('09:05')
+  })
+
+  it('construireLigneHeures : ligne complète', () => {
+    const r = construireLigneHeures({
+      companyId: 'c', memberId: 'm', date: '2026-10-01', debut: '07:30', fin: '16:10', libelleTournee: 'Master',
+    })
+    expect(r).toEqual({
+      ligne: {
+        company_id: 'c', member_id: 'm', date: '2026-10-01', start_time: '07:30', end_time: '16:10',
+        break_minutes: 0, delivery_id: null, notes: 'Tournée Master',
+      },
+    })
+  })
+
+  it('construireLigneHeures : refuse fin <= début et heures mal formées', () => {
+    const base = { companyId: 'c', memberId: 'm', date: '2026-10-01' }
+    expect(construireLigneHeures({ ...base, debut: '16:00', fin: '08:00' })).toHaveProperty('erreur')
+    expect(construireLigneHeures({ ...base, debut: '08:00', fin: '08:00' })).toHaveProperty('erreur')
+    expect(construireLigneHeures({ ...base, debut: '', fin: '08:00' })).toHaveProperty('erreur')
+    expect(construireLigneHeures({ ...base, debut: '7:00', fin: '25:00' })).toHaveProperty('erreur')
+  })
+
+  it('aDejaDesHeures : même chauffeur même jour', () => {
+    const lignes = [{ member_id: 'm', date: '2026-10-01' }]
+    expect(aDejaDesHeures(lignes, 'm', '2026-10-01')).toBe(true)
+    expect(aDejaDesHeures(lignes, 'm', '2026-10-02')).toBe(false)
+    expect(aDejaDesHeures(lignes, 'n', '2026-10-01')).toBe(false)
+    expect(aDejaDesHeures([], 'm', '2026-10-01')).toBe(false)
   })
 })

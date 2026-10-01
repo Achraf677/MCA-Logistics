@@ -8,7 +8,10 @@
 ## 1. Tables → lecteurs / écrivains
 - **deliveries** (le cœur, ~80 accès) :
   - front : livraisons (écrit tout), mescourses (statut, preuves, problème terrain),
-    tournees (tour_id, stop_order, arrival_time), planning, calendrier (via livraisons.queries),
+    tournees (tour_id, stop_order, arrival_time ; `date` quand une course en retard est
+    remise dans la tournée du jour — lot P3), planning (écrit `driver_id`, `date` par
+    glisser-déposer / action groupée ; détache de sa tournée : tour_id, stop_order, arrival_time
+    à null), calendrier (via livraisons.queries),
     dashboard, encaissement, relances, alertes, clients (encours), equipe, heures, devis
     (crée une course depuis un devis), copilote / assistant (création IA) ;
   - shared : `alertesEngine.queries` (à facturer, sans justificatif, retards), `pod.queries` ;
@@ -25,17 +28,24 @@
     pennylane-clients-sync (upsert de colonnes listées). Libs partagées :
     `shared/lib/pays.ts` (UE, autoliquidation), `shared/lib/supplements.ts`.
 - **vehicles / team_members** : flotte (vehicules, carburant, entretiens, inspections, incidents),
-  livraisons, tournees, mescourses, equipe, heures, alertes, devis, modeles.
+  livraisons, tournees, planning (échéances permis / visite médicale / CT / assurance à
+  l'affectation), mescourses, equipe, heures, alertes, devis, modeles ; calendrier (lecture
+  des échéances : `ct_expiry`, `insurance_expiry`, `next_revision_date`, `licence_b_expiry`,
+  `medical_visit_expiry` via `calendrier.queries`).
 - **documents** (+ Storage `documents`) : `shared/lib/documents.queries` (tous les panneaux
   Documents), mescourses (photos), parametres ; Edge send-client-email (pièce jointe LV),
   drive-migrate-to-storage ; alertes (sans justificatif).
 - **charges** : charges, fournisseurs, tresorerie, `shared` rapprochement / aRapprocher / alertes ;
   Edge pennylane-sync, lire-facture, lire-releve, suggest-categorie-ia.
 - **tours** : tournees, mescourses ; Edge optimize-tour(s).
+- **work_hours** : heures (écrit tout), equipe ; tournees (lot P3 : après « Terminer la
+  tournée », propose d'insérer la ligne du chauffeur — date, début, fin — si aucune ligne
+  n'existe déjà pour ce chauffeur ce jour-là).
 - **quotes** : devis, clients ; Edge pennylane-quote ; alertes.
 - **qonto_transactions** : tresorerie, encaissement, aRapprocher ; Edge qonto-sync.
 - **fuel_logs** : carburant, vehicules, `shared/produitsVehicule.queries`.
-- **vehicle_maintenances** : entretiens, vehicules, alertes.
+- **vehicle_maintenances** : entretiens, vehicules, alertes, calendrier (`next_due_date` du dernier
+  entretien par véhicule et type).
 - **profiles / user_permissions** : `app/providers` (rôle, société), toutes les Edge via
   `_shared/auth.ts` (`exigerPermission`), admins ; RLS `has_permission`, `is_president`.
 
