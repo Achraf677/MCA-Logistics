@@ -175,6 +175,8 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   documents · Facturation).
 
 ## 12. En cours / à décider (mettre à jour à chaque session)
+- **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
+  classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
 - **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·
   C échecs & annulation
   (relivrer, retour dépôt, avoir) · D tournées de colis (import, scan, LV de tournée) · E facture
