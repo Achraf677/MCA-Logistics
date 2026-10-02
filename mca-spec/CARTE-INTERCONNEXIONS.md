@@ -11,7 +11,7 @@
     tournees (tour_id, stop_order, arrival_time ; `date` quand une course en retard est
     remise dans la tournée du jour — lot P3), planning (écrit `driver_id`, `date` par
     glisser-déposer / action groupée ; détache de sa tournée : tour_id, stop_order, arrival_time
-    à null), calendrier (via livraisons.queries),
+    à null ; vue Mois via livraisons.queries#getDeliveries),
     dashboard, encaissement, relances, alertes, clients (encours), equipe, heures, devis
     (crée une course depuis un devis), copilote / assistant (création IA) ;
   - shared : `alertesEngine.queries` (à facturer, sans justificatif, retards), `pod.queries` ;
@@ -29,9 +29,9 @@
     `shared/lib/pays.ts` (UE, autoliquidation), `shared/lib/supplements.ts`.
 - **vehicles / team_members** : flotte (vehicules, carburant, entretiens, inspections, incidents),
   livraisons, tournees, planning (échéances permis / visite médicale / CT / assurance à
-  l'affectation), mescourses, equipe, heures, alertes, devis, modeles ; calendrier (lecture
+  l'affectation), mescourses, equipe, heures, alertes, devis, modeles ; planning (lecture
   des échéances : `ct_expiry`, `insurance_expiry`, `next_revision_date`, `licence_b_expiry`,
-  `medical_visit_expiry` via `calendrier.queries`).
+  `medical_visit_expiry` via `planning.queries#getSourcesEcheances` : vue Mois + en-têtes de jour).
 - **documents** (+ Storage `documents`) : `shared/lib/documents.queries` (tous les panneaux
   Documents), mescourses (photos), parametres ; Edge send-client-email (pièce jointe LV),
   drive-migrate-to-storage ; alertes (sans justificatif).
@@ -44,7 +44,7 @@
 - **quotes** : devis, clients ; Edge pennylane-quote ; alertes.
 - **qonto_transactions** : tresorerie, encaissement, aRapprocher ; Edge qonto-sync.
 - **fuel_logs** : carburant, vehicules, `shared/produitsVehicule.queries`.
-- **vehicle_maintenances** : entretiens, vehicules, alertes, calendrier (`next_due_date` du dernier
+- **vehicle_maintenances** : entretiens, vehicules, alertes, planning (vue Mois, `next_due_date` du dernier
   entretien par véhicule et type).
 - **profiles / user_permissions** : `app/providers` (rôle, société), toutes les Edge via
   `_shared/auth.ts` (`exigerPermission`), admins ; RLS `has_permission`, `is_president`.
@@ -55,7 +55,7 @@
 - `prestation` (01/10/2026) : fiche livraison (blocs affichés), liste (colonne Trajet via
   `trajetOuReleve`), facture (Edge + aperçu : relevé en quantité). **Filtre « sur la route »**
   `prestation.is.null,prestation.not.in.(messagerie,forfait)` dans : mescourses, tournees,
-  planning, dashboard (journée) ; calendrier filtre côté client. Tout NOUVEL écran « terrain »
+  planning, dashboard (journée) ; la vue Mois du planning filtre côté client. Tout NOUVEL écran « terrain »
   doit appliquer ce filtre.
 - `nb_colis`, `prix_unitaire_cts` : relevé de messagerie (HT = nb × prix) ; facture en quantité ;
   `nb_colis` aussi écrit par l'onglet Lettre de voiture.
@@ -95,5 +95,5 @@
 
 ## 5. Imports entre features (exceptions existantes — ne pas en ajouter)
 - assistant → presque tout (hub IA).
-- planning, calendrier, tournees, dashboard → livraisons (drawer, types, queries).
+- planning, tournees, dashboard → livraisons (drawer, types, queries).
 - livraisons → parametres.

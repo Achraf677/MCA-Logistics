@@ -13,7 +13,6 @@ export const PERMISSION_CATALOG: PermResource[] = [
   // Planning
   { section: 'Planning',    key: 'planning.tournees',     label: 'Tournées' },
   { section: 'Planning',    key: 'planning.planning',     label: 'Planning' },
-  { section: 'Planning',    key: 'planning.calendrier',   label: 'Calendrier' },
   // Flotte
   { section: 'Flotte',      key: 'flotte.vehicules',      label: 'Véhicules' },
   { section: 'Flotte',      key: 'flotte.carburant',      label: 'Carburant' },

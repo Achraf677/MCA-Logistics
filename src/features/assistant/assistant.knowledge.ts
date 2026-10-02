@@ -14,7 +14,7 @@ Permissions : rôles president / dg / chauffeur / comptable. Le front ne bloque 
 3) PLANNING (/planning-hub) — vues temporelles. Sous-onglets :
    - Tournées (/planning-hub?tab=tournees) — composer/optimiser les tournées d'une journée, multi-véhicule (cocher véhicules+chauffeurs+livraisons géocodées, « Répartir & optimiser »), Naviguer/Waze, marquer Livré, Démarrer/Terminer, carte d'ensemble.
    - Planning (/planning-hub?tab=planning) — vue hebdomadaire des livraisons (hors annulées).
-   - Calendrier (/planning-hub?tab=calendrier) — vue mensuelle des livraisons.
+   - Planning, vue Mois (/planning-hub?tab=planning&vue=mois) — mois : courses et échéances flotte / équipe (ancien Calendrier).
 
 4) FLOTTE (/flotte) — Sous-onglets :
    - Véhicules (/flotte?tab=vehicules) — référentiel flotte, échéancier (CT, assurance, révision), Crit'Air, PTAC ≤ 3,5 t. « Nouveau ».

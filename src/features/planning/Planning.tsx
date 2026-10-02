@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react
 import type { DragEvent, ReactNode } from 'react'
 import {
   ChevronLeft, ChevronRight, CalendarDays, Users, UserX, Truck, MapPinOff, Clock,
-  AlertTriangle, Package, Zap, CircleCheck, X,
+  AlertTriangle, Package, Zap, CircleCheck, X, CalendarRange, CalendarClock,
 } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
@@ -16,7 +16,12 @@ const DrawerLivraison = lazy(() =>
   import('../livraisons/DrawerLivraison').then(m => ({ default: m.DrawerLivraison })))
 import {
   getDeliveriesForWeek, getCoursesEnRetard, getEquipePlanning, getVehiculesPlanning, deplacerCourses,
+  getSourcesEcheances,
 } from './planning.queries'
+import { VueMois } from './VueMois'
+import { construireEcheances, echeancesParJour, statutLePlusGrave, infoBulleEcheances } from './mois.logic'
+import type { MarqueurEcheance } from './mois.logic'
+import type { EcheanceStatus } from '../../shared/lib/echeances'
 import {
   joursDeLaSemaine, grouperParChauffeur, grouperParJour, compteursATraiter, correspondAuFiltre,
   creneauCarte, estDeplacable, estOuverte, aDeplacer, appliquerDeplacement, alertesDeplacement,
@@ -59,10 +64,33 @@ const FILTRES: { cle: FiltreATraiter; libelle: string; icone: ReactNode }[] = [
   { cle: 'echecs',         libelle: 'échecs à relivrer', icone: <AlertTriangle size={14} /> },
 ]
 
-type Vue = 'ressource' | 'jour'
+type Vue = 'ressource' | 'jour' | 'mois'
+const VUES: Vue[] = ['ressource', 'jour', 'mois']
 const CLE_VUE = 'planning.vue'
+const MOIS_LONG = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
+/** `?vue=mois` (ancien lien Calendrier) l'emporte sur la vue mémorisée. */
 function vueInitiale(): Vue {
-  try { return localStorage.getItem(CLE_VUE) === 'jour' ? 'jour' : 'ressource' } catch { return 'ressource' }
+  const lue = (v: string | null) => (VUES as (string | null)[]).includes(v) ? v as Vue : null
+  try {
+    return lue(new URLSearchParams(location.search).get('vue')) ?? lue(localStorage.getItem(CLE_VUE)) ?? 'ressource'
+  } catch { return 'ressource' }
+}
+
+type SourcesEcheances = Awaited<ReturnType<typeof getSourcesEcheances>>
+
+const COULEUR_ECHEANCE: Record<EcheanceStatus, string> = {
+  overdue: 'text-[var(--danger)]', soon: 'text-[var(--warning)]', ok: 'text-[var(--info)]', none: 'text-[var(--text-muted)]',
+}
+
+/** Pastille « échéances du jour » (CT, assurance, permis…) dans l'en-tête d'un jour. */
+function PastilleEcheances({ liste }: { liste: MarqueurEcheance[] }) {
+  if (!liste.length) return null
+  return (
+    <span title={infoBulleEcheances(liste)} style={{ alignSelf: 'center' }} aria-label={`${liste.length} échéance${liste.length > 1 ? 's' : ''}`}
+      className={`inline-flex items-center gap-0.5 text-xs font-semibold ${COULEUR_ECHEANCE[statutLePlusGrave(liste)]}`}>
+      <CalendarClock size={12} />{liste.length > 1 ? liste.length : ''}
+    </span>
+  )
 }
 
 interface Confirmation { ids: string[]; aDetacher: string[]; cible: CibleDeplacement; alertes: string[] }
@@ -165,6 +193,7 @@ export function Planning() {
   const [glisse, setGlisse]       = useState<string | null>(null)
   const [survol, setSurvol]       = useState<string | null>(null)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
+  const [sources, setSources]     = useState<SourcesEcheances | null>(null)
 
   const weekDays = useMemo(() => joursDeLaSemaine(anchor), [anchor])
   const jours    = useMemo(() => weekDays.map(toLocalISO), [weekDays])
@@ -172,7 +201,17 @@ export function Planning() {
   const dateTo   = jours[6]
   const today    = toLocalISO(new Date())
 
+  const enMois = vue === 'mois'
+
+  // Échéances flotte / équipe : lues une fois, affichées sur les en-têtes de jour.
+  useEffect(() => { void getSourcesEcheances().then(setSources) }, [])
+  const echeancesSemaine = useMemo(
+    () => sources ? echeancesParJour(construireEcheances(sources, dateFrom, dateTo)) : new Map<string, MarqueurEcheance[]>(),
+    [sources, dateFrom, dateTo])
+
   const load = useCallback(async () => {
+    // Vue Mois : elle lit ses propres données.
+    if (enMois) return
     setLoading(true)
     const [semaine, retard, eq, veh] = await Promise.all([
       getDeliveriesForWeek(dateFrom, dateTo),
@@ -186,7 +225,7 @@ export function Planning() {
     setEquipe(eq.data ?? [])
     setVehicules(veh.data ?? [])
     setLoading(false)
-  }, [dateFrom, dateTo, toast])
+  }, [dateFrom, dateTo, toast, enMois])
 
   useEffect(() => { load() }, [load])
 
@@ -197,8 +236,14 @@ export function Planning() {
 
   // Changer de semaine vide la sélection (ses cartes ne sont plus visibles).
   const allerA = (d: Date) => { setAnchor(d); setSelection(new Set()) }
-  const prevWeek  = () => { const d = new Date(anchor); d.setDate(d.getDate() - 7); allerA(d) }
-  const nextWeek  = () => { const d = new Date(anchor); d.setDate(d.getDate() + 7); allerA(d) }
+  // Semaine en vues chauffeur / jour ; mois en vue Mois (même date pivot).
+  const decaler = (sens: 1 | -1) => {
+    const d = new Date(anchor)
+    if (enMois) { d.setDate(1); d.setMonth(d.getMonth() + sens) } else d.setDate(d.getDate() + 7 * sens)
+    allerA(d)
+  }
+  const prevWeek  = () => decaler(-1)
+  const nextWeek  = () => decaler(1)
   const goToToday = () => allerA(new Date())
 
   const ouvrir = (c: CoursePlanning | null) => { setSelected(c); setDrawerOpen(true) }
@@ -329,6 +374,7 @@ export function Planning() {
         </span>
         <span className={`text-sm font-bold ${isToday ? 'text-[var(--brand)]' : 'text-[var(--text)]'}`}>{day.getDate()}</span>
         {nb > 0 && <span className="text-xs text-[var(--text-muted)]">· {nb}</span>}
+        <PastilleEcheances liste={echeancesSemaine.get(key) ?? []} />
       </div>
     )
   }
@@ -342,38 +388,51 @@ export function Planning() {
         {/* Navigation semaine + bascule de vue */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="compact" onClick={prevWeek} aria-label="Semaine précédente">
+            <Button variant="ghost" size="compact" onClick={prevWeek} aria-label={enMois ? 'Mois précédent' : 'Semaine précédente'}>
               <ChevronLeft size={16} />
             </Button>
             <span className="text-sm font-medium text-[var(--text)] min-w-[11rem] text-center select-none">
-              {weekLabel(weekDays)}
+              {enMois ? `${MOIS_LONG[anchor.getMonth()]} ${anchor.getFullYear()}` : weekLabel(weekDays)}
             </span>
-            <Button variant="ghost" size="compact" onClick={nextWeek} aria-label="Semaine suivante">
+            <Button variant="ghost" size="compact" onClick={nextWeek} aria-label={enMois ? 'Mois suivant' : 'Semaine suivante'}>
               <ChevronRight size={16} />
             </Button>
           </div>
           <Button variant="secondary" size="compact" onClick={goToToday}>Aujourd'hui</Button>
-          <div className="hidden sm:inline-flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden" role="group" aria-label="Affichage">
-            {([['ressource', 'Par chauffeur', Users], ['jour', 'Par jour', CalendarDays]] as const).map(([v, lib, Icone]) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => changerVue(v)}
-                aria-pressed={vue === v}
-                className={`inline-flex items-center gap-1 px-2 h-7 text-xs transition-colors
-                  ${vue === v ? 'bg-[var(--brand-soft)] text-[var(--brand)]' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}
-              >
-                <Icone size={13} />{lib}
-              </button>
-            ))}
+          <div className="inline-flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden" role="group" aria-label="Affichage">
+            {/* Mobile : « Par chauffeur » et « Par jour » donnent la même liste → un seul bouton « Semaine ». */}
+            {([
+              ['ressource', 'Par chauffeur', Users, 'hidden sm:inline-flex'],
+              ['jour', 'Par jour', CalendarDays, 'hidden sm:inline-flex'],
+              ['jour', 'Semaine', CalendarDays, 'inline-flex sm:hidden'],
+              ['mois', 'Mois', CalendarRange, 'inline-flex'],
+            ] as const).map(([v, lib, Icone, affichage]) => {
+              const actif = v === 'jour' && affichage.startsWith('inline') ? !enMois : vue === v
+              return (
+                <button
+                  key={lib}
+                  type="button"
+                  onClick={() => changerVue(v)}
+                  aria-pressed={actif}
+                  className={`${affichage} items-center gap-1 px-2 h-7 text-xs transition-colors
+                    ${actif ? 'bg-[var(--brand-soft)] text-[var(--brand)]' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}
+                >
+                  <Icone size={13} />{lib}
+                </button>
+              )
+            })}
           </div>
-          <span className="ml-auto text-xs text-[var(--text-muted)]">
-            {total} course{total !== 1 ? 's' : ''} cette semaine
-          </span>
+          {!enMois && (
+            <span className="ml-auto text-xs text-[var(--text-muted)]">
+              {total} course{total !== 1 ? 's' : ''} cette semaine
+            </span>
+          )}
         </div>
 
+        {enMois && <VueMois annee={anchor.getFullYear()} mois={anchor.getMonth()} />}
+
         {/* Bandeau « À traiter » */}
-        {!loading && (
+        {!loading && !enMois && (
           <div className="flex flex-wrap items-center gap-1.5 shrink-0">
             <span className="text-xs font-semibold text-[var(--text-muted)] mr-1">À traiter</span>
             {rienATraiter ? (
@@ -411,7 +470,7 @@ export function Planning() {
         )}
 
         {/* Courses en retard d'avant la semaine : à glisser vers un jour */}
-        {!loading && filtre === 'retard' && retardsAvant.length > 0 && (
+        {!loading && !enMois && filtre === 'retard' && retardsAvant.length > 0 && (
           <div className="shrink-0 rounded-[var(--r-lg)] border border-[var(--danger)]/40 p-2 flex flex-col gap-1.5 max-h-[30vh] overflow-auto">
             <span className="text-xs text-[var(--text-muted)]">
               En retard avant cette semaine — glisser une carte vers un chauffeur / un jour pour la replanifier
@@ -428,7 +487,7 @@ export function Planning() {
         )}
 
         {/* Barre d'action groupée */}
-        {selection.size > 0 && (
+        {!enMois && selection.size > 0 && (
           <div className="shrink-0 flex flex-wrap items-center gap-2 px-3 py-2 rounded-[var(--r-lg)] border border-[var(--brand)] bg-[var(--bg-card)]">
             <span className="text-sm font-medium text-[var(--text)]">
               {selection.size} sélectionnée{selection.size > 1 ? 's' : ''}
@@ -467,7 +526,7 @@ export function Planning() {
           </div>
         )}
 
-        {loading ? (
+        {enMois ? null : loading ? (
           <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
             {weekDays.map((_, i) => <Skeleton key={i} className="h-48" />)}
           </div>
@@ -559,11 +618,14 @@ export function Planning() {
                       <span className={`font-semibold text-sm ${isToday ? 'text-[var(--brand)]' : 'text-[var(--text)]'}`}>
                         {FR_DAYS_LONG[i]} {day.getDate()} {FR_MONTHS[day.getMonth()]}
                       </span>
-                      {courses.length > 0 && (
-                        <span className="text-xs text-[var(--text-muted)]">
-                          {courses.length} course{courses.length !== 1 ? 's' : ''}
-                        </span>
-                      )}
+                      <span className="inline-flex items-center gap-2">
+                        <PastilleEcheances liste={echeancesSemaine.get(key) ?? []} />
+                        {courses.length > 0 && (
+                          <span className="text-xs text-[var(--text-muted)]">
+                            {courses.length} course{courses.length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </span>
                     </div>
                     {courses.length === 0 ? (
                       <div className="px-4 py-3 text-xs text-[var(--text-disabled)]">Aucune course</div>

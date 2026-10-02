@@ -1,33 +1,30 @@
 import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
 import type { MouseEvent } from 'react'
 import {
-  ChevronLeft, ChevronRight, Calendar, CalendarClock, UserX, Zap, Plus, Wrench, IdCard,
+  Calendar, CalendarClock, UserX, Zap, Plus, Wrench, IdCard,
 } from 'lucide-react'
-import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Drawer } from '../../shared/ui/Drawer'
 // Chargé à la demande : c'est le plus gros bloc du site, utile seulement au
-// clic sur une course ou un jour, pas à l'affichage du calendrier lui-même.
+// clic sur une course ou un jour, pas à l'affichage du mois lui-même.
 const DrawerLivraison = lazy(() =>
   import('../livraisons/DrawerLivraison').then(m => ({ default: m.DrawerLivraison })))
 import { getDeliveries } from '../livraisons/livraisons.queries'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
-import type { ActionKey } from '../../shared/actions/ActionBar'
 import { toLocalISO } from '../../shared/lib/dates'
 import type { EcheanceStatus } from '../../shared/lib/echeances'
-import { getSourcesEcheances } from './calendrier.queries'
+import { getSourcesEcheances } from './planning.queries'
 import {
   grilleDuMois, coursesParJour, estSurLaRoute, tronquer, construireEcheances, echeancesParJour,
   statutLePlusGrave, infoBulleEcheances, montreCourses, montreEcheances, joursAvecContenu,
-} from './calendrier.logic'
+} from './mois.logic'
 import type {
   CourseCase, CoursesDuJour, FiltreCalendrier, MarqueurEcheance,
   VehiculeEcheanceSource, EntretienEcheanceSource, MembreEcheanceSource,
-} from './calendrier.logic'
+} from './mois.logic'
 
-const MOIS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 const JOURS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 const FILTRES: { cle: FiltreCalendrier; libelle: string }[] = [
   { cle: 'tout', libelle: 'Tout' },
@@ -57,10 +54,11 @@ function jourLong(iso: string): string {
   return new Date(a, m - 1, j).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
-export function Calendrier() {
-  const now = new Date()
-  const [year, setYear]   = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth())
+/**
+ * Vue « Mois » du Planning (ancien onglet Calendrier) : courses du mois et
+ * échéances flotte / équipe. Le mois affiché et sa navigation viennent du Planning.
+ */
+export function VueMois({ annee: year, mois: month }: { annee: number; mois: number }) {
   const [rows, setRows]   = useState<DeliveryRow[]>([])
   const [sources, setSources] = useState<SourcesEcheances>(SOURCES_VIDES)
   const [loading, setLoading] = useState(true)
@@ -86,10 +84,6 @@ export function Calendrier() {
   }, [monthStart, monthEnd])
 
   useEffect(() => { load() }, [load])
-
-  const prevMonth = () => { if (month === 0) { setYear(y => y - 1); setMonth(11) } else setMonth(m => m - 1) }
-  const nextMonth = () => { if (month === 11) { setYear(y => y + 1); setMonth(0) } else setMonth(m => m + 1) }
-  const goToToday = () => { setYear(now.getFullYear()); setMonth(now.getMonth()) }
 
   const parId = useMemo(() => new Map(rows.map(r => [r.id, r])), [rows])
   const courses = useMemo(() => coursesParJour(rows), [rows])
@@ -122,10 +116,6 @@ export function Calendrier() {
     setDrawerOpen(true)
   }
 
-  const handleAction = (key: ActionKey) => {
-    if (key === 'nouveau') nouvelleLe(undefined)
-  }
-
   const grid = grilleDuMois(year, month)
   const today = toLocalISO(new Date())
   const joursMobile = joursAvecContenu(year, month, courses, echeances, filtre)
@@ -140,19 +130,10 @@ export function Calendrier() {
   }
 
   return (
-    <Shell pageTitle="Calendrier" actions={['nouveau']} onAction={handleAction}>
-      <div className="flex flex-col gap-3 md:h-[calc(100dvh-var(--topbar-h)-8.5rem)] md:min-h-[30rem]">
-        {/* Navigation + filtres */}
+    <>
+      <div className="flex flex-col gap-3 min-h-0 md:flex-1">
+        {/* Filtres + totaux du mois */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="compact" onClick={prevMonth} aria-label="Mois précédent"><ChevronLeft size={16} /></Button>
-            <span className="text-sm font-semibold text-[var(--text)] min-w-[9rem] text-center select-none">
-              {MOIS[month]} {year}
-            </span>
-            <Button variant="ghost" size="compact" onClick={nextMonth} aria-label="Mois suivant"><ChevronRight size={16} /></Button>
-          </div>
-          <Button variant="secondary" size="compact" onClick={goToToday}>Aujourd'hui</Button>
-
           <div className="inline-flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden shrink-0" role="group" aria-label="Afficher">
             {FILTRES.map(f => {
               const actif = filtre === f.cle
@@ -278,7 +259,7 @@ export function Calendrier() {
           onSaved={load}
         />
       </Suspense>
-    </Shell>
+    </>
   )
 }
 
