@@ -6,6 +6,7 @@
 // ultérieure et distincte. Les secrets Qonto ne sont ni loggués ni renvoyés.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
+import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError } from '../_shared/http.ts';
 import { getOrganization, listTransactions } from '../_shared/qonto.ts';
 Deno.serve(async (req)=>{
@@ -20,15 +21,11 @@ Deno.serve(async (req)=>{
     }, 500);
   }
   const supabase = getServiceClient();
-  // ── Mono-société : tout est rattaché à la première company ──────────────────
-  const { data: company, error: cErr } = await supabase.from('companies').select('id').limit(1).single();
-  if (cErr || !company) {
-    return jsonResponse({
-      ok: false,
-      error: 'company not found'
-    }, 404);
-  }
-  const companyId = company.id;
+  // Contrôle d'accès (U1) : le service role contourne la RLS → on revérifie
+  // l'appelant (synchroniser la banque) et on travaille dans SA société.
+  const acces = await exigerPermission(req, supabase, 'finance.tresorerie', 'update');
+  if (!acces.ok) return acces.response;
+  const companyId = acces.companyId;
   try {
     const bankAccounts = await getOrganization(slug, secret);
     let snapshots = 0;

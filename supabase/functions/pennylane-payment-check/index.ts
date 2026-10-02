@@ -6,6 +6,7 @@
 // N'écrit RIEN chez Pennylane et ne touche AUCUNE autre table que `deliveries`.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
+import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
 import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
 
@@ -49,11 +50,17 @@ Deno.serve(async (req) => {
   catch { return jsonResponse({ ok: false, error: 'PENNYLANE_API_TOKEN manquant' }, 500); }
 
   const supabase = getServiceClient();
+  // Contrôle d'accès (U1) : le service role contourne la RLS → on revérifie
+  // l'appelant (vérifier les paiements, qui écrit des statuts) et on travaille dans SA société.
+  const acces = await exigerPermission(req, supabase, 'finance.tresorerie', 'update');
+  if (!acces.ok) return acces.response;
+  const companyId = acces.companyId;
 
   // ── Livraisons facturées avec une référence Pennylane ─────────────────────────
   const { data: deliveries, error: dErr } = await supabase
     .from('deliveries')
     .select('id, pennylane_invoice_id, pennylane_invoice_number')
+    .eq('company_id', companyId)
     .eq('statut', 'facturee')
     .not('pennylane_invoice_id', 'is', null);
 
@@ -79,6 +86,7 @@ Deno.serve(async (req) => {
         await supabase
           .from('deliveries')
           .update({ pennylane_invoice_number: invoice.invoice_number })
+          .eq('company_id', companyId)
           .eq('pennylane_invoice_id', invoiceId);
       }
 
@@ -89,6 +97,7 @@ Deno.serve(async (req) => {
         const { error: cErr } = await supabase
           .from('deliveries')
           .update({ statut: 'annulee' })
+          .eq('company_id', companyId)
           .eq('pennylane_invoice_id', invoiceId)
           .eq('statut', 'facturee');
 
@@ -106,6 +115,7 @@ Deno.serve(async (req) => {
       const { error: uErr } = await supabase
         .from('deliveries')
         .update({ statut: 'payee', paid_at: new Date().toISOString() })
+        .eq('company_id', companyId)
         .eq('pennylane_invoice_id', invoiceId)
         .eq('statut', 'facturee');
 

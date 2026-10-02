@@ -3,6 +3,7 @@
 // Le token n'est ni loggué ni renvoyé au client.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
+import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
 import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
 
@@ -97,12 +98,11 @@ Deno.serve(async (req) => {
 
   const supabase = getServiceClient();
 
-  const { data: company, error: cErr } = await supabase
-    .from('companies').select('id').limit(1).single();
-  if (cErr || !company) {
-    return jsonResponse({ ok: false, error: 'company not found' }, 404);
-  }
-  const companyId = company.id as string;
+  // Contrôle d'accès (U1) : le service role contourne la RLS → on revérifie
+  // l'appelant (synchroniser charges et fournisseurs) et on travaille dans SA société.
+  const acces = await exigerPermission(req, supabase, 'finance.charges', 'update');
+  if (!acces.ok) return acces.response;
+  const companyId = acces.companyId;
 
   try {
     let cursor: string | null = null;

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
+  DROIT_SYNC, domainesAutorises, SYNC_DOMAINS,
   createInitialState, isStale, lockDomain, unlockDomain, runSync, sequentialSync,
   persistLastSync, loadLastSync, SyncRunError, DEFAULT_STALENESS_MS,
   type SyncStorage,
@@ -188,5 +189,18 @@ describe('sequentialSync', () => {
     const state = createInitialState()
     const next = await sequentialSync(state, [], vi.fn())
     expect(next).toEqual(state)
+  })
+})
+
+describe('domainesAutorises (droits des synchros, U1)', () => {
+  it('chauffeur sans droit finance / tiers : aucune synchro Pennylane / Qonto', () => {
+    const can = (cle: string) => cle === 'livraisons.livraisons'
+    expect(domainesAutorises([...SYNC_DOMAINS], can)).toEqual(['derniers_numeros'])
+  })
+  it('tout autorisé : tous les domaines', () => {
+    expect(domainesAutorises([...SYNC_DOMAINS], () => true)).toEqual(SYNC_DOMAINS)
+  })
+  it('charges et fournisseurs suivent le même droit (même Edge)', () => {
+    expect(DROIT_SYNC.charges).toEqual(DROIT_SYNC.fournisseurs)
   })
 })

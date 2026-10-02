@@ -133,7 +133,7 @@
 
 ## 4. Plan en lots
 
-### U1 — Contrôle d'accès des synchros (sécurité, sans migration)
+### U1 — Contrôle d'accès des synchros (sécurité, sans migration) — ✔ CODÉ (PR #41), Edge à déployer
 - Fichiers : `pennylane-clients-sync`, `pennylane-sync`, `pennylane-payment-check`, `qonto-sync`,
   `pennylane-file` (index.ts) ; `exigerPermission(req, svc, '<ressource>', 'update'|'view')` ;
   société = celle de l'appelant (plus de `companies.limit(1)`) ; retirer `_debug_first_customer`.

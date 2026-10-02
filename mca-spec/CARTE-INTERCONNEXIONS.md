@@ -88,6 +88,8 @@
 - ai-extract-deliveries : copilote, parametres · assistant-chat : assistant ·
   alertes-briefing : alertes · brouillons-generate : brouillons
 - admin-users, admin-permissions : admins · drive-* : parametres
+- Droits des synchros (U1) : chaque Edge de synchro exige un droit (`_shared/auth#exigerPermission`)
+  et le front ne lance que les synchros permises (`shared/lib/autoSync#DROIT_SYNC`, miroir).
 - Front partagé : `shared/lib/prestations.ts` (types de prestation + `blocsPrestation`),
   `shared/ui/FicheSaisie` (Bloc, ChoixClient, ChoixPrestation : fiche livraison + devis), `shared/ui/LignesSupplementaires`
   (éditeur de suppléments : fiche livraison + devis).

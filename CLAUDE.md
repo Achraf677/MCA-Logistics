@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **01/10/2026** (Devis : lots D1 + D2).
+> Dernière mise à jour : **01/10/2026** (Devis uniformisé + U1 Pennylane).
 
 ---
 
@@ -198,8 +198,13 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   site. Ordre : U1 droits des 5 synchros · U2 client Pennylane unique (pays, TVA, SIREN, local
   gagne) · U3 lignes du devis = lignes de facture · U4 devis converti suivi (choix d'archi à
   valider) · U5 dates Paris + paiements réels · U6 mentions légales (= lot E) · U7 charges ·
-  U8 ménage. À lancer dans une nouvelle conversation, lot par lot, avec accord avant chaque
-  migration / déploiement d'Edge.
+  U8 ménage. Lot par lot, avec accord avant chaque migration / déploiement d'Edge.
+  - **U1 codé (PR #41)** : `exigerPermission` + société de l'appelant dans pennylane-clients-sync
+    (tiers.clients/update), pennylane-sync (finance.charges/update), pennylane-payment-check et
+    qonto-sync (finance.tresorerie/update), pennylane-file (finance.charges | flotte.carburant |
+    flotte.entretiens / view + facture rattachée à une charge de la société) ; front :
+    `autoSync#DROIT_SYNC` filtre les synchros lancées. **Les 5 Edge restent à DÉPLOYER après
+    le merge** (sinon l'ancien code tourne). Prochain : U2.
 - **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
   classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
 - **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·
@@ -209,8 +214,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - Dashboard : compter les **colis** de messagerie (aujourd'hui un relevé = 1 livraison dans les
   compteurs ; le CA est juste).
 - Devis : PR #41 (D1 + D2 + uniformisation avec la fiche livraison + recherche / filtres de la
-  liste). **Migration `20261002090000_quotes_fiche_prix` NON appliquée** (attend l'accord) :
-  à appliquer AVANT le merge. D3 (Edge pennylane-quote) = lot U3 du plan Pennylane ; D4 reste :
+  liste). Migration `20261002090000_quotes_fiche_prix` **appliquée en prod le 02/10/2026**. D3 (Edge pennylane-quote) = lot U3 du plan Pennylane ; D4 reste :
   expiration automatique, relance des devis envoyés > 7 j.
 - ~20 fiches clients « particuliers » jetables (anciennes courses de plateformes) : fusionner
   ou désactiver ? (à décider)
