@@ -1,7 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { RefreshCw, Loader2 } from 'lucide-react'
 import { Drawer }     from '../../shared/ui/Drawer'
+import { Bloc, ChoixClient, ChoixPrestation, Champ as Field } from '../../shared/ui/FicheSaisie'
+import { ContactLinks } from '../../shared/ui/ContactLinks'
+import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
 import { ExtraLinesEditor } from '../../shared/ui/LignesSupplementaires'
@@ -15,7 +19,8 @@ import type { DeliveryExtraLine } from '../../shared/lib/money'
 import { toLocalISO } from '../../shared/lib/dates'
 import { autoliquidationParDefaut } from '../../shared/lib/pays'
 import { lireSupplements } from '../../shared/lib/supplements'
-import { PRESTATIONS, PRESTATION_LABELS } from '../../shared/lib/prestations'
+import { blocsPrestation } from '../../shared/lib/prestations'
+import { libelleDelaiPaiement } from '../../shared/lib/paymentTerms'
 import type { Prestation } from '../../shared/lib/prestations'
 import {
   STATUS_LABELS, STATUS_COLORS, isExpiredDisplay, addDays,
@@ -24,12 +29,11 @@ import {
 } from './devis.logic'
 import {
   createQuote, updateQuote, updateQuoteStatus, deleteQuote, appliquerTarifClient,
-  listClientsLight, sendToPennylane, syncQuoteNumber, convertToInvoice, transformToDelivery,
+  listClientsLight, calculerTrajet, sendToPennylane, syncQuoteNumber, convertToInvoice, transformToDelivery,
 } from './devis.queries'
 import type { ClientDevis } from './devis.queries'
 import type { Quote, QuoteStatus, UniteDevis } from './devis.types'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
-import { Field } from '../../shared/ui/Field'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -44,7 +48,7 @@ type Lookup = { id: string; label: string }
 
 interface Form {
   client_id: string
-  prestation: Prestation | ''
+  prestation: Prestation
   reference_client: string
   date: string
   valid_until: string
@@ -59,14 +63,26 @@ interface Form {
   vehicle_id: string
   driver_id: string
   notes: string
+  // Mêmes champs que la fiche livraison
+  expediteur_nom: string
+  expediteur_tel: string
+  destinataire_nom: string
+  destinataire_tel: string
+  marchandise_desc: string
+  nb_colis: string
+  poids_kg: string
+  volume_m3: string
+  km: string
 }
 
 function formVide(): Form {
   const auj = toLocalISO(new Date())
   return {
-    client_id: '', prestation: '', reference_client: '', date: auj, valid_until: addDays(auj, 30),
+    client_id: '', prestation: 'express', reference_client: '', date: auj, valid_until: addDays(auj, 30),
     description: '', unite: 'forfait', quantite: '1', prix: '', tva_rate: 20, autoliquidation: false,
     pickup_address: '', delivery_address: '', vehicle_id: '', driver_id: '', notes: '',
+    expediteur_nom: '', expediteur_tel: '', destinataire_nom: '', destinataire_tel: '',
+    marchandise_desc: '', nb_colis: '', poids_kg: '', volume_m3: '', km: '',
   }
 }
 
@@ -74,7 +90,7 @@ function formDepuis(q: Quote): Form {
   const ligne = ligneDepuisAncien(q)
   return {
     client_id: q.client_id,
-    prestation: q.prestation ?? '',
+    prestation: q.prestation ?? 'express',
     reference_client: q.reference_client ?? '',
     date: q.date,
     valid_until: q.valid_until ?? addDays(q.date, 30),
@@ -89,6 +105,15 @@ function formDepuis(q: Quote): Form {
     vehicle_id: q.vehicle_id ?? '',
     driver_id: q.driver_id ?? '',
     notes: q.notes ?? '',
+    expediteur_nom: q.expediteur_nom ?? '',
+    expediteur_tel: q.expediteur_tel ?? '',
+    destinataire_nom: q.destinataire_nom ?? '',
+    destinataire_tel: q.destinataire_tel ?? '',
+    marchandise_desc: q.marchandise_desc ?? '',
+    nb_colis: q.nb_colis != null ? String(q.nb_colis) : '',
+    poids_kg: q.poids_kg != null ? String(q.poids_kg) : '',
+    volume_m3: q.volume_m3 != null ? String(q.volume_m3) : '',
+    km: q.km != null ? String(q.km) : (q.unite === 'km' && q.quantite != null ? String(q.quantite) : ''),
   }
 }
 
@@ -118,6 +143,11 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
   const [deleting, setDeleting] = useState(false)
   const [syncing, setSyncing]   = useState(false)
   const [dateCourse, setDateCourse] = useState(() => toLocalISO(new Date()))
+  const [tente, setTente] = useState(false)
+  const [calcLoading, setCalcLoading] = useState(false)
+  const [calcError, setCalcError] = useState<string | null>(null)
+  // Adresses du dernier trajet calculé : évite de rappeler l'IGN pour rien.
+  const trajetCle = useRef('')
 
   // ── Chargement des listes ─────────────────────────────────────────────────
 
@@ -140,38 +170,52 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
     if (quote) {
       setForm(formDepuis(quote))
       setExtraLines(quote.extra_lines ?? [])
+      trajetCle.current = `${(quote.pickup_address ?? '').trim()}|${(quote.delivery_address ?? '').trim()}`
     } else {
       setForm(formVide())
       setExtraLines([])
+      trajetCle.current = ''
     }
     setDateCourse(toLocalISO(new Date()))
+    setTente(false)
+    setCalcError(null)
   }, [quote, open])
 
   const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(p => ({ ...p, [k]: v }))
   const client = useMemo(() => clients.find(c => c.id === form.client_id) ?? null, [clients, form.client_id])
 
   /**
-   * Choix du client : sa fiche donne la prestation habituelle, l'unité et le
-   * prix de son tarif, l'autoliquidation (client UE identifié). Seules les
-   * cases encore vides sont remplies : rien de saisi n'est écrasé.
+   * Choix du client — même règle que la fiche livraison : en CRÉATION, ses
+   * habitudes (fiche client) remplissent les cases encore vides : prestation,
+   * retrait habituel et son contact, chauffeur, véhicule, autoliquidation ;
+   * en plus, l'unité et le prix de son tarif. En modification, rien n'est
+   * pré-rempli.
    */
   const choisirClient = (id: string) => {
     const c = clients.find(x => x.id === id) ?? null
+    if (!c || isEdit) { setForm(f => ({ ...f, client_id: id })); return }
     setForm(f => {
-      const prestation = (f.prestation || (c?.prestation_defaut as Prestation | null) || '') as Form['prestation']
-      const unite = f.prix ? f.unite : uniteParDefaut(prestation || null, c?.tariff_mode)
-      const prix = f.prix || ((prixParDefaut(unite, c) ?? null) != null ? (prixParDefaut(unite, c)! / 100).toFixed(2) : '')
+      const ou = (actuel: string, defaut: string | null) => actuel.trim() ? actuel : (defaut ?? '')
+      const prestation = (c.prestation_defaut as Prestation | null)
+        ?? (c.tariff_mode === 'colis' ? 'messagerie' : f.prestation)
+      const unite = f.prix ? f.unite : uniteParDefaut(prestation, c.tariff_mode)
+      const prixDefaut = prixParDefaut(unite, c)
       return {
-        ...f, client_id: id, prestation, unite, prix,
-        autoliquidation: autoliquidationParDefaut(c?.pays, c?.tva_intra),
-        pickup_address: f.pickup_address || c?.retrait_adresse || '',
+        ...f, client_id: id, prestation, unite,
+        prix: f.prix || (prixDefaut != null ? (prixDefaut / 100).toFixed(2) : ''),
+        pickup_address: ou(f.pickup_address, c.retrait_adresse),
+        expediteur_nom: ou(f.expediteur_nom, c.retrait_contact),
+        expediteur_tel: ou(f.expediteur_tel, c.retrait_tel),
+        driver_id: ou(f.driver_id, c.chauffeur_habituel_id),
+        vehicle_id: ou(f.vehicle_id, c.vehicule_habituel_id),
+        autoliquidation: autoliquidationParDefaut(c.pays, c.tva_intra),
       }
     })
   }
 
-  const choisirPrestation = (p: Prestation | '') => {
+  const choisirPrestation = (p: Prestation) => {
     setForm(f => {
-      const unite = f.prix ? f.unite : uniteParDefaut(p || null, client?.tariff_mode)
+      const unite = f.prix ? f.unite : uniteParDefaut(p, client?.tariff_mode)
       const prixDefaut = prixParDefaut(unite, client)
       return { ...f, prestation: p, unite, prix: f.prix || (prixDefaut != null ? (prixDefaut / 100).toFixed(2) : '') }
     })
@@ -187,17 +231,37 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
   // ── Montants ──────────────────────────────────────────────────────────────
 
   const prixCts = useMemo(() => { const n = nombre(form.prix); return n != null && n >= 0 ? Math.round(n * 100) : null }, [form.prix])
-  const quantite = useMemo(() => { const n = nombre(form.quantite); return n != null && n > 0 ? n : null }, [form.quantite])
+  // Au km, la quantité EST le trajet (une seule saisie : le champ km).
+  const quantite = useMemo(() => {
+    const n = nombre(form.unite === 'km' ? form.km : form.quantite)
+    return n != null && n > 0 ? n : null
+  }, [form.quantite, form.km, form.unite])
   const montants = useMemo(() => montantsDevis({
     quantite, prix_unitaire_cts: prixCts, extra_lines: extraLines,
     tva_rate: form.tva_rate, autoliquidation: form.autoliquidation,
   }), [quantite, prixCts, extraLines, form.tva_rate, form.autoliquidation])
 
-  const messagerie = form.prestation === 'messagerie'
-  const sansTrajet = form.prestation === 'messagerie' || form.prestation === 'forfait'
+  const blocs = blocsPrestation(form.prestation)
+  const messagerie = blocs.releve
   const tarifClient = client?.tariff_rate_cts != null && client.tariff_mode && client.tariff_mode !== 'manuel'
     ? `${formatMoney(client.tariff_rate_cts)} / ${client.tariff_mode === 'forfait' ? 'course' : client.tariff_mode}`
     : null
+
+  // ── Trajet (même calcul que la fiche livraison : IGN, automatique) ────────
+
+  const lancerTrajet = async (depart: string, arrivee: string, silencieux: boolean) => {
+    if (!depart || !arrivee) {
+      if (!silencieux) setCalcError("Renseignez l'adresse de retrait et l'adresse de livraison avant de calculer.")
+      return
+    }
+    trajetCle.current = `${depart}|${arrivee}`
+    setCalcLoading(true)
+    setCalcError(null)
+    const { data, error } = await calculerTrajet(depart, arrivee)
+    setCalcLoading(false)
+    if (error || !data?.ok) { setCalcError(data?.error ?? error?.message ?? 'Erreur lors du calcul du trajet.'); return }
+    set('km', String(Math.round(data.data.distance_km as number)))
+  }
 
   // ── Statut ────────────────────────────────────────────────────────────────
 
@@ -205,22 +269,34 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
   const statut: QuoteStatus = quote?.statut ?? 'brouillon'
   const isReadOnly = (isEdit && statut !== 'brouillon')
     || !can('livraisons.devis', isEdit ? 'update' : 'create')
+
+  useEffect(() => {
+    if (!open || isReadOnly || !blocs.retrait) return
+    const depart = form.pickup_address.trim()
+    const arrivee = form.delivery_address.trim()
+    if (!depart || !arrivee) return
+    const cle = `${depart}|${arrivee}`
+    if (cle === trajetCle.current) return
+    const t = setTimeout(() => { void lancerTrajet(depart, arrivee, true) }, 900)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isReadOnly, blocs.retrait, form.pickup_address, form.delivery_address])
   const isTerminal = ['refuse', 'facture', 'expire', 'transforme'].includes(statut)
   const expired    = isExpiredDisplay(quote?.valid_until ?? null, statut, aujourdhui)
 
   // ── Enregistrer ───────────────────────────────────────────────────────────
 
-  function validate(): string | null {
-    if (!form.client_id)          return 'Choisir le client'
-    if (!form.description.trim()) return 'Décrire la prestation'
-    if (quantite == null)         return 'Quantité invalide'
-    if (montants.htCts <= 0)      return 'Le prix doit être supérieur à 0'
-    return null
-  }
+  /** Ce qui manque pour enregistrer (même présentation que la fiche livraison). */
+  const manques = [
+    !form.client_id && 'client',
+    client?.reference_obligatoire && !form.reference_client.trim() && 'référence client (exigée par ce client)',
+    quantite == null && (form.unite === 'km' ? 'kilomètres' : 'quantité'),
+    montants.htCts <= 0 && 'prix',
+  ].filter(Boolean) as string[]
 
   const handleSave = async () => {
-    const err = validate()
-    if (err) { toast(err, 'error'); return }
+    setTente(true)
+    if (manques.length) { toast(`À compléter : ${manques.join(', ')}`, 'error'); return }
     setSaving(true)
     try {
       const payload = {
@@ -228,7 +304,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
         date:             form.date,
         valid_until:      form.valid_until || null,
         description:      form.description.trim() || null,
-        prestation:       form.prestation || null,
+        prestation:       form.prestation,
         unite:            form.unite,
         quantite,
         prix_unitaire_cts: prixCts,
@@ -243,10 +319,20 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
         tva_rate:         form.tva_rate,
         tva_cts:          montants.tvaCts,
         amount_ttc_cts:   montants.ttcCts,
-        pickup_address:   sansTrajet ? null : form.pickup_address.trim() || null,
-        delivery_address: sansTrajet ? null : form.delivery_address.trim() || null,
-        vehicle_id:       messagerie ? null : form.vehicle_id || null,
-        driver_id:        messagerie ? null : form.driver_id || null,
+        // Champs absents de la prestation (comme la fiche livraison) : vidés.
+        pickup_address:   blocs.retrait ? form.pickup_address.trim() || null : null,
+        delivery_address: blocs.livraison ? form.delivery_address.trim() || null : null,
+        expediteur_nom:   blocs.retrait ? form.expediteur_nom.trim() || null : null,
+        expediteur_tel:   blocs.retrait ? form.expediteur_tel.trim() || null : null,
+        destinataire_nom: blocs.livraison ? form.destinataire_nom.trim() || null : null,
+        destinataire_tel: blocs.livraison ? form.destinataire_tel.trim() || null : null,
+        marchandise_desc: blocs.marchandise ? form.marchandise_desc.trim() || null : null,
+        nb_colis:         blocs.marchandise && nombre(form.nb_colis) != null ? Math.round(nombre(form.nb_colis)!) : null,
+        poids_kg:         blocs.marchandise ? nombre(form.poids_kg) : null,
+        volume_m3:        blocs.marchandise ? nombre(form.volume_m3) : null,
+        km:               blocs.retrait || form.unite === 'km' ? nombre(form.km) : null,
+        vehicle_id:       blocs.execution ? form.vehicle_id || null : null,
+        driver_id:        blocs.execution ? form.driver_id || null : null,
         notes:            form.notes.trim() || null,
       }
       if (isEdit && quote) {
@@ -413,34 +499,28 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
       )}
 
       <div className="grid gap-4 lg:grid-cols-2 items-start">
-        {/* ── Colonne 1 : quoi, pour qui ── */}
-        <div className="flex flex-col gap-4">
-          <Bloc titre="Client et prestation">
-            <Field label="Client *">
-              <select value={form.client_id} onChange={e => choisirClient(e.target.value)}
-                disabled={isReadOnly} className="field">
-                <option value="">— Choisir un client —</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </Field>
+        {/* Colonne 1 : le devis et les arrêts (mêmes blocs que la fiche livraison) */}
+        <div className="flex flex-col gap-4 min-w-0">
+          <Bloc titre="Devis">
             <Field label="Prestation">
-              <select value={form.prestation} onChange={e => choisirPrestation(e.target.value as Prestation | '')}
-                disabled={isReadOnly} className="field">
-                <option value="">— Non précisée —</option>
-                {PRESTATIONS.map(p => <option key={p} value={p}>{PRESTATION_LABELS[p]}</option>)}
-              </select>
+              <ChoixPrestation value={form.prestation} onChange={choisirPrestation} disabled={isReadOnly} />
             </Field>
-            <Field label="Objet du devis *">
-              <input type="text" value={form.description} onChange={e => set('description', e.target.value)}
-                placeholder={messagerie ? 'Ex. : Messagerie Strasbourg, colis livrés au mois' : 'Ex. : Transport palettes Strasbourg → Colmar'}
-                disabled={isReadOnly} className="field" />
+            <Field label="Client *">
+              <ChoixClient clients={clients.map(c => ({ id: c.id, label: c.name }))} value={form.client_id}
+                onChange={choisirClient} disabled={isReadOnly} />
+              {client && (
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-muted)]">
+                  {(client.phone || client.email) && <ContactLinks phone={client.phone} email={client.email} />}
+                  <span>Paiement : {libelleDelaiPaiement(client)}</span>
+                </div>
+              )}
             </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Référence client">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field label={client?.reference_obligatoire ? 'Référence client *' : 'Référence client'}>
                 <input type="text" value={form.reference_client} onChange={e => set('reference_client', e.target.value)}
-                  placeholder="N° de commande, ODT…" disabled={isReadOnly} className="field" />
+                  placeholder="ODT, n° de commande…" disabled={isReadOnly} className="field" />
               </Field>
-              <Field label="Date">
+              <Field label="Date du devis">
                 <input type="date" value={form.date} onChange={e => set('date', e.target.value)}
                   disabled={isReadOnly} className="field" />
               </Field>
@@ -451,43 +531,113 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
             </Field>
           </Bloc>
 
-          {!sansTrajet && (
-            <Bloc titre="Trajet et exécution">
-              <AddressAutocomplete label="Adresse de départ" value={form.pickup_address}
+          {blocs.retrait && (
+            <Bloc titre="Retrait">
+              <AddressAutocomplete value={form.pickup_address} placeholder="Rue, ville… (vide = départ du dépôt)"
                 onChange={v => set('pickup_address', v)} onSelect={s => set('pickup_address', s.address)}
                 disabled={isReadOnly} />
-              <AddressAutocomplete label="Adresse de livraison" value={form.delivery_address}
-                onChange={v => set('delivery_address', v)} onSelect={s => set('delivery_address', s.address)}
-                disabled={isReadOnly} />
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Véhicule">
-                  <select value={form.vehicle_id} onChange={e => set('vehicle_id', e.target.value)}
-                    disabled={isReadOnly} className="field">
-                    <option value="">—</option>
-                    {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
-                  </select>
+                <Field label="Qui remet">
+                  <input type="text" value={form.expediteur_nom} onChange={e => set('expediteur_nom', e.target.value)}
+                    placeholder="Nom, société" disabled={isReadOnly} className="field" />
                 </Field>
-                <Field label="Chauffeur">
-                  <select value={form.driver_id} onChange={e => set('driver_id', e.target.value)}
-                    disabled={isReadOnly} className="field">
-                    <option value="">—</option>
-                    {drivers.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-                  </select>
+                <Field label="Téléphone">
+                  <input type="tel" value={form.expediteur_tel} onChange={e => set('expediteur_tel', e.target.value)}
+                    placeholder="06…" disabled={isReadOnly} className="field" />
                 </Field>
               </div>
             </Bloc>
           )}
 
-          <Bloc titre="Notes internes">
-            <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
-              rows={3} placeholder="Non transmises au client"
-              disabled={isReadOnly} className="field field-area resize-none" />
-          </Bloc>
+          {blocs.livraison && (
+            <Bloc titre={blocs.titreLivraison}>
+              <AddressAutocomplete value={form.delivery_address} placeholder="Rue, ville…"
+                onChange={v => set('delivery_address', v)} onSelect={s => set('delivery_address', s.address)}
+                disabled={isReadOnly} />
+              <div className="grid grid-cols-2 gap-3">
+                <Field label={form.prestation === 'mise_a_dispo' ? 'Contact sur place' : 'Qui reçoit'}>
+                  <input type="text" value={form.destinataire_nom} onChange={e => set('destinataire_nom', e.target.value)}
+                    placeholder="Nom, société" disabled={isReadOnly} className="field" />
+                </Field>
+                <Field label="Téléphone">
+                  <input type="tel" value={form.destinataire_tel} onChange={e => set('destinataire_tel', e.target.value)}
+                    placeholder="06…" disabled={isReadOnly} className="field" />
+                </Field>
+              </div>
+            </Bloc>
+          )}
+
+          {blocs.retrait && (
+            <div className="flex flex-wrap items-center gap-3 px-1">
+              <span className="text-xs uppercase tracking-wide font-medium text-[var(--text-muted)]">Trajet</span>
+              {calcLoading && <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />}
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="text-xs text-[var(--text-muted)]">km</span>
+                <input type="text" inputMode="decimal" value={form.km} onChange={e => { set('km', e.target.value); setCalcError(null) }}
+                  placeholder="0" disabled={isReadOnly} className="field w-[5.5rem]" />
+                {!isReadOnly && (
+                  <BoutonIcone icone={RefreshCw} libelle="Recalculer le trajet (IGN)" taille="sm" disabled={calcLoading}
+                    onClick={() => lancerTrajet(form.pickup_address.trim(), form.delivery_address.trim(), false)} />
+                )}
+              </div>
+              {calcError && <span className="basis-full text-xs text-[var(--warning)]">{calcError}</span>}
+            </div>
+          )}
         </div>
 
-        {/* ── Colonne 2 : le prix ── */}
-        <div className="flex flex-col gap-4">
-          <Bloc titre="Prix">
+        {/* Colonne 2 : marchandise, exécution & prix, note */}
+        <div className="flex flex-col gap-4 min-w-0">
+          {blocs.marchandise && (
+            <Bloc titre="Marchandise">
+              <Field label="Nature">
+                <input type="text" value={form.marchandise_desc} onChange={e => set('marchandise_desc', e.target.value)}
+                  placeholder="Colis, palette, meuble, documents…" disabled={isReadOnly} className="field" />
+              </Field>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Colis">
+                  <input type="text" inputMode="numeric" value={form.nb_colis} onChange={e => set('nb_colis', e.target.value)}
+                    placeholder="0" disabled={isReadOnly} className="field" />
+                </Field>
+                <Field label="Poids (kg)">
+                  <input type="text" inputMode="decimal" value={form.poids_kg} onChange={e => set('poids_kg', e.target.value)}
+                    placeholder="0" disabled={isReadOnly} className="field" />
+                </Field>
+                <Field label="Volume (m³)">
+                  <input type="text" inputMode="decimal" value={form.volume_m3} onChange={e => set('volume_m3', e.target.value)}
+                    placeholder="0" disabled={isReadOnly} className="field" />
+                </Field>
+              </div>
+            </Bloc>
+          )}
+
+          <Bloc titre={messagerie ? 'Prix' : 'Exécution & prix'}>
+            {blocs.execution && (
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Chauffeur">
+                  <select value={form.driver_id} onChange={e => set('driver_id', e.target.value)}
+                    disabled={isReadOnly} className="field">
+                    <option value="">— À affecter —</option>
+                    {drivers.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Véhicule">
+                  <select value={form.vehicle_id} onChange={e => set('vehicle_id', e.target.value)}
+                    disabled={isReadOnly} className="field">
+                    <option value="">— À affecter —</option>
+                    {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+            )}
+            <Field label="Libellé (devis, puis facture)">
+              <input type="text" value={form.description} onChange={e => set('description', e.target.value)}
+                placeholder={`Vide = « Devis du ${new Date(`${form.date}T00:00:00`).toLocaleDateString('fr-FR')} »`}
+                disabled={isReadOnly} className="field" />
+              {form.reference_client.trim() && (
+                <span className="text-xs text-[var(--text-muted)]">La référence client est reprise sur la course et la facture.</span>
+              )}
+            </Field>
+
             <div className="grid grid-cols-3 gap-3">
               <Field label="Unité">
                 <select value={form.unite} onChange={e => choisirUnite(e.target.value as UniteDevis)}
@@ -495,10 +645,17 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
                   {UNITES.map(u => <option key={u} value={u}>{u === 'forfait' ? 'Forfait' : `Au ${LIBELLES_UNITE[u].court}`}</option>)}
                 </select>
               </Field>
-              <Field label={messagerie ? 'Colis par mois' : libUnite.quantite}>
-                <input type="text" inputMode="decimal" value={form.quantite}
-                  onChange={e => set('quantite', e.target.value)} disabled={isReadOnly} className="field" />
-              </Field>
+              {form.unite === 'km' ? (
+                <Field label="Kilomètres">
+                  <input type="text" inputMode="decimal" value={form.km} onChange={e => set('km', e.target.value)}
+                    disabled={isReadOnly} className="field" />
+                </Field>
+              ) : (
+                <Field label={messagerie ? 'Colis par mois' : libUnite.quantite}>
+                  <input type="text" inputMode="decimal" value={form.quantite}
+                    onChange={e => set('quantite', e.target.value)} disabled={isReadOnly} className="field" />
+                </Field>
+              )}
               <Field label={form.unite === 'forfait' ? 'Prix HT (€)' : `€ HT / ${libUnite.court}`}>
                 <input type="text" inputMode="decimal" value={form.prix} placeholder="0,00"
                   onChange={e => set('prix', e.target.value)} disabled={isReadOnly} className="field" />
@@ -522,20 +679,23 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
               catalogue={lireSupplements(client?.supplements)}
             />
 
+            {/* Autoliquidation avant la TVA, qu'elle annule (comme la fiche livraison) */}
+            <label className="flex items-start gap-2 cursor-pointer rounded-[var(--r-md)] border border-[var(--border)] p-2.5">
+              <input type="checkbox" checked={form.autoliquidation} disabled={isReadOnly}
+                onChange={e => set('autoliquidation', e.target.checked)}
+                className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer" />
+              <span className="text-sm text-[var(--text)]">
+                Autoliquidation — TVA due par le preneur
+                <span className="block text-xs text-[var(--text-muted)]">
+                  Prestation intracommunautaire B2B (art. 259-1 du CGI). La TVA n'est pas facturée : le TTC vaut le HT.
+                </span>
+              </span>
+            </label>
             <div className="grid grid-cols-2 gap-3 items-end">
-              <Field label="Taux de TVA">
+              <Field label="Taux TVA">
                 <TvaRateInput value={form.autoliquidation ? 0 : form.tva_rate}
                   onChange={r => set('tva_rate', r)} disabled={isReadOnly || form.autoliquidation} />
               </Field>
-              <label className="flex items-start gap-2 cursor-pointer pb-2">
-                <input type="checkbox" checked={form.autoliquidation} disabled={isReadOnly}
-                  onChange={e => set('autoliquidation', e.target.checked)}
-                  className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer" />
-                <span className="text-sm text-[var(--text)]">
-                  Autoliquidation
-                  <span className="block text-xs text-[var(--text-muted)]">Client UE identifié à la TVA</span>
-                </span>
-              </label>
             </div>
 
             <div className="rounded-[var(--r-lg)] border border-[var(--border)] divide-y divide-[var(--border)] overflow-hidden">
@@ -553,6 +713,14 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
                 <span className="font-mono font-semibold text-[var(--text)]">{formatMoney(montants.ttcCts)}</span>
               </InfoRow>
             </div>
+          </Bloc>
+
+          <Bloc titre="Note">
+            <Field label="Note interne (bureau seulement)">
+              <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
+                rows={3} placeholder="Non transmise au client"
+                disabled={isReadOnly} className="field field-area resize-none" />
+            </Field>
           </Bloc>
         </div>
       </div>
@@ -574,6 +742,9 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
               </Button>
             )}
             <Button variant="secondary" onClick={onClose}>Annuler</Button>
+            {tente && manques.length > 0 && (
+              <span className="text-xs text-[var(--danger)]">À compléter : {manques.join(', ')}</span>
+            )}
           </>
         )}
 
@@ -652,15 +823,6 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
 }
 
 // ── Sous-composants ───────────────────────────────────────────────────────────
-
-function Bloc({ titre, children }: { titre: string; children: ReactNode }) {
-  return (
-    <section className="rounded-[var(--r-lg)] border border-[var(--border)] p-3.5 flex flex-col gap-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">{titre}</h3>
-      {children}
-    </section>
-  )
-}
 
 function InfoRow({ label, children }: { label: string; children: ReactNode }) {
   return (

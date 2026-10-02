@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { Trash2, Loader2, Camera, Plus, Mail, Copy, RefreshCw, Search, Zap, AlertTriangle, MapPin } from 'lucide-react'
+import { Trash2, Loader2, Camera, Plus, Mail, Copy, RefreshCw, Zap, AlertTriangle, MapPin } from 'lucide-react'
 import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { LettreVoitureTab } from './LettreVoitureTab'
 import { ApercuFacture } from './ApercuFacture'
@@ -23,6 +23,7 @@ import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import { autoliquidationParDefaut } from '../../shared/lib/pays'
 import { lireSupplements } from '../../shared/lib/supplements'
 import { ExtraLinesEditor } from '../../shared/ui/LignesSupplementaires'
+import { Bloc, ChoixClient, ChoixPrestation, Champ as Field } from '../../shared/ui/FicheSaisie'
 import type { Supplement } from '../../shared/lib/supplements'
 import {
   STATUS_LABELS, STATUS_COLORS,
@@ -31,7 +32,7 @@ import {
   computeAmount,
   effectiveHtCts, effectiveTtcCts,
   tauxTvaInitial, montantsAEcrire, recapMontant, estFacturationBloquee,
-  isoLocal, trajet, PRESTATIONS, PRESTATION_LABELS, PRESTATION_AIDES, blocsPrestation,
+  isoLocal, trajet, PRESTATION_LABELS, blocsPrestation,
   heureSaisie, libelleCreneau, libelleDuree, manquesFiche,
   moisDe, finDeMois, libelleMois, resumeMessagerie,
 } from './livraisons.logic'
@@ -1035,21 +1036,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
             <div className="flex flex-col gap-4 min-w-0">
               <Bloc titre="Ordre">
                 <Field label="Prestation">
-                  <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Prestation">
-                    {PRESTATIONS.map(p => (
-                      <button key={p} type="button" role="radio" aria-checked={prestation === p}
-                        disabled={ro}
-                        onClick={() => choisirPrestation(p)}
-                        title={PRESTATION_AIDES[p]}
-                        className={`h-8 px-3 rounded-[var(--r-pill)] border text-xs transition-colors disabled:opacity-60
-                          ${prestation === p
-                            ? 'bg-[var(--brand)] border-[var(--brand)] text-white font-medium'
-                            : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--brand)] hover:text-[var(--text)]'}`}>
-                        {PRESTATION_LABELS[p]}
-                      </button>
-                    ))}
-                  </div>
-                  <span className="text-xs text-[var(--text-muted)]">{PRESTATION_AIDES[prestation]}</span>
+                  <ChoixPrestation value={prestation} onChange={choisirPrestation} disabled={ro} />
                 </Field>
 
                 <Field label="Client *" error={tenteEnregistrer && !form.client_id ? 'Le client est requis' : undefined}>
@@ -1480,15 +1467,6 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
 
 // ── Petits blocs de la fiche ──────────────────────────────────────────────────
 
-function Bloc({ titre, children }: { titre: string; children: ReactNode }) {
-  return (
-    <section className="rounded-[var(--r-lg)] border border-[var(--border)] p-3.5 flex flex-col gap-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">{titre}</h3>
-      {children}
-    </section>
-  )
-}
-
 function Manque({ etape, liste }: { etape: string; liste: string[] }) {
   return (
     <span className="text-[var(--text-muted)]">
@@ -1518,65 +1496,6 @@ function Creneau({ debut, fin, onDebut, onFin, disabled, libelleDebut = 'Au plus
       {invalide
         ? <span className="text-xs text-[var(--danger)]">La fin du créneau est avant son début.</span>
         : resume && <span className="text-xs text-[var(--text-muted)]">Créneau : {resume}</span>}
-    </div>
-  )
-}
-
-/**
- * Choix du client avec RECHERCHE : la liste déroulante de 30+ noms ne se
- * parcourait qu'à l'œil. Liste dans le flux (pas en position absolue) : le
- * tiroir défile, une liste flottante y serait rognée.
- */
-function ChoixClient({ clients, value, onChange, disabled }: {
-  clients: Array<{ id: string; label: string }>
-  value: string
-  onChange: (id: string) => void
-  disabled?: boolean
-}) {
-  const choisi = clients.find(c => c.id === value) ?? null
-  const [ouvert, setOuvert] = useState(false)
-  const [q, setQ] = useState('')
-  const filtres = useMemo(() => {
-    const t = q.trim().toLowerCase()
-    const tries = [...clients].sort((a, b) => a.label.localeCompare(b.label, 'fr'))
-    return t ? tries.filter(c => c.label.toLowerCase().includes(t)) : tries
-  }, [clients, q])
-
-  if (!ouvert) {
-    return (
-      <button type="button" disabled={disabled}
-        onClick={() => { setQ(''); setOuvert(true) }}
-        className={`${inputCls} text-left flex items-center justify-between gap-2 disabled:opacity-60`}>
-        <span className={choisi ? 'text-[var(--text)] truncate' : 'text-[var(--text-disabled)]'}>
-          {choisi?.label ?? 'Choisir un client…'}
-        </span>
-        <Search size={14} className="text-[var(--text-muted)] shrink-0" />
-      </button>
-    )
-  }
-  return (
-    <div className="flex flex-col gap-1">
-      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher un client…"
-        className={inputCls}
-        onKeyDown={e => {
-          if (e.key === 'Escape') setOuvert(false)
-          if (e.key === 'Enter' && filtres[0]) { e.preventDefault(); onChange(filtres[0].id); setOuvert(false) }
-        }} />
-      <ul className="max-h-[14rem] overflow-y-auto rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)]">
-        {filtres.length === 0 && <li className="px-3 py-2 text-xs text-[var(--text-muted)]">Aucun client</li>}
-        {filtres.map(c => (
-          <li key={c.id}>
-            <button type="button" onClick={() => { onChange(c.id); setOuvert(false) }}
-              className={`w-full text-left px-3 py-1.5 text-sm hover:bg-[var(--bg-card-hover)]
-                ${c.id === value ? 'text-[var(--brand)] font-medium' : 'text-[var(--text)]'}`}>
-              {c.label}
-            </button>
-          </li>
-        ))}
-      </ul>
-      <button type="button" onClick={() => setOuvert(false)} className="self-start text-xs text-[var(--text-muted)] hover:text-[var(--text)]">
-        Fermer la liste
-      </button>
     </div>
   )
 }
@@ -2376,18 +2295,6 @@ function Input({
     <input type={type} value={value} placeholder={placeholder} disabled={disabled}
       min={min} step={step}
       onChange={e => onChange(e.target.value)} className={inputCls} />
-  )
-}
-
-function Field({ label, children, error }: { label: string; children: ReactNode; error?: string }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
-        {label}
-      </label>
-      {children}
-      {error && <span className="text-[var(--danger)] text-xs">{error}</span>}
-    </div>
   )
 }
 

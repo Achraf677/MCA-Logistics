@@ -42,6 +42,16 @@ export interface Quote {
   reference_client: string | null
   autoliquidation: boolean
   accepte_le: string | null
+  // Mêmes champs que la fiche livraison
+  expediteur_nom: string | null
+  expediteur_tel: string | null
+  destinataire_nom: string | null
+  destinataire_tel: string | null
+  marchandise_desc: string | null
+  nb_colis: number | null
+  poids_kg: number | null
+  volume_m3: number | null
+  km: number | null
   created_at: string
   updated_at: string
   // joined

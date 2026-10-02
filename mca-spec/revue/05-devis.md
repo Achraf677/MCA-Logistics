@@ -86,7 +86,15 @@
   (`?ouvrir=<id>`) ; « Appliquer ce prix au client » (écrit `clients.tariff_mode`,
   `tariff_rate_cts`, `prestation_defaut`) ; messagerie : pas de course ni de facture directe ;
   date d'acceptation affichée.
-- Reste : D3 (Edge : lignes multiples, pays / TVA client), D4 (liste).
+- ✔ Uniformisation avec la fiche livraison (même PR) : mêmes blocs (Devis · Retrait ·
+  Livraison · Trajet · Marchandise · Exécution & prix · Note), mêmes composants partagés
+  (`shared/ui/FicheSaisie`, `LignesSupplementaires`), mêmes défauts client (prestation, retrait
+  + contact, chauffeur / véhicule habituels, autoliquidation, référence obligatoire), trajet IGN
+  automatique (au km : quantité = km, une seule saisie), mêmes colonnes que `deliveries`
+  (expediteur_* / destinataire_*, marchandise_desc, nb_colis, poids_kg, volume_m3, km) reprises
+  à la création de la course ; liste : recherche, filtre statut / client, montant en attente.
+- Reste : D3 = lot U3 de `mca-spec/UNIFORMISATION-PENNYLANE.md` ; D4 : expiration automatique,
+  relance des devis envoyés > 7 j.
 
 ## 9. À tester (après chaque lot)
 - Devis messagerie 1 € / colis × 3 000 colis → HT 3 000 € ; accepté → tarif client à jour ;

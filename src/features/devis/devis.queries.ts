@@ -10,14 +10,21 @@ const QUOTE_BASE_COLS = `
       clients!client_id(name)`
 /** Colonnes de la fiche de prix (migration 20261002090000). */
 const QUOTE_PRIX_COLS = ', prestation, unite, quantite, prix_unitaire_cts, extra_lines, reference_client, autoliquidation, accepte_le'
+  + ', expediteur_nom, expediteur_tel, destinataire_nom, destinataire_tel, marchandise_desc, nb_colis, poids_kg, volume_m3, km'
 
 /** Valeurs neutres quand la base n'a pas encore la fiche de prix. */
 function completer(q: Record<string, unknown>): Quote {
   return {
     prestation: null, unite: null, prix_unitaire_cts: null, reference_client: null,
-    autoliquidation: false, accepte_le: null, ...q,
+    autoliquidation: false, accepte_le: null,
+    expediteur_nom: null, expediteur_tel: null, destinataire_nom: null, destinataire_tel: null,
+    marchandise_desc: null, nb_colis: null, ...q,
     extra_lines: Array.isArray(q.extra_lines) ? q.extra_lines : [],
+    // numeric Postgres → chaîne côté API : relu en nombre.
     quantite: q.quantite != null ? Number(q.quantite) : null,
+    poids_kg: q.poids_kg != null ? Number(q.poids_kg) : null,
+    volume_m3: q.volume_m3 != null ? Number(q.volume_m3) : null,
+    km: q.km != null ? Number(q.km) : null,
   } as Quote
 }
 
@@ -46,6 +53,15 @@ export async function deleteQuote(id: string) {
 export interface ClientDevis {
   id: string
   name: string
+  phone: string | null
+  email: string | null
+  payment_terms: number | null
+  payment_terms_label: string | null
+  retrait_contact: string | null
+  retrait_tel: string | null
+  chauffeur_habituel_id: string | null
+  vehicule_habituel_id: string | null
+  reference_obligatoire: boolean | null
   tariff_mode: string | null
   tariff_rate_cts: number | null
   tva_intra: string | null
@@ -58,7 +74,9 @@ export interface ClientDevis {
 export async function listClientsLight(): Promise<{ data: ClientDevis[] | null; error: unknown }> {
   const res = await supabase
     .from('clients')
-    .select('id, name, tariff_mode, tariff_rate_cts, tva_intra, pays, prestation_defaut, supplements, retrait_adresse')
+    .select('id, name, phone, email, payment_terms, payment_terms_label, tariff_mode, tariff_rate_cts, tva_intra, pays,'
+      + ' prestation_defaut, supplements, retrait_adresse, retrait_contact, retrait_tel,'
+      + ' chauffeur_habituel_id, vehicule_habituel_id, reference_obligatoire')
     .eq('active', true)
     .order('name')
   return { data: res.data as ClientDevis[] | null, error: res.error }
@@ -80,6 +98,11 @@ export async function appliquerTarifClient(quoteId: string, clientId: string,
   if (error) return { error }
   if (!data || data.length === 0) return { error: { message: 'Fiche client non modifiable (droits)' } }
   return supabase.from('quotes').update({ statut: 'transforme' }).eq('id', quoteId)
+}
+
+/** Trajet IGN (même Edge que la fiche livraison). */
+export async function calculerTrajet(depart: string, arrivee: string) {
+  return supabase.functions.invoke('route-calc', { body: { depart, arrivee } })
 }
 
 export async function syncQuoteNumber(quoteId: string) {

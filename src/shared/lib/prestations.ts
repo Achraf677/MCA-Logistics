@@ -24,3 +24,33 @@ export const PRESTATION_AIDES: Record<Prestation, string> = {
   mise_a_dispo: 'Véhicule et chauffeur à disposition sur un lieu, à l’heure ou à la journée.',
   forfait:      'Facturation globale (mois, période) : aucun arrêt à saisir.',
 }
+
+export interface BlocsPrestation {
+  /** Relevé de messagerie : mois + nombre de colis × prix au colis, rien d'autre. */
+  releve: boolean
+  /** Bloc « Retrait » affiché. */
+  retrait: boolean
+  /** Bloc « Livraison » (ou « Lieu ») affiché. */
+  livraison: boolean
+  /** Titre du bloc livraison. */
+  titreLivraison: string
+  /** L'adresse de livraison / du lieu est exigée pour partir. */
+  adresseExigee: boolean
+  /** Le bloc marchandise est pertinent. */
+  marchandise: boolean
+  /** Le chauffeur et le véhicule sont exigés pour partir. */
+  execution: boolean
+}
+
+export function blocsPrestation(p: Prestation | null | undefined): BlocsPrestation {
+  switch (p ?? 'express') {
+    case 'messagerie':
+      return { releve: true, retrait: false, livraison: false, titreLivraison: 'Livraison', adresseExigee: false, marchandise: false, execution: false }
+    case 'forfait':
+      return { releve: false, retrait: false, livraison: false, titreLivraison: 'Livraison', adresseExigee: false, marchandise: false, execution: false }
+    case 'mise_a_dispo':
+      return { releve: false, retrait: false, livraison: true, titreLivraison: 'Lieu de mise à disposition', adresseExigee: true, marchandise: false, execution: true }
+    default:
+      return { releve: false, retrait: true, livraison: true, titreLivraison: 'Livraison', adresseExigee: true, marchandise: true, execution: true }
+  }
+}

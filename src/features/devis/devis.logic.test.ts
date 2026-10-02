@@ -12,6 +12,8 @@ const devis = (p: Partial<Quote> = {}): Quote => ({
   statut: 'accepte', pennylane_quote_id: null, pennylane_quote_number: null, pennylane_invoice_id: null,
   notes: null, prestation: 'messagerie', unite: 'colis', quantite: 3000, prix_unitaire_cts: 100,
   extra_lines: [], reference_client: 'ODT-1', autoliquidation: false, accepte_le: null,
+  expediteur_nom: 'Quai 3', expediteur_tel: '0600', destinataire_nom: 'M. Martin', destinataire_tel: '0700',
+  marchandise_desc: 'Palette', nb_colis: null, poids_kg: 120, volume_m3: 1.2, km: null,
   created_at: '', updated_at: '', ...p,
 })
 
@@ -84,7 +86,8 @@ describe('effets du devis accepté', () => {
     const l = versLivraison(q, '2026-10-05', 'c1')
     expect(l).toMatchObject({
       date: '2026-10-05', quote_id: 'q1', prestation: 'express', reference_client: 'ODT-1',
-      km: 72, nb_colis: null, amount_ht_cts: 10800, tva_cts: 2160, amount_ttc_cts: 12960, statut: 'planifiee',
+      km: 72, nb_colis: null, expediteur_nom: 'Quai 3', destinataire_tel: '0700',
+      poids_kg_reel: 120, weight_kg: 120, volume_m3: 1.2, amount_ht_cts: 10800, tva_cts: 2160, amount_ttc_cts: 12960, statut: 'planifiee',
     })
     expect(l.extra_lines[0].tva_rate).toBe(20)
   })

@@ -88,6 +88,11 @@ supabase/
 - Échéances via `shared/lib/echeances.ts`. Statuts de livraison via `shared/lib/livraisonStatuts.ts`.
 - Une règle métier qui existe côté Edge ET côté front (ex. lignes de facture) = **miroir testé
   des deux côtés** (`_shared/lignesFacture.ts` ↔ `livraisons/apercuFacture.logic.ts`).
+- **Devis = fiche livraison** (uniformisés le 02/10/2026) : mêmes blocs, mêmes composants, mêmes
+  noms de colonnes, mêmes défauts client. Briques partagées : `shared/ui/FicheSaisie` (Bloc,
+  ChoixClient, ChoixPrestation), `shared/ui/LignesSupplementaires`, `shared/lib/prestations`
+  (types + `blocsPrestation`), `shared/lib/paymentTerms#libelleDelaiPaiement`. Toute évolution
+  d'un des deux formulaires se fait dans ces briques ou se reporte sur l'autre.
 
 ## 5. Base de données — pièges (NE PAS réintroduire)
 - `deliveries.montant_*` **n'existent PAS en prod** (vérifié le 01/10/2026) → jamais les écrire
@@ -186,6 +191,15 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   documents · Facturation).
 
 ## 12. En cours / à décider (mettre à jour à chaque session)
+- **CHANTIER PRIORITAIRE — Uniformisation Pennylane ↔ site** (demandé le 02/10/2026) : plan
+  `mca-spec/UNIFORMISATION-PENNYLANE.md` (écarts cités fichier:ligne, lots U1 → U8). Règle :
+  une seule source par règle (`_shared/` + miroir front testé) ; tout document envoyé à
+  Pennylane (client, devis, facture, avoir, paiement, charges) suit les mêmes règles que le
+  site. Ordre : U1 droits des 5 synchros · U2 client Pennylane unique (pays, TVA, SIREN, local
+  gagne) · U3 lignes du devis = lignes de facture · U4 devis converti suivi (choix d'archi à
+  valider) · U5 dates Paris + paiements réels · U6 mentions légales (= lot E) · U7 charges ·
+  U8 ménage. À lancer dans une nouvelle conversation, lot par lot, avec accord avant chaque
+  migration / déploiement d'Edge.
 - **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
   classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
 - **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·
@@ -194,8 +208,10 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   conforme (indexation gazole, pays client, CMR).
 - Dashboard : compter les **colis** de messagerie (aujourd'hui un relevé = 1 livraison dans les
   compteurs ; le CA est juste).
-- Devis : D1 + D2 faits (PR #41 : prix au colis, suppléments, « Appliquer ce prix au client »,
-  « Créer la course ») ; restent D3 (Edge pennylane-quote : lignes, pays / TVA client) et D4 (liste).
+- Devis : PR #41 (D1 + D2 + uniformisation avec la fiche livraison + recherche / filtres de la
+  liste). **Migration `20261002090000_quotes_fiche_prix` NON appliquée** (attend l'accord) :
+  à appliquer AVANT le merge. D3 (Edge pennylane-quote) = lot U3 du plan Pennylane ; D4 reste :
+  expiration automatique, relance des devis envoyés > 7 j.
 - ~20 fiches clients « particuliers » jetables (anciennes courses de plateformes) : fusionner
   ou désactiver ? (à décider)
 - 1 client au délai 60 j (non conforme) : le repasser à 30 j dans sa fiche.
