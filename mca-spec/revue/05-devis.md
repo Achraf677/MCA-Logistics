@@ -74,6 +74,20 @@
 - **Lot D4 — Liste** : filtres statut, recherche, totaux (en attente, acceptés, taux de
   transformation), expiration posée automatiquement, relance « envoyé depuis > 7 j ».
 
+### Fait (PR #41, 02/10/2026)
+- ✔ D1 : migration `20261002090000_quotes_fiche_prix` (prestation, unite, quantite,
+  prix_unitaire_cts, extra_lines, reference_client, autoliquidation, accepte_le) ; tiroir
+  2 colonnes (Client et prestation · Trajet et exécution · Prix) ; prix proposé depuis le tarif
+  client ; suppléments du client en un clic (`shared/ui/LignesSupplementaires`, partagé avec la
+  fiche livraison) ; autoliquidation déduite (pays + n° TVA) ; un seul taux pour le devis ;
+  dates locales ; `devis.logic.test.ts` (14 tests). Liste lisible même sans la migration (42703).
+- ✔ D2 : « Créer la course » à la date choisie (tout repris : prestation, référence, adresses,
+  exécution, colis / km, suppléments) puis ouverture de la fiche dans Livraisons
+  (`?ouvrir=<id>`) ; « Appliquer ce prix au client » (écrit `clients.tariff_mode`,
+  `tariff_rate_cts`, `prestation_defaut`) ; messagerie : pas de course ni de facture directe ;
+  date d'acceptation affichée.
+- Reste : D3 (Edge : lignes multiples, pays / TVA client), D4 (liste).
+
 ## 9. À tester (après chaque lot)
 - Devis messagerie 1 € / colis × 3 000 colis → HT 3 000 € ; accepté → tarif client à jour ;
   relevé du mois suivant pré-rempli à 1 €.

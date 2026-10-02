@@ -1,0 +1,105 @@
+import { describe, it, expect } from 'vitest'
+import {
+  addDays, isExpiredDisplay, uniteParDefaut, prixParDefaut, montantsDevis, resumeLigne,
+  ligneDepuisAncien, versLivraison, tarifDepuisDevis, seTransformeEnCourse,
+} from './devis.logic'
+import type { Quote } from './devis.types'
+
+const devis = (p: Partial<Quote> = {}): Quote => ({
+  id: 'q1', company_id: 'c1', client_id: 'cl1', date: '2026-10-02', valid_until: '2026-11-01',
+  description: 'Messagerie Strasbourg', amount_ht_cts: 300000, tva_rate: 20, tva_cts: 60000,
+  amount_ttc_cts: 360000, pickup_address: 'A', delivery_address: 'B', vehicle_id: 'v1', driver_id: 'd1',
+  statut: 'accepte', pennylane_quote_id: null, pennylane_quote_number: null, pennylane_invoice_id: null,
+  notes: null, prestation: 'messagerie', unite: 'colis', quantite: 3000, prix_unitaire_cts: 100,
+  extra_lines: [], reference_client: 'ODT-1', autoliquidation: false, accepte_le: null,
+  created_at: '', updated_at: '', ...p,
+})
+
+describe('dates locales', () => {
+  it('addDays franchit le mois sans UTC', () => {
+    expect(addDays('2026-10-02', 30)).toBe('2026-11-01')
+    expect(addDays('2026-12-31', 1)).toBe('2027-01-01')
+  })
+  it('expiré seulement si envoyé et validité passée', () => {
+    expect(isExpiredDisplay('2026-10-01', 'envoye', '2026-10-02')).toBe(true)
+    expect(isExpiredDisplay('2026-10-02', 'envoye', '2026-10-02')).toBe(false)
+    expect(isExpiredDisplay('2026-10-01', 'brouillon', '2026-10-02')).toBe(false)
+  })
+})
+
+describe('défauts depuis le client', () => {
+  it('messagerie → au colis, sinon unité du tarif', () => {
+    expect(uniteParDefaut('messagerie', 'km')).toBe('colis')
+    expect(uniteParDefaut('express', 'km')).toBe('km')
+    expect(uniteParDefaut('express', 'manuel')).toBe('forfait')
+    expect(uniteParDefaut(null, null)).toBe('forfait')
+  })
+  it('prix du tarif client seulement dans la même unité', () => {
+    const c = { tariff_mode: 'colis', tariff_rate_cts: 100 }
+    expect(prixParDefaut('colis', c)).toBe(100)
+    expect(prixParDefaut('km', c)).toBeNull()
+    expect(prixParDefaut('forfait', c)).toBeNull()
+    expect(prixParDefaut('colis', null)).toBeNull()
+  })
+})
+
+describe('montantsDevis', () => {
+  it('3 000 colis × 1 € = 3 000 € HT, 3 600 € TTC', () => {
+    expect(montantsDevis({ quantite: 3000, prix_unitaire_cts: 100, extra_lines: [], tva_rate: 20, autoliquidation: false }))
+      .toEqual({ principalHtCts: 300000, supplementsHtCts: 0, htCts: 300000, tvaCts: 60000, ttcCts: 360000 })
+  })
+  it('suppléments ajoutés au HT, TVA sur le total', () => {
+    const m = montantsDevis({
+      quantite: 1, prix_unitaire_cts: 8000, tva_rate: 20, autoliquidation: false,
+      extra_lines: [{ label: 'Attente', quantity: 2, amount_ht_cts: 1000, tva_rate: 5.5 }],
+    })
+    expect(m.htCts).toBe(10000)
+    expect(m.tvaCts).toBe(2000)
+  })
+  it('autoliquidation : aucune TVA', () => {
+    expect(montantsDevis({ quantite: 10, prix_unitaire_cts: 150, extra_lines: [], tva_rate: 20, autoliquidation: true }).tvaCts).toBe(0)
+  })
+  it('quantité absente ou nulle → 1', () => {
+    expect(montantsDevis({ quantite: null, prix_unitaire_cts: 5000, extra_lines: [], tva_rate: 20, autoliquidation: false }).htCts).toBe(5000)
+  })
+})
+
+describe('affichage et anciens devis', () => {
+  it('résumé lisible', () => {
+    expect(resumeLigne('colis', 3000, 100)).toMatch(/^3\s000 colis × 1,00\s€$/)
+    expect(resumeLigne('forfait', 1, 12000)).toMatch(/^Forfait 120,00\s€$/)
+  })
+  it('ancien devis (montant global) relu en 1 × HT hors suppléments', () => {
+    expect(ligneDepuisAncien({ unite: null, quantite: null, prix_unitaire_cts: null, amount_ht_cts: 12000, extra_lines: [] }))
+      .toEqual({ unite: 'forfait', quantite: 1, prix_unitaire_cts: 12000 })
+  })
+})
+
+describe('effets du devis accepté', () => {
+  it('course : tout repris, ligne principale = montant, suppléments au même taux', () => {
+    const q = devis({
+      prestation: 'express', unite: 'km', quantite: 72, prix_unitaire_cts: 150,
+      extra_lines: [{ label: 'Attente', quantity: 1, amount_ht_cts: 1500, tva_rate: 5.5 }],
+    })
+    const l = versLivraison(q, '2026-10-05', 'c1')
+    expect(l).toMatchObject({
+      date: '2026-10-05', quote_id: 'q1', prestation: 'express', reference_client: 'ODT-1',
+      km: 72, nb_colis: null, amount_ht_cts: 10800, tva_cts: 2160, amount_ttc_cts: 12960, statut: 'planifiee',
+    })
+    expect(l.extra_lines[0].tva_rate).toBe(20)
+  })
+  it('au colis : nb_colis repris', () => {
+    expect(versLivraison(devis({ prestation: 'express' }), '2026-10-05', 'c1').nb_colis).toBe(3000)
+  })
+  it('tarif appliqué au client : messagerie au colis', () => {
+    expect(tarifDepuisDevis(devis())).toEqual({ tariff_mode: 'colis', tariff_rate_cts: 100, prestation_defaut: 'messagerie' })
+    expect(tarifDepuisDevis(devis({ unite: 'forfait' }))).toBeNull()
+    expect(tarifDepuisDevis(devis({ prix_unitaire_cts: 0 }))).toBeNull()
+  })
+  it('messagerie et forfait ne deviennent pas une course', () => {
+    expect(seTransformeEnCourse('messagerie')).toBe(false)
+    expect(seTransformeEnCourse('forfait')).toBe(false)
+    expect(seTransformeEnCourse('express')).toBe(true)
+    expect(seTransformeEnCourse(null)).toBe(true)
+  })
+})

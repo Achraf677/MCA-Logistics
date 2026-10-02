@@ -506,29 +506,10 @@ export function recapMontant(input: {
 
 // ── Fiche unique : prestation, créneaux, ce qui manque à chaque étape ───────
 
-/**
- * Type de prestation — décide des blocs de la fiche. `null` (anciennes
- * courses) se lit comme `express`.
- */
-export type Prestation = 'express' | 'messagerie' | 'dediee' | 'mise_a_dispo' | 'forfait'
-
-export const PRESTATIONS: Prestation[] = ['express', 'messagerie', 'dediee', 'mise_a_dispo', 'forfait']
-
-export const PRESTATION_LABELS: Record<Prestation, string> = {
-  express:      'Express',
-  messagerie:   'Messagerie',
-  dediee:       'Course dédiée',
-  mise_a_dispo: 'Mise à disposition',
-  forfait:      'Forfait / relevé',
-}
-
-export const PRESTATION_AIDES: Record<Prestation, string> = {
-  express:      'Une course : un retrait, une livraison, souvent dans la journée.',
-  messagerie:   'Relevé du mois : nombre de colis livrés × prix au colis. Rien d’autre à saisir.',
-  dediee:       'Véhicule réservé pour un client, prix au forfait.',
-  mise_a_dispo: 'Véhicule et chauffeur à disposition sur un lieu, à l’heure ou à la journée.',
-  forfait:      'Facturation globale (mois, période) : aucun arrêt à saisir.',
-}
+// Prestations : source unique dans shared/lib/prestations (lue aussi par les devis).
+export { PRESTATIONS, PRESTATION_LABELS, PRESTATION_AIDES } from '../../shared/lib/prestations'
+export type { Prestation } from '../../shared/lib/prestations'
+import type { Prestation } from '../../shared/lib/prestations'
 
 export interface BlocsPrestation {
   /** Relevé de messagerie : mois + nombre de colis × prix au colis, rien d'autre. */

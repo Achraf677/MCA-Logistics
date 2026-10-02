@@ -13,6 +13,7 @@ import { DrawerDevis } from './DrawerDevis'
 import type { Quote }  from './devis.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 import { usePermissions } from '../../shared/permissions/usePermissions'
+import { toLocalISO } from '../../shared/lib/dates'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -77,7 +78,7 @@ export function Devis() {
         {loading ? (
           <SkeletonTable />
         ) : loadError ? (
-          <p className="text-[var(--danger)] text-[var(--fs-sm)]">{loadError}</p>
+          <p className="text-[var(--danger)] text-sm">{loadError}</p>
         ) : quotes.length === 0 ? (
           <EmptyState
             icon={<FileText size={40} />}
@@ -88,11 +89,11 @@ export function Devis() {
           <>
             {/* Table (desktop) */}
             <div className="hidden md:block overflow-x-auto rounded-[var(--r-lg)] border border-[var(--border)]">
-              <table className="w-full text-[var(--fs-sm)]">
+              <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border)] bg-[var(--bg-elevated)]">
                     {['Date', 'N° devis', 'Client', 'Description', 'TTC', 'Validité', 'Statut', ''].map(h => (
-                      <th key={h} className="px-4 py-2.5 text-left font-medium text-[var(--text-muted)] text-[var(--fs-xs)] uppercase tracking-wide whitespace-nowrap">
+                      <th key={h} className="px-4 py-2.5 text-left font-medium text-[var(--text-muted)] text-xs uppercase tracking-wide whitespace-nowrap">
                         {h}
                       </th>
                     ))}
@@ -100,7 +101,7 @@ export function Devis() {
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
                   {quotes.map(q => {
-                    const expired = isExpiredDisplay(q.valid_until, q.statut)
+                    const expired = isExpiredDisplay(q.valid_until, q.statut, toLocalISO(new Date()))
                     return (
                       <tr key={q.id}
                         className="hover:bg-[var(--bg-card-hover)] transition-colors cursor-pointer"
@@ -108,7 +109,7 @@ export function Devis() {
                         <td className="px-4 py-3 text-[var(--text-muted)] whitespace-nowrap">
                           {fmtDate(q.date)}
                         </td>
-                        <td className="px-4 py-3 font-mono text-[var(--fs-xs)] whitespace-nowrap">
+                        <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">
                           {q.pennylane_quote_number
                             ? <span className="text-[var(--text)]">{q.pennylane_quote_number}</span>
                             : <span className="text-[var(--text-disabled)]">—</span>}
@@ -125,7 +126,7 @@ export function Devis() {
                         <td className="px-4 py-3 text-[var(--text-muted)] whitespace-nowrap">
                           {q.valid_until ? fmtDate(q.valid_until) : '—'}
                           {expired && (
-                            <span className="ml-1 text-[var(--warning)] text-[var(--fs-xs)]">⚠</span>
+                            <span className="ml-1 text-[var(--warning)] text-xs">dépassée</span>
                           )}
                         </td>
                         <td className="px-4 py-3">
@@ -149,7 +150,7 @@ export function Devis() {
             {/* Cartes (mobile) */}
             <div className="flex flex-col gap-3 md:hidden">
               {quotes.map(q => {
-                const expired = isExpiredDisplay(q.valid_until, q.statut)
+                const expired = isExpiredDisplay(q.valid_until, q.statut, toLocalISO(new Date()))
                 return (
                   <div key={q.id}
                     className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)] p-4 flex flex-col gap-2 cursor-pointer hover:border-[var(--brand)]/40 transition-colors"
@@ -158,19 +159,19 @@ export function Devis() {
                       <span className="font-medium text-[var(--text)]">{q.clients?.name ?? '—'}</span>
                       <Badge color={STATUS_COLORS[q.statut]}>{STATUS_LABELS[q.statut]}</Badge>
                     </div>
-                    <p className="text-[var(--fs-sm)] text-[var(--text-muted)] truncate">
+                    <p className="text-sm text-[var(--text-muted)] truncate">
                       {q.description ?? '—'}
                     </p>
-                    <div className="flex items-center justify-between text-[var(--fs-xs)] text-[var(--text-muted)]">
+                    <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
                       <span>{fmtDate(q.date)}</span>
                       <span className="font-mono font-semibold text-[var(--text)]">
                         {q.amount_ttc_cts != null ? formatMoney(q.amount_ttc_cts) : '—'}
                       </span>
                     </div>
                     {q.valid_until && (
-                      <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                      <p className="text-xs text-[var(--text-muted)]">
                         Valable jusqu'au {fmtDate(q.valid_until)}
-                        {expired && <span className="ml-1 text-[var(--warning)]">⚠ Expiré</span>}
+                        {expired && <span className="ml-1 text-[var(--warning)]">(dépassée)</span>}
                       </p>
                     )}
                   </div>

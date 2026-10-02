@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **01/10/2026** (Calendrier fondu dans le Planning).
+> Dernière mise à jour : **01/10/2026** (Devis : lots D1 + D2).
 
 ---
 
@@ -194,7 +194,8 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   conforme (indexation gazole, pays client, CMR).
 - Dashboard : compter les **colis** de messagerie (aujourd'hui un relevé = 1 livraison dans les
   compteurs ; le CA est juste).
-- Devis : pas encore de prix au colis.
+- Devis : D1 + D2 faits (PR #41 : prix au colis, suppléments, « Appliquer ce prix au client »,
+  « Créer la course ») ; restent D3 (Edge pennylane-quote : lignes, pays / TVA client) et D4 (liste).
 - ~20 fiches clients « particuliers » jetables (anciennes courses de plateformes) : fusionner
   ou désactiver ? (à décider)
 - 1 client au délai 60 j (non conforme) : le repasser à 30 j dans sa fiche.
@@ -205,7 +206,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   Pas d'immobilisation ni de prorata km dans ces écrans.
 - Planning : changer chauffeur / jour détache la course de sa tournée (choix à confirmer) ;
   heure de début de tournée = suggestion tant que `tours.started_at` n'existe pas.
-- Onglets suivants de la revue : Devis, Modèles, puis le menu dans l'ordre.
+- Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)
 - Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation → PR +
