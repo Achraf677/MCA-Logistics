@@ -236,10 +236,16 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
     const n = nombre(form.unite === 'km' ? form.km : form.quantite)
     return n != null && n > 0 ? n : null
   }, [form.quantite, form.km, form.unite])
+  // Suppléments tels qu'enregistrés et envoyés à Pennylane (lignes vides écartées ;
+  // un seul taux pour tout le devis : les suppléments suivent).
+  const extrasAEnvoyer = useMemo(() => extraLines
+    .filter(l => l.label.trim() || l.amount_ht_cts > 0)
+    .map(l => ({ ...l, label: l.label.trim(), tva_rate: form.tva_rate })), [extraLines, form.tva_rate])
+  // Mêmes lignes que chez Pennylane (miroir de l'Edge) : TVA ligne par ligne.
   const montants = useMemo(() => montantsDevis({
-    quantite, prix_unitaire_cts: prixCts, extra_lines: extraLines,
+    quantite, prix_unitaire_cts: prixCts, extra_lines: extrasAEnvoyer,
     tva_rate: form.tva_rate, autoliquidation: form.autoliquidation,
-  }), [quantite, prixCts, extraLines, form.tva_rate, form.autoliquidation])
+  }), [quantite, prixCts, extrasAEnvoyer, form.tva_rate, form.autoliquidation])
 
   const blocs = blocsPrestation(form.prestation)
   const messagerie = blocs.releve
@@ -292,6 +298,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
     client?.reference_obligatoire && !form.reference_client.trim() && 'référence client (exigée par ce client)',
     quantite == null && (form.unite === 'km' ? 'kilomètres' : 'quantité'),
     montants.htCts <= 0 && 'prix',
+    montants.htCts > 0 && montants.blocage,
   ].filter(Boolean) as string[]
 
   const handleSave = async () => {
@@ -308,13 +315,10 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
         unite:            form.unite,
         quantite,
         prix_unitaire_cts: prixCts,
-        // Un seul taux pour tout le devis : les suppléments suivent.
-        extra_lines:      extraLines
-          .filter(l => l.label.trim() || l.amount_ht_cts > 0)
-          .map(l => ({ ...l, label: l.label.trim(), tva_rate: form.tva_rate })),
+        extra_lines:      extrasAEnvoyer,
         reference_client: form.reference_client.trim() || null,
         autoliquidation:  form.autoliquidation,
-        // Totaux (Pennylane émet une ligne au montant HT total, au taux effectif).
+        // Totaux des lignes envoyées à Pennylane (ligne principale + suppléments).
         amount_ht_cts:    montants.htCts,
         tva_rate:         form.tva_rate,
         tva_cts:          montants.tvaCts,

@@ -48,7 +48,8 @@
   `prestation, unite, quantite, prix_unitaire_cts, extra_lines, reference_client,
   autoliquidation, accepte_le` + mêmes champs que la course (`expediteur_*`, `destinataire_*`,
   `marchandise_desc, nb_colis, poids_kg, volume_m3, km`) — écrites par le devis ; `amount_ht_cts / tva_cts` restent les
-  TOTAUX (lus par l'Edge pennylane-quote, une ligne au taux effectif). Le devis écrit aussi
+  TOTAUX ; l'Edge pennylane-quote lit la fiche de prix et envoie les mêmes lignes qu'une
+  facture (U3 : quantité × PU + suppléments). Le devis écrit aussi
   `clients.tariff_mode / tariff_rate_cts / prestation_defaut` (« Appliquer ce prix au client »)
   et crée des `deliveries` (`quote_id`, tout repris).
 - **qonto_transactions** : tresorerie, encaissement, aRapprocher ; Edge qonto-sync.
@@ -101,8 +102,11 @@
   l'importent** (lister avec `grep -rl "_shared/<fichier>" supabase/functions`).
 
 ## 4. Règles en miroir front ↔ Edge (à modifier des DEUX côtés, tests des deux côtés)
-- Lignes de facture : `_shared/lignesFacture.ts` ↔ `features/livraisons/apercuFacture.logic.ts`
-  (libellé, référence client, relevé en quantité, autoliquidation, taux légaux).
+- Lignes de facture : `_shared/lignesFacture.ts` ↔ `shared/lib/lignesPennylane.ts` (règles de base)
+  + `features/livraisons/apercuFacture.logic.ts` (libellé, référence client, relevé en quantité,
+  autoliquidation, taux légaux).
+- Lignes de devis (U3) : `_shared/lignesFacture#construireLignesDevis` (Edge pennylane-quote) ↔
+  `shared/lib/lignesPennylane#lignesDevis` (`devis.logic#montantsDevis`) ; TVA ligne par ligne.
 - Délai de paiement : `_shared/paymentTerms.ts` (`echeanceTransport`, plafond 30 j) ↔
   `shared/lib/paymentTerms.ts` (`conforme`, `delaiConforme`).
 - Montants / TVA : `_shared/money.ts` ↔ `shared/lib/money.ts`.

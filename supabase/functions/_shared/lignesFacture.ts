@@ -136,28 +136,54 @@ export function construireLignes(
   d: CourseAFacturer,
   opts: { codeAutoliquidation: string; mentionAutoliquidation: string },
 ): ResultatLignes {
-  const course = `course du ${jourFr(d.date)}`;
+  return assembler(d, opts, {
+    objet: `la course du ${jourFr(d.date)}`,
+    libelle: libelleCourse(d),
+    parUnite: quantiteColis(d),
+    taux: tauxLignePrincipale(Number(d.amount_ht_cts), d.tva_cts, d.tva_rate),
+    cleId: 'delivery_id',
+  });
+}
+
+/** Contexte de la ligne principale : ce qui distingue une course d'un devis. */
+interface Principale {
+  /** « la course du 19/07/2026 » / « le devis du … » — pour les messages d'erreur. */
+  objet: string;
+  libelle: string;
+  /** Quantité × prix unitaire envoyés à Pennylane ; null = 1 × HT. */
+  parUnite: { quantity: number; unitCts: number } | null;
+  taux: number;
+  /** Clé de l'id dans `details` des refus. */
+  cleId: 'delivery_id' | 'quote_id';
+}
+
+function assembler(
+  d: Pick<CourseAFacturer, 'id' | 'amount_ht_cts' | 'autoliquidation' | 'extra_lines'>,
+  opts: { codeAutoliquidation: string; mentionAutoliquidation: string },
+  p: Principale,
+): ResultatLignes {
+  const course = p.objet;
   const ht = d.amount_ht_cts;
   if (ht == null || !Number.isFinite(Number(ht)) || ht <= 0) {
-    return { ok: false, error: `Montant HT manquant ou nul sur la ${course}.`, details: { delivery_id: d.id } };
+    return { ok: false, error: `Montant HT manquant ou nul sur ${course}.`, details: { [p.cleId]: d.id } };
   }
   const autoliq = d.autoliquidation === true;
   const lignes: LigneFacture[] = [];
 
-  const taux = tauxLignePrincipale(ht, d.tva_cts, d.tva_rate);
+  const taux = p.taux;
   let code: string | null;
   if (autoliq) code = opts.codeAutoliquidation;
   else code = codeTvaLegal(taux);
   if (code === null) {
     return {
       ok: false,
-      error: `Taux de TVA non légal (${String(taux).replace('.', ',')} %) sur la ${course} — `
+      error: `Taux de TVA non légal (${String(taux).replace('.', ',')} %) sur ${course} — `
         + 'taux acceptés : 0 ; 2,1 ; 5,5 ; 10 ; 20 %. Corrigez le taux ou le montant de TVA.',
-      details: { delivery_id: d.id, tva_rate_pct: taux, tva_cts: d.tva_cts, amount_ht_cts: ht },
+      details: { [p.cleId]: d.id, tva_rate_pct: taux, amount_ht_cts: ht },
     };
   }
-  const base = libelleCourse(d);
-  const parColis = quantiteColis(d);
+  const base = p.libelle;
+  const parColis = p.parUnite;
   lignes.push({
     ref: d.id,
     // La mention voyage DANS le libellé : seul endroit dont on soit certain
@@ -177,10 +203,10 @@ export function construireLignes(
     const extraHt = Number(raw?.amount_ht_cts ?? 0);
     const extraRate = raw?.tva_rate == null || raw.tva_rate === '' ? taux : Number(raw.tva_rate);
     if (!label) {
-      return { ok: false, error: `Ligne supplémentaire n° ${idx + 1} sans libellé sur la ${course}.` };
+      return { ok: false, error: `Ligne supplémentaire n° ${idx + 1} sans libellé sur ${course}.` };
     }
     if (!Number.isFinite(extraHt) || extraHt <= 0) {
-      return { ok: false, error: `Ligne supplémentaire « ${label} » : montant HT invalide sur la ${course}.` };
+      return { ok: false, error: `Ligne supplémentaire « ${label} » : montant HT invalide sur ${course}.` };
     }
     let extraCode: string | null;
     if (autoliq) extraCode = opts.codeAutoliquidation;
@@ -189,7 +215,7 @@ export function construireLignes(
       return {
         ok: false,
         error: `Ligne supplémentaire « ${label} » : taux de TVA non légal `
-          + `(${String(extraRate).replace('.', ',')} %) sur la ${course}.`,
+          + `(${String(extraRate).replace('.', ',')} %) sur ${course}.`,
       };
     }
     lignes.push({
@@ -203,4 +229,105 @@ export function construireLignes(
   }
 
   return { ok: true, lignes };
+}
+
+// ── Devis (lot U3) : mêmes lignes que la facture ─────────────────────────────
+
+/** Devis tel que lu en base (fiche de prix, migration 20261002090000). */
+export interface DevisAFacturer {
+  id: string;
+  date: string | null;
+  description: string | null;
+  reference_client?: string | null;
+  prestation?: string | null;
+  /** Quantité de la ligne principale (colis, km, palettes, forfaits). */
+  quantite?: number | string | null;
+  /** Prix unitaire HT ; null = ancien devis (montant global seul). */
+  prix_unitaire_cts?: number | null;
+  /** TOTAUX du devis (ligne principale + suppléments). */
+  amount_ht_cts: number | null;
+  tva_cts: number | null;
+  /** Un seul taux pour tout le devis. */
+  tva_rate: number | string | null;
+  autoliquidation: boolean | null;
+  extra_lines: unknown;
+}
+
+function qte(n: unknown): number {
+  const v = Number(n);
+  return Number.isFinite(v) && v > 0 ? v : 1;
+}
+
+/** HT des suppléments d'un devis (quantité × HT unitaire, arrondi par ligne). */
+function supplementsHtCts(extra: unknown): number {
+  const lignes = Array.isArray(extra) ? extra as Array<Record<string, unknown>> : [];
+  return lignes.reduce((s, l) => s + Math.round(qte(l?.quantity) * (Number(l?.amount_ht_cts) || 0)), 0);
+}
+
+/**
+ * Libellé de la ligne principale d'un devis : celui de la facture
+ * (`libelleCourse` : description, sinon défaut, puis « — Réf. … »), sauf en
+ * messagerie où le défaut de facture (« colis livrés » d'un mois) n'a pas de
+ * sens pour une proposition de prix.
+ */
+export function libelleDevis(
+  q: Pick<DevisAFacturer, 'description' | 'date' | 'reference_client' | 'prestation'>,
+): string {
+  if (q.prestation === 'messagerie' && !q.description?.trim()) {
+    const ref = q.reference_client?.trim();
+    return ref ? `Messagerie — prix au colis — Réf. ${ref}` : 'Messagerie — prix au colis';
+  }
+  return libelleCourse({ ...q, type: null });
+}
+
+/**
+ * Ligne principale d'un devis : quantité × prix unitaire (fiche de prix) ;
+ * ancien devis (sans prix unitaire) = 1 × (HT total − suppléments).
+ */
+export function principaleDevis(
+  q: Pick<DevisAFacturer, 'quantite' | 'prix_unitaire_cts' | 'amount_ht_cts' | 'extra_lines'>,
+): { htCts: number; parUnite: { quantity: number; unitCts: number } | null } {
+  if (q.prix_unitaire_cts != null && Number.isFinite(Number(q.prix_unitaire_cts))) {
+    const quantity = qte(q.quantite);
+    const unitCts = Math.round(Number(q.prix_unitaire_cts));
+    return { htCts: Math.round(quantity * unitCts), parUnite: { quantity, unitCts } };
+  }
+  return { htCts: Number(q.amount_ht_cts ?? 0) - supplementsHtCts(q.extra_lines), parUnite: null };
+}
+
+/**
+ * Taux du devis : le taux stocké s'il est légal (le devis n'a qu'un taux) ;
+ * sinon déduit des TOTAUX (ancien devis), comme pour une course.
+ */
+export function tauxDevis(q: Pick<DevisAFacturer, 'amount_ht_cts' | 'tva_cts' | 'tva_rate'>): number {
+  const stocke = q.tva_rate != null && q.tva_rate !== '' ? Number(q.tva_rate) : null;
+  if (stocke != null && codeTvaLegal(stocke) !== null) return stocke;
+  return tauxLignePrincipale(Number(q.amount_ht_cts ?? 0), q.tva_cts, q.tva_rate);
+}
+
+/**
+ * Lignes Pennylane d'un devis — MÊMES règles que `construireLignes` (codes TVA
+ * légaux, autoliquidation sur toutes les lignes + mention, suppléments, refus
+ * lisibles). La facture issue du devis (`create_from_quote`) recopie ces lignes.
+ */
+export function construireLignesDevis(
+  q: DevisAFacturer,
+  opts: { codeAutoliquidation: string; mentionAutoliquidation: string },
+): ResultatLignes {
+  const taux = tauxDevis(q);
+  const principale = principaleDevis(q);
+  const extras = (Array.isArray(q.extra_lines) ? q.extra_lines as Array<Record<string, unknown>> : [])
+    // Un supplément de devis suit le taux du devis.
+    .map((l) => ({ ...l, tva_rate: l?.tva_rate ?? taux }));
+  return assembler(
+    { id: q.id, amount_ht_cts: principale.htCts, autoliquidation: q.autoliquidation, extra_lines: extras },
+    opts,
+    {
+      objet: `le devis du ${jourFr(q.date)}`,
+      libelle: libelleDevis(q),
+      parUnite: principale.parUnite,
+      taux,
+      cleId: 'quote_id',
+    },
+  );
 }

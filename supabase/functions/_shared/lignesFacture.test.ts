@@ -3,9 +3,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   codeTvaLegal, construireLignes, libelleCourse, tauxLignePrincipale, quantiteColis,
-  type CourseAFacturer,
+  construireLignesDevis, libelleDevis,
+  type CourseAFacturer, type DevisAFacturer,
 } from './lignesFacture.ts';
 import { buildApercuPayload } from '../../../src/features/livraisons/apercuFacture.logic.ts';
+import { lignesDevis } from '../../../src/shared/lib/lignesPennylane.ts';
 
 const OPTS = { codeAutoliquidation: 'exempt', mentionAutoliquidation: 'Autoliquidation — TVA due par le preneur, art. 259-1 du CGI' };
 
@@ -174,6 +176,103 @@ describe('parité avec l’aperçu front (buildApercuPayload)', () => {
         expect(front.lines).toEqual(edge.lignes.map((l) => ({
           label: l.label, quantity: l.quantity, amount_ht_cts: l.amountHtCts, vat_rate_pct: l.ratePct,
         })));
+      }
+    });
+  }
+});
+
+// ── Devis (lot U3) : mêmes lignes que la facture ─────────────────────────────
+const devis = (over: Partial<DevisAFacturer> = {}): DevisAFacturer => ({
+  id: 'q1',
+  date: '2026-10-03',
+  description: null,
+  reference_client: null,
+  prestation: 'messagerie',
+  quantite: 1240,
+  prix_unitaire_cts: 100,
+  amount_ht_cts: 124000 + 1500,
+  tva_cts: 25100,
+  tva_rate: 20,
+  autoliquidation: false,
+  extra_lines: [{ label: 'Hayon', quantity: 1, amount_ht_cts: 1500, tva_rate: 20 }],
+  ...over,
+});
+
+describe('construireLignesDevis', () => {
+  it('messagerie 1 240 colis × 1,00 € + supplément → 2 lignes, quantité = colis', () => {
+    const r = construireLignesDevis(devis(), OPTS);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lignes).toEqual([
+      { ref: 'q1', label: 'Messagerie — prix au colis', quantity: 1240, amountHtCts: 100, vatCode: 'FR_200', ratePct: 20 },
+      { ref: 'q1#extra-0', label: 'Hayon', quantity: 1, amountHtCts: 1500, vatCode: 'FR_200', ratePct: 20 },
+    ]);
+  });
+  it('autoliquidation : code exempt + mention sur la ligne principale, suppléments compris', () => {
+    const r = construireLignesDevis(devis({ autoliquidation: true, tva_cts: 0, tva_rate: 0 }), OPTS);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lignes.map((l) => l.vatCode)).toEqual(['exempt', 'exempt']);
+    expect(r.lignes[0].label).toContain('art. 259-1');
+    expect(r.lignes[0].ratePct).toBeNull();
+  });
+  it('libellé : description, puis référence client (comme la facture)', () => {
+    expect(libelleDevis({ description: 'Navette Ostwald', date: '2026-10-03', reference_client: 'ODT-9', prestation: 'express' }))
+      .toBe('Navette Ostwald — Réf. ODT-9');
+    expect(libelleDevis({ description: null, date: '2026-10-03', reference_client: 'ODT-9', prestation: 'messagerie' }))
+      .toBe('Messagerie — prix au colis — Réf. ODT-9');
+    expect(libelleDevis({ description: null, date: '2026-10-03', prestation: 'express' }))
+      .toBe('Livraison du 2026-10-03');
+  });
+  it('ancien devis (sans prix unitaire) : 1 × HT, taux déduit des totaux', () => {
+    const r = construireLignesDevis(devis({
+      prestation: null, description: 'Transport', quantite: null, prix_unitaire_cts: null,
+      amount_ht_cts: 10000, tva_cts: 2000, tva_rate: null, extra_lines: [],
+    }), OPTS);
+    expect(r.ok && r.lignes).toEqual([
+      { ref: 'q1', label: 'Transport', quantity: 1, amountHtCts: 10000, vatCode: 'FR_200', ratePct: 20 },
+    ]);
+  });
+  it('au km : quantité décimale gardée', () => {
+    const r = construireLignesDevis(devis({ prestation: 'express', description: 'Course', quantite: 12.5, prix_unitaire_cts: 90, extra_lines: [] }), OPTS);
+    expect(r.ok && r.lignes[0]).toMatchObject({ quantity: 12.5, amountHtCts: 90 });
+  });
+  it('refus lisibles : prix nul, taux non légal, supplément sans montant', () => {
+    expect(construireLignesDevis(devis({ prix_unitaire_cts: 0 }), OPTS)).toMatchObject({ ok: false, details: { quote_id: 'q1' } });
+    const taux = construireLignesDevis(devis({ tva_rate: 8, tva_cts: 10040 }), OPTS);
+    expect(taux.ok).toBe(false);
+    expect(!taux.ok && taux.error).toContain('le devis du 03/10/2026');
+    expect(construireLignesDevis(devis({ extra_lines: [{ label: 'Attente', quantity: 1, amount_ht_cts: 0 }] }), OPTS).ok).toBe(false);
+  });
+});
+
+describe('parité devis : Edge ↔ front (lignesDevis)', () => {
+  const cas: Array<[string, Partial<DevisAFacturer>]> = [
+    ['messagerie + supplément', {}],
+    ['autoliquidation', { autoliquidation: true, tva_rate: 0, tva_cts: 0 }],
+    ['10 %', { tva_rate: 10, extra_lines: [] }],
+    ['km décimal', { prestation: 'express', description: 'Course', quantite: 12.5, prix_unitaire_cts: 90 }],
+    ['ancien devis', { prix_unitaire_cts: null, quantite: null, amount_ht_cts: 10000, tva_cts: 2000, tva_rate: null, extra_lines: [] }],
+    ['référence', { reference_client: 'PO-12', description: 'Tournée' }],
+    ['prix nul', { prix_unitaire_cts: 0 }],
+    ['taux non légal', { tva_rate: 8, tva_cts: 10040 }],
+    ['supplément invalide', { extra_lines: [{ label: '', quantity: 1, amount_ht_cts: 300 }] }],
+  ];
+  for (const [nom, over] of cas) {
+    it(nom, () => {
+      const q = devis(over);
+      const edge = construireLignesDevis(q, OPTS);
+      const front = lignesDevis({
+        date: q.date, description: q.description, reference_client: q.reference_client, prestation: q.prestation,
+        quantite: q.quantite == null ? null : Number(q.quantite), prix_unitaire_cts: q.prix_unitaire_cts ?? null,
+        amount_ht_cts: q.amount_ht_cts, tva_cts: q.tva_cts,
+        tva_rate: q.tva_rate == null ? null : Number(q.tva_rate), autoliquidation: q.autoliquidation === true,
+        extra_lines: q.extra_lines as never,
+      });
+      expect(front.blocage !== null).toBe(!edge.ok);
+      if (edge.ok) {
+        expect(front.lignes.map(({ label, quantity, amount_ht_cts, vat_rate_pct }) => ({ label, quantity, amount_ht_cts, vat_rate_pct })))
+          .toEqual(edge.lignes.map((l) => ({ label: l.label, quantity: l.quantity, amount_ht_cts: l.amountHtCts, vat_rate_pct: l.ratePct })));
       }
     });
   }

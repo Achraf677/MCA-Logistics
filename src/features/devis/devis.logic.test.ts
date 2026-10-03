@@ -48,7 +48,7 @@ describe('défauts depuis le client', () => {
 describe('montantsDevis', () => {
   it('3 000 colis × 1 € = 3 000 € HT, 3 600 € TTC', () => {
     expect(montantsDevis({ quantite: 3000, prix_unitaire_cts: 100, extra_lines: [], tva_rate: 20, autoliquidation: false }))
-      .toEqual({ principalHtCts: 300000, supplementsHtCts: 0, htCts: 300000, tvaCts: 60000, ttcCts: 360000 })
+      .toEqual({ principalHtCts: 300000, supplementsHtCts: 0, htCts: 300000, tvaCts: 60000, ttcCts: 360000, blocage: null })
   })
   it('suppléments ajoutés au HT, TVA sur le total', () => {
     const m = montantsDevis({
@@ -60,6 +60,21 @@ describe('montantsDevis', () => {
   })
   it('autoliquidation : aucune TVA', () => {
     expect(montantsDevis({ quantite: 10, prix_unitaire_cts: 150, extra_lines: [], tva_rate: 20, autoliquidation: true }).tvaCts).toBe(0)
+  })
+  it('TVA ligne par ligne, comme Pennylane (pas sur le total)', () => {
+    // 3 lignes à 0,05 € : 1 ct de TVA chacune (arrondi par ligne) = 3 ct, et non 3 ct sur 0,15 €.
+    const m = montantsDevis({
+      quantite: 1, prix_unitaire_cts: 5, tva_rate: 20, autoliquidation: false,
+      extra_lines: [{ label: 'A', quantity: 1, amount_ht_cts: 5, tva_rate: 20 }, { label: 'B', quantity: 1, amount_ht_cts: 5, tva_rate: 20 }],
+    })
+    expect(m.htCts).toBe(15)
+    expect(m.tvaCts).toBe(3)
+  })
+  it('supplément refusé par Pennylane → blocage', () => {
+    expect(montantsDevis({
+      quantite: 1, prix_unitaire_cts: 5000, tva_rate: 20, autoliquidation: false,
+      extra_lines: [{ label: 'Attente', quantity: 1, amount_ht_cts: 0, tva_rate: 20 }],
+    }).blocage).toMatch(/Attente/)
   })
   it('quantité absente ou nulle → 1', () => {
     expect(montantsDevis({ quantite: null, prix_unitaire_cts: 5000, extra_lines: [], tva_rate: 20, autoliquidation: false }).htCts).toBe(5000)

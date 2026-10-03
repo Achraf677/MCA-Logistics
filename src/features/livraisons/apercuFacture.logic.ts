@@ -1,7 +1,8 @@
 // Logique pure d'aperçu facture — reproduit ce que Pennylane facturera à
 // partir des livraisons sélectionnées. Aucun appel réseau.
 //
-// MIROIR de supabase/functions/_shared/lignesFacture.ts (côté Edge) : même
+// MIROIR de supabase/functions/_shared/lignesFacture.ts (côté Edge ; règles de
+// base dans shared/lib/lignesPennylane.ts, partagées avec le devis) : même
 // libellé, même choix de taux (taux stocké s'il est légal et cohérent, sinon
 // TVA/HT au dixième), même autoliquidation (toutes les lignes à 0 %), mêmes
 // refus. Un test de parité (supabase/functions/_shared/lignesFacture.test.ts)
@@ -20,10 +21,11 @@ import {
   extraLinesHtCts, extraLinesTtcCts,
   type DeliveryExtraLine,
 } from '../../shared/lib/money'
+import {
+  MENTION_AUTOLIQUIDATION, estTauxLegal, tauxLignePrincipale, quantiteColis, libelleCourse,
+} from '../../shared/lib/lignesPennylane'
 
-/** Mention légale portée sur la ligne principale d'une facture autoliquidée
- *  (identique à MENTION_AUTOLIQUIDATION côté Edge). */
-export const MENTION_AUTOLIQUIDATION = 'Autoliquidation — TVA due par le preneur, art. 259-1 du CGI'
+export { MENTION_AUTOLIQUIDATION, estTauxLegal, tauxLignePrincipale, quantiteColis, libelleCourse }
 
 /** Source minimale pour buildApercuFacture — miroir de DeliveryRow. */
 export interface ApercuFactureRow {
@@ -105,62 +107,7 @@ export interface ApercuFacture {
   }
 }
 
-// ── Règles partagées avec l'Edge ─────────────────────────────────────────────
-
-/** Taux TVA légaux français acceptés par Pennylane (en dixièmes pour éviter le flottant). */
-const TAUX_LEGAUX_DIXIEMES = [0, 21, 55, 100, 200]
-
-export function estTauxLegal(ratePct: number): boolean {
-  return Number.isFinite(ratePct) && TAUX_LEGAUX_DIXIEMES.includes(Math.round(ratePct * 10))
-}
-
-/** Miroir de `tauxLignePrincipale` (Edge). */
-export function tauxLignePrincipale(
-  htCts: number,
-  tvaCts: number | null,
-  tvaRate: number | string | null | undefined,
-): number {
-  const stocke = tvaRate != null && tvaRate !== '' && Number.isFinite(Number(tvaRate))
-    ? Number(tvaRate) : null
-  const tva = tvaCts ?? Math.round(htCts * (stocke ?? 20) / 100)
-  if (stocke != null && estTauxLegal(stocke)
-      && Math.abs(Math.round(htCts * stocke / 100) - tva) <= 1) {
-    return stocke
-  }
-  if (htCts > 0) return Math.round(tva / htCts * 1000) / 10
-  return stocke ?? 20
-}
-
-/**
- * Miroir de `libelleCourse` (Edge) : description, sinon « Livraison <type> du
- * <date> », suivie de « — Réf. <référence client> » si elle n'y figure pas déjà.
- */
-const MOIS_FR = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
-
-function moisFr(date: string | null): string {
-  const m = /^(\d{4})-(\d{2})/.exec(date ?? '')
-  return m ? `${MOIS_FR[Number(m[2]) - 1]} ${m[1]}` : ''
-}
-
-/** Miroir de `quantiteColis` (Edge) : quantité seulement si colis × prix = HT. */
-export function quantiteColis(
-  r: Pick<ApercuFactureRow, 'prestation' | 'nb_colis' | 'prix_unitaire_cts'> & { ht: number },
-): { quantity: number; unit_cts: number } | null {
-  if (r.prestation !== 'messagerie') return null
-  const n = Number(r.nb_colis), pu = Number(r.prix_unitaire_cts)
-  if (!Number.isInteger(n) || n <= 0 || !Number.isInteger(pu) || pu <= 0) return null
-  return n * pu === r.ht ? { quantity: n, unit_cts: pu } : null
-}
-
-export function libelleCourse(row: Pick<ApercuFactureRow, 'description' | 'type' | 'date' | 'reference_client' | 'prestation'>): string {
-  const desc = row.description?.trim()
-  const defaut = row.prestation === 'messagerie'
-    ? `Messagerie ${moisFr(row.date)} — colis livrés`.replace('  ', ' ')
-    : ['Livraison', row.type ?? '', 'du', row.date ?? ''].filter(s => s !== '').join(' ')
-  const base = desc || defaut
-  const ref = row.reference_client?.trim()
-  return ref && !base.includes(ref) ? `${base} — Réf. ${ref}` : base
-}
+// ── Règles partagées avec l'Edge : shared/lib/lignesPennylane (devis aussi) ──
 
 function pct(n: number): string {
   return String(n).replace('.', ',')
