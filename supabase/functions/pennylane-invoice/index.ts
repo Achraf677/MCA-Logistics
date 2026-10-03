@@ -20,6 +20,7 @@ import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError } from '../_shared/http.ts';
 import { centimesToEuros } from '../_shared/money.ts';
 import { echeanceTransport } from '../_shared/paymentTerms.ts';
+import { jourParis } from '../_shared/dates.ts';
 import { construireLignes, type CourseAFacturer, type LigneFacture } from '../_shared/lignesFacture.ts';
 import type { InvoiceLine } from '../_shared/pennylane.ts';
 import { tvaNormalisee } from '../_shared/clientPennylane.ts';
@@ -280,7 +281,7 @@ Deno.serve(async (req: Request) => {
     // payment_terms_label (select façon Pennylane) prime si renseigné — gère
     // notamment "30 jours fin de mois", indiscernable du seul entier payment_terms.
     // Date du jour à PARIS (en UTC, une facture émise avant 2 h était datée de la veille).
-    invoiceDate = invoiceDateOverride ?? new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris' }).format(new Date());
+    invoiceDate = invoiceDateOverride ?? jourParis();
     // Échéance : celle de l'auto-facture si fournie (dates du donneur d'ordre),
     // sinon celle imposée sur la course (la plus proche), sinon le délai du
     // client ; les deux dernières plafonnées à 30 j (L441-11) et jamais avant la facture.

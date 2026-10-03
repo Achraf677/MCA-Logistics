@@ -16,6 +16,8 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError } from '../_shared/http.ts';
 import { centimesToEuros } from '../_shared/money.ts';
+import { jourParis, jourParisDe } from '../_shared/dates.ts';
+import { totalTtcCourseCts } from '../_shared/totaux.ts';
 import {
   getInvoicePaymentState,
   pennylaneToken,
@@ -31,27 +33,6 @@ interface CourseFacturee {
   amount_ttc_cts: number | null;
   autoliquidation: boolean | null;
   extra_lines: unknown;
-}
-
-/** TTC d'une course, lignes supplémentaires comprises (centimes). null si inconnu. */
-function ttcCourseCts(c: CourseFacturee): number | null {
-  const autoliq = c.autoliquidation === true;
-  let principal: number | null;
-  if (autoliq) principal = c.amount_ht_cts ?? null;
-  else principal = c.amount_ttc_cts
-    ?? (c.amount_ht_cts != null ? c.amount_ht_cts + (c.tva_cts ?? 0) : null);
-  if (principal == null) return null;
-
-  const extras = Array.isArray(c.extra_lines) ? c.extra_lines as Array<Record<string, unknown>> : [];
-  let total = principal;
-  for (const l of extras) {
-    const q = Number(l?.quantity ?? 1);
-    const qty = Number.isFinite(q) && q > 0 ? q : 1;
-    const ht = Math.round((Number(l?.amount_ht_cts) || 0) * qty);
-    const rate = autoliq ? 0 : (Number(l?.tva_rate) || 0);
-    total += Math.round(ht * (1 + rate / 100));
-  }
-  return total;
 }
 
 Deno.serve(async (req: Request) => {
@@ -144,7 +125,8 @@ Deno.serve(async (req: Request) => {
     if (autrePayee) {
       return jsonResponse({ ok: true, data: { skipped: 'paiement déjà déclaré pour cette facture', invoice_id: invoiceId } });
     }
-    const totaux = courses.map(ttcCourseCts);
+    // TTC dû = même règle qu'à l'écran (_shared/totaux, miroir de deliveryTotalTtcCts).
+    const totaux = courses.map(totalTtcCourseCts);
     if (totaux.length === 0 || totaux.some((t) => t == null)) {
       return jsonResponse({ ok: false, error: 'Montant de la facture inconnu : paiement à déclarer dans Pennylane.' }, 422);
     }
@@ -155,8 +137,8 @@ Deno.serve(async (req: Request) => {
     amountEuros = centimesToEuros(totalCts);
   }
 
-  const paidAt = (delivery.paid_at as string | null)?.slice(0, 10)
-    ?? new Date().toISOString().slice(0, 10);
+  // Jour du paiement à PARIS (un paiement saisi à 1 h du matin n'est pas daté de la veille).
+  const paidAt = jourParisDe(delivery.paid_at as string | null) ?? jourParis();
 
   try {
     await registerInvoicePayment(token, invoiceId, amountEuros, paidAt);

@@ -199,7 +199,14 @@
 - Migration : oui si verrou en colonne. Edge : pennylane-quote (+ invoice selon choix).
 - Tests : double clic → 1 seul devis ; devis facturé non transformable.
 
-### U5 — Dates et paiements réels
+### U5 — Dates et paiements réels — codé (PR en cours ; Edge : invoice, register-payment, payment-check, last-numbers)
+- Réalisé : `_shared/dates.ts` (`jourParis`, `anneeParis`, `jourParisDe`, `horodatageDuJour`, testés)
+  utilisé par pennylane-invoice (date de facture), register-payment (jour du paiement à Paris),
+  last-numbers (année à Paris) et payment-check ; payment-check : `paid_at` = date de la
+  transaction rapprochée chez Pennylane (sinon maintenant), avoir → `annulee` + trace dans
+  `sync_error` ; `_shared/totaux.ts#totalTtcCourseCts` = miroir testé de `deliveryTotalTtcCts`
+  (remplace `ttcCourseCts`). Sans migration. Reste hors lot : saisir la date réelle d'un
+  paiement à la main (le front pose « maintenant »). Plan d'origine ci-dessous.
 - `_shared/dates.ts` : `jourParis()` (reprendre `pennylane-invoice:293`) utilisé partout
   (register-payment, payment-check, last-numbers).
 - `pennylane-payment-check` : `paid_at` = date du paiement Pennylane si lisible ;

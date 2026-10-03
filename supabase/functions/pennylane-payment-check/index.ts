@@ -1,7 +1,9 @@
 // Edge Function `pennylane-payment-check`
 // Aligne les livraisons facturées sur l'état réel de leur facture Pennylane :
-// - facture annulée par un avoir  → livraison `annulee` (sort de l'encours et du CA) ;
-// - facture rapprochée à un paiement → livraison `payee`.
+// - facture annulée par un avoir  → livraison `annulee` (sort de l'encours et du CA),
+//   avec la trace dans `sync_error` (transition système, CLAUDE.md § 6) ;
+// - facture rapprochée à un paiement → livraison `payee`, `paid_at` = date du
+//   paiement chez Pennylane quand elle est lisible (sinon maintenant).
 // Gère les factures groupées : un seul UPDATE par invoice_id passe TOUT le groupe d'un coup.
 // N'écrit RIEN chez Pennylane et ne touche AUCUNE autre table que `deliveries`.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
@@ -9,17 +11,26 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
 import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
+import { horodatageDuJour } from '../_shared/dates.ts';
 
-/** Règle v1 : liste de transactions rapprochées non vide ⇒ facture payée. */
-async function isInvoicePaid(token: string, invoiceId: string): Promise<boolean> {
+/**
+ * Règle : liste de transactions rapprochées non vide ⇒ facture payée. Le jour
+ * du paiement = la date de transaction la plus récente si elle est lisible
+ * (AAAA-MM-JJ), sinon null.
+ */
+async function lirePaiement(token: string, invoiceId: string): Promise<{ paid: boolean; jour: string | null }> {
   const data = await fetchJson<Record<string, unknown>>(
     `${PENNYLANE_BASE}/customer_invoices/${invoiceId}/matched_transactions`,
     { headers: pennylaneHeaders(token) },
   );
   const items = (
     data.matched_transactions ?? data.items ?? (Array.isArray(data) ? data : [])
-  ) as unknown[];
-  return items.length > 0;
+  ) as Array<Record<string, unknown>>;
+  const jours = items
+    .map((t) => String(t?.date ?? '').slice(0, 10))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+    .sort();
+  return { paid: items.length > 0, jour: jours.length > 0 ? jours[jours.length - 1] : null };
 }
 
 /** Numéro + statut en un seul appel. Null si la facture est illisible (ex. supprimée). */
@@ -96,7 +107,10 @@ Deno.serve(async (req) => {
       if (invoice?.status === 'cancelled') {
         const { error: cErr } = await supabase
           .from('deliveries')
-          .update({ statut: 'annulee' })
+          .update({
+            statut: 'annulee',
+            sync_error: `Annulée par un avoir chez Pennylane (facture ${invoice.invoice_number ?? invoiceId}).`,
+          })
           .eq('company_id', companyId)
           .eq('pennylane_invoice_id', invoiceId)
           .eq('statut', 'facturee');
@@ -107,14 +121,17 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const paid = await isInvoicePaid(token, invoiceId);
-      if (!paid) continue;
+      const paiement = await lirePaiement(token, invoiceId);
+      if (!paiement.paid) continue;
 
       // Garde-fou idempotent : ne bascule que les livraisons encore en `facturee`.
       // Un seul UPDATE couvre tout le groupe (invoice_group_id partagé → même invoice_id).
       const { error: uErr } = await supabase
         .from('deliveries')
-        .update({ statut: 'payee', paid_at: new Date().toISOString() })
+        .update({
+          statut: 'payee',
+          paid_at: paiement.jour ? horodatageDuJour(paiement.jour) : new Date().toISOString(),
+        })
         .eq('company_id', companyId)
         .eq('pennylane_invoice_id', invoiceId)
         .eq('statut', 'facturee');

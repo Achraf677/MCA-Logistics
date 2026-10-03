@@ -12,6 +12,7 @@ import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { AuthError, lireAppelant } from '../_shared/auth.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
 import { PENNYLANE_BASE, pennylaneHeaders, pennylaneToken } from '../_shared/pennylane.ts';
+import { anneeParis } from '../_shared/dates.ts';
 
 /**
  * Parmi une liste de numéros (ex. "FA-2026-06-12"), renvoie celui de l'année
@@ -80,7 +81,8 @@ Deno.serve(async (req: Request) => {
   try {
     const token = pennylaneToken();
     const headers = pennylaneHeaders(token);
-    const year = new Date().getFullYear();
+    // Année à Paris : le 31/12 au soir reste dans l'année (UTC basculait au 1/1).
+    const year = anneeParis();
 
     const [invoiceItems, quoteItems] = await Promise.all([
       listerAnnee('customer_invoices', headers, year),

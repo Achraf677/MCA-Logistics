@@ -6,7 +6,8 @@
 > `grep -rln "from('<table>')" src supabase/functions`.
 
 ## 1. Tables → lecteurs / écrivains
-- **deliveries** (le cœur, ~80 accès) :
+- **deliveries** (le cœur, ~80 accès) — `sync_error` est aussi écrit par pennylane-payment-check
+  (trace de l'annulation par avoir, U5) :
   - front : livraisons (écrit tout), mescourses (statut, preuves, problème terrain),
     tournees (tour_id, stop_order, arrival_time ; `date` quand une course en retard est
     remise dans la tournée du jour — lot P3), planning (écrit `driver_id`, `date` par
@@ -115,7 +116,10 @@
   `shared/lib/lignesPennylane#lignesDevis` (`devis.logic#montantsDevis`) ; TVA ligne par ligne.
 - Délai de paiement : `_shared/paymentTerms.ts` (`echeanceTransport`, plafond 30 j) ↔
   `shared/lib/paymentTerms.ts` (`conforme`, `delaiConforme`).
-- Montants / TVA : `_shared/money.ts` ↔ `shared/lib/money.ts`.
+- Montants / TVA : `_shared/money.ts` ↔ `shared/lib/money.ts` ; TTC dû d'une course :
+  `_shared/totaux#totalTtcCourseCts` ↔ `shared/lib/money#deliveryTotalTtcCts` (U5, parité testée).
+- Jour « de Paris » côté Edge : `_shared/dates.ts` (invoice, register-payment, payment-check,
+  last-numbers) ; côté front : `isoLocal` / `toLocalISO`.
 
 ## 5. Imports entre features (exceptions existantes — ne pas en ajouter)
 - assistant → presque tout (hub IA).
