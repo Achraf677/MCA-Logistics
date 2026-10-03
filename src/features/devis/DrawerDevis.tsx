@@ -25,11 +25,11 @@ import type { Prestation } from '../../shared/lib/prestations'
 import {
   STATUS_LABELS, STATUS_COLORS, isExpiredDisplay, addDays,
   UNITES, LIBELLES_UNITE, uniteParDefaut, prixParDefaut, montantsDevis, resumeLigne,
-  ligneDepuisAncien, tarifDepuisDevis, seTransformeEnCourse,
+  ligneDepuisAncien, tarifDepuisDevis, seTransformeEnCourse, peutFacturerDirectement,
 } from './devis.logic'
 import {
   createQuote, updateQuote, updateQuoteStatus, deleteQuote, appliquerTarifClient,
-  listClientsLight, calculerTrajet, sendToPennylane, syncQuoteNumber, convertToInvoice, transformToDelivery,
+  listClientsLight, calculerTrajet, sendToPennylane, syncQuoteNumber, facturerDirectement, transformToDelivery,
 } from './devis.queries'
 import type { ClientDevis } from './devis.queries'
 import type { Quote, QuoteStatus, UniteDevis } from './devis.types'
@@ -410,17 +410,14 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
     onSaved(); onClose()
   }
 
+  /** Course « livrée » créée depuis le devis puis facturée comme toute course (lot U4). */
   const handleConvert = async () => {
-    if (!quote) return
+    if (!quote || !companyId) return
     setActioning(true)
-    const { data, error } = await convertToInvoice(quote.id)
+    const r = await facturerDirectement(quote, dateCourse || toLocalISO(new Date()), companyId)
     setActioning(false)
-    if (error || !data?.ok) {
-      toast(data?.error ?? (error as Error)?.message ?? 'Erreur Pennylane', 'error')
-      return
-    }
-    await updateQuoteStatus(quote.id, 'facture')
-    toast('Devis converti en facture')
+    if (!r.ok) { toast(r.message, 'error'); onSaved(); return }
+    toast(`Facture ${String(r.data?.pennylane_invoice_number ?? '')} émise : la course est dans Livraisons`.replace('  ', ' '))
     onSaved(); onClose()
   }
 
@@ -455,6 +452,8 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
   const canUpdate  = isEdit && can('livraisons.devis', 'update')
   const canTransform = canUpdate && can('livraisons.livraisons', 'create')
   const canTarif   = canUpdate && can('tiers.clients', 'update')
+  // Facturer directement = créer la course puis la facturer (droits de Livraisons).
+  const canFacturer = canTransform && can('livraisons.livraisons', 'update')
   const enCourse   = seTransformeEnCourse(quote?.prestation ?? null)
   const isInvoiced = statut === 'facture' || !!quote?.pennylane_invoice_id
   const isLinked   = !!quote?.pennylane_quote_id || !!quote?.pennylane_invoice_id
@@ -500,6 +499,11 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
                 </div>
           )}
         </div>
+      )}
+      {isEdit && quote!.sync_error && (
+        <p role="alert" className="mb-4 rounded-lg border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-2 text-sm text-[var(--danger)]">
+          Dernier envoi à Pennylane : {quote!.sync_error}
+        </p>
       )}
 
       <div className="grid gap-4 lg:grid-cols-2 items-start">
@@ -789,8 +793,9 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
             {canUpdate && (
               <>
                 {/* Messagerie : la facture vient des relevés mensuels, pas du devis. */}
-                {quote?.prestation !== 'messagerie' && (
-                  <Button variant="secondary" onClick={handleConvert} disabled={actioning}>
+                {quote && peutFacturerDirectement(quote) && canFacturer && (
+                  <Button variant="secondary" onClick={handleConvert} disabled={actioning}
+                    title="Crée la course (livrée) et la facture comme toute course : suivie dans l'encours et les relances">
                     Facturer directement
                   </Button>
                 )}

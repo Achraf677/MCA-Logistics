@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   addDays, isExpiredDisplay, uniteParDefaut, prixParDefaut, montantsDevis, resumeLigne,
   ligneDepuisAncien, versLivraison, tarifDepuisDevis, seTransformeEnCourse,
+  versLivraisonFacturable, peutFacturerDirectement,
 } from './devis.logic'
 import type { Quote } from './devis.types'
 
@@ -11,7 +12,7 @@ const devis = (p: Partial<Quote> = {}): Quote => ({
   amount_ttc_cts: 360000, pickup_address: 'A', delivery_address: 'B', vehicle_id: 'v1', driver_id: 'd1',
   statut: 'accepte', pennylane_quote_id: null, pennylane_quote_number: null, pennylane_invoice_id: null,
   notes: null, prestation: 'messagerie', unite: 'colis', quantite: 3000, prix_unitaire_cts: 100,
-  extra_lines: [], reference_client: 'ODT-1', autoliquidation: false, accepte_le: null,
+  extra_lines: [], reference_client: 'ODT-1', autoliquidation: false, accepte_le: null, sync_error: null,
   expediteur_nom: 'Quai 3', expediteur_tel: '0600', destinataire_nom: 'M. Martin', destinataire_tel: '0700',
   marchandise_desc: 'Palette', nb_colis: null, poids_kg: 120, volume_m3: 1.2, km: null,
   created_at: '', updated_at: '', ...p,
@@ -119,5 +120,22 @@ describe('effets du devis accepté', () => {
     expect(seTransformeEnCourse('forfait')).toBe(false)
     expect(seTransformeEnCourse('express')).toBe(true)
     expect(seTransformeEnCourse(null)).toBe(true)
+  })
+})
+
+describe('facturer directement (lot U4)', () => {
+  it('course créée livrée, sans preuve attendue, tout repris du devis', () => {
+    const q = devis({ prestation: 'express', unite: 'forfait', quantite: 1, prix_unitaire_cts: 12000 })
+    const c = versLivraisonFacturable(q, '2026-10-03', 'c1', '2026-10-03T10:00:00.000Z')
+    expect(c).toMatchObject({
+      statut: 'livree', delivered_at: '2026-10-03T10:00:00.000Z', justif_non_requis: true,
+      quote_id: 'q1', date: '2026-10-03', amount_ht_cts: 12000, reference_client: 'ODT-1',
+    })
+  })
+  it('seulement un devis accepté, hors messagerie, pas déjà facturé', () => {
+    expect(peutFacturerDirectement(devis({ prestation: 'express' }))).toBe(true)
+    expect(peutFacturerDirectement(devis({ prestation: 'messagerie' }))).toBe(false)
+    expect(peutFacturerDirectement(devis({ prestation: 'express', statut: 'envoye' }))).toBe(false)
+    expect(peutFacturerDirectement(devis({ prestation: 'forfait', pennylane_invoice_id: '9' }))).toBe(false)
   })
 })

@@ -42,6 +42,8 @@ export interface Quote {
   reference_client: string | null
   autoliquidation: boolean
   accepte_le: string | null
+  /** Dernier refus de Pennylane à l'envoi (lot U4), effacé au succès. */
+  sync_error: string | null
   // Mêmes champs que la fiche livraison
   expediteur_nom: string | null
   expediteur_tel: string | null

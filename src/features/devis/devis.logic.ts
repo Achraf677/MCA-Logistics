@@ -180,6 +180,27 @@ export function versLivraison(q: Quote, date: string, companyId: string) {
 }
 
 /**
+ * « Facturer directement » (lot U4, option A) : le devis devient une course
+ * déjà LIVRÉE, facturée ensuite comme toute course (Edge pennylane-invoice :
+ * date Paris, échéance ≤ 30 j, verrou, suivi du paiement). Pas de preuve de
+ * livraison attendue (prestation chiffrée et facturée sur devis, comme un
+ * relevé de messagerie). `livreeLe` = horodatage ISO de la livraison.
+ */
+export function versLivraisonFacturable(q: Quote, date: string, companyId: string, livreeLe: string) {
+  return {
+    ...versLivraison(q, date, companyId),
+    statut: 'livree' as const,
+    delivered_at: livreeLe,
+    justif_non_requis: true,
+  }
+}
+
+/** Le devis peut-il être facturé directement ? (accepté, pas de relevé de messagerie, pas déjà facturé) */
+export function peutFacturerDirectement(q: Pick<Quote, 'statut' | 'prestation' | 'pennylane_invoice_id'>): boolean {
+  return q.statut === 'accepte' && q.prestation !== 'messagerie' && !q.pennylane_invoice_id
+}
+
+/**
  * Tarif à écrire dans la fiche client quand on applique un devis accepté
  * (messagerie : prix au colis). `null` = rien à appliquer (forfait, prix nul).
  */

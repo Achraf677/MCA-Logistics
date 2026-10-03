@@ -180,7 +180,16 @@
 - Edge : pennylane-quote + pennylane-invoice (le `_shared` change).
 - Ordre : migration → merge → 2 Edge.
 
-### U4 — Devis converti : une seule facture, suivie
+### U4 — Devis converti : une seule facture, suivie — codé (option A validée le 03/10/2026)
+- Choix : **option A**. « Facturer directement » crée la course du devis en `livree`
+  (`devis.logic#versLivraisonFacturable`, `justif_non_requis`, `quote_id`) puis la facture par
+  `shared/lib/facturation.queries#facturerCourse` (même code que Livraisons) → Edge
+  pennylane-invoice, qui passe le devis ACCEPTÉ à `facture` (+ `pennylane_invoice_id`).
+  `pennylane-quote` action `convert` refusée (410) ; le front n'écrit plus `statut = facture`.
+- Verrou d'envoi `quotes.envoi_verrou` + `quotes.sync_error` (migration
+  `20261003120000_quotes_envoi_verrou`) ; refus affiché sur le devis, effacé au succès.
+- Limite connue : chez Pennylane, le devis n'est pas relié à la facture (à clore à la main).
+- Plan d'origine ci-dessous.
 - Choix à valider : soit `convert` passe par `pennylane-invoice` (devis → course `livree` →
   facture standard, date Paris, échéance plafonnée, statut / paiement suivis), soit `convert`
   pose date + échéance et crée la ligne `deliveries` liée. Dans les deux cas : bloquer

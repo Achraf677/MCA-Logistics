@@ -52,6 +52,10 @@
   facture (U3 : quantité × PU + suppléments). Le devis écrit aussi
   `clients.tariff_mode / tariff_rate_cts / prestation_defaut` (« Appliquer ce prix au client »)
   et crée des `deliveries` (`quote_id`, tout repris).
+  - U4 (03/10/2026) : « Facturer directement » = course `livree` (`quote_id`) facturée par
+    pennylane-invoice, qui ÉCRIT `quotes.statut = facture` + `pennylane_invoice_id` (devis
+    `accepte` seulement). `envoi_verrou` et `sync_error` : écrits par pennylane-quote (envoi),
+    `sync_error` lu par le tiroir devis. L'action `convert` de pennylane-quote est refusée.
 - **qonto_transactions** : tresorerie, encaissement, aRapprocher ; Edge qonto-sync.
 - **fuel_logs** : carburant, vehicules, `shared/produitsVehicule.queries`.
 - **vehicle_maintenances** : entretiens, vehicules, alertes, planning (vue Mois, `next_due_date` du dernier
@@ -94,6 +98,8 @@
 - admin-users, admin-permissions : admins · drive-* : parametres
 - Droits des synchros (U1) : chaque Edge de synchro exige un droit (`_shared/auth#exigerPermission`)
   et le front ne lance que les synchros permises (`shared/lib/autoSync#DROIT_SYNC`, miroir).
+- Facturation d'une course : `shared/lib/facturation.queries` (`facturerCourse`, `facturerGroupe`)
+  — appelée par livraisons (ré-export) ET devis (« Facturer directement »).
 - Front partagé : `shared/lib/prestations.ts` (types de prestation + `blocsPrestation`),
   `shared/ui/FicheSaisie` (Bloc, ChoixClient, ChoixPrestation : fiche livraison + devis), `shared/ui/LignesSupplementaires`
   (éditeur de suppléments : fiche livraison + devis).

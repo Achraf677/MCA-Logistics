@@ -1,7 +1,9 @@
 // Edge Function `pennylane-quote`
 // Body : { action: 'create' | 'convert' | 'sync-number', quote_id: string }
 // action 'create'      → crée le devis chez Pennylane, pose pennylane_quote_id + pennylane_quote_number + statut='envoye'.
-// action 'convert'     → convertit le devis Pennylane en facture finalisée, pose pennylane_invoice_id + statut='facture'.
+// action 'convert'     → REFUSÉE depuis le lot U4 : « Facturer directement » crée la course du
+//                        devis (livrée) et la facture par pennylane-invoice, qui passe le devis
+//                        à 'facture' (une seule façon de facturer, suivie).
 // action 'sync-number' → rattrapage : lit quote_number depuis Pennylane et le stocke.
 //
 // Contrôle d'accès (le service role contourne la RLS, on revérifie ici) :
@@ -9,7 +11,8 @@
 //  - le devis doit appartenir à cette société ;
 //  - président, ou droit `livraisons.devis` : 'create' pour émettre le devis
 //    ('create'), 'update' pour 'convert' et 'sync-number'.
-// 'convert' n'est accepté que si le devis est au statut 'accepte'.
+// Envoi ('create') : verrou `quotes.envoi_verrou` (double clic = un seul devis chez
+// Pennylane) ; un refus est écrit dans `quotes.sync_error` (effacé au succès).
 // Toute écriture en base est vérifiée : si Pennylane a créé le document mais que
 // la base n'a pas pu être mise à jour, on répond 500 avec l'id Pennylane (sinon
 // un nouvel essai créerait un doublon chez Pennylane).
@@ -23,7 +26,6 @@ import { tvaNormalisee } from '../_shared/clientPennylane.ts';
 import type { InvoiceLine } from '../_shared/pennylane.ts';
 import {
   assurerClientPennylane,
-  createInvoiceFromQuote,
   createQuote,
   getQuoteNumber,
   pennylaneToken,
@@ -69,6 +71,19 @@ Deno.serve(async (req: Request) => {
   try { token = pennylaneToken(); }
   catch { return jsonResponse({ ok: false, error: 'PENNYLANE_API_TOKEN manquant' }, 500); }
 
+  // Envoi en cours (verrou pris) : tout échec libère le verrou et laisse la cause
+  // lisible sur le devis.
+  let verrouDevis = false;
+  const echecEnvoi = async (status: number, body: Record<string, unknown>): Promise<Response> => {
+    if (verrouDevis) {
+      const { error: e } = await supabase.from('quotes')
+        .update({ envoi_verrou: null, sync_error: typeof body.error === 'string' ? body.error : 'envoi refusé' })
+        .eq('id', quote_id).eq('company_id', companyId).is('pennylane_quote_id', null);
+      if (e) console.error('pennylane-quote: verrou non libéré', quote_id, e.message);
+    }
+    return jsonResponse({ ok: false, ...body }, status);
+  };
+
   try {
     // ── Action : create ───────────────────────────────────────────────────────
     if (action === 'create') {
@@ -88,13 +103,29 @@ Deno.serve(async (req: Request) => {
       // 2. Idempotence
       if (quote.pennylane_quote_id) return jsonResponse({ ok: true, alreadySynced: true });
 
+      // 2 bis. Verrou : un seul envoi à la fois (pris atomiquement, expire après 5 min).
+      const verrouExpire = new Date(Date.now() - 5 * 60_000).toISOString();
+      const { data: pris, error: vErr } = await supabase
+        .from('quotes')
+        .update({ envoi_verrou: new Date().toISOString() })
+        .eq('id', quote_id)
+        .eq('company_id', companyId)
+        .is('pennylane_quote_id', null)
+        .or(`envoi_verrou.is.null,envoi_verrou.lt.${verrouExpire}`)
+        .select('id');
+      if (vErr) return jsonResponse({ ok: false, error: vErr.message }, 500);
+      if (!pris || pris.length === 0) {
+        return jsonResponse({ ok: false, error: 'Envoi déjà en cours pour ce devis : patientez quelques secondes puis rechargez.' }, 409);
+      }
+      verrouDevis = true;
+
       // 3. Lignes : même règle que la facture (_shared/lignesFacture#construireLignesDevis) —
       //    quantité × prix unitaire, suppléments, codes TVA légaux, autoliquidation + mention.
       const lignes = construireLignesDevis(quote as unknown as DevisAFacturer, {
         codeAutoliquidation: VAT_CODE_AUTOLIQUIDATION,
         mentionAutoliquidation: MENTION_AUTOLIQUIDATION,
       });
-      if (!lignes.ok) return jsonResponse({ ok: false, error: lignes.error, details: lignes.details }, 422);
+      if (!lignes.ok) return await echecEnvoi(422, { error: lignes.error, details: lignes.details });
 
       // 4. Client Pennylane : même règle que la facture (pays, n° TVA de la fiche).
       const { data: client, error: cErr } = await supabase
@@ -104,15 +135,14 @@ Deno.serve(async (req: Request) => {
         .eq('company_id', companyId)
         .maybeSingle();
 
-      if (cErr || !client) return jsonResponse({ ok: false, error: 'client introuvable' }, 404);
+      if (cErr || !client) return await echecEnvoi(404, { error: 'client introuvable' });
 
       // Même garde que la facture : autoliquidation sans n° de TVA = document non conforme.
       if (quote.autoliquidation === true && !tvaNormalisee(client.tva_intra)) {
-        return jsonResponse({
-          ok: false,
+        return await echecEnvoi(422, {
           error: `Autoliquidation sans n° de TVA intracommunautaire pour ${client.name} : `
             + 'renseignez-le dans la fiche client, puis renvoyez le devis.',
-        }, 422);
+        });
       }
 
       const pl = await assurerClientPennylane(token, client);
@@ -159,12 +189,16 @@ Deno.serve(async (req: Request) => {
           pennylane_quote_id: String(pennylaneQuoteId),
           pennylane_quote_number: quote_number,
           statut: 'envoye',
+          envoi_verrou: null,
+          sync_error: null,
           updated_at: new Date().toISOString(),
         })
         .eq('id', quote_id)
         .eq('company_id', companyId)
         .select('id');
       if (majQErr || !majQ || majQ.length === 0) {
+        // Verrou GARDÉ : le devis existe chez Pennylane, un nouvel envoi ferait un doublon.
+        verrouDevis = false;
         return jsonResponse({
           ok: false,
           error: 'devis créé chez Pennylane mais NON enregistré en base : ne pas renvoyer, prévenir l\'administrateur',
@@ -205,61 +239,20 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ ok: true, data: { pennylane_quote_number: pennylaneQuoteNumber } });
     }
 
-    // ── Action : convert ──────────────────────────────────────────────────────
-    // 1. Charger le devis (champs minimaux)
-    const { data: quote, error: qErr } = await supabase
-      .from('quotes')
-      .select('id, pennylane_quote_id, pennylane_invoice_id, statut')
-      .eq('id', quote_id)
-      .eq('company_id', companyId)
-      .maybeSingle();
-
-    if (qErr || !quote) return jsonResponse({ ok: false, error: 'devis introuvable' }, 404);
-
-    // 2. Vérifier que le devis existe chez Pennylane
-    if (!quote.pennylane_quote_id) {
-      return jsonResponse({ ok: false, error: "créer le devis chez Pennylane d'abord" }, 422);
-    }
-
-    // 3. Idempotence
-    if (quote.pennylane_invoice_id) return jsonResponse({ ok: true, alreadySynced: true });
-
-    // 3 bis. Seul un devis accepté peut devenir une facture finalisée
-    if (quote.statut !== 'accepte') {
-      return jsonResponse({ ok: false, error: `seul un devis accepté peut être facturé (statut : ${quote.statut})` }, 409);
-    }
-
-    // 4. Convertir en facture finalisée
-    const pennylaneInvoiceId = await createInvoiceFromQuote(token, Number(quote.pennylane_quote_id));
-
-    // 5. Persister (vérifié : sinon un nouveau clic émettrait une 2e facture)
-    const { data: majF, error: majFErr } = await supabase
-      .from('quotes')
-      .update({
-        pennylane_invoice_id: String(pennylaneInvoiceId),
-        statut: 'facture',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', quote_id)
-      .eq('company_id', companyId)
-      .select('id');
-    if (majFErr || !majF || majF.length === 0) {
-      return jsonResponse({
-        ok: false,
-        error: 'facture émise chez Pennylane mais NON enregistrée en base : ne pas refacturer, prévenir l\'administrateur',
-        details: { pennylane_invoice_id: String(pennylaneInvoiceId), db_error: majFErr?.message ?? '0 ligne mise à jour' },
-      }, 500);
-    }
-
-    return jsonResponse({ ok: true, data: { pennylane_invoice_id: String(pennylaneInvoiceId) } });
+    // ── Action : convert (refusée depuis le lot U4) ─────────────────────────────
+    // La facture d'un devis passe par sa course (créée « livrée ») et pennylane-invoice :
+    // date de Paris, échéance plafonnée, verrou, suivi du paiement et des relances.
+    return jsonResponse({
+      ok: false,
+      error: 'Facturation directe : utilisez « Facturer directement » sur le devis (la course est créée puis facturée).',
+    }, 410);
 
   } catch (err) {
     if (err instanceof ExternalApiError) {
-      return jsonResponse(
-        { ok: false, error: err.message, status: err.status, body: err.responseBody },
-        502,
-      );
+      return await echecEnvoi(502, {
+        error: `Pennylane a refusé l'envoi (${err.message})`, status: err.status, body: err.responseBody,
+      });
     }
-    return jsonResponse({ ok: false, error: (err as Error).message }, 500);
+    return await echecEnvoi(500, { error: (err as Error).message });
   }
 });
