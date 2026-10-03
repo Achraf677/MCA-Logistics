@@ -29,3 +29,6 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+
+# Carte du code (graphify, régénérée à la demande : scripts/graphe.sh)
+graphify-out/

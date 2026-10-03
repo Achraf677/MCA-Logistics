@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **01/10/2026** (Calendrier fondu dans le Planning).
+> Dernière mise à jour : **01/10/2026** (Devis uniformisé + U1 Pennylane).
 
 ---
 
@@ -88,6 +88,11 @@ supabase/
 - Échéances via `shared/lib/echeances.ts`. Statuts de livraison via `shared/lib/livraisonStatuts.ts`.
 - Une règle métier qui existe côté Edge ET côté front (ex. lignes de facture) = **miroir testé
   des deux côtés** (`_shared/lignesFacture.ts` ↔ `livraisons/apercuFacture.logic.ts`).
+- **Devis = fiche livraison** (uniformisés le 02/10/2026) : mêmes blocs, mêmes composants, mêmes
+  noms de colonnes, mêmes défauts client. Briques partagées : `shared/ui/FicheSaisie` (Bloc,
+  ChoixClient, ChoixPrestation), `shared/ui/LignesSupplementaires`, `shared/lib/prestations`
+  (types + `blocsPrestation`), `shared/lib/paymentTerms#libelleDelaiPaiement`. Toute évolution
+  d'un des deux formulaires se fait dans ces briques ou se reporte sur l'autre.
 
 ## 5. Base de données — pièges (NE PAS réintroduire)
 - `deliveries.montant_*` **n'existent PAS en prod** (vérifié le 01/10/2026) → jamais les écrire
@@ -186,6 +191,20 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   documents · Facturation).
 
 ## 12. En cours / à décider (mettre à jour à chaque session)
+- **CHANTIER PRIORITAIRE — Uniformisation Pennylane ↔ site** (demandé le 02/10/2026) : plan
+  `mca-spec/UNIFORMISATION-PENNYLANE.md` (écarts cités fichier:ligne, lots U1 → U8). Règle :
+  une seule source par règle (`_shared/` + miroir front testé) ; tout document envoyé à
+  Pennylane (client, devis, facture, avoir, paiement, charges) suit les mêmes règles que le
+  site. Ordre : U1 droits des 5 synchros · U2 client Pennylane unique (pays, TVA, SIREN, local
+  gagne) · U3 lignes du devis = lignes de facture · U4 devis converti suivi (choix d'archi à
+  valider) · U5 dates Paris + paiements réels · U6 mentions légales (= lot E) · U7 charges ·
+  U8 ménage. Lot par lot, avec accord avant chaque migration / déploiement d'Edge.
+  - **U1 codé (PR #41)** : `exigerPermission` + société de l'appelant dans pennylane-clients-sync
+    (tiers.clients/update), pennylane-sync (finance.charges/update), pennylane-payment-check et
+    qonto-sync (finance.tresorerie/update), pennylane-file (finance.charges | flotte.carburant |
+    flotte.entretiens / view + facture rattachée à une charge de la société) ; front :
+    `autoSync#DROIT_SYNC` filtre les synchros lancées. **Les 5 Edge restent à DÉPLOYER après
+    le merge** (sinon l'ancien code tourne). Prochain : U2.
 - **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
   classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
 - **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·
@@ -194,7 +213,9 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   conforme (indexation gazole, pays client, CMR).
 - Dashboard : compter les **colis** de messagerie (aujourd'hui un relevé = 1 livraison dans les
   compteurs ; le CA est juste).
-- Devis : pas encore de prix au colis.
+- Devis : PR #41 (D1 + D2 + uniformisation avec la fiche livraison + recherche / filtres de la
+  liste). Migration `20261002090000_quotes_fiche_prix` **appliquée en prod le 02/10/2026**. D3 (Edge pennylane-quote) = lot U3 du plan Pennylane ; D4 reste :
+  expiration automatique, relance des devis envoyés > 7 j.
 - ~20 fiches clients « particuliers » jetables (anciennes courses de plateformes) : fusionner
   ou désactiver ? (à décider)
 - 1 client au délai 60 j (non conforme) : le repasser à 30 j dans sa fiche.
@@ -205,7 +226,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   Pas d'immobilisation ni de prorata km dans ces écrans.
 - Planning : changer chauffeur / jour détache la course de sa tournée (choix à confirmer) ;
   heure de début de tournée = suggestion tant que `tours.started_at` n'existe pas.
-- Onglets suivants de la revue : Devis, Modèles, puis le menu dans l'ordre.
+- Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)
 - Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation → PR +
@@ -219,4 +240,10 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - Une étape = une seule chose ; lire seulement les fichiers utiles ; s'arrêter au critère d'arrêt.
 - Sous-agents pour les lectures lourdes / tâches parallèles (contexte isolé) ; vérifier une étape
   avec `/verificateur`. Économie de tokens : `TOKEN-ECONOMY.md`.
+- **Carte du code (graphify, testée le 03/10/2026)** : `scripts/graphe.sh` (génère en ~6 s, local,
+  sans IA) puis `scripts/graphe.sh explain <symbole>` = qui importe / appelle une fonction, un
+  type, un composant (ex. avant de modifier `deliveryTotalTtcCts` : 21 liens en ~400 jetons au
+  lieu de lire 10 fichiers). **Ne voit PAS** les tables / colonnes / Edge appelées par chaîne
+  (`from('deliveries')`, `functions.invoke('pennylane-invoice')`) ni le SQL : pour ça,
+  `CARTE-INTERCONNEXIONS.md` + grep restent la règle (§ 7). `graphify-out/` n'est pas versionné.
 - Specs onglets : `mca-spec/tabs/` · intégrations : `mca-spec/integrations/` · revue : `mca-spec/revue/`.

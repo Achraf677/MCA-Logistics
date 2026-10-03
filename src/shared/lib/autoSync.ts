@@ -11,6 +11,28 @@ export const SYNC_DOMAINS: SyncDomain[] = [
   'clients', 'charges', 'qonto', 'paiements', 'derniers_numeros', 'fournisseurs',
 ]
 
+/**
+ * Droit exigé par l'Edge de chaque domaine (miroir des contrôles d'accès des
+ * Edge, lot U1) : sans ce droit, la synchro n'est pas lancée (elle serait
+ * refusée en 403 — un chauffeur ne déclenche plus aucune synchro Pennylane / Qonto).
+ */
+export const DROIT_SYNC: Record<SyncDomain, readonly [string, 'view' | 'update']> = {
+  clients:          ['tiers.clients', 'update'],          // pennylane-clients-sync
+  charges:          ['finance.charges', 'update'],        // pennylane-sync
+  fournisseurs:     ['finance.charges', 'update'],        // pennylane-sync (même Edge)
+  qonto:            ['finance.tresorerie', 'update'],     // qonto-sync
+  paiements:        ['finance.tresorerie', 'update'],     // pennylane-payment-check
+  derniers_numeros: ['livraisons.livraisons', 'view'],    // pennylane-last-numbers (numéros affichés en facturation)
+}
+
+/** Domaines que l'utilisateur a le droit de synchroniser. */
+export function domainesAutorises(
+  domaines: SyncDomain[],
+  can: (cle: string, action: 'view' | 'update') => boolean,
+): SyncDomain[] {
+  return domaines.filter(d => can(DROIT_SYNC[d][0], DROIT_SYNC[d][1]))
+}
+
 export interface AutoSyncState {
   lastSyncAt: number | null
   syncing: boolean

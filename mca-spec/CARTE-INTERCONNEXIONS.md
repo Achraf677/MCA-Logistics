@@ -41,7 +41,13 @@
 - **work_hours** : heures (écrit tout), equipe ; tournees (lot P3 : après « Terminer la
   tournée », propose d'insérer la ligne du chauffeur — date, début, fin — si aucune ligne
   n'existe déjà pour ce chauffeur ce jour-là).
-- **quotes** : devis, clients ; Edge pennylane-quote ; alertes.
+- **quotes** : devis, clients ; Edge pennylane-quote ; alertes. Fiche de prix (02/10/2026) :
+  `prestation, unite, quantite, prix_unitaire_cts, extra_lines, reference_client,
+  autoliquidation, accepte_le` + mêmes champs que la course (`expediteur_*`, `destinataire_*`,
+  `marchandise_desc, nb_colis, poids_kg, volume_m3, km`) — écrites par le devis ; `amount_ht_cts / tva_cts` restent les
+  TOTAUX (lus par l'Edge pennylane-quote, une ligne au taux effectif). Le devis écrit aussi
+  `clients.tariff_mode / tariff_rate_cts / prestation_defaut` (« Appliquer ce prix au client »)
+  et crée des `deliveries` (`quote_id`, tout repris).
 - **qonto_transactions** : tresorerie, encaissement, aRapprocher ; Edge qonto-sync.
 - **fuel_logs** : carburant, vehicules, `shared/produitsVehicule.queries`.
 - **vehicle_maintenances** : entretiens, vehicules, alertes, planning (vue Mois, `next_due_date` du dernier
@@ -82,6 +88,11 @@
 - ai-extract-deliveries : copilote, parametres · assistant-chat : assistant ·
   alertes-briefing : alertes · brouillons-generate : brouillons
 - admin-users, admin-permissions : admins · drive-* : parametres
+- Droits des synchros (U1) : chaque Edge de synchro exige un droit (`_shared/auth#exigerPermission`)
+  et le front ne lance que les synchros permises (`shared/lib/autoSync#DROIT_SYNC`, miroir).
+- Front partagé : `shared/lib/prestations.ts` (types de prestation + `blocsPrestation`),
+  `shared/ui/FicheSaisie` (Bloc, ChoixClient, ChoixPrestation : fiche livraison + devis), `shared/ui/LignesSupplementaires`
+  (éditeur de suppléments : fiche livraison + devis).
 - Code commun : `_shared/` (auth, cors, http, pennylane, lignesFacture, money, paymentTerms,
   supabase, mistral, justificatif…). **Modifier un `_shared` = redéployer TOUTES les Edge qui
   l'importent** (lister avec `grep -rl "_shared/<fichier>" supabase/functions`).

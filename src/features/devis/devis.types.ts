@@ -1,3 +1,6 @@
+import type { DeliveryExtraLine } from '../../shared/lib/money'
+import type { Prestation } from '../../shared/lib/prestations'
+
 export type QuoteStatus =
   | 'brouillon'
   | 'envoye'
@@ -6,6 +9,9 @@ export type QuoteStatus =
   | 'expire'
   | 'facture'
   | 'transforme'
+
+/** Unité de la ligne principale d'un devis. */
+export type UniteDevis = 'colis' | 'km' | 'palette' | 'forfait'
 
 export interface Quote {
   id: string
@@ -27,6 +33,25 @@ export interface Quote {
   pennylane_quote_number: string | null
   pennylane_invoice_id: string | null
   notes: string | null
+  // Fiche de prix (lots D1 + D2)
+  prestation: Prestation | null
+  unite: UniteDevis | null
+  quantite: number | null
+  prix_unitaire_cts: number | null
+  extra_lines: DeliveryExtraLine[]
+  reference_client: string | null
+  autoliquidation: boolean
+  accepte_le: string | null
+  // Mêmes champs que la fiche livraison
+  expediteur_nom: string | null
+  expediteur_tel: string | null
+  destinataire_nom: string | null
+  destinataire_tel: string | null
+  marchandise_desc: string | null
+  nb_colis: number | null
+  poids_kg: number | null
+  volume_m3: number | null
+  km: number | null
   created_at: string
   updated_at: string
   // joined

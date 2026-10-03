@@ -5,6 +5,7 @@
 // Le token n'est ni loggué ni renvoyé au client.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
+import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
 import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
 import { normalizeClientName } from '../_shared/normalizeClientName.ts';
@@ -55,19 +56,17 @@ Deno.serve(async (req) => {
 
   const supabase = getServiceClient();
 
-  const { data: company, error: cErr } = await supabase
-    .from('companies').select('id').limit(1).single();
-  if (cErr || !company) {
-    return jsonResponse({ ok: false, error: 'company not found' }, 404);
-  }
-  const companyId = company.id as string;
+  // Contrôle d'accès (U1) : le service role contourne la RLS → on revérifie
+  // l'appelant (synchroniser les clients) et on travaille dans SA société.
+  const acces = await exigerPermission(req, supabase, 'tiers.clients', 'update');
+  if (!acces.ok) return acces.response;
+  const companyId = acces.companyId;
 
   try {
     let cursor: string | null = null;
     let pages = 0;
     let clientsUpserts = 0;
     const errors: string[] = [];
-    let debugFirstCustomer: unknown = null;
 
     do {
       const qs = new URLSearchParams({ limit: '100' });
@@ -81,11 +80,6 @@ Deno.serve(async (req) => {
       pages++;
       const customers = page.items ?? [];
       if (customers.length === 0) break;
-
-      // Capture le premier client brut pour débogage initial (supprimable après validation)
-      if (pages === 1 && customers.length > 0) {
-        debugFirstCustomer = customers[0];
-      }
 
       const validCustomers = customers.filter((c) => {
         // GARDE-FOU : id manquant → skip + warning
@@ -173,7 +167,6 @@ Deno.serve(async (req) => {
         clients_upserts: clientsUpserts,
         pages,
         errors,
-        _debug_first_customer: debugFirstCustomer,
       },
     });
 

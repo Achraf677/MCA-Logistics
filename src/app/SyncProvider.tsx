@@ -1,10 +1,11 @@
 import { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  SYNC_DOMAINS, createInitialState, isStale, sequentialSync, persistLastSync, loadLastSync,
+  SYNC_DOMAINS, createInitialState, isStale, sequentialSync, persistLastSync, loadLastSync, domainesAutorises,
   type SyncDomain, type AutoSyncStateMap,
 } from '../shared/lib/autoSync'
 import { useAuth } from './providers'
+import { usePermissions } from '../shared/permissions/usePermissions'
 import { syncPennylaneClients } from '../features/clients/clients.queries'
 import { syncPennylane } from '../features/charges/charges.queries'
 import { syncQonto, checkPayments } from '../features/tresorerie/tresorerie.queries'
@@ -62,6 +63,10 @@ function domainSyncFn(domain: SyncDomain, onDerniersNumeros: (d: DerniersNumeros
 
 export function SyncProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
+  const { ready: droitsLus, can } = usePermissions()
+  // Droits lus au moment de l'appel (les callbacks restent stables).
+  const canRef = useRef(can)
+  useEffect(() => { canRef.current = can }, [can])
   const [syncState, setSyncState] = useState<AutoSyncStateMap>(initStateFromStorage)
   const [derniersNumeros, setDerniersNumeros] = useState<DerniersNumeros | null>(null)
   const [errors, setErrors] = useState<Partial<Record<SyncDomain, string>>>({})
@@ -75,10 +80,12 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const didInitialSyncRef = useRef(false)
 
   const runDomains = useCallback(async (domains: SyncDomain[]) => {
-    if (domains.length === 0 || runningRef.current) return
+    // Seules les synchros autorisées partent (U1 : les Edge refusent les autres en 403).
+    const permis = domainesAutorises(domains, (k, a) => canRef.current(k, a))
+    if (permis.length === 0 || runningRef.current) return
     runningRef.current = true
     try {
-      let list = domains
+      let list = permis
       const coalesceFournisseurs = list.includes('charges') && list.includes('fournisseurs')
       if (coalesceFournisseurs) list = list.filter(d => d !== 'fournisseurs')
 
@@ -134,11 +141,13 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   // Montage post-login : sync séquentielle de tous les domaines périmés.
   useEffect(() => {
     if (!user) { didInitialSyncRef.current = false; return }
+    // Attendre les droits : sinon tout serait filtré (can() = false tant qu'ils ne sont pas lus).
+    if (!droitsLus) return
     if (didInitialSyncRef.current) return
     didInitialSyncRef.current = true
     const stale = SYNC_DOMAINS.filter(d => isStale(stateRef.current, d))
     void runDomains(stale)
-  }, [user, runDomains])
+  }, [user, droitsLus, runDomains])
 
   // Retour d'onglet (document.hidden → false) : re-sync des domaines périmés.
   // Pas de polling par intervalle — uniquement cet évènement + montage + clic.
