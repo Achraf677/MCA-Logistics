@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **03/10/2026** (U1, U2, U3 mergés et déployés ; prochain : U4, choix d'archi).
+> Dernière mise à jour : **03/10/2026** (U1 → U4 mergés et déployés ; prochain : U5).
 
 ---
 
@@ -120,7 +120,7 @@ supabase/
 - `planifiee→{en_cours, livree, annulee}` · `en_cours→{livree, annulee}` · `livree→{facturee}` ·
   `facturee→{payee}` · `payee→{}` · `annulee→{}`. Toujours via `canTransition`.
 - **→ facturee : c'est l'Edge `pennylane-invoice` qui écrit le statut**, après avoir créé la
-  facture. Échec → message clair (`ResultatFacturation`), `sync_error` sur la course ; course
+  facture (et `quotes.statut = facture` pour le devis accepté de la course, lot U4). Échec → message clair (`ResultatFacturation`), `sync_error` sur la course ; course
   « facturée sans facture » (ancien fonctionnement) → bouton « Revenir à livrée ».
 - → livree pose `delivered_at`. Un relevé de messagerie est **créé** directement en `livree`.
 - **Seule transition « système » hors machine** : `facturee → annulee` posée par l'Edge
@@ -223,7 +223,15 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
     `shared/lib/lignesPennylane.ts` (aperçu facture + devis), `montantsDevis` = TVA ligne par
     ligne. Sans migration. **Mergé (PR #44) et déployé le 03/10/2026** (pennylane-quote v15,
     pennylane-invoice v36).
-  - **Prochain lot : U4** (**choix d'architecture à faire valider**), puis U5 → U8.
+  - **U4 fait (option A validée)** : « Facturer directement » sur un devis accepté crée la course
+    `livree` (`devis.logic#versLivraisonFacturable`, `quote_id`, `justif_non_requis`) puis la
+    facture par `shared/lib/facturation.queries#facturerCourse` (même code que Livraisons) ;
+    pennylane-invoice passe le devis `accepte` → `facture` (seul écrivain) ; pennylane-quote
+    `convert` refusée (410), verrou d'envoi `quotes.envoi_verrou`, refus dans `quotes.sync_error`
+    (affiché sur le devis). Migration `20261003120000_quotes_envoi_verrou` appliquée ; **mergé
+    (PR #46) et déployé le 03/10/2026** (pennylane-quote v16, pennylane-invoice v37). Limite :
+    chez Pennylane le devis n'est pas relié à la facture.
+  - **Prochain lot : U5** (dates Paris + paiements réels), puis U6 → U8.
 - **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
   classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
 - **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·

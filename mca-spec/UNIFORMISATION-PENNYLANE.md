@@ -180,7 +180,7 @@
 - Edge : pennylane-quote + pennylane-invoice (le `_shared` change).
 - Ordre : migration → merge → 2 Edge.
 
-### U4 — Devis converti : une seule facture, suivie — codé (option A validée le 03/10/2026)
+### U4 — Devis converti : une seule facture, suivie — ✔ FAIT (option A, PR #46, migration appliquée, déployé le 03/10/2026 : pennylane-quote v16, pennylane-invoice v37)
 - Choix : **option A**. « Facturer directement » crée la course du devis en `livree`
   (`devis.logic#versLivraisonFacturable`, `justif_non_requis`, `quote_id`) puis la facture par
   `shared/lib/facturation.queries#facturerCourse` (même code que Livraisons) → Edge
