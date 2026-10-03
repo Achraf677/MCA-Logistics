@@ -3,6 +3,8 @@
 // (status + responseBody) pour que l'appelant renvoie { ok:false, error, status, body }.
 import { fetchJson } from './http.ts';
 import { codeTvaLegal } from './lignesFacture.ts';
+import { payloadClientPennylane, tvaNormalisee } from './clientPennylane.ts';
+import type { ClientSite } from './clientPennylane.ts';
 
 /** URL de base Pennylane V2 — source unique dans tout le repo. */
 export const PENNYLANE_BASE = 'https://app.pennylane.com/api/external/v2';
@@ -132,6 +134,28 @@ export async function updateCompanyCustomerVat(
     headers: pennylaneHeaders(token),
     body: { vat_number: vatNumber },
   });
+}
+
+/**
+ * Client Pennylane d'une fiche du site — RÈGLE UNIQUE (facture ET devis, lot U2) :
+ * id connu → réutilisé ; sinon retrouvé par `external_reference` ; sinon créé
+ * avec le pays et le n° de TVA de la fiche (`payloadClientPennylane`). Un client
+ * existant reçoit le n° de TVA de la fiche (best-effort, ne bloque jamais).
+ * `aEnregistrer` : l'appelant doit écrire `clients.pennylane_id`.
+ */
+export async function assurerClientPennylane(
+  token: string,
+  client: ClientSite & { pennylane_id?: string | null },
+): Promise<{ id: number; aEnregistrer: boolean }> {
+  const tva = tvaNormalisee(client.tva_intra);
+  let id = client.pennylane_id ? Number(client.pennylane_id) : null;
+  if (!id) id = await findCustomerByRef(token, client.id);
+  if (!id) {
+    id = await createCompanyCustomer(token, payloadClientPennylane(client));
+  } else if (tva) {
+    try { await updateCompanyCustomerVat(token, id, tva); } catch { /* best-effort */ }
+  }
+  return { id, aEnregistrer: !client.pennylane_id };
 }
 
 /** Lit l'état de paiement d'une facture client (champs tolérants : l'API a varié). */

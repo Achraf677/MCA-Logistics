@@ -9,41 +9,14 @@ import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
 import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
 import { normalizeClientName } from '../_shared/normalizeClientName.ts';
-import { mergeClientEnrichedFields } from '../_shared/clientSyncMerge.ts';
+import { ligneClientSync } from '../_shared/clientPennylane.ts';
+import type { ClientLocal, ClientPennylane } from '../_shared/clientPennylane.ts';
 
-// ── Types Pennylane V2 — GET /customers ───────────────────────────────────────
-// L'adresse de facturation est un objet imbriqué { address, postal_code, city, country_alpha2 }.
-// Les e-mails peuvent être un tableau d'objets { id, address } ou de strings.
-interface PennylaneAddress {
-  address:       string | null;
-  postal_code:   string | null;
-  city:          string | null;
-  country_alpha2?: string | null;
-}
-
-interface PennylaneCustomer {
-  id:              number;
-  name:            string | null;
-  // Pennylane V2 retourne reg_no = SIREN (9 chiffres), pas de SIRET complet
-  reg_no:          string | null;
-  // TVA intracommunautaire
-  vat_number:      string | null;
-  billing_address: PennylaneAddress | null;
-  // emails = tableau de strings (payload réel confirmé)
-  emails:          string[] | null;
-  phone:           string | null;
-}
-
+// ── Types Pennylane V2 — GET /customers : voir _shared/clientPennylane#ClientPennylane
 interface CustomersPage {
-  items:       PennylaneCustomer[];
+  items:       ClientPennylane[];
   has_more:    boolean;
   next_cursor: string | null;
-}
-
-// ── Helper : extrait le premier e-mail ───────────────────────────────────────
-function firstEmail(emails: string[] | null | undefined): string | null {
-  if (!emails || emails.length === 0) return null;
-  return emails[0] || null;
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
@@ -90,54 +63,27 @@ Deno.serve(async (req) => {
         return true;
       });
 
-      // "Local wins" : les enrichissements saisis à la main (email, téléphone,
-      // adresse…) ne doivent jamais être écrasés par un null/vide côté
-      // Pennylane. On charge les valeurs locales existantes AVANT l'upsert
-      // pour pouvoir fusionner champ par champ (voir _shared/clientSyncMerge.ts).
+      // « Le site gagne » (lot U2, _shared/clientPennylane#ligneClientSync) : nom,
+      // SIRET, TVA, coordonnées saisis ici ne sont jamais écrasés ; le SIREN va
+      // dans `siren` ; un client archivé reste archivé. On lit donc l'existant
+      // AVANT l'upsert.
       const pageIds = validCustomers.map((c) => String(c.id));
-      const { data: existingRows } = pageIds.length > 0
+      const { data: existingRows, error: exErr } = pageIds.length > 0
         ? await supabase
             .from('clients')
-            .select('pennylane_id, type, email, phone, address, city, postal_code')
+            .select('pennylane_id, name, type, email, phone, address, city, postal_code, siret, siren, tva_intra, pays, active')
             .eq('company_id', companyId)
             .in('pennylane_id', pageIds)
-        : { data: [] as { pennylane_id: string }[] };
+        : { data: [] as ClientLocal[], error: null };
+      // Sans l'existant, on écraserait les saisies locales : on s'arrête.
+      if (exErr) throw new Error(`lecture des clients existants : ${exErr.message}`);
       const existingByPennylaneId = new Map(
-        (existingRows ?? []).map((r) => [r.pennylane_id as string, r]),
+        ((existingRows ?? []) as Array<ClientLocal & { pennylane_id: string }>)
+          .map((r) => [r.pennylane_id, r]),
       );
 
-      const clientRows = validCustomers.map((c) => {
-        const pennylaneId = String(c.id);
-        const merged = mergeClientEnrichedFields(
-          {
-            email:       firstEmail(c.emails),
-            phone:       c.phone ?? null,
-            address:     c.billing_address?.address ?? null,
-            city:        c.billing_address?.city ?? null,
-            postal_code: c.billing_address?.postal_code ?? null,
-          },
-          existingByPennylaneId.get(pennylaneId),
-        );
-        return {
-          company_id:   companyId,
-          pennylane_id: pennylaneId,
-          name:         normalizeClientName(c.name ?? `Client Pennylane #${c.id}`),
-          // reg_no = SIREN (9 chiffres) — seul identifiant dispo dans Pennylane V2
-          siret:        c.reg_no ?? null,
-          tva_intra:    c.vat_number ?? null,
-          ...merged,
-          // `type` : LOCAL GAGNE, contrairement aux champs enrichis ci-dessus.
-          // Pennylane ne porte pas cette notion — c'est une decision prise ici.
-          // On ne la deduit donc que pour un client encore inconnu : porter un
-          // numero d'immatriculation (reg_no) ou de TVA suffit a le classer
-          // professionnel. Un client deja en base garde son type, sinon chaque
-          // synchronisation ecraserait un choix manuel.
-          type: existingByPennylaneId.get(pennylaneId)?.type
-            ?? ((c.reg_no || c.vat_number) ? 'professionnel' : null),
-          // `tariff_mode`, `payment_terms`, `payment_terms_label`, `notes` préservés (non touchés).
-          active: true,
-        };
-      });
+      const clientRows = validCustomers.map((c) =>
+        ligneClientSync(c, existingByPennylaneId.get(String(c.id)), companyId, normalizeClientName));
 
       if (clientRows.length > 0) {
         const { data: upserted, error: uErr } = await supabase

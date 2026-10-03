@@ -25,7 +25,10 @@
     `vehicule_habituel_id`, `prestation_defaut`, `reference_obligatoire`, `supplements`) :
     écrites par la fiche client ; lues par la fiche livraison (`CLIENT_FICHE_COLS`) et
     l'Edge pennylane-invoice (`pays`, `reference_obligatoire`). Non touchées par
-    pennylane-clients-sync (upsert de colonnes listées). Libs partagées :
+    pennylane-clients-sync (upsert de colonnes listées).
+  - `siren` (U2, 03/10/2026) : écrit par la fiche client (saisi ou déduit du SIRET) et par
+    pennylane-clients-sync (reg_no) ; la synchro suit `_shared/clientPennylane#ligneClientSync`
+    (le site gagne : nom, SIRET, TVA, coordonnées ; archivé reste archivé). Libs partagées :
     `shared/lib/pays.ts` (UE, autoliquidation), `shared/lib/supplements.ts`.
 - **vehicles / team_members** : flotte (vehicules, carburant, entretiens, inspections, incidents),
   livraisons, tournees, planning (échéances permis / visite médicale / CT / assurance à

@@ -20,10 +20,9 @@ import { ExternalApiError } from '../_shared/http.ts';
 import { centimesToEuros } from '../_shared/money.ts';
 import type { InvoiceLine } from '../_shared/pennylane.ts';
 import {
-  createCompanyCustomer,
+  assurerClientPennylane,
   createInvoiceFromQuote,
   createQuote,
-  findCustomerByRef,
   getQuoteNumber,
   pennylaneToken,
   vatRateCode,
@@ -101,33 +100,19 @@ Deno.serve(async (req: Request) => {
         }, 422);
       }
 
-      // 4. Charger le client et récupérer/créer le customer Pennylane
+      // 4. Client Pennylane : même règle que la facture (pays, n° TVA de la fiche).
       const { data: client, error: cErr } = await supabase
         .from('clients')
-        .select('id, name, email, pennylane_id, address, postal_code, city')
+        .select('id, name, email, pennylane_id, address, postal_code, city, pays, tva_intra')
         .eq('id', quote.client_id)
         .eq('company_id', companyId)
         .maybeSingle();
 
       if (cErr || !client) return jsonResponse({ ok: false, error: 'client introuvable' }, 404);
 
-      let pennylaneCustomerId = client.pennylane_id ? Number(client.pennylane_id) : null;
-
-      if (!pennylaneCustomerId) {
-        pennylaneCustomerId = await findCustomerByRef(token, client.id);
-        if (!pennylaneCustomerId) {
-          pennylaneCustomerId = await createCompanyCustomer(token, {
-            name: client.name,
-            emails: client.email ? [client.email] : [],
-            external_reference: client.id,
-            billing_address: {
-              address: client.address ?? '',
-              postal_code: client.postal_code ?? '',
-              city: client.city ?? '',
-              country_alpha2: 'FR',
-            },
-          });
-        }
+      const pl = await assurerClientPennylane(token, client);
+      const pennylaneCustomerId = pl.id;
+      if (pl.aEnregistrer) {
         const { error: clErr } = await supabase
           .from('clients')
           .update({ pennylane_id: String(pennylaneCustomerId) })

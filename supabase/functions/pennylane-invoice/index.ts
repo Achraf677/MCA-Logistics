@@ -18,14 +18,13 @@ import { centimesToEuros } from '../_shared/money.ts';
 import { echeanceTransport } from '../_shared/paymentTerms.ts';
 import { construireLignes, type CourseAFacturer, type LigneFacture } from '../_shared/lignesFacture.ts';
 import type { InvoiceLine } from '../_shared/pennylane.ts';
+import { tvaNormalisee } from '../_shared/clientPennylane.ts';
 import {
-  createCompanyCustomer,
+  assurerClientPennylane,
   createDraftInvoice,
   finalizeInvoice,
-  findCustomerByRef,
   getInvoiceNumber,
   pennylaneToken,
-  updateCompanyCustomerVat,
   VAT_CODE_AUTOLIQUIDATION,
   MENTION_AUTOLIQUIDATION,
 } from '../_shared/pennylane.ts';
@@ -247,43 +246,30 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  const tvaIntra = typeof client.tva_intra === 'string' && client.tva_intra.trim()
-    ? client.tva_intra.replace(/\s+/g, '').toUpperCase()
-    : null;
+  // Autoliquidation : le n° de TVA du client doit figurer sur la facture
+  // (art. 242 nonies A du CGI). On refuse AVANT Pennylane plutôt que d'émettre
+  // une facture non conforme.
+  if (factureAutoliquidee && !tvaNormalisee(client.tva_intra)) {
+    return await echec(422, {
+      error: `Autoliquidation sans n° de TVA intracommunautaire pour ${client.name} : `
+        + 'renseignez-le dans la fiche client, puis refacturez.',
+    });
+  }
 
   let draftInvoiceId = 0;
   let invoiceNumber: string | null;
   let invoiceDate: string;
   try {
-    let pennylaneCustomerId = client.pennylane_id ? Number(client.pennylane_id) : null;
-
-    if (!pennylaneCustomerId) {
-      pennylaneCustomerId = await findCustomerByRef(token, client.id);
-      if (!pennylaneCustomerId) {
-        pennylaneCustomerId = await createCompanyCustomer(token, {
-          name: client.name,
-          emails: client.email ? [client.email] : [],
-          external_reference: client.id,
-          // Pays de la fiche client (FR par défaut).
-          billing_address: {
-            address: client.address ?? '',
-            postal_code: client.postal_code ?? '',
-            city: client.city ?? '',
-            country_alpha2: typeof client.pays === 'string' && /^[A-Z]{2}$/.test(client.pays) ? client.pays : 'FR',
-          },
-          ...(tvaIntra ? { vat_number: tvaIntra } : {}),
-        });
-      } else if (factureAutoliquidee && tvaIntra) {
-        // Client déjà connu de Pennylane : son n° de TVA doit figurer sur une
-        // facture autoliquidée. Best-effort, ne bloque jamais la facture.
-        try { await updateCompanyCustomerVat(token, pennylaneCustomerId, tvaIntra); } catch { /* ignoré */ }
-      }
-      await supabase
+    // Client Pennylane : règle unique facture / devis (_shared/pennylane#assurerClientPennylane).
+    const pl = await assurerClientPennylane(token, client);
+    const pennylaneCustomerId = pl.id;
+    if (pl.aEnregistrer) {
+      const { error: clErr } = await supabase
         .from('clients')
         .update({ pennylane_id: String(pennylaneCustomerId) })
         .eq('id', client.id);
-    } else if (factureAutoliquidee && tvaIntra) {
-      try { await updateCompanyCustomerVat(token, pennylaneCustomerId, tvaIntra); } catch { /* ignoré */ }
+      // Non bloquant : retrouvé par external_reference à la prochaine facture.
+      if (clErr) console.error('pennylane-invoice: pennylane_id client non enregistré', client.id, clErr.message);
     }
 
     // ── Date et échéance ─────────────────────────────────────────────────────

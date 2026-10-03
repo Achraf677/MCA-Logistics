@@ -37,6 +37,31 @@ export const TARIFF_MODE_LABELS: Record<TariffMode, string> = {
   manuel:   'Manuel',
 }
 
+/** SIREN : 9 chiffres (espaces tolérés). */
+export function validateSiren(siren: string): boolean {
+  return /^\d{9}$/.test(siren.replace(/\s/g, ''))
+}
+
+/** SIREN à retenir : celui saisi, sinon les 9 premiers chiffres d'un SIRET valide. */
+export function sirenRetenu(siren: string | null | undefined, siret: string | null | undefined): string | null {
+  const s = (siren ?? '').replace(/\s/g, '')
+  if (s) return s
+  const t = (siret ?? '').replace(/\s/g, '')
+  return /^\d{14}$/.test(t) ? t.slice(0, 9) : null
+}
+
+/**
+ * SIREN / SIRET tels qu'affichés dans la fiche : un « SIRET » de 9 chiffres est
+ * un SIREN mal rangé (ancienne synchro Pennylane) → il passe dans SIREN, la
+ * case SIRET reste vide. La fiche s'enregistre alors sans erreur.
+ */
+export function rangerSirenSiret(siren: string | null | undefined, siret: string | null | undefined): { siren: string; siret: string } {
+  const sn = (siren ?? '').replace(/\s/g, '')
+  const st = (siret ?? '').replace(/\s/g, '')
+  if (/^\d{9}$/.test(st)) return { siren: sn || st, siret: '' }
+  return { siren: sn, siret: siret ?? '' }
+}
+
 export function validateSiret(siret: string): boolean {
   return /^\d{14}$/.test(siret.replace(/\s/g, ''))
 }
