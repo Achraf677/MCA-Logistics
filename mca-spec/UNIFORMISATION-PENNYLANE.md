@@ -159,7 +159,7 @@
   `clientSyncMerge` (local gagne sur nom / TVA, archivé reste archivé).
 - Ordre : migration → merge → 3 Edge.
 
-### U3 — Lignes du devis = lignes de la facture — codé (PR en cours, Edge à déployer : pennylane-quote, pennylane-invoice)
+### U3 — Lignes du devis = lignes de la facture — ✔ FAIT (PR #44, déployé le 03/10/2026 : pennylane-quote v15, pennylane-invoice v36)
 - Réalisé : `_shared/lignesFacture#construireLignesDevis` (même assembleur que `construireLignes` :
   quantité × PU, suppléments, codes légaux, autoliquidation `exempt` + mention, refus lisibles ;
   ancien devis = 1 × (HT − suppléments)) ; `libelleDevis` (= `libelleCourse`, messagerie

@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **03/10/2026** (U1 et U2 mergés et déployés ; prochain : U3).
+> Dernière mise à jour : **03/10/2026** (U1, U2, U3 mergés et déployés ; prochain : U4, choix d'archi).
 
 ---
 
@@ -87,7 +87,8 @@ supabase/
   **local** (`isoLocal`), jamais `toISOString().slice(0,10)` (veille avant 2 h).
 - Échéances via `shared/lib/echeances.ts`. Statuts de livraison via `shared/lib/livraisonStatuts.ts`.
 - Une règle métier qui existe côté Edge ET côté front (ex. lignes de facture) = **miroir testé
-  des deux côtés** (`_shared/lignesFacture.ts` ↔ `livraisons/apercuFacture.logic.ts`).
+  des deux côtés** (`_shared/lignesFacture.ts` ↔ `shared/lib/lignesPennylane.ts`, utilisé par
+  `livraisons/apercuFacture.logic.ts` et `devis/devis.logic.ts`).
 - **Devis = fiche livraison** (uniformisés le 02/10/2026) : mêmes blocs, mêmes composants, mêmes
   noms de colonnes, mêmes défauts client. Briques partagées : `shared/ui/FicheSaisie` (Bloc,
   ChoixClient, ChoixPrestation), `shared/ui/LignesSupplementaires`, `shared/lib/prestations`
@@ -216,8 +217,13 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
     Migration `20261003090000_clients_siren` appliquée ; **mergé (PR #42) et déployé le
     03/10/2026** (pennylane-clients-sync v17, pennylane-quote v14, pennylane-invoice v35).
     Données : 0 « siret » à 9 chiffres, 10 SIREN.
-  - **Prochain lot : U3** (lignes du devis = lignes de facture, Edge pennylane-quote). Puis U4
-    (**choix d'architecture à faire valider**), U5 → U8.
+  - **U3 fait** : `_shared/lignesFacture#construireLignesDevis` (même assembleur que la facture :
+    quantité × PU, suppléments, autoliquidation `exempt` + mention, réf. client) ; pennylane-quote
+    lit la fiche de prix et refuse l'autoliquidation sans n° TVA ; front : règles de base dans
+    `shared/lib/lignesPennylane.ts` (aperçu facture + devis), `montantsDevis` = TVA ligne par
+    ligne. Sans migration. **Mergé (PR #44) et déployé le 03/10/2026** (pennylane-quote v15,
+    pennylane-invoice v36).
+  - **Prochain lot : U4** (**choix d'architecture à faire valider**), puis U5 → U8.
 - **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
   classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
 - **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·
@@ -227,7 +233,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - Dashboard : compter les **colis** de messagerie (aujourd'hui un relevé = 1 livraison dans les
   compteurs ; le CA est juste).
 - Devis : PR #41 (D1 + D2 + uniformisation avec la fiche livraison + recherche / filtres de la
-  liste). Migration `20261002090000_quotes_fiche_prix` **appliquée en prod le 02/10/2026**. D3 (Edge pennylane-quote) = lot U3 du plan Pennylane ; D4 reste :
+  liste). Migration `20261002090000_quotes_fiche_prix` **appliquée en prod le 02/10/2026**. D3 = lot U3 (fait, 03/10/2026) ; D4 reste :
   expiration automatique, relance des devis envoyés > 7 j.
 - ~20 fiches clients « particuliers » jetables (anciennes courses de plateformes) : fusionner
   ou désactiver ? (à décider)
