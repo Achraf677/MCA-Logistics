@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **01/10/2026** (U1 déployé, U2 codé).
+> Dernière mise à jour : **03/10/2026** (U1 et U2 mergés et déployés ; prochain : U3).
 
 ---
 
@@ -208,13 +208,16 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
     03/10/2026** (qonto-sync v17, pennylane-file v2, pennylane-payment-check v20,
     pennylane-clients-sync v16, pennylane-sync v20). Les paquets déployés ne contiennent que
     les parties de `_shared` réellement importées (comportement identique).
-  - **U2 codé** : `_shared/clientPennylane.ts` (pur, testé) = règle unique du client Pennylane
+  - **U2 fait** : `_shared/clientPennylane.ts` (pur, testé) = règle unique du client Pennylane
     (`payloadClientPennylane` : pays + n° TVA ; `ligneClientSync` : le site gagne, SIREN dans
-    `clients.siren`, archivé reste archivé) ; `_shared/pennylane#assurerClientPennylane` utilisé
-    par pennylane-invoice ET pennylane-quote ; facture autoliquidée sans n° TVA client refusée ;
-    fiche client : champ SIREN (déduit du SIRET sinon). Migration `20261003090000_clients_siren`
-    **appliquée en prod le 03/10/2026** (10 SIREN déplacés de `siret` vers `siren`). Reste :
-    merge (PR #42) puis déploiement des Edge invoice, quote, clients-sync. `clientSyncMerge` (front + _shared) supprimé (remplacé).
+    `clients.siren`, un « siret » de 9 chiffres y est rangé, archivé reste archivé) ;
+    `_shared/pennylane#assurerClientPennylane` pour pennylane-invoice ET pennylane-quote ; facture
+    autoliquidée sans n° TVA client refusée ; fiche client : champ SIREN séparé du SIRET.
+    Migration `20261003090000_clients_siren` appliquée ; **mergé (PR #42) et déployé le
+    03/10/2026** (pennylane-clients-sync v17, pennylane-quote v14, pennylane-invoice v35).
+    Données : 0 « siret » à 9 chiffres, 10 SIREN.
+  - **Prochain lot : U3** (lignes du devis = lignes de facture, Edge pennylane-quote). Puis U4
+    (**choix d'architecture à faire valider**), U5 → U8.
 - **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
   classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
 - **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·

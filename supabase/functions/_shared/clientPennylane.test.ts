@@ -65,6 +65,11 @@ describe('ligneClientSync (le site gagne)', () => {
     // champ local vide : Pennylane le remplit
     expect(l.address).toBe('1 rue PL')
   })
+  it('« siret » local de 9 chiffres (ancienne synchro) : rangé en SIREN, SIRET vidé', () => {
+    const l = ligneClientSync(pl({ reg_no: null }), local({ siret: '509180709', siren: null }), 'co', up)
+    expect(l.siret).toBeNull()
+    expect(l.siren).toBe('509180709')
+  })
   it('client archivé : reste archivé', () => {
     expect(ligneClientSync(pl(), local({ active: false }), 'co', up).active).toBe(false)
   })

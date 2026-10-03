@@ -125,6 +125,8 @@ export function ligneClientSync(
   const siren = sirenDepuis(c.reg_no);
   const tva = tvaNormalisee(c.vat_number);
   const nomPennylane = nomNormalise(c.name ?? `Client Pennylane #${c.id}`);
+  const siretLocal = (local?.siret ?? '').replace(/\D/g, '');
+  const siretLocalMalRange = siretLocal.length === 9 ? siretLocal : null;
   return {
     company_id: companyId,
     pennylane_id: String(c.id),
@@ -134,8 +136,10 @@ export function ligneClientSync(
     address: localGagne(local?.address, c.billing_address?.address),
     city: localGagne(local?.city, c.billing_address?.city),
     postal_code: localGagne(local?.postal_code, c.billing_address?.postal_code),
-    siret: local?.siret ?? null,
-    siren: local?.siren ?? siren,
+    // Un « siret » local de 9 chiffres est un SIREN mal rangé (ancienne synchro) :
+    // il passe en `siren` et `siret` redevient vide.
+    siret: siretLocalMalRange ? null : (local?.siret ?? null),
+    siren: local?.siren ?? sirenDepuis(siretLocalMalRange) ?? siren,
     tva_intra: localGagne(local?.tva_intra, tva),
     pays: local ? paysOuFrance(local.pays) : paysOuFrance(c.billing_address?.country_alpha2),
     type: local?.type ?? ((siren || tva) ? 'professionnel' : null),
