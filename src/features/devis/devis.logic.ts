@@ -1,5 +1,5 @@
 import type { QuoteStatus, Quote, UniteDevis } from './devis.types'
-import { addTva } from '../../shared/lib/money'
+import { lignesDevis } from '../../shared/lib/lignesPennylane'
 import type { DeliveryExtraLine } from '../../shared/lib/money'
 import type { Prestation } from '../../shared/lib/prestations'
 
@@ -74,6 +74,8 @@ export interface MontantsDevis {
   htCts: number
   tvaCts: number
   ttcCts: number
+  /** Ce qui ferait refuser le devis chez Pennylane (miroir de l'Edge), sinon null. */
+  blocage: string | null
 }
 
 function qte(n: unknown): number {
@@ -82,8 +84,10 @@ function qte(n: unknown): number {
 }
 
 /**
- * Montants du devis. Un seul taux pour tout le devis (une ligne Pennylane au
- * taux effectif) ; TVA calculée sur le HT total ; 0 en autoliquidation.
+ * Montants du devis = ceux des lignes envoyées à Pennylane
+ * (`shared/lib/lignesPennylane#lignesDevis`, miroir de l'Edge) : un taux pour
+ * tout le devis, TVA calculée LIGNE PAR LIGNE comme Pennylane, 0 en
+ * autoliquidation.
  */
 export function montantsDevis(d: {
   quantite: number | null
@@ -92,12 +96,18 @@ export function montantsDevis(d: {
   tva_rate: number
   autoliquidation: boolean
 }): MontantsDevis {
-  const principalHtCts = Math.round(qte(d.quantite) * Math.max(0, d.prix_unitaire_cts ?? 0))
-  const supplementsHtCts = (d.extra_lines ?? []).reduce(
-    (s, l) => s + Math.round(qte(l.quantity) * Math.max(0, Number(l.amount_ht_cts) || 0)), 0)
-  const htCts = principalHtCts + supplementsHtCts
-  const tvaCts = d.autoliquidation ? 0 : addTva(htCts, d.tva_rate / 100) - htCts
-  return { principalHtCts, supplementsHtCts, htCts, tvaCts, ttcCts: htCts + tvaCts }
+  const l = lignesDevis({
+    date: null, description: null,
+    quantite: d.quantite,
+    // Le devis en cours de saisie a toujours un prix unitaire (0 si vide).
+    prix_unitaire_cts: Math.max(0, d.prix_unitaire_cts ?? 0),
+    tva_rate: d.tva_rate, autoliquidation: d.autoliquidation,
+    extra_lines: (d.extra_lines ?? []).map(e => ({ ...e, tva_rate: d.tva_rate })),
+  })
+  return {
+    principalHtCts: l.principalHtCts, supplementsHtCts: l.supplementsHtCts,
+    htCts: l.htCts, tvaCts: l.tvaCts, ttcCts: l.ttcCts, blocage: l.blocage,
+  }
 }
 
 /** « 3 000 colis × 1,00 € » — résumé de la ligne principale. */

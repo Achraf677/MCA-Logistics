@@ -18,6 +18,8 @@ import { AuthError, aLaPermission, lireAppelant } from '../_shared/auth.ts';
 import type { Appelant, PermAction } from '../_shared/auth.ts';
 import { ExternalApiError } from '../_shared/http.ts';
 import { centimesToEuros } from '../_shared/money.ts';
+import { construireLignesDevis, type DevisAFacturer } from '../_shared/lignesFacture.ts';
+import { tvaNormalisee } from '../_shared/clientPennylane.ts';
 import type { InvoiceLine } from '../_shared/pennylane.ts';
 import {
   assurerClientPennylane,
@@ -25,7 +27,8 @@ import {
   createQuote,
   getQuoteNumber,
   pennylaneToken,
-  vatRateCode,
+  VAT_CODE_AUTOLIQUIDATION,
+  MENTION_AUTOLIQUIDATION,
 } from '../_shared/pennylane.ts';
 
 Deno.serve(async (req: Request) => {
@@ -70,10 +73,12 @@ Deno.serve(async (req: Request) => {
     // ── Action : create ───────────────────────────────────────────────────────
     if (action === 'create') {
 
-      // 1. Charger le devis
+      // 1. Charger le devis (fiche de prix comprise : mêmes lignes qu'à l'écran)
       const { data: quote, error: qErr } = await supabase
         .from('quotes')
-        .select('id, client_id, date, valid_until, description, amount_ht_cts, tva_rate, tva_cts, pennylane_quote_id')
+        .select('id, client_id, date, valid_until, description, reference_client, prestation, '
+          + 'quantite, prix_unitaire_cts, extra_lines, autoliquidation, '
+          + 'amount_ht_cts, tva_rate, tva_cts, pennylane_quote_id')
         .eq('id', quote_id)
         .eq('company_id', companyId)
         .maybeSingle();
@@ -83,22 +88,13 @@ Deno.serve(async (req: Request) => {
       // 2. Idempotence
       if (quote.pennylane_quote_id) return jsonResponse({ ok: true, alreadySynced: true });
 
-      // 3. Valider le montant et calculer le taux TVA effectif
-      const amountHtCts: number = quote.amount_ht_cts;
-      if (!amountHtCts || amountHtCts <= 0) {
-        return jsonResponse({ ok: false, error: 'montant HT requis et > 0' }, 422);
-      }
-      const ratePct = quote.tva_rate != null ? Number(quote.tva_rate) : 20;
-      const tvaCts = quote.tva_cts ?? Math.round((amountHtCts * ratePct) / 100);
-      const effectiveRate = Math.round((tvaCts / amountHtCts) * 1000) / 10;
-      const vatCode = vatRateCode(effectiveRate);
-      if (vatCode === null) {
-        return jsonResponse({
-          ok: false,
-          error: 'taux TVA non standard',
-          details: { tva_rate_pct: effectiveRate, tva_cts: tvaCts, amount_ht_cts: amountHtCts },
-        }, 422);
-      }
+      // 3. Lignes : même règle que la facture (_shared/lignesFacture#construireLignesDevis) —
+      //    quantité × prix unitaire, suppléments, codes TVA légaux, autoliquidation + mention.
+      const lignes = construireLignesDevis(quote as unknown as DevisAFacturer, {
+        codeAutoliquidation: VAT_CODE_AUTOLIQUIDATION,
+        mentionAutoliquidation: MENTION_AUTOLIQUIDATION,
+      });
+      if (!lignes.ok) return jsonResponse({ ok: false, error: lignes.error, details: lignes.details }, 422);
 
       // 4. Client Pennylane : même règle que la facture (pays, n° TVA de la fiche).
       const { data: client, error: cErr } = await supabase
@@ -109,6 +105,15 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
 
       if (cErr || !client) return jsonResponse({ ok: false, error: 'client introuvable' }, 404);
+
+      // Même garde que la facture : autoliquidation sans n° de TVA = document non conforme.
+      if (quote.autoliquidation === true && !tvaNormalisee(client.tva_intra)) {
+        return jsonResponse({
+          ok: false,
+          error: `Autoliquidation sans n° de TVA intracommunautaire pour ${client.name} : `
+            + 'renseignez-le dans la fiche client, puis renvoyez le devis.',
+        }, 422);
+      }
 
       const pl = await assurerClientPennylane(token, client);
       const pennylaneCustomerId = pl.id;
@@ -121,14 +126,14 @@ Deno.serve(async (req: Request) => {
         if (clErr) console.error('pennylane-quote: pennylane_id client non enregistré', client.id, clErr.message);
       }
 
-      // 5. Ligne unique du devis
-      const invoiceLines: InvoiceLine[] = [{
-        label: quote.description?.trim() || `Devis du ${quote.date ?? ''}`,
-        quantity: 1,
+      // 5. Lignes Pennylane (HT unitaire en euros)
+      const invoiceLines: InvoiceLine[] = lignes.lignes.map((ln) => ({
+        label: ln.label,
+        quantity: ln.quantity,
         unit: 'piece',
-        raw_currency_unit_price: centimesToEuros(amountHtCts).toFixed(2),
-        vat_rate: vatCode,
-      }];
+        raw_currency_unit_price: centimesToEuros(ln.amountHtCts).toFixed(2),
+        vat_rate: ln.vatCode,
+      }));
 
       // 6. Date et échéance (date + 30 j si valid_until absent)
       const quoteDate: string = quote.date;

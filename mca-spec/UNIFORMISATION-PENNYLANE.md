@@ -159,7 +159,15 @@
   `clientSyncMerge` (local gagne sur nom / TVA, archivé reste archivé).
 - Ordre : migration → merge → 3 Edge.
 
-### U3 — Lignes du devis = lignes de la facture
+### U3 — Lignes du devis = lignes de la facture — codé (PR en cours, Edge à déployer : pennylane-quote, pennylane-invoice)
+- Réalisé : `_shared/lignesFacture#construireLignesDevis` (même assembleur que `construireLignes` :
+  quantité × PU, suppléments, codes légaux, autoliquidation `exempt` + mention, refus lisibles ;
+  ancien devis = 1 × (HT − suppléments)) ; `libelleDevis` (= `libelleCourse`, messagerie
+  « Messagerie — prix au colis ») ; `pennylane-quote` lit la fiche de prix, refuse un devis
+  autoliquidé sans n° TVA client ; front : `shared/lib/lignesPennylane.ts` (règles de base
+  sorties de l'aperçu facture + `lignesDevis`), `montantsDevis` = TVA ligne par ligne + blocage
+  dans « Il manque » ; parité Edge ↔ front dans `lignesFacture.test.ts`. Migration : aucune
+  (colonnes déjà en prod, vérifié le 03/10/2026). Plan d'origine ci-dessous.
 - `_shared/lignesFacture.ts` : `construireLignes` accepte une source générique (course OU devis) :
   devis → `quantity = quantite`, `amountHtCts = prix_unitaire_cts`, mêmes suppléments, même
   autoliquidation (code + mention), même libellé (`libelleCourse` avec prestation + réf. client).

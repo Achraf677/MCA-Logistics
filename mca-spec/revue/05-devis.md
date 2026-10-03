@@ -93,7 +93,9 @@
   automatique (au km : quantité = km, une seule saisie), mêmes colonnes que `deliveries`
   (expediteur_* / destinataire_*, marchandise_desc, nb_colis, poids_kg, volume_m3, km) reprises
   à la création de la course ; liste : recherche, filtre statut / client, montant en attente.
-- Reste : D3 = lot U3 de `mca-spec/UNIFORMISATION-PENNYLANE.md` ; D4 : expiration automatique,
+- D3 = lot U3 (03/10/2026) : lignes Pennylane du devis = lignes de facture (quantité × PU,
+  suppléments, autoliquidation + mention, réf. client), TVA ligne par ligne à l'écran.
+- Reste : D4 : expiration automatique,
   relance des devis envoyés > 7 j.
 
 ## 9. À tester (après chaque lot)
