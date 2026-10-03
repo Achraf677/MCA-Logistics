@@ -213,8 +213,8 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
     `clients.siren`, archivé reste archivé) ; `_shared/pennylane#assurerClientPennylane` utilisé
     par pennylane-invoice ET pennylane-quote ; facture autoliquidée sans n° TVA client refusée ;
     fiche client : champ SIREN (déduit du SIRET sinon). Migration `20261003090000_clients_siren`
-    (+ reprise des 10 « siret » à 9 chiffres) **à appliquer AVANT merge**, puis Edge invoice,
-    quote, clients-sync. `clientSyncMerge` (front + _shared) supprimé (remplacé).
+    **appliquée en prod le 03/10/2026** (10 SIREN déplacés de `siret` vers `siren`). Reste :
+    merge (PR #42) puis déploiement des Edge invoice, quote, clients-sync. `clientSyncMerge` (front + _shared) supprimé (remplacé).
 - **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
   classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
 - **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·
