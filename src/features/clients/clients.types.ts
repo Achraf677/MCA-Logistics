@@ -8,6 +8,8 @@ export interface Client {
   company_id: string
   name: string
   siret: string | null
+  /** SIREN (9 chiffres) — migration 20261003090000, rempli aussi par la synchro Pennylane (U2). */
+  siren: string | null
   tva_intra: string | null
   address: string | null
   city: string | null
@@ -42,7 +44,7 @@ export interface Client {
 }
 
 /** Champs « défauts des courses » : facultatifs à la création (défauts en base). */
-type DefautsCourses = 'pays' | 'retrait_adresse' | 'retrait_contact' | 'retrait_tel'
+type DefautsCourses = 'pays' | 'siren' | 'retrait_adresse' | 'retrait_contact' | 'retrait_tel'
   | 'chauffeur_habituel_id' | 'vehicule_habituel_id' | 'prestation_defaut'
   | 'reference_obligatoire' | 'supplements'
 

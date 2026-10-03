@@ -12,7 +12,7 @@ import {
   countDeliveriesForClient, countQuotesForClient, getClientDeliveries, getChoixExecution,
 } from './clients.queries'
 import {
-  CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, CLIENT_TYPES, champsProfessionnels, validateSiret,
+  CLIENT_TYPE_LABELS, CLIENT_TYPE_COLORS, CLIENT_TYPES, champsProfessionnels, validateSiret, validateSiren, sirenRetenu,
   TARIFF_MODE_LABELS, computeEncours, paymentStatusOf,
 } from './clients.logic'
 import { formatMoney } from '../../shared/lib/money'
@@ -35,7 +35,7 @@ interface DrawerClientProps {
 }
 
 const EMPTY_FORM: Partial<ClientInsert> = {
-  name: '', siret: '', tva_intra: '', address: '', city: '',
+  name: '', siret: '', siren: '', tva_intra: '', address: '', city: '',
   postal_code: '', email: '', phone: '', type: null,
   payment_terms: 30, payment_terms_label: '30', notes: '', active: true,
   tariff_mode: 'manuel', tariff_rate_cts: null,
@@ -79,7 +79,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
   useEffect(() => {
     if (client) {
       setForm({
-        name: client.name, siret: client.siret ?? '', tva_intra: client.tva_intra ?? '',
+        name: client.name, siret: client.siret ?? '', siren: client.siren ?? '', tva_intra: client.tva_intra ?? '',
         address: client.address ?? '', city: client.city ?? '', postal_code: client.postal_code ?? '',
         email: client.email ?? '', phone: client.phone ?? '', type: client.type,
         payment_terms: client.payment_terms,
@@ -122,6 +122,9 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
     if (form.siret && !validateSiret(form.siret)) {
       setSiretError('SIRET invalide (14 chiffres)'); return
     }
+    if (form.siren && !validateSiren(form.siren)) {
+      setSiretError('SIREN invalide (9 chiffres)'); return
+    }
     if (form.tariff_mode !== 'manuel' && !form.tariff_rate_cts) {
       toast('Le tarif est requis pour ce mode', 'error'); return
     }
@@ -142,7 +145,9 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
         retrait_tel: vide(form.retrait_tel),
         // Suppléments : lignes sans libellé écartées, doublons fusionnés.
         supplements: lireSupplements(form.supplements),
-        ...(estPro ? {} : { siret: null, tva_intra: null }),
+        // SIREN (facture électronique 09/2027) : saisi, sinon déduit du SIRET.
+        siren: sirenRetenu(form.siren, form.siret),
+        ...(estPro ? {} : { siret: null, siren: null, tva_intra: null }),
       }
       if (isEdit && client) {
         const { error } = await updateClient(client.id, payload)
@@ -273,8 +278,11 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
                 </FieldGroup>
                 {/* SIRET et TVA n'ont de sens que pour un professionnel. */}
                 {estPro && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <FieldGroup label="SIRET" error={siretError}>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <FieldGroup label="SIREN" error={siretError}>
+                      <Input value={form.siren ?? ''} onChange={v => { set('siren', v); setSiretError('') }} placeholder="9 chiffres" />
+                    </FieldGroup>
+                    <FieldGroup label="SIRET">
                       <Input value={form.siret ?? ''} onChange={v => { set('siret', v); setSiretError('') }} placeholder="14 chiffres" />
                     </FieldGroup>
                     <FieldGroup label="N° TVA intracommunautaire">

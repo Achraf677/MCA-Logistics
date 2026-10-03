@@ -133,7 +133,7 @@
 
 ## 4. Plan en lots
 
-### U1 — Contrôle d'accès des synchros (sécurité, sans migration) — ✔ CODÉ (PR #41), Edge à déployer
+### U1 — Contrôle d'accès des synchros (sécurité, sans migration) — ✔ FAIT (PR #41, déployé le 03/10/2026)
 - Fichiers : `pennylane-clients-sync`, `pennylane-sync`, `pennylane-payment-check`, `qonto-sync`,
   `pennylane-file` (index.ts) ; `exigerPermission(req, svc, '<ressource>', 'update'|'view')` ;
   société = celle de l'appelant (plus de `companies.limit(1)`) ; retirer `_debug_first_customer`.
@@ -141,7 +141,7 @@
 - Migration : non. Edge : les 5. Tests : chauffeur → 403, président → 200 (manuel, preview).
 - Ordre : merge front → déploiement des 5 Edge (`verify_jwt` inchangé).
 
-### U2 — Client Pennylane unique (`_shared/clientPennylane.ts`)
+### U2 — Client Pennylane unique (`_shared/clientPennylane.ts`) — ✔ CODÉ (migration + 3 Edge à passer)
 - `clientPennylane.ts` pur : `payloadClient(client)` (nom, e-mails, `external_reference`, adresse,
   `country_alpha2` validé, `vat_number` normalisé, SIREN séparé) + `assurerClientPennylane(token,
   supabase, client, {autoliq})` (trouver / créer / mettre à jour TVA, écrire `pennylane_id`).

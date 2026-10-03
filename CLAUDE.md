@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **01/10/2026** (Devis uniformisé + U1 Pennylane).
+> Dernière mise à jour : **01/10/2026** (U1 déployé, U2 codé).
 
 ---
 
@@ -110,6 +110,7 @@ supabase/
 - `lv_numero` unique par société (index `deliveries_company_lv_numero_uniq`).
 - `clients.tariff_mode` ∈ `forfait, km, palette, colis, manuel`.
 - `clients.pays` ISO alpha-2 (FR par défaut) → adresse Pennylane + autoliquidation auto.
+- `clients.siret` = 14 chiffres SEULEMENT ; le SIREN (9) va dans `clients.siren` (U2).
 - Délai de paiement transport ≤ 30 j date de facture : options `conforme` seulement ; l'Edge
   plafonne l'échéance (`echeanceTransport`).
 - Migrations : UP **et** DOWN, colonnes nullables / additives, appliquées via MCP Supabase.
@@ -203,8 +204,17 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
     (tiers.clients/update), pennylane-sync (finance.charges/update), pennylane-payment-check et
     qonto-sync (finance.tresorerie/update), pennylane-file (finance.charges | flotte.carburant |
     flotte.entretiens / view + facture rattachée à une charge de la société) ; front :
-    `autoSync#DROIT_SYNC` filtre les synchros lancées. **Les 5 Edge restent à DÉPLOYER après
-    le merge** (sinon l'ancien code tourne). Prochain : U2.
+    `autoSync#DROIT_SYNC` filtre les synchros lancées. **Mergé (PR #41) et déployé le
+    03/10/2026** (qonto-sync v17, pennylane-file v2, pennylane-payment-check v20,
+    pennylane-clients-sync v16, pennylane-sync v20). Les paquets déployés ne contiennent que
+    les parties de `_shared` réellement importées (comportement identique).
+  - **U2 codé** : `_shared/clientPennylane.ts` (pur, testé) = règle unique du client Pennylane
+    (`payloadClientPennylane` : pays + n° TVA ; `ligneClientSync` : le site gagne, SIREN dans
+    `clients.siren`, archivé reste archivé) ; `_shared/pennylane#assurerClientPennylane` utilisé
+    par pennylane-invoice ET pennylane-quote ; facture autoliquidée sans n° TVA client refusée ;
+    fiche client : champ SIREN (déduit du SIRET sinon). Migration `20261003090000_clients_siren`
+    (+ reprise des 10 « siret » à 9 chiffres) **à appliquer AVANT merge**, puis Edge invoice,
+    quote, clients-sync. `clientSyncMerge` (front + _shared) supprimé (remplacé).
 - **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
   classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
 - **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·

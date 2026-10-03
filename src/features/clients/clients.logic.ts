@@ -37,6 +37,19 @@ export const TARIFF_MODE_LABELS: Record<TariffMode, string> = {
   manuel:   'Manuel',
 }
 
+/** SIREN : 9 chiffres (espaces tolérés). */
+export function validateSiren(siren: string): boolean {
+  return /^\d{9}$/.test(siren.replace(/\s/g, ''))
+}
+
+/** SIREN à retenir : celui saisi, sinon les 9 premiers chiffres d'un SIRET valide. */
+export function sirenRetenu(siren: string | null | undefined, siret: string | null | undefined): string | null {
+  const s = (siren ?? '').replace(/\s/g, '')
+  if (s) return s
+  const t = (siret ?? '').replace(/\s/g, '')
+  return /^\d{14}$/.test(t) ? t.slice(0, 9) : null
+}
+
 export function validateSiret(siret: string): boolean {
   return /^\d{14}$/.test(siret.replace(/\s/g, ''))
 }
