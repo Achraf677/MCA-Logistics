@@ -7,6 +7,10 @@
 // avant l'appel : un refus de Pennylane laisse la course `livree`, avec la
 // cause dans `sync_error` (course seule) et dans la réponse.
 //
+// Devis « Facturer directement » (lot U4) : la course porte `quote_id` ; une
+// fois la facture enregistrée, le devis ACCEPTÉ passe à `facture` avec le même
+// pennylane_invoice_id (seul écrivain de ce statut ; best-effort).
+//
 // Sécurité : service_role (RLS contournée) → contrôle explicite du JWT
 // appelant : même société, et président ou droit `livraisons.livraisons`
 // update (voir _shared/auth.ts).
@@ -107,7 +111,7 @@ Deno.serve(async (req: Request) => {
   const { data: rows, error: dErr } = await supabase
     .from('deliveries')
     .select(
-      'id, company_id, client_id, statut, date, description, reference_client, prestation, nb_colis, prix_unitaire_cts, echeance_le, type, amount_ht_cts, tva_cts, tva_rate, pennylane_invoice_id, extra_lines, autoliquidation',
+      'id, company_id, client_id, statut, date, description, reference_client, prestation, nb_colis, prix_unitaire_cts, echeance_le, type, amount_ht_cts, tva_cts, tva_rate, pennylane_invoice_id, extra_lines, autoliquidation, quote_id',
     )
     .in('id', ids);
 
@@ -396,6 +400,18 @@ Deno.serve(async (req: Request) => {
       pennylane_invoice_number: invoiceNumber,
       invoice_group_id: invoiceGroupId,
     }, 500);
+  }
+
+  // Devis facturé directement : il suit la facture de sa course.
+  const devisIds = [...new Set(deliveries.map((d) => d.quote_id).filter((q): q is string => typeof q === 'string'))];
+  if (devisIds.length > 0) {
+    const { error: qErr } = await supabase
+      .from('quotes')
+      .update({ statut: 'facture', pennylane_invoice_id: String(draftInvoiceId), updated_at: now })
+      .in('id', devisIds)
+      .eq('company_id', companyId)
+      .eq('statut', 'accepte');
+    if (qErr) console.error('pennylane-invoice: devis non passé à facturé', devisIds, qErr.message);
   }
 
   return jsonResponse({

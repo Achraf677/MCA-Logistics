@@ -1,6 +1,7 @@
 import { supabase } from '../../app/providers'
 import type { Quote, QuoteStatus } from './devis.types'
-import { versLivraison } from './devis.logic'
+import { versLivraison, versLivraisonFacturable } from './devis.logic'
+import { facturerCourse, type ResultatFacturation } from '../../shared/lib/facturation.queries'
 
 const QUOTE_BASE_COLS = `
       id, company_id, client_id, date, valid_until, description,
@@ -9,14 +10,14 @@ const QUOTE_BASE_COLS = `
       pennylane_quote_id, pennylane_quote_number, pennylane_invoice_id, notes, created_at, updated_at,
       clients!client_id(name)`
 /** Colonnes de la fiche de prix (migration 20261002090000). */
-const QUOTE_PRIX_COLS = ', prestation, unite, quantite, prix_unitaire_cts, extra_lines, reference_client, autoliquidation, accepte_le'
+const QUOTE_PRIX_COLS = ', prestation, unite, quantite, prix_unitaire_cts, extra_lines, reference_client, autoliquidation, accepte_le, sync_error'
   + ', expediteur_nom, expediteur_tel, destinataire_nom, destinataire_tel, marchandise_desc, nb_colis, poids_kg, volume_m3, km'
 
 /** Valeurs neutres quand la base n'a pas encore la fiche de prix. */
 function completer(q: Record<string, unknown>): Quote {
   return {
     prestation: null, unite: null, prix_unitaire_cts: null, reference_client: null,
-    autoliquidation: false, accepte_le: null,
+    autoliquidation: false, accepte_le: null, sync_error: null,
     expediteur_nom: null, expediteur_tel: null, destinataire_nom: null, destinataire_tel: null,
     marchandise_desc: null, nb_colis: null, ...q,
     extra_lines: Array.isArray(q.extra_lines) ? q.extra_lines : [],
@@ -37,7 +38,7 @@ export async function listQuotes(): Promise<{ data: Quote[] | null; error: unkno
   return { data: rows ? rows.map(completer) : null, error: res.error }
 }
 
-export async function createQuote(payload: Omit<Quote, 'id' | 'created_at' | 'updated_at' | 'clients' | 'pennylane_quote_number'>) {
+export async function createQuote(payload: Omit<Quote, 'id' | 'created_at' | 'updated_at' | 'clients' | 'pennylane_quote_number' | 'sync_error'>) {
   return supabase.from('quotes').insert(payload).select().single()
 }
 
@@ -117,10 +118,34 @@ export async function sendToPennylane(quoteId: string) {
   })
 }
 
-export async function convertToInvoice(quoteId: string) {
-  return supabase.functions.invoke('pennylane-quote', {
-    body: { action: 'convert', quote_id: quoteId },
-  })
+/**
+ * « Facturer directement » (lot U4, option A) : la course du devis (créée
+ * « livrée », ou reprise si un essai précédent l'a déjà créée) est facturée
+ * comme toute course. C'est l'Edge pennylane-invoice qui passe ensuite le devis
+ * à « facturé » (seul écrivain du statut).
+ */
+export async function facturerDirectement(quote: Quote, date: string, companyId: string): Promise<ResultatFacturation> {
+  const { data: existantes, error: lErr } = await supabase.from('deliveries')
+    .select('id, statut, pennylane_invoice_id')
+    .eq('quote_id', quote.id)
+    .neq('statut', 'annulee')
+  if (lErr) return { ok: false, nature: 'technique', message: lErr.message }
+  const deja = (existantes ?? []) as Array<{ id: string; statut: string; pennylane_invoice_id: string | null }>
+  if (deja.some(d => d.pennylane_invoice_id)) {
+    return { ok: false, nature: 'metier', message: 'Ce devis est déjà facturé (course facturée). Rechargez la page.' }
+  }
+  let id = deja.find(d => d.statut === 'livree')?.id
+  if (!id && deja.length > 0) {
+    return { ok: false, nature: 'metier', message: 'Une course existe déjà pour ce devis : facturez-la depuis Livraisons.' }
+  }
+  if (!id) {
+    const { data, error } = await supabase.from('deliveries')
+      .insert(versLivraisonFacturable(quote, date, companyId, new Date().toISOString()))
+      .select('id').single()
+    if (error || !data) return { ok: false, nature: 'technique', message: error?.message ?? 'Course non créée' }
+    id = data.id as string
+  }
+  return facturerCourse(id)
 }
 
 /** Crée la course (tout repris du devis, voir `versLivraison`) et renvoie son id. */

@@ -95,6 +95,9 @@
   à la création de la course ; liste : recherche, filtre statut / client, montant en attente.
 - D3 = lot U3 (03/10/2026) : lignes Pennylane du devis = lignes de facture (quantité × PU,
   suppléments, autoliquidation + mention, réf. client), TVA ligne par ligne à l'écran.
+- U4 (03/10/2026, option A) : « Facturer directement » crée la course livrée puis la facture
+  comme toute course (encours, relances, paiement suivis) ; double envoi à Pennylane bloqué
+  (verrou) ; refus Pennylane affiché sur le devis.
 - Reste : D4 : expiration automatique,
   relance des devis envoyés > 7 j.
 
