@@ -141,7 +141,10 @@
 - Migration : non. Edge : les 5. Tests : chauffeur → 403, président → 200 (manuel, preview).
 - Ordre : merge front → déploiement des 5 Edge (`verify_jwt` inchangé).
 
-### U2 — Client Pennylane unique (`_shared/clientPennylane.ts`) — ✔ CODÉ (migration + 3 Edge à passer)
+### U2 — Client Pennylane unique (`_shared/clientPennylane.ts`) — ✔ FAIT (PR #42 + correctif, migration `clients_siren` appliquée, Edge déployées le 03/10/2026 : clients-sync v17, quote v14, invoice v35)
+- Réalisé : `payloadClientPennylane` + `ligneClientSync` (pur, testé) ; `_shared/pennylane#assurerClientPennylane`
+  (facture ET devis) ; facture autoliquidée sans n° TVA refusée ; `clientSyncMerge` supprimé ; un
+  « siret » local de 9 chiffres (ancienne synchro) est rangé en `siren`. Plan d'origine ci-dessous.
 - `clientPennylane.ts` pur : `payloadClient(client)` (nom, e-mails, `external_reference`, adresse,
   `country_alpha2` validé, `vat_number` normalisé, SIREN séparé) + `assurerClientPennylane(token,
   supabase, client, {autoliq})` (trouver / créer / mettre à jour TVA, écrire `pennylane_id`).
