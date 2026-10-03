@@ -240,4 +240,10 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - Une étape = une seule chose ; lire seulement les fichiers utiles ; s'arrêter au critère d'arrêt.
 - Sous-agents pour les lectures lourdes / tâches parallèles (contexte isolé) ; vérifier une étape
   avec `/verificateur`. Économie de tokens : `TOKEN-ECONOMY.md`.
+- **Carte du code (graphify, testée le 03/10/2026)** : `scripts/graphe.sh` (génère en ~6 s, local,
+  sans IA) puis `scripts/graphe.sh explain <symbole>` = qui importe / appelle une fonction, un
+  type, un composant (ex. avant de modifier `deliveryTotalTtcCts` : 21 liens en ~400 jetons au
+  lieu de lire 10 fichiers). **Ne voit PAS** les tables / colonnes / Edge appelées par chaîne
+  (`from('deliveries')`, `functions.invoke('pennylane-invoice')`) ni le SQL : pour ça,
+  `CARTE-INTERCONNEXIONS.md` + grep restent la règle (§ 7). `graphify-out/` n'est pas versionné.
 - Specs onglets : `mca-spec/tabs/` · intégrations : `mca-spec/integrations/` · revue : `mca-spec/revue/`.
