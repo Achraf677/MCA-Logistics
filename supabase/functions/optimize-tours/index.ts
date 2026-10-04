@@ -1,6 +1,11 @@
 // Edge Function `optimize-tours` — répartition MULTI-véhicule (Tournée V3).
-// Entrée : { date: 'YYYY-MM-DD', assignments: [{ vehicle_id, driver_id? }], delivery_ids: string[] }
+// Entrée : { date: 'YYYY-MM-DD', heure_depart?: 'HH:MM', assignments: [{ vehicle_id, driver_id? }], delivery_ids: string[] }
 // Équilibrage : amount:[1] par livraison + capacity:[ceil(N/V)] par véhicule → force l'usage équilibré.
+// Heures justes (lot T3) : départ choisi (défaut 08:00, gardé sur `tours.heure_depart`), 5 min
+// d'arrêt, créneaux de la fiche en fenêtres horaires, urgent prioritaire, durée = conduite +
+// arrêts + attente. Express (lot T4) : un retrait à faire est géocodé ici (BAN) et envoyé en paire
+// retrait → livraison ; retraits et livraisons numérotés dans une seule séquence
+// (`pickup_order` / `stop_order`, comme Mes courses). Règles pures : `_shared/vroom.ts`.
 // IDEMPOTENT : avant réaffectation, détache TOUTES les livraisons des tournées concernées (date+véhicules),
 // pas seulement le pool reçu — évite les résidus d'un essai précédent. Supprime les tournées devenues vides.
 // Garde-fou : refuse (409) si une tournée de ces véhicules à cette date est déjà en_cours/terminee.
@@ -12,16 +17,9 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError } from '../_shared/http.ts';
 import { optimize } from '../_shared/ors.ts';
-const DEPART_DEFAULT = '08:00:00';
+import { geocode } from '../_shared/geocode.ts';
+import { DEPART_DEFAUT, construireProbleme, coursesNonPlacees, dureeRouteMin, heureEnSecondes, lireRoute, secondesEnHeure } from '../_shared/vroom.ts';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-function secondsToTime(base, addSeconds) {
-  const [h, m, s] = base.split(':').map(Number);
-  const total = h * 3600 + m * 60 + (s || 0) + addSeconds;
-  const hh = Math.floor(total / 3600) % 24;
-  const mm = Math.floor(total % 3600 / 60);
-  const ss = Math.floor(total % 60);
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-}
 Deno.serve(async (req)=>{
   if (req.method === 'OPTIONS') return optionsResponse();
   const apiKey = Deno.env.get('ORS_API_KEY');
@@ -43,6 +41,12 @@ Deno.serve(async (req)=>{
     ok: false,
     error: 'date (YYYY-MM-DD) required'
   }, 400);
+  const departSec = body.heure_depart == null || body.heure_depart === '' ? heureEnSecondes(DEPART_DEFAUT) : heureEnSecondes(body.heure_depart);
+  if (departSec == null) return jsonResponse({
+    ok: false,
+    error: 'heure_depart (HH:MM) invalide'
+  }, 400);
+  const heureDepart = secondesEnHeure(departSec);
   const rawAssign = Array.isArray(body.assignments) ? body.assignments : [];
   const seen = new Set();
   const assignments = [];
@@ -86,7 +90,7 @@ Deno.serve(async (req)=>{
     }
   }
   // ── Livraisons du pool, géocodées (société de l'appelant uniquement) ──
-  const { data: deliveries, error: dErr } = await supabase.from('deliveries').select('id, company_id, delivery_lat, delivery_lng').eq('company_id', companyId).in('id', deliveryIds);
+  const { data: deliveries, error: dErr } = await supabase.from('deliveries').select('id, company_id, delivery_lat, delivery_lng, pickup_address, retrait_a_faire, urgent, creneau_retrait_debut, creneau_retrait_fin, creneau_livraison_debut, creneau_livraison_fin').eq('company_id', companyId).in('id', deliveryIds);
   if (dErr) return jsonResponse({
     ok: false,
     error: dErr.message
@@ -127,45 +131,28 @@ Deno.serve(async (req)=>{
       message: "Dépôt non localisé — renseigne/valide l'adresse du dépôt dans Paramètres, puis clique sur « Géocoder les adresses manquantes »."
     }, 422);
   }
-  // ── jobs (amount:[1]) + vehicles (capacity:[plafond]) ──
-  const jobIdToDelivery = new Map();
-  const jobs = geocoded.map((d, i)=>{
-    const jid = i + 1;
-    jobIdToDelivery.set(jid, d.id);
-    return {
-      id: jid,
-      location: [
-        d.delivery_lng,
-        d.delivery_lat
-      ],
-      amount: [
-        1
-      ]
-    };
-  });
+  // ── Retraits à faire : géocodés maintenant (adresse du jour, jamais une position périmée) ──
+  const retraitsNonLocalises = [];
+  const courses = [];
+  for (const d of geocoded){
+    let retrait = null;
+    const adr = typeof d.pickup_address === 'string' ? d.pickup_address.trim() : '';
+    if (d.retrait_a_faire === true && adr) {
+      retrait = await geocode(adr);
+      if (!retrait) retraitsNonLocalises.push(d.id);
+    }
+    courses.push({ ...d, retrait });
+  }
   const cap = Math.max(1, Math.ceil(geocoded.length / assignments.length));
   const vroomVehToAssign = new Map();
-  const vehicles = assignments.map((a, i)=>{
-    const vid = i + 1;
-    vroomVehToAssign.set(vid, a);
-    return {
-      id: vid,
-      profile: 'driving-car',
-      start: [
-        depotLng,
-        depotLat
-      ],
-      end: [
-        depotLng,
-        depotLat
-      ],
-      capacity: [
-        cap
-      ]
-    };
+  assignments.forEach((a, i)=>vroomVehToAssign.set(i + 1, a));
+  const probleme = construireProbleme(courses, assignments.map((_, i)=>({ ref: i + 1 })), {
+    depot: { lat: depotLat, lng: depotLng },
+    departSec,
+    capacite: cap
   });
   try {
-    const result = await optimize(apiKey, jobs, vehicles);
+    const result = await optimize(apiKey, probleme.jobs, probleme.vehicles, probleme.shipments);
     const routes = result.routes ?? [];
     if (routes.length === 0) return jsonResponse({
       ok: false,
@@ -200,7 +187,7 @@ Deno.serve(async (req)=>{
       const assign = vroomVehToAssign.get(route.vehicle);
       if (!assign) continue;
       const totalKm = Math.round(route.distance / 1000 * 10) / 10;
-      const totalMin = Math.round(route.duration / 60);
+      const totalMin = dureeRouteMin(route);
       const tourPayload = {
         company_id: companyId,
         date,
@@ -212,6 +199,7 @@ Deno.serve(async (req)=>{
         total_duration_min: totalMin,
         geometry: route.geometry ?? null,
         status: 'optimisee',
+        heure_depart: heureDepart,
         optimized_at: new Date().toISOString()
       };
       let tourId = vehToExistingTour.get(assign.vehicle_id) ?? '';
@@ -230,27 +218,21 @@ Deno.serve(async (req)=>{
         tourId = created.id;
       }
       usedTourIds.add(tourId);
-      let order = 0;
       let stops = 0;
-      for (const step of route.steps){
-        if (step.type === 'job' && step.id != null) {
-          order += 1;
-          const did = jobIdToDelivery.get(step.id);
-          if (!did) continue;
-          const arrival = typeof step.arrival === 'number' ? secondsToTime(DEPART_DEFAULT, step.arrival) : null;
-          const { error } = await supabase.from('deliveries').update({
-            tour_id: tourId,
-            vehicle_id: assign.vehicle_id,
-            driver_id: assign.driver_id,
-            stop_order: order,
-            arrival_time: arrival
-          }).eq('id', did);
-          if (error) return jsonResponse({
-            ok: false,
-            error: `update delivery: ${error.message}`
-          }, 500);
-          stops += 1;
-        }
+      for (const pos of lireRoute(route.steps ?? [], probleme.refs)){
+        const { error } = await supabase.from('deliveries').update({
+          tour_id: tourId,
+          vehicle_id: assign.vehicle_id,
+          driver_id: assign.driver_id,
+          stop_order: pos.stop_order,
+          pickup_order: pos.pickup_order,
+          arrival_time: pos.arrival_time
+        }).eq('id', pos.courseId).eq('company_id', companyId);
+        if (error) return jsonResponse({
+          ok: false,
+          error: `update delivery: ${error.message}`
+        }, 500);
+        stops += 1;
       }
       summary.push({
         tour_id: tourId,
@@ -269,7 +251,7 @@ Deno.serve(async (req)=>{
         error: `delete orphan tours: ${error.message}`
       }, 500);
     }
-    const unassigned = (result.unassigned ?? []).length;
+    const unassigned = coursesNonPlacees(result.unassigned ?? [], probleme.refs).length;
     return jsonResponse({
       ok: true,
       data: {
@@ -277,7 +259,9 @@ Deno.serve(async (req)=>{
         vehicles_used: summary.length,
         cap_per_vehicle: cap,
         tours: summary,
-        unassigned
+        unassigned,
+        heure_depart: heureDepart,
+        retraits_non_localises: retraitsNonLocalises.length
       }
     });
   } catch (err) {

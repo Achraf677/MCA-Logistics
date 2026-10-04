@@ -24,7 +24,7 @@ interface Props {
 /**
  * Proposition, après « Terminer la tournée », d'enregistrer la journée du
  * chauffeur dans Heures (table `work_hours`). Rien n'est écrit sans « Enregistrer » :
- * le début n'est qu'une suggestion (aucune heure de démarrage n'est stockée).
+ * le début n'est qu'une suggestion (heure du « Démarrer », `tours.started_at`, sinon à saisir).
  *
  * Portail vers <body>, comme ConfirmDialog (un parent `.glass` rognerait la modale).
  */

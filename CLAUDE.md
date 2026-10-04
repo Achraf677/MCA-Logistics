@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **03/10/2026** (U1 → U5 et Tournées T1 mergés et déployés ; en cours : Tournées T2 ; puis U6).
+> Dernière mise à jour : **04/10/2026** (U1 → U5, Tournées T1 et T2 mergés ; en PR : Tournées T3-T5 ; puis U6).
 
 ---
 
@@ -265,7 +265,12 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   **T1 fait** (PR #49, déployé : optimize-tours v20 avec `exigerPermission(planning.tournees/
   update)` + société de l'appelant ; optimize-tour v13 = 410) : « mon ordre » écrit
   `driver_id` / `vehicle_id`, affectations reprises, confirmation avant écrasement. Décision :
-  temps d'arrêt **5 min par livraison** (T3). En cours : T2 (gérer une tournée).
+  temps d'arrêt **5 min par livraison** (T3). **T2 fait** (PR #50, mergé, sans migration ni
+  Edge) : retirer une course, supprimer une tournée, badge « Tournée X », documents échus.
+  **T3 + T4 + T5 en PR** : départ choisi (`tours.heure_depart`), 5 min / arrêt, créneaux,
+  urgent, `tours.started_at` (trigger), carburant inventé retiré, retraits en paires (géocodés
+  à la volée par optimize-tours, sans colonne), écran 2 colonnes. Migration
+  `20261004090000_tours_depart_demarrage` AVANT le merge et l'Edge optimize-tours.
 - Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)

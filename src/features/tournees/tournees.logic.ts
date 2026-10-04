@@ -1,27 +1,16 @@
-// Logique pure des Tournées : éligibilité, géocodage, carburant, navigation GPS,
+// Logique pure des Tournées : éligibilité, géocodage, heures, navigation GPS,
 // suivi des arrêts et cycle de vie. Aucune dépendance DB ni DOM.
 
 import type { Tour, TourDelivery, Assignment } from './tournees.types'
-
-/** Coût carburant par défaut, en centimes par km (0,15 €/km). */
-export const DEFAULT_FUEL_CTS_PER_KM = 15
 
 /** Une livraison est géocodée si elle a une latitude ET une longitude. */
 export function isGeocoded(d: Pick<TourDelivery, 'delivery_lat' | 'delivery_lng'>): boolean {
   return d.delivery_lat != null && d.delivery_lng != null
 }
 
-/**
- * Estimation carburant indicative, en centimes.
- * total_km × coût/km (défaut 0,15 €/km = 15 cts/km). Arrondi au centime.
- */
-export function estimateFuelCostCts(
-  totalKm: number | null | undefined,
-  ctsPerKm: number = DEFAULT_FUEL_CTS_PER_KM,
-): number {
-  if (!totalKm || totalKm <= 0) return 0
-  return Math.round(totalKm * ctsPerKm)
-}
+// Carburant : l'ancienne estimation à 0,15 €/km (chiffre inventé) est retirée
+// (lot T3). Un vrai coût demande la consommation du véhicule, que la base n'a
+// pas (les pleins n'ont pas de kilométrage).
 
 // ── Navigation GPS (liens externes) ───────────────────────────────────────────
 // Les constructeurs de liens ont demenage dans shared/lib/navigation.ts : la
@@ -171,11 +160,11 @@ export function dateDepuisParam(v: string | null | undefined): string | null {
   return v
 }
 
-// ── Heures de tournée → Heures (lot P3) ───────────────────────────────────────
-// `tours` ne stocke pas d'heure de démarrage. Meilleure approximation sans
-// migration : `updated_at` d'une tournée EN COURS, posé par le trigger au
-// passage en `en_cours` (faux si la tournée a été modifiée depuis, d'où une
-// suggestion modifiable, jamais une écriture silencieuse).
+// ── Heures de tournée → Heures (lot P3, puis T3) ─────────────────────────────
+// `tours.started_at` (lot T3) est posé par la base au passage en `en_cours`.
+// Tournée démarrée avant T3 : repli sur `updated_at` d'une tournée EN COURS
+// (faux si elle a été modifiée depuis). Toujours une suggestion modifiable,
+// jamais une écriture silencieuse.
 
 /** HH:MM locale d'un horodatage ISO. */
 export function heureLocale(iso: string): string {
@@ -190,16 +179,70 @@ function dateLocale(iso: string): string {
 }
 
 /**
- * Heure de début suggérée : `updated_at` d'une tournée en cours, s'il tombe le
- * jour de la tournée. Sinon null (l'utilisateur saisit le début).
+ * Heure de début suggérée : `started_at` (heure réelle du « Démarrer ») s'il
+ * tombe le jour de la tournée ; à défaut `updated_at` d'une tournée en cours.
+ * Sinon null (l'utilisateur saisit le début).
  */
 export function debutTourneeSuggere(
-  tour: Pick<Tour, 'status' | 'updated_at' | 'date'>,
+  tour: Pick<Tour, 'status' | 'updated_at' | 'date'> & { started_at?: string | null },
 ): string | null {
-  if (tour.status !== 'en_cours' || !tour.updated_at) return null
-  if (Number.isNaN(new Date(tour.updated_at).getTime())) return null
-  if (dateLocale(tour.updated_at) !== tour.date) return null
+  const jour = (iso: string | null | undefined) =>
+    !!iso && !Number.isNaN(new Date(iso).getTime()) && dateLocale(iso) === tour.date
+  if (jour(tour.started_at)) return heureLocale(tour.started_at as string)
+  if (tour.status !== 'en_cours' || !jour(tour.updated_at)) return null
   return heureLocale(tour.updated_at)
+}
+
+// ── Heure de départ et heures prévues (lot T3) ───────────────────────────────
+
+/** Heure de départ du dépôt par défaut (même valeur que l'Edge, `_shared/vroom.ts`). */
+export const DEPART_DEFAUT = '08:00'
+
+/** HH:MM d'une heure Postgres « HH:MM[:SS] » ; '' si vide ou mal formée. */
+export function hhmm(t: string | null | undefined): string {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)/.exec(t ?? '')
+  return m ? `${m[1]}:${m[2]}` : ''
+}
+
+/** Départ proposé pour une date : celui d'une tournée déjà optimisée ce jour-là, sinon 08:00. */
+export function departInitial(tours: Array<Pick<Tour, 'heure_depart'>>): string {
+  for (const t of tours) {
+    const h = hhmm(t.heure_depart)
+    if (h) return h
+  }
+  return DEPART_DEFAUT
+}
+
+/** L'heure prévue tombe-t-elle après la fin du créneau de livraison ? */
+export function horsCreneau(
+  s: Pick<TourDelivery, 'arrival_time' | 'creneau_livraison_fin'>,
+): boolean {
+  const a = hhmm(s.arrival_time), f = hhmm(s.creneau_livraison_fin)
+  return !!a && !!f && a > f
+}
+
+/** Urgentes d'abord (ordre stable) : l'ordre du pool est celui de « mon ordre ». */
+export function urgentesDAbord<T extends Pick<TourDelivery, 'urgent'>>(courses: T[]): T[] {
+  return [...courses.filter(c => c.urgent), ...courses.filter(c => !c.urgent)]
+}
+
+/**
+ * Ordre imposé à la main → positions dans la séquence UNIQUE des arrêts (comme
+ * l'optimiseur et Mes courses) : le retrait à faire juste avant sa livraison ;
+ * sans retrait, `pickup_order = stop_order`.
+ */
+export function positionsDansLOrdre(
+  courses: Array<Pick<TourDelivery, 'id' | 'retrait_a_faire' | 'pickup_address'>>,
+): Array<{ id: string; pickup_order: number; stop_order: number }> {
+  let n = 0
+  return courses.map(c => {
+    if (c.retrait_a_faire && c.pickup_address?.trim()) {
+      const pickup = ++n
+      return { id: c.id, pickup_order: pickup, stop_order: ++n }
+    }
+    const stop = ++n
+    return { id: c.id, pickup_order: stop, stop_order: stop }
+  })
 }
 
 /** Ligne `work_hours` à insérer (colonnes existantes en prod). */

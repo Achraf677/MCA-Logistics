@@ -28,6 +28,10 @@ export interface Tour {
    * pas eviter les peages. Voir NavOptions dans tournees.logic.ts.
    */
   eviter_peages: boolean
+  /** Départ du dépôt utilisé par l'optimisation (lot T3) ; null = ancienne tournée. */
+  heure_depart?: string | null
+  /** Posé par la base au premier « Démarrer » (trigger, lot T3). */
+  started_at?: string | null
   created_at: string
   updated_at: string
 }
@@ -50,8 +54,16 @@ export interface TourDelivery {
   delivery_lat: number | null
   delivery_lng: number | null
   tour_id: string | null
+  /** Positions dans la séquence unique des arrêts (retraits et livraisons). */
   stop_order: number | null
+  pickup_order: number | null
+  /** Heure prévue à la livraison, calculée par l'optimiseur. */
   arrival_time: string | null
+  urgent: boolean | null
+  creneau_retrait_debut: string | null
+  creneau_retrait_fin: string | null
+  creneau_livraison_debut: string | null
+  creneau_livraison_fin: string | null
   /** Heure réelle de livraison (timestamptz). null = pas encore livré. */
   delivered_at: string | null
   /** Affectation posée sur la course (Planning, fiche, répartition). */
@@ -98,4 +110,6 @@ export interface DispatchData {
   tours: DispatchedTour[]
   /** L'Edge renvoie un NOMBRE (versions déployées) ; une liste reste acceptée. */
   unassigned: number | unknown[]
+  /** Retraits à faire dont l'adresse n'a pas pu être localisée (lot T4). */
+  retraits_non_localises?: number
 }
