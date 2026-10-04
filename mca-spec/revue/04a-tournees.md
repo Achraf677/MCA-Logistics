@@ -137,6 +137,21 @@
   envoyer des paires retrait → livraison à l'optimiseur.
 - **T5 — Écran** : 2 colonnes PC, tient sur un écran, rem, plus de `text-[var(--fs-*)]`.
 
+### Fait (lot T1, PR en cours, 04/10/2026)
+- ✔ `optimize-tours` : `exigerPermission(planning.tournees/update)`, société de l'appelant,
+  véhicules et chauffeurs vérifiés (403 sinon), courses d'une autre société ignorées.
+- ✔ `optimize-tour` : remplacée par une version qui répond 410 (l'outil ne permet pas de
+  supprimer une Edge déployée) ; code mort retiré (`optimizeTour`, `getTourStops`,
+  `eligibleDeliveries`, `canOptimize`, `OptimizeResult`). `unassignDeliveries` gardée pour T2.
+- ✔ « Répartir dans mon ordre » écrit `driver_id` / `vehicle_id` sur les courses (visibles dans
+  Mes courses).
+- ✔ Véhicules cochés et chauffeurs pré-remplis à l'ouverture d'une date (tournées du jour, puis
+  affectations des courses) : `affectationsSuggerees` ; seuls les véhicules actifs comptent.
+- ✔ Avant de répartir : confirmation si des courses ont déjà un autre chauffeur / véhicule
+  (`affectationsEcrasees`).
+- ✔ Bug : l'avertissement « N non réparties » ne s'affichait jamais (l'Edge renvoie un nombre).
+- Décision : temps d'arrêt par défaut = **5 min par livraison** (pour T3, validé le 04/10/2026).
+
 ## 9. À tester (après chaque lot)
 - Chauffeur connecté : appel direct de `optimize-tours` → 403.
 - « Répartir dans mon ordre » avec un chauffeur → les courses apparaissent dans SES Mes courses.

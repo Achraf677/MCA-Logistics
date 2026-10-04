@@ -4,8 +4,12 @@
 // IDEMPOTENT : avant réaffectation, détache TOUTES les livraisons des tournées concernées (date+véhicules),
 // pas seulement le pool reçu — évite les résidus d'un essai précédent. Supprime les tournées devenues vides.
 // Garde-fou : refuse (409) si une tournée de ces véhicules à cette date est déjà en_cours/terminee.
+// Contrôle d'accès (lot T1, revue 04a) : le service role contourne la RLS → appelant vérifié
+// (président ou `planning.tournees` / update), société = celle de l'appelant ; courses,
+// véhicules et chauffeurs d'une autre société ignorés / refusés.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
+import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError } from '../_shared/http.ts';
 import { optimize } from '../_shared/ors.ts';
 const DEPART_DEFAULT = '08:00:00';
@@ -65,8 +69,24 @@ Deno.serve(async (req)=>{
     error: 'delivery_ids required'
   }, 400);
   const supabase = getServiceClient();
-  // ── Livraisons du pool, géocodées ──
-  const { data: deliveries, error: dErr } = await supabase.from('deliveries').select('id, company_id, delivery_lat, delivery_lng').in('id', deliveryIds);
+  const acces = await exigerPermission(req, supabase, 'planning.tournees', 'update');
+  if (!acces.ok) return acces.response;
+  const companyId = acces.companyId;
+  // ── Véhicules et chauffeurs : de la société de l'appelant, sinon refus ──
+  {
+    const vids = assignments.map((a)=>a.vehicle_id);
+    const { data: vehs, error: vErr } = await supabase.from('vehicles').select('id').eq('company_id', companyId).in('id', vids);
+    if (vErr) return jsonResponse({ ok: false, error: vErr.message }, 500);
+    if ((vehs ?? []).length !== vids.length) return jsonResponse({ ok: false, error: 'véhicule inconnu pour cette société' }, 403);
+    const dids = assignments.map((a)=>a.driver_id).filter((d)=>!!d);
+    if (dids.length > 0) {
+      const { data: drv, error: drErr } = await supabase.from('team_members').select('id').eq('company_id', companyId).in('id', dids);
+      if (drErr) return jsonResponse({ ok: false, error: drErr.message }, 500);
+      if ((drv ?? []).length !== new Set(dids).size) return jsonResponse({ ok: false, error: 'chauffeur inconnu pour cette société' }, 403);
+    }
+  }
+  // ── Livraisons du pool, géocodées (société de l'appelant uniquement) ──
+  const { data: deliveries, error: dErr } = await supabase.from('deliveries').select('id, company_id, delivery_lat, delivery_lng').eq('company_id', companyId).in('id', deliveryIds);
   if (dErr) return jsonResponse({
     ok: false,
     error: dErr.message
@@ -77,7 +97,6 @@ Deno.serve(async (req)=>{
     error: 'no geocoded deliveries in pool',
     message: "Aucune livraison sélectionnée n'est localisée — clique sur « Géocoder les adresses manquantes » puis réessaie."
   }, 422);
-  const companyId = geocoded[0].company_id;
   const vehicleIds = assignments.map((a)=>a.vehicle_id);
   // ── Tournées existantes de ces véhicules à cette date (tous statuts) ──
   const { data: existingTours, error: eErr } = await supabase.from('tours').select('id, vehicle_id, status').eq('company_id', companyId).eq('date', date).in('vehicle_id', vehicleIds);
@@ -169,7 +188,7 @@ Deno.serve(async (req)=>{
         tour_id: null,
         stop_order: null,
         arrival_time: null
-      }).in('id', deliveryIds);
+      }).eq('company_id', companyId).in('id', deliveryIds);
       if (error) return jsonResponse({
         ok: false,
         error: `detach pool: ${error.message}`
