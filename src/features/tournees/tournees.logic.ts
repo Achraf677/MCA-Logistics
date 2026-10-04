@@ -3,26 +3,12 @@
 
 import type { Tour, TourDelivery, Assignment } from './tournees.types'
 
-/** Statuts de livraison pouvant entrer dans une tournée. */
-export const ELIGIBLE_STATUSES = ['planifiee', 'en_cours', 'livree'] as const
-
 /** Coût carburant par défaut, en centimes par km (0,15 €/km). */
 export const DEFAULT_FUEL_CTS_PER_KM = 15
 
 /** Une livraison est géocodée si elle a une latitude ET une longitude. */
 export function isGeocoded(d: Pick<TourDelivery, 'delivery_lat' | 'delivery_lng'>): boolean {
   return d.delivery_lat != null && d.delivery_lng != null
-}
-
-/**
- * Livraisons éligibles à l'affichage dans l'écran Tournées :
- * statut planifiee / en_cours / livree. Les non géocodées restent listées
- * (grisées côté UI), seules les géocodées sont sélectionnables.
- */
-export function eligibleDeliveries(deliveries: TourDelivery[]): TourDelivery[] {
-  return deliveries.filter(d =>
-    (ELIGIBLE_STATUSES as readonly string[]).includes(d.statut),
-  )
 }
 
 /**
@@ -35,14 +21,6 @@ export function estimateFuelCostCts(
 ): number {
   if (!totalKm || totalKm <= 0) return 0
   return Math.round(totalKm * ctsPerKm)
-}
-
-/**
- * L'optimisation est possible si au moins 2 arrêts géocodés sont assignés
- * ET que le dépôt est lui-même géocodé.
- */
-export function canOptimize(geocodedStopCount: number, depotGeocoded: boolean): boolean {
-  return geocodedStopCount >= 2 && depotGeocoded
 }
 
 // ── Navigation GPS (liens externes) ───────────────────────────────────────────
@@ -275,4 +253,69 @@ export function aDejaDesHeures(
   date: string,
 ): boolean {
   return lignes.some(l => l.member_id === memberId && l.date === date)
+}
+
+// ── Affectations existantes (lot T1, revue 04a) ──────────────────────────────
+
+type CourseAffectee = Pick<TourDelivery, 'id' | 'vehicle_id' | 'driver_id'>
+
+/**
+ * Véhicules à cocher et chauffeur par véhicule à l'ouverture d'une date :
+ * d'abord les tournées déjà composées, puis les affectations posées sur les
+ * courses du jour (Planning, fiche). Une seule saisie : on reprend, on ne
+ * redemande pas. Si plusieurs chauffeurs sont posés sur un même véhicule, le
+ * plus fréquent l'emporte.
+ */
+export function affectationsSuggerees(
+  tours: Array<Pick<Tour, 'vehicle_id' | 'driver_id'>>,
+  courses: CourseAffectee[],
+): { vehicules: string[]; chauffeurParVehicule: Record<string, string> } {
+  const vehicules: string[] = []
+  const chauffeurParVehicule: Record<string, string> = {}
+  for (const t of tours) {
+    if (!t.vehicle_id) continue
+    if (!vehicules.includes(t.vehicle_id)) vehicules.push(t.vehicle_id)
+    if (t.driver_id && !chauffeurParVehicule[t.vehicle_id]) chauffeurParVehicule[t.vehicle_id] = t.driver_id
+  }
+  const compte = new Map<string, Map<string, number>>()
+  for (const c of courses) {
+    if (!c.vehicle_id) continue
+    if (!vehicules.includes(c.vehicle_id)) vehicules.push(c.vehicle_id)
+    if (!c.driver_id) continue
+    const m = compte.get(c.vehicle_id) ?? new Map<string, number>()
+    m.set(c.driver_id, (m.get(c.driver_id) ?? 0) + 1)
+    compte.set(c.vehicle_id, m)
+  }
+  for (const [vid, m] of compte) {
+    if (chauffeurParVehicule[vid]) continue
+    const [meilleur] = [...m.entries()].sort((a, b) => b[1] - a[1])
+    if (meilleur) chauffeurParVehicule[vid] = meilleur[0]
+  }
+  return { vehicules, chauffeurParVehicule }
+}
+
+/**
+ * Courses dont le chauffeur ou le véhicule DÉJÀ posé va être remplacé par la
+ * répartition (à dire avant de cliquer, jamais en silence).
+ * - « mon ordre » (un véhicule, un chauffeur) : toute affectation différente ;
+ * - « optimiser » : une affectation hors des véhicules / chauffeurs choisis
+ *   (entre véhicules choisis, c'est justement le travail de l'optimiseur).
+ */
+export function affectationsEcrasees(
+  courses: CourseAffectee[],
+  assignments: Assignment[],
+  mode: 'ordre' | 'optimiser',
+): CourseAffectee[] {
+  const vehicules = new Set(assignments.map(a => a.vehicle_id))
+  const chauffeurs = new Set(assignments.map(a => a.driver_id).filter((d): d is string => !!d))
+  if (mode === 'ordre') {
+    const a = assignments[0]
+    if (!a) return []
+    return courses.filter(c =>
+      (c.vehicle_id != null && c.vehicle_id !== a.vehicle_id)
+      || (c.driver_id != null && c.driver_id !== a.driver_id))
+  }
+  return courses.filter(c =>
+    (c.vehicle_id != null && !vehicules.has(c.vehicle_id))
+    || (c.driver_id != null && !chauffeurs.has(c.driver_id)))
 }

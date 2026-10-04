@@ -36,7 +36,7 @@ export async function getActiveDrivers() {
 // ── Livraisons d'une journée (statuts éligibles) ──────────────────────────────
 
 const DELIVERY_COLS =
-  'id, date, statut, description, weight_kg, pickup_address, retrait_a_faire, delivery_address, delivery_lat, delivery_lng, tour_id, stop_order, arrival_time, delivered_at, clients!client_id(name)'
+  'id, date, statut, description, weight_kg, pickup_address, retrait_a_faire, delivery_address, delivery_lat, delivery_lng, tour_id, stop_order, arrival_time, delivered_at, driver_id, vehicle_id, clients!client_id(name)'
 
 export async function getDeliveriesForDate(companyId: string, date: string) {
   return supabase
@@ -47,15 +47,6 @@ export async function getDeliveriesForDate(companyId: string, date: string) {
     .in('statut', ['planifiee', 'en_cours', 'livree'])
     // Relevés de messagerie et forfaits : rien à faire sur la route.
     .or('prestation.is.null,prestation.not.in.(messagerie,forfait)')
-    .order('stop_order', { ascending: true, nullsFirst: false })
-}
-
-/** Arrêts d'une tournée, ordonnés (après optimisation). */
-export async function getTourStops(tourId: string) {
-  return supabase
-    .from('deliveries')
-    .select(DELIVERY_COLS)
-    .eq('tour_id', tourId)
     .order('stop_order', { ascending: true, nullsFirst: false })
 }
 
@@ -99,11 +90,16 @@ export async function updateTour(id: string, data: Partial<Tour>) {
  * `date` (celle de la tournée) est écrite aussi : une course en retard mise dans
  * la tournée du jour est REPLANIFIÉE à ce jour (sans effet pour celles du jour).
  */
-export async function assignDeliveries(ids: string[], tourId: string, date?: string) {
+export async function assignDeliveries(
+  ids: string[], tourId: string, date: string,
+  affectation: { vehicleId: string; driverId: string | null },
+) {
   if (ids.length === 0) return { error: null }
+  // Chauffeur et véhicule écrits sur la course, comme l'optimiseur : c'est
+  // `deliveries.driver_id` qui fait apparaître la course dans « Mes courses ».
   return supabase
     .from('deliveries')
-    .update(date ? { tour_id: tourId, date } : { tour_id: tourId })
+    .update({ tour_id: tourId, date, vehicle_id: affectation.vehicleId, driver_id: affectation.driverId })
     .in('id', ids)
 }
 
@@ -146,12 +142,6 @@ export async function markDelivered(deliveryId: string, when: string) {
 
 export async function setTourStatus(tourId: string, status: TourStatus) {
   return supabase.from('tours').update({ status }).eq('id', tourId).select().single()
-}
-
-// ── Optimisation (Edge Function ORS) ──────────────────────────────────────────
-
-export async function optimizeTour(tourId: string) {
-  return supabase.functions.invoke('optimize-tour', { body: { tour_id: tourId } })
 }
 
 // ── Multi-véhicule (dispatch + optimisation) ──────────────────────────────────
@@ -347,7 +337,7 @@ export async function repartirDansMonOrdre(params: {
     tourId = creee.id as string
   }
 
-  const { error: assignErr } = await assignDeliveries(idsDansLOrdre, tourId, date)
+  const { error: assignErr } = await assignDeliveries(idsDansLOrdre, tourId, date, { vehicleId, driverId })
   if (assignErr) return { error: assignErr }
 
   const { error: ordreErr } = await enregistrerOrdreArrets(idsDansLOrdre)

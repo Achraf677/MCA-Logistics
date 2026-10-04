@@ -54,20 +54,10 @@ export interface TourDelivery {
   arrival_time: string | null
   /** Heure réelle de livraison (timestamptz). null = pas encore livré. */
   delivered_at: string | null
+  /** Affectation posée sur la course (Planning, fiche, répartition). */
+  driver_id: string | null
+  vehicle_id: string | null
   clients: { name: string } | null
-}
-
-/** Réponse de l'Edge Function optimize-tour. */
-export interface OptimizeResult {
-  ok: boolean
-  data?: {
-    stops?: unknown[]
-    total_km?: number
-    total_duration_min?: number
-    order?: number[]
-  }
-  error?: string
-  body?: unknown
 }
 
 export interface Lookup {
@@ -96,5 +86,6 @@ export interface DispatchedTour {
 export interface DispatchData {
   date: string
   tours: DispatchedTour[]
-  unassigned: unknown[]
+  /** L'Edge renvoie un NOMBRE (versions déployées) ; une liste reste acceptée. */
+  unassigned: number | unknown[]
 }

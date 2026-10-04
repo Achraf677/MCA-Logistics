@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Route, Clock, MapPin, AlertTriangle, ArrowUp, ArrowDown, PackageOpen } from 'lucide-react'
@@ -6,6 +6,7 @@ import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { Skeleton } from '../../shared/ui/Skeleton'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile, supabase } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
@@ -19,6 +20,7 @@ import {
   isGeocoded, canDispatch, groupToursWithStops, totalsAcrossTours,
   deplacerArret, planDeChargement,
   coursesEnRetard, fusionnerPool, estEnRetard, libelleRetard, dateDepuisParam,
+  affectationsSuggerees, affectationsEcrasees,
   type TourDeliveryAvecTournee,
 } from './tournees.logic'
 import { TourCard, formatDuration } from './TourCard'
@@ -64,6 +66,10 @@ export function Tournees() {
   const [ordrePool, setOrdrePool] = useState<string[]>([])
 
   const [loadingList, setLoadingList] = useState(false)
+  // Affectations reprises une fois par date (jamais par-dessus un choix fait à l'écran).
+  const affectationsReprisesPour = useRef<string | null>(null)
+  // Répartition en attente de confirmation (affectations existantes remplacées).
+  const [aConfirmer, setAConfirmer] = useState<{ mode: 'ordre' | 'optimiser'; noms: string[] } | null>(null)
   const [dispatching, setDispatching] = useState(false)
   const [unassignedCount, setUnassignedCount] = useState(0)
 
@@ -104,8 +110,19 @@ export function Tournees() {
     const poolList = fusionnerPool((poolRes.data as unknown as TourDelivery[]) ?? [], retards)
     setPool(poolList)
     setOrdrePool(poolList.map(d => d.id))
-    setAllDeliveries((allRes.data as unknown as TourDelivery[]) ?? [])
-    setTours((toursRes.data as unknown as Tour[]) ?? [])
+    const duJour = (allRes.data as unknown as TourDelivery[]) ?? []
+    const toursDuJour = (toursRes.data as unknown as Tour[]) ?? []
+    setAllDeliveries(duJour)
+    setTours(toursDuJour)
+
+    // Une seule saisie : chauffeur / véhicule déjà posés (tournées, Planning,
+    // fiche) cochés et pré-remplis à l'ouverture de la date.
+    if (affectationsReprisesPour.current !== date) {
+      affectationsReprisesPour.current = date
+      const sugg = affectationsSuggerees(toursDuJour, [...duJour, ...poolList])
+      setSelectedVehicles(new Set(sugg.vehicules))
+      setDriverByVehicle(sugg.chauffeurParVehicule)
+    }
 
     // Pré-coche les géocodées non encore rattachées (tour_id null). Les retards
     // ne sont JAMAIS pré-cochés : les répartir change leur date, ça se décide.
@@ -174,9 +191,16 @@ export function Tournees() {
     [depotGeocoded, depot.lat, depot.lng],
   )
 
+  // Seuls les véhicules ACTIFS cochés comptent : une affectation reprise peut
+  // viser un véhicule sorti de la flotte (jamais affiché, donc jamais envoyé).
+  const vehiculesCoches = useMemo(
+    () => [...selectedVehicles].filter(id => vehicles.some(v => v.id === id)),
+    [selectedVehicles, vehicles],
+  )
+
   const assignments: Assignment[] = useMemo(
-    () => [...selectedVehicles].map(vid => ({ vehicle_id: vid, driver_id: driverByVehicle[vid] || null })),
-    [selectedVehicles, driverByVehicle],
+    () => vehiculesCoches.map(vid => ({ vehicle_id: vid, driver_id: driverByVehicle[vid] || null })),
+    [vehiculesCoches, driverByVehicle],
   )
 
   /**
@@ -217,7 +241,7 @@ export function Tournees() {
   // « Répartir dans mon ordre » n'a de sens que sur UN véhicule : répartir sur
   // plusieurs, c'est exactement le travail de l'optimiseur, et un ordre unique
   // ne dit pas qui prend quoi.
-  const vehiculeUnique = selectedVehicles.size === 1 ? [...selectedVehicles][0] : null
+  const vehiculeUnique = vehiculesCoches.length === 1 ? vehiculesCoches[0] : null
   const ordreReady = vehiculeUnique != null && idsSelectionnesOrdonnes.length > 0
 
   const grouped = useMemo(() => groupToursWithStops(tours, allDeliveries), [tours, allDeliveries])
@@ -275,6 +299,21 @@ export function Tournees() {
    * seconde recalcule `stop_order` et effacerait le premier. Deux boutons, deux
    * promesses distinctes, plutôt qu'un bouton qui trahit l'une des deux.
    */
+  /** Avant de répartir : dire quelles affectations déjà posées vont être remplacées. */
+  const demander = (mode: 'ordre' | 'optimiser') => {
+    const cibles = mode === 'ordre' && vehiculeUnique
+      ? [{ vehicle_id: vehiculeUnique, driver_id: driverByVehicle[vehiculeUnique] || null }]
+      : assignments
+    const ecrasees = affectationsEcrasees(selectedDeliveries, cibles, mode)
+    if (ecrasees.length > 0) {
+      const noms = ecrasees.map(c => selectedDeliveries.find(d => d.id === c.id)?.clients?.name ?? '—')
+      setAConfirmer({ mode, noms })
+      return
+    }
+    if (mode === 'ordre') void handleRepartirDansMonOrdre()
+    else void handleDispatch()
+  }
+
   const handleRepartirDansMonOrdre = async () => {
     if (!companyId || !vehiculeUnique || !ordreReady) return
     setDispatching(true)
@@ -304,7 +343,8 @@ export function Tournees() {
       const idsRetard = selectedDeliveries.filter(d => estEnRetard(d, date)).map(d => d.id)
       const { error: replanErr } = await replanifierRetardsAffectes(idsRetard, date)
       if (replanErr) toast(`Tournée faite, mais date des courses en retard non mise à jour : ${replanErr.message}`, 'error')
-      const un = data.unassigned?.length ?? 0
+      // Nombre renvoyé par l'Edge (pas une liste) : sans ça, l'avertissement ne s'affichait jamais.
+      const un = typeof data.unassigned === 'number' ? data.unassigned : (data.unassigned?.length ?? 0)
       setUnassignedCount(un)
       toast(un > 0
         ? `Réparti — ${un} livraison(s) non réparties`
@@ -380,7 +420,7 @@ export function Tournees() {
         )}
 
         {/* Véhicules & chauffeurs (affectations) */}
-        <Section title={`Véhicules & chauffeurs (${selectedVehicles.size} sélectionné${selectedVehicles.size > 1 ? 's' : ''})`}>
+        <Section title={`Véhicules & chauffeurs (${vehiculesCoches.length} sélectionné${vehiculesCoches.length > 1 ? 's' : ''})`}>
           {vehicles.length === 0 ? (
             <p className="text-[var(--fs-sm)] text-[var(--text-muted)] py-2">Aucun véhicule actif.</p>
           ) : (
@@ -514,12 +554,12 @@ export function Tournees() {
           )}
 
           <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[var(--border)] mt-3">
-            <Button variant="primary" className="min-h-[44px]" onClick={handleDispatch}
+            <Button variant="primary" className="min-h-[44px]" onClick={() => demander('optimiser')}
               disabled={dispatching || !dispatchReady}
               title={!dispatchReady ? 'Coche au moins un véhicule et une livraison géocodée' : undefined}>
               {dispatching ? 'Répartition…' : 'Répartir & optimiser'}
             </Button>
-            <Button variant="secondary" className="min-h-[44px]" onClick={handleRepartirDansMonOrdre}
+            <Button variant="secondary" className="min-h-[44px]" onClick={() => demander('ordre')}
               disabled={dispatching || !ordreReady}
               title={!ordreReady
                 ? 'Coche UN seul véhicule et au moins une livraison'
@@ -591,6 +631,25 @@ export function Tournees() {
           </>
         )}
       </div>
+
+      <ConfirmDialog
+        open={aConfirmer != null}
+        title="Remplacer des affectations ?"
+        message={aConfirmer
+          ? `${aConfirmer.noms.length} course(s) ont déjà un autre chauffeur ou véhicule `
+            + `(${aConfirmer.noms.slice(0, 5).join(', ')}${aConfirmer.noms.length > 5 ? '…' : ''}). `
+            + 'La répartition va les remplacer par ceux de la tournée.'
+          : ''}
+        confirmLabel="Répartir quand même"
+        onConfirm={() => {
+          const mode = aConfirmer?.mode
+          setAConfirmer(null)
+          if (mode === 'ordre') void handleRepartirDansMonOrdre()
+          else if (mode === 'optimiser') void handleDispatch()
+        }}
+        onCancel={() => setAConfirmer(null)}
+        loading={dispatching}
+      />
     </Shell>
   )
 }

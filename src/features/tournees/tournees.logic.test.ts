@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  isGeocoded, eligibleDeliveries, estimateFuelCostCts, canOptimize,
+  isGeocoded, estimateFuelCostCts, affectationsSuggerees, affectationsEcrasees,
   googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
   isDelivered, deliveredProgress, hasUndeliveredStops,
   canStartTour, canFinishTour,
@@ -19,7 +19,7 @@ function mk(partial: Partial<TourDelivery>): TourDelivery {
     delivery_address: null,
     delivery_lat: null, delivery_lng: null,
     tour_id: null, stop_order: null, arrival_time: null,
-    delivered_at: null, clients: null,
+    delivered_at: null, clients: null, driver_id: null, vehicle_id: null,
     ...partial,
   }
 }
@@ -46,19 +46,6 @@ describe('isGeocoded', () => {
   })
 })
 
-describe('eligibleDeliveries', () => {
-  it('garde planifiee/en_cours/livree, écarte facturee/annulee', () => {
-    const list = [
-      mk({ id: 'a', statut: 'planifiee' }),
-      mk({ id: 'b', statut: 'en_cours' }),
-      mk({ id: 'c', statut: 'livree' }),
-      mk({ id: 'd', statut: 'facturee' }),
-      mk({ id: 'e', statut: 'annulee' }),
-    ]
-    expect(eligibleDeliveries(list).map(d => d.id)).toEqual(['a', 'b', 'c'])
-  })
-})
-
 describe('estimateFuelCostCts', () => {
   it('applique 0,15 €/km par défaut et arrondit au centime', () => {
     expect(estimateFuelCostCts(100)).toBe(1500)      // 100 km × 15 cts
@@ -70,15 +57,6 @@ describe('estimateFuelCostCts', () => {
   it('renvoie 0 pour km absent ou nul', () => {
     expect(estimateFuelCostCts(null)).toBe(0)
     expect(estimateFuelCostCts(0)).toBe(0)
-  })
-})
-
-describe('canOptimize', () => {
-  it('exige ≥ 2 arrêts géocodés ET un dépôt géocodé', () => {
-    expect(canOptimize(2, true)).toBe(true)
-    expect(canOptimize(1, true)).toBe(false)
-    expect(canOptimize(2, false)).toBe(false)
-    expect(canOptimize(0, false)).toBe(false)
   })
 })
 
@@ -387,5 +365,41 @@ describe('heures de tournée', () => {
     expect(aDejaDesHeures(lignes, 'm', '2026-10-02')).toBe(false)
     expect(aDejaDesHeures(lignes, 'n', '2026-10-01')).toBe(false)
     expect(aDejaDesHeures([], 'm', '2026-10-01')).toBe(false)
+  })
+})
+
+describe('affectations existantes (T1)', () => {
+  it('reprend les tournées, puis les courses affectées (chauffeur le plus fréquent)', () => {
+    const r = affectationsSuggerees(
+      [{ vehicle_id: 'v1', driver_id: 'pierre' }],
+      [
+        mk({ id: 'a', vehicle_id: 'v1', driver_id: 'paul' }),
+        mk({ id: 'b', vehicle_id: 'v2', driver_id: 'jean' }),
+        mk({ id: 'c', vehicle_id: 'v2', driver_id: 'marc' }),
+        mk({ id: 'd', vehicle_id: 'v2', driver_id: 'marc' }),
+        mk({ id: 'e', vehicle_id: null, driver_id: 'luc' }),
+      ],
+    )
+    expect(r.vehicules).toEqual(['v1', 'v2'])
+    expect(r.chauffeurParVehicule).toEqual({ v1: 'pierre', v2: 'marc' })
+  })
+  it('« mon ordre » : signale toute affectation différente', () => {
+    const c = [
+      mk({ id: 'a', vehicle_id: 'v1', driver_id: 'pierre' }),
+      mk({ id: 'b', vehicle_id: 'v2', driver_id: null }),
+      mk({ id: 'c', vehicle_id: null, driver_id: 'paul' }),
+      mk({ id: 'd' }),
+    ]
+    expect(affectationsEcrasees(c, [{ vehicle_id: 'v1', driver_id: 'pierre' }], 'ordre').map(x => x.id))
+      .toEqual(['b', 'c'])
+  })
+  it('« optimiser » : seulement hors des véhicules et chauffeurs choisis', () => {
+    const c = [
+      mk({ id: 'a', vehicle_id: 'v2', driver_id: 'paul' }),
+      mk({ id: 'b', vehicle_id: 'v3', driver_id: null }),
+      mk({ id: 'c', vehicle_id: null, driver_id: 'luc' }),
+    ]
+    const a = [{ vehicle_id: 'v1', driver_id: 'pierre' }, { vehicle_id: 'v2', driver_id: 'paul' }]
+    expect(affectationsEcrasees(c, a, 'optimiser').map(x => x.id)).toEqual(['b', 'c'])
   })
 })
