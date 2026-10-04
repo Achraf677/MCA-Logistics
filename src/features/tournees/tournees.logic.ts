@@ -319,3 +319,25 @@ export function affectationsEcrasees(
     (c.vehicle_id != null && !vehicules.has(c.vehicle_id))
     || (c.driver_id != null && !chauffeurs.has(c.driver_id)))
 }
+
+// ── Gérer une tournée (lot T2) ───────────────────────────────────────────────
+
+/**
+ * Ce qu'on écrit sur la tournée quand on en retire une course : distance,
+ * durée et tracé ne valent plus (un chiffre faux est pire qu'un tiret) ; une
+ * tournée optimisée redevient brouillon, une tournée en cours le reste.
+ */
+export function majTourneeApresRetrait(status: Tour['status']): Partial<Tour> {
+  const vide = { total_km: null, total_duration_min: null, geometry: null, optimized_at: null }
+  return status === 'en_cours' ? vide : { ...vide, status: 'brouillon' }
+}
+
+/** Une course se retire d'une tournée tant qu'elle n'est pas livrée et que la tournée n'est pas terminée. */
+export function peutRetirerArret(tourStatus: Tour['status'], s: Pick<TourDelivery, 'statut'>): boolean {
+  return tourStatus !== 'terminee' && !isDelivered(s)
+}
+
+/** Une tournée se supprime si elle n'a pas démarré et qu'aucun arrêt n'est livré. */
+export function peutSupprimerTournee(tourStatus: Tour['status'], stops: Pick<TourDelivery, 'statut'>[]): boolean {
+  return (tourStatus === 'brouillon' || tourStatus === 'optimisee') && !stops.some(isDelivered)
+}

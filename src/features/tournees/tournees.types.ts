@@ -65,6 +65,16 @@ export interface Lookup {
   label: string
 }
 
+/** Véhicule / chauffeur de l'écran, avec leurs échéances (contrôle T2). */
+export interface VehiculeTournee extends Lookup {
+  ct_expiry: string | null
+  insurance_expiry: string | null
+}
+export interface ChauffeurTournee extends Lookup {
+  licence_b_expiry: string | null
+  medical_visit_expiry: string | null
+}
+
 // ── Multi-véhicule (dispatch) ─────────────────────────────────────────────────
 
 /** Affectation d'un véhicule (+ chauffeur optionnel) pour un dispatch multi-tournées. */

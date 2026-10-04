@@ -26,7 +26,8 @@ import {
 import { TourCard, formatDuration } from './TourCard'
 import { colorForIndex } from './tours.palette'
 import type { OverviewTour } from './ToursOverviewMap'
-import type { Tour, TourDelivery, Assignment, Lookup } from './tournees.types'
+import type { Tour, TourDelivery, Assignment, VehiculeTournee, ChauffeurTournee } from './tournees.types'
+import { alertesAffectation } from '../../shared/lib/documentsAffectation'
 import { Field } from '../../shared/ui/Field'
 
 // Lazy-load : Leaflet hors bundle initial (chunk séparé).
@@ -41,8 +42,8 @@ export function Tournees() {
   const [params] = useSearchParams()
   const [date, setDate] = useState(() => dateDepuisParam(params.get('date')) ?? toLocalISO(new Date()))
 
-  const [vehicles, setVehicles] = useState<Lookup[]>([])
-  const [drivers, setDrivers]   = useState<Lookup[]>([])
+  const [vehicles, setVehicles] = useState<VehiculeTournee[]>([])
+  const [drivers, setDrivers]   = useState<ChauffeurTournee[]>([])
   const [depot, setDepot] = useState<{ lat: number | null; lng: number | null; name: string }>(
     { lat: null, lng: null, name: '' },
   )
@@ -69,7 +70,7 @@ export function Tournees() {
   // Affectations reprises une fois par date (jamais par-dessus un choix fait à l'écran).
   const affectationsReprisesPour = useRef<string | null>(null)
   // Répartition en attente de confirmation (affectations existantes remplacées).
-  const [aConfirmer, setAConfirmer] = useState<{ mode: 'ordre' | 'optimiser'; noms: string[] } | null>(null)
+  const [aConfirmer, setAConfirmer] = useState<{ mode: 'ordre' | 'optimiser'; lignes: string[] } | null>(null)
   const [dispatching, setDispatching] = useState(false)
   const [unassignedCount, setUnassignedCount] = useState(0)
 
@@ -84,9 +85,14 @@ export function Tournees() {
       if (data) setDepot({ lat: data.depot_lat, lng: data.depot_lng, name: data.name })
     })
     getActiveVehicles().then(({ data }) =>
-      setVehicles((data ?? []).map(v => ({ id: v.id, label: v.label }))))
+      setVehicles((data ?? []).map(v => ({
+        id: v.id, label: v.label, ct_expiry: v.ct_expiry, insurance_expiry: v.insurance_expiry,
+      }))))
     getActiveDrivers().then(({ data }) =>
-      setDrivers((data ?? []).map(d => ({ id: d.id, label: d.full_name }))))
+      setDrivers((data ?? []).map(d => ({
+        id: d.id, label: d.full_name,
+        licence_b_expiry: d.licence_b_expiry, medical_visit_expiry: d.medical_visit_expiry,
+      }))))
   }, [companyId])
 
   // ── Chargement : pool + livraisons + tournées de la date ─────────────────────
@@ -304,10 +310,25 @@ export function Tournees() {
     const cibles = mode === 'ordre' && vehiculeUnique
       ? [{ vehicle_id: vehiculeUnique, driver_id: driverByVehicle[vehiculeUnique] || null }]
       : assignments
+    const lignes: string[] = []
     const ecrasees = affectationsEcrasees(selectedDeliveries, cibles, mode)
     if (ecrasees.length > 0) {
       const noms = ecrasees.map(c => selectedDeliveries.find(d => d.id === c.id)?.clients?.name ?? '—')
-      setAConfirmer({ mode, noms })
+      lignes.push(`${noms.length} course(s) ont déjà un autre chauffeur ou véhicule `
+        + `(${noms.slice(0, 5).join(', ')}${noms.length > 5 ? '…' : ''}) : la répartition les remplace.`)
+    }
+    // Documents échus au jour de la tournée (même règle que le Planning).
+    for (const a of cibles) {
+      const v = vehicles.find(x => x.id === a.vehicle_id)
+      const c = drivers.find(x => x.id === a.driver_id)
+      lignes.push(...alertesAffectation(
+        c ? { ...c, full_name: c.label } : null,
+        v ?? null,
+        date,
+      ))
+    }
+    if (lignes.length > 0) {
+      setAConfirmer({ mode, lignes })
       return
     }
     if (mode === 'ordre') void handleRepartirDansMonOrdre()
@@ -496,6 +517,11 @@ export function Tournees() {
                             {d.statut === 'en_cours' && (
                               <span className="shrink-0"><Badge color="warning">En cours</Badge></span>
                             )}
+                            {d.tour_id && (
+                              <span className="shrink-0"><Badge color="info">
+                                Tournée {vehicleLabel(tours.find(t => t.id === d.tour_id)?.vehicle_id ?? null) ?? 'existante'}
+                              </Badge></span>
+                            )}
                           </span>
                           <span className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">{d.delivery_address ?? '—'}</span>
                           {d.pickup_address && (
@@ -634,12 +660,8 @@ export function Tournees() {
 
       <ConfirmDialog
         open={aConfirmer != null}
-        title="Remplacer des affectations ?"
-        message={aConfirmer
-          ? `${aConfirmer.noms.length} course(s) ont déjà un autre chauffeur ou véhicule `
-            + `(${aConfirmer.noms.slice(0, 5).join(', ')}${aConfirmer.noms.length > 5 ? '…' : ''}). `
-            + 'La répartition va les remplacer par ceux de la tournée.'
-          : ''}
+        title="Avant de répartir"
+        message={aConfirmer ? aConfirmer.lignes.join(' · ') : ''}
         confirmLabel="Répartir quand même"
         onConfirm={() => {
           const mode = aConfirmer?.mode

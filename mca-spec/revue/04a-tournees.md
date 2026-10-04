@@ -137,7 +137,7 @@
   envoyer des paires retrait → livraison à l'optimiseur.
 - **T5 — Écran** : 2 colonnes PC, tient sur un écran, rem, plus de `text-[var(--fs-*)]`.
 
-### Fait (lot T1, PR en cours, 04/10/2026)
+### Fait (lot T1, PR #49, déployé le 04/10/2026 : optimize-tours v20, optimize-tour v13 = 410 ; test : clé publique → 401)
 - ✔ `optimize-tours` : `exigerPermission(planning.tournees/update)`, société de l'appelant,
   véhicules et chauffeurs vérifiés (403 sinon), courses d'une autre société ignorées.
 - ✔ `optimize-tour` : remplacée par une version qui répond 410 (l'outil ne permet pas de
@@ -151,6 +151,16 @@
   (`affectationsEcrasees`).
 - ✔ Bug : l'avertissement « N non réparties » ne s'affichait jamais (l'Edge renvoie un nombre).
 - Décision : temps d'arrêt par défaut = **5 min par livraison** (pour T3, validé le 04/10/2026).
+
+### Fait (lot T2, PR en cours, 04/10/2026)
+- ✔ Retirer une course d'une tournée (picto croix, confirmé) : `retirerDeTournee` ; la tournée perd
+  km / durée / tracé et redevient brouillon (reste « en cours » si elle roule) ; le chauffeur reste
+  posé sur la course. Impossible si livrée ou tournée terminée (`peutRetirerArret`).
+- ✔ Supprimer une tournée non démarrée sans arrêt livré (`peutSupprimerTournee`) : ses courses
+  reviennent dans le pool d'abord (droit `planning.tournees/delete` côté base).
+- ✔ Pool : pastille « Tournée <véhicule> » sur une course déjà rattachée.
+- ✔ Documents échus (permis, visite médicale, CT, assurance) signalés avant de répartir : règle
+  sortie dans `shared/lib/documentsAffectation.ts` (Planning la réexporte, mêmes tests).
 
 ## 9. À tester (après chaque lot)
 - Chauffeur connecté : appel direct de `optimize-tours` → 403.

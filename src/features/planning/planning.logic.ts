@@ -1,6 +1,6 @@
 // Planning — logique pure (sans DB ni DOM), testée dans planning.logic.test.ts.
 
-import { computeEcheance } from '../../shared/lib/echeances'
+import { alertesAffectation } from '../../shared/lib/documentsAffectation'
 import { toLocalISO } from '../../shared/lib/dates'
 import { heureCourte, libelleCreneau } from '../livraisons/livraisons.logic'
 import type {
@@ -160,30 +160,8 @@ export function appliquerDeplacement(
 
 // ── Contrôle des documents ───────────────────────────────────────────────────
 
-const fr = (iso: string) => iso.slice(0, 10).split('-').reverse().join('/')
-
-/**
- * Documents échus au jour de la course : permis et visite médicale du
- * chauffeur, CT et assurance du véhicule. Liste vide = rien à signaler.
- */
-export function alertesAffectation(
-  chauffeur: ChauffeurPlanning | null | undefined,
-  vehicule: VehiculePlanning | null | undefined,
-  dateCourse: string,
-): string[] {
-  const jour = dateLocale(dateCourse)
-  const echu = (d: string | null) => computeEcheance(d, jour).status === 'overdue'
-  const alertes: string[] = []
-  if (chauffeur) {
-    if (echu(chauffeur.licence_b_expiry)) alertes.push(`${chauffeur.full_name} : permis échu le ${fr(chauffeur.licence_b_expiry!)}`)
-    if (echu(chauffeur.medical_visit_expiry)) alertes.push(`${chauffeur.full_name} : visite médicale échue le ${fr(chauffeur.medical_visit_expiry!)}`)
-  }
-  if (vehicule) {
-    if (echu(vehicule.ct_expiry)) alertes.push(`${vehicule.label} : contrôle technique échu le ${fr(vehicule.ct_expiry!)}`)
-    if (echu(vehicule.insurance_expiry)) alertes.push(`${vehicule.label} : assurance échue le ${fr(vehicule.insurance_expiry!)}`)
-  }
-  return alertes
-}
+// La règle vit dans shared/lib/documentsAffectation (partagée avec Tournées).
+export { alertesAffectation } from '../../shared/lib/documentsAffectation'
 
 /** Alertes de toutes les courses déplacées, sans doublon. */
 export function alertesDeplacement(
