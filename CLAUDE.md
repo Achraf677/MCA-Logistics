@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **03/10/2026** (U1 → U4 mergés et déployés ; prochain : U5).
+> Dernière mise à jour : **03/10/2026** (U1 → U5 mergés et déployés ; en cours : revue Planning / Tournées ; puis U6).
 
 ---
 
@@ -231,7 +231,15 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
     (affiché sur le devis). Migration `20261003120000_quotes_envoi_verrou` appliquée ; **mergé
     (PR #46) et déployé le 03/10/2026** (pennylane-quote v16, pennylane-invoice v37). Limite :
     chez Pennylane le devis n'est pas relié à la facture.
-  - **Prochain lot : U5** (dates Paris + paiements réels), puis U6 → U8.
+  - **U5 fait** : `_shared/dates.ts` (jour / année à Paris, testés) dans pennylane-invoice,
+    register-payment, payment-check, last-numbers ; payment-check : `paid_at` = date de la
+    transaction rapprochée chez Pennylane, avoir → `annulee` + trace `sync_error` ;
+    `_shared/totaux#totalTtcCourseCts` = miroir testé de `deliveryTotalTtcCts`. Sans migration.
+    **Mergé (PR #47) et déployé le 03/10/2026** (invoice v38, register-payment v3,
+    payment-check v21, last-numbers v3 ; paquets réduits aux parties de `_shared` importées).
+    Reste : saisir à la main la date réelle d'un paiement (le front pose « maintenant »).
+  - **Prochain lot Pennylane : U6** (mentions légales), puis U7, U8. Mis en pause le 03/10/2026
+    pour la revue Planning / Tournées demandée par l'utilisateur.
 - **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
   classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
 - **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·

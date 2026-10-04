@@ -199,7 +199,7 @@
 - Migration : oui si verrou en colonne. Edge : pennylane-quote (+ invoice selon choix).
 - Tests : double clic → 1 seul devis ; devis facturé non transformable.
 
-### U5 — Dates et paiements réels — codé (PR en cours ; Edge : invoice, register-payment, payment-check, last-numbers)
+### U5 — Dates et paiements réels — ✔ FAIT (PR #47, déployé le 03/10/2026 : invoice v38, register-payment v3, payment-check v21, last-numbers v3)
 - Réalisé : `_shared/dates.ts` (`jourParis`, `anneeParis`, `jourParisDe`, `horodatageDuJour`, testés)
   utilisé par pennylane-invoice (date de facture), register-payment (jour du paiement à Paris),
   last-numbers (année à Paris) et payment-check ; payment-check : `paid_at` = date de la

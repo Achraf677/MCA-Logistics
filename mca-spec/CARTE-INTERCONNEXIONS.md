@@ -41,7 +41,8 @@
   drive-migrate-to-storage ; alertes (sans justificatif).
 - **charges** : charges, fournisseurs, tresorerie, `shared` rapprochement / aRapprocher / alertes ;
   Edge pennylane-sync, lire-facture, lire-releve, suggest-categorie-ia.
-- **tours** : tournees, mescourses ; Edge optimize-tour(s).
+- **tours** : tournees, mescourses ; Edge optimize-tours (écrit aussi `deliveries.driver_id` /
+  `vehicle_id` des courses réparties). `optimize-tour` n'a plus d'appelant (revue 04a, 04/10/2026).
 - **work_hours** : heures (écrit tout), equipe ; tournees (lot P3 : après « Terminer la
   tournée », propose d'insérer la ligne du chauffeur — date, début, fin — si aucune ligne
   n'existe déjà pour ce chauffeur ce jour-là).
