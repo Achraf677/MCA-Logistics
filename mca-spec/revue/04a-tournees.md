@@ -152,6 +152,16 @@
 - ✔ Bug : l'avertissement « N non réparties » ne s'affichait jamais (l'Edge renvoie un nombre).
 - Décision : temps d'arrêt par défaut = **5 min par livraison** (pour T3, validé le 04/10/2026).
 
+### Fait (lot T2, PR en cours, 04/10/2026)
+- ✔ Retirer une course d'une tournée (picto croix, confirmé) : `retirerDeTournee` ; la tournée perd
+  km / durée / tracé et redevient brouillon (reste « en cours » si elle roule) ; le chauffeur reste
+  posé sur la course. Impossible si livrée ou tournée terminée (`peutRetirerArret`).
+- ✔ Supprimer une tournée non démarrée sans arrêt livré (`peutSupprimerTournee`) : ses courses
+  reviennent dans le pool d'abord (droit `planning.tournees/delete` côté base).
+- ✔ Pool : pastille « Tournée <véhicule> » sur une course déjà rattachée.
+- ✔ Documents échus (permis, visite médicale, CT, assurance) signalés avant de répartir : règle
+  sortie dans `shared/lib/documentsAffectation.ts` (Planning la réexporte, mêmes tests).
+
 ## 9. À tester (après chaque lot)
 - Chauffeur connecté : appel direct de `optimize-tours` → 403.
 - « Répartir dans mon ordre » avec un chauffeur → les courses apparaissent dans SES Mes courses.

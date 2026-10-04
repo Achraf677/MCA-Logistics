@@ -100,6 +100,9 @@
 - admin-users, admin-permissions : admins · drive-* : parametres
 - Droits des synchros (U1) : chaque Edge de synchro exige un droit (`_shared/auth#exigerPermission`)
   et le front ne lance que les synchros permises (`shared/lib/autoSync#DROIT_SYNC`, miroir).
+- Documents échus à l'affectation : `shared/lib/documentsAffectation#alertesAffectation` (Planning +
+  Tournées ; lit `team_members.licence_b_expiry / medical_visit_expiry`, `vehicles.ct_expiry /
+  insurance_expiry`).
 - Facturation d'une course : `shared/lib/facturation.queries` (`facturerCourse`, `facturerGroupe`)
   — appelée par livraisons (ré-export) ET devis (« Facturer directement »).
 - Front partagé : `shared/lib/prestations.ts` (types de prestation + `blocsPrestation`),

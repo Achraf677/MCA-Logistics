@@ -2,6 +2,7 @@ import { supabase } from '../../app/providers'
 import type { Tour, TourDelivery, TourStatus } from './tournees.types'
 import type { Assignment, DispatchData } from './tournees.types'
 import type { LigneHeuresTournee } from './tournees.logic'
+import { majTourneeApresRetrait } from './tournees.logic'
 
 // ── Société / dépôt ───────────────────────────────────────────────────────────
 // (feature étanche : on ne ré-importe pas les queries d'autres features)
@@ -19,7 +20,8 @@ export async function getCompanyDepot(companyId: string) {
 export async function getActiveVehicles() {
   return supabase
     .from('vehicles')
-    .select('id, label')
+    // Échéances lues pour le contrôle des documents à l'affectation (T2).
+    .select('id, label, ct_expiry, insurance_expiry')
     .eq('status', 'active')
     .order('label')
 }
@@ -27,7 +29,7 @@ export async function getActiveVehicles() {
 export async function getActiveDrivers() {
   return supabase
     .from('team_members')
-    .select('id, full_name')
+    .select('id, full_name, licence_b_expiry, medical_visit_expiry')
     .eq('active', true)
     .eq('role', 'chauffeur')
     .order('full_name')
@@ -115,6 +117,28 @@ export async function replanifierRetardsAffectes(ids: string[], date: string) {
     .update({ date })
     .in('id', ids)
     .not('tour_id', 'is', null)
+}
+
+/**
+ * Retire UNE course de sa tournée (lot T2) : elle revient dans le pool. Les
+ * chiffres de la tournée (km, durée, tracé) sont effacés : ils ne valent plus.
+ * Le chauffeur reste posé sur la course (elle lui reste attribuée).
+ */
+export async function retirerDeTournee(deliveryId: string, tour: Pick<Tour, 'id' | 'status'>) {
+  const { error } = await unassignDeliveries([deliveryId])
+  if (error) return { error }
+  const { error: majErr } = await supabase.from('tours').update(majTourneeApresRetrait(tour.status)).eq('id', tour.id)
+  return { error: majErr }
+}
+
+/** Supprime une tournée non démarrée : ses courses reviennent dans le pool d'abord. */
+export async function supprimerTournee(tourId: string) {
+  const { error } = await supabase
+    .from('deliveries')
+    .update({ tour_id: null, stop_order: null, arrival_time: null })
+    .eq('tour_id', tourId)
+  if (error) return { error }
+  return supabase.from('tours').delete().eq('id', tourId)
 }
 
 /** Détache des livraisons (tour_id, stop_order, arrival_time remis à null). No-op si vide. */

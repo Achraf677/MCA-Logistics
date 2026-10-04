@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, memo } from 'react'
 import type { ReactNode } from 'react'
-import { Route, Navigation2, ExternalLink, Check, Clock, Fuel, Truck, User, ArrowUp, ArrowDown, PackageOpen, ChevronDown } from 'lucide-react'
+import { Route, Navigation2, ExternalLink, Check, Clock, Fuel, Truck, User, ArrowUp, ArrowDown, PackageOpen, ChevronDown, X, Trash2 } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -9,7 +9,7 @@ import { formatMoney } from '../../shared/lib/money'
 import { poidsTotal, libellePoids } from '../../shared/lib/poids'
 // Machine d'états unique (réutilisée, pas dupliquée).
 import { canTransition } from '../livraisons/livraisons.logic'
-import { markDelivered, setTourStatus, updateTour, setRetraitAFaire, enregistrerOrdreArrets, getHeuresChauffeurJour } from './tournees.queries'
+import { markDelivered, setTourStatus, updateTour, setRetraitAFaire, enregistrerOrdreArrets, getHeuresChauffeurJour, retirerDeTournee, supprimerTournee } from './tournees.queries'
 import { DialogueHeuresTournee } from './DialogueHeuresTournee'
 import {
   estimateFuelCostCts, googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
@@ -17,6 +17,7 @@ import {
   type NavOptions,
   isDelivered, deliveredProgress, hasUndeliveredStops, canStartTour, canFinishTour,
   debutTourneeSuggere, heureLocale, aDejaDesHeures,
+  peutRetirerArret, peutSupprimerTournee,
 } from './tournees.logic'
 import type { Tour, TourDelivery, TourStatus } from './tournees.types'
 
@@ -57,6 +58,31 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
   // Replie par defaut : le plan sert au depot, avant de partir, pas pendant
   // la tournee. L'ouvrir d'office pousserait la liste des arrets hors ecran.
   const [planOuvert, setPlanOuvert] = useState(false)
+  // Retrait d'une course / suppression de la tournée (lot T2) : confirmés d'abord.
+  const [aRetirer, setARetirer] = useState<TourDelivery | null>(null)
+  const [confirmSuppr, setConfirmSuppr] = useState(false)
+
+  const doRetirer = async () => {
+    if (!aRetirer) return
+    setStopBusy(aRetirer.id)
+    const { error } = await retirerDeTournee(aRetirer.id, tour)
+    setStopBusy(null)
+    setARetirer(null)
+    if (error) { toast(error.message, 'error'); return }
+    toast('Course retirée : elle revient dans les livraisons à répartir')
+    await onChanged()
+  }
+
+  const doSupprimer = async () => {
+    setLifecycleBusy(true)
+    const { error } = await supprimerTournee(tour.id)
+    setLifecycleBusy(false)
+    setConfirmSuppr(false)
+    if (error) { toast(error.message, 'error'); return }
+    toast('Tournée supprimée : ses courses reviennent dans les livraisons à répartir')
+    await onChanged()
+  }
+
   // Proposition « enregistrer les heures du chauffeur » après Terminer.
   const [heures, setHeures] = useState<{ debut: string; fin: string } | null>(null)
 
@@ -242,6 +268,12 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
             <a href={routeUrl} target="_blank" rel="noopener noreferrer" className={linkBtnCls}>
               <ExternalLink size={15} /> Itinéraire complet
             </a>
+          )}
+          {peutSupprimerTournee(tour.status, stops) && (
+            <Button variant="ghost" className="min-h-[44px] ml-auto text-[var(--danger)]"
+              onClick={() => setConfirmSuppr(true)} disabled={lifecycleBusy}>
+              <Trash2 size={15} /> Supprimer la tournée
+            </Button>
           )}
         </div>
 
@@ -444,6 +476,15 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                       </a>
                     </>
                   )}
+                  {peutRetirerArret(tour.status, s) && (
+                    <button type="button" onClick={() => setARetirer(s)} disabled={stopBusy === s.id}
+                      aria-label="Retirer cette course de la tournée" title="Retirer de la tournée"
+                      className="p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
+                        hover:text-[var(--danger)] hover:bg-[var(--bg-card-hover)]
+                        disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                      <X size={15} />
+                    </button>
+                  )}
                   {!delivered && canTransition(s.statut, 'livree') && (
                     <Button variant="primary" className="min-h-[40px] ml-auto"
                       onClick={() => handleMarkDelivered(s)} disabled={stopBusy === s.id}>
@@ -467,6 +508,27 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
         confirmLabel="Terminer"
         onConfirm={doFinishTour}
         onCancel={() => setConfirmFinish(false)}
+        loading={lifecycleBusy}
+      />
+
+      <ConfirmDialog
+        open={aRetirer != null}
+        title="Retirer cette course de la tournée ?"
+        message={`${aRetirer?.clients?.name ?? 'Cette course'} revient dans les livraisons à répartir. `
+          + 'La distance et la durée de la tournée seront à recalculer.'}
+        confirmLabel="Retirer"
+        onConfirm={doRetirer}
+        onCancel={() => setARetirer(null)}
+        loading={stopBusy != null}
+      />
+
+      <ConfirmDialog
+        open={confirmSuppr}
+        title="Supprimer cette tournée ?"
+        message={`Ses ${stops.length} course(s) reviennent dans les livraisons à répartir. Rien n'est supprimé côté courses.`}
+        confirmLabel="Supprimer la tournée"
+        onConfirm={doSupprimer}
+        onCancel={() => setConfirmSuppr(false)}
         loading={lifecycleBusy}
       />
 

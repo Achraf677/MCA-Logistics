@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   isGeocoded, estimateFuelCostCts, affectationsSuggerees, affectationsEcrasees,
+  majTourneeApresRetrait, peutRetirerArret, peutSupprimerTournee,
   googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
   isDelivered, deliveredProgress, hasUndeliveredStops,
   canStartTour, canFinishTour,
@@ -401,5 +402,28 @@ describe('affectations existantes (T1)', () => {
     ]
     const a = [{ vehicle_id: 'v1', driver_id: 'pierre' }, { vehicle_id: 'v2', driver_id: 'paul' }]
     expect(affectationsEcrasees(c, a, 'optimiser').map(x => x.id)).toEqual(['b', 'c'])
+  })
+})
+
+describe('gérer une tournée (T2)', () => {
+  it('retrait : chiffres effacés ; optimisée → brouillon, en cours reste en cours', () => {
+    expect(majTourneeApresRetrait('optimisee')).toEqual({
+      total_km: null, total_duration_min: null, geometry: null, optimized_at: null, status: 'brouillon',
+    })
+    expect(majTourneeApresRetrait('en_cours')).toEqual({
+      total_km: null, total_duration_min: null, geometry: null, optimized_at: null,
+    })
+  })
+  it('retirer un arrêt : pas livré, tournée pas terminée', () => {
+    expect(peutRetirerArret('optimisee', { statut: 'planifiee' })).toBe(true)
+    expect(peutRetirerArret('en_cours', { statut: 'en_cours' })).toBe(true)
+    expect(peutRetirerArret('en_cours', { statut: 'livree' })).toBe(false)
+    expect(peutRetirerArret('terminee', { statut: 'planifiee' })).toBe(false)
+  })
+  it('supprimer : non démarrée, aucun arrêt livré', () => {
+    expect(peutSupprimerTournee('brouillon', [])).toBe(true)
+    expect(peutSupprimerTournee('optimisee', [{ statut: 'planifiee' }])).toBe(true)
+    expect(peutSupprimerTournee('optimisee', [{ statut: 'livree' }])).toBe(false)
+    expect(peutSupprimerTournee('en_cours', [])).toBe(false)
   })
 })
