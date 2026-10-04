@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **03/10/2026** (U1 → U5 mergés et déployés ; en cours : revue Planning / Tournées ; puis U6).
+> Dernière mise à jour : **03/10/2026** (U1 → U5 et Tournées T1 mergés et déployés ; en cours : Tournées T2 ; puis U6).
 
 ---
 
@@ -261,6 +261,11 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   Pas d'immobilisation ni de prorata km dans ces écrans.
 - Planning : changer chauffeur / jour détache la course de sa tournée (choix à confirmer) ;
   heure de début de tournée = suggestion tant que `tours.started_at` n'existe pas.
+- **Revue 04a Tournées** (`mca-spec/revue/04a-tournees.md`, 04/10/2026) : lots T1 → T5.
+  **T1 fait** (PR #49, déployé : optimize-tours v20 avec `exigerPermission(planning.tournees/
+  update)` + société de l'appelant ; optimize-tour v13 = 410) : « mon ordre » écrit
+  `driver_id` / `vehicle_id`, affectations reprises, confirmation avant écrasement. Décision :
+  temps d'arrêt **5 min par livraison** (T3). En cours : T2 (gérer une tournée).
 - Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)

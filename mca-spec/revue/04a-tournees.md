@@ -137,7 +137,7 @@
   envoyer des paires retrait → livraison à l'optimiseur.
 - **T5 — Écran** : 2 colonnes PC, tient sur un écran, rem, plus de `text-[var(--fs-*)]`.
 
-### Fait (lot T1, PR en cours, 04/10/2026)
+### Fait (lot T1, PR #49, déployé le 04/10/2026 : optimize-tours v20, optimize-tour v13 = 410 ; test : clé publique → 401)
 - ✔ `optimize-tours` : `exigerPermission(planning.tournees/update)`, société de l'appelant,
   véhicules et chauffeurs vérifiés (403 sinon), courses d'une autre société ignorées.
 - ✔ `optimize-tour` : remplacée par une version qui répond 410 (l'outil ne permet pas de
