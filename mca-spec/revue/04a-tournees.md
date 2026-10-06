@@ -169,7 +169,7 @@
 - Retirer une course d'une tournée → elle revient dans le pool, `stop_order` à null.
 - Course avec créneau 14 h – 16 h → heure prévue dans le créneau.
 
-### Fait (lots T3 + T4 + T5, PR en cours, 04/10/2026)
+### Fait (lots T3 + T4 + T5, PR #51, mergé et déployé le 06/10/2026 : migration `20261004090000_tours_depart_demarrage`, optimize-tours v21 ; test : heure invalide → 400, clé publique → 401)
 - ✔ T3 Départ du dépôt choisi à l'écran (défaut 08:00, repris d'une tournée déjà optimisée ce
   jour), envoyé à `optimize-tours` et gardé sur `tours.heure_depart` (migration
   `20261004090000_tours_depart_demarrage`).

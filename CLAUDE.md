@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **04/10/2026** (U1 → U5, Tournées T1 et T2 mergés ; en PR : Tournées T3-T5 ; puis U6).
+> Dernière mise à jour : **06/10/2026** (U1 → U5 et Tournées T1 → T5 mergés et déployés ; prochain : U6).
 
 ---
 
@@ -238,8 +238,8 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
     **Mergé (PR #47) et déployé le 03/10/2026** (invoice v38, register-payment v3,
     payment-check v21, last-numbers v3 ; paquets réduits aux parties de `_shared` importées).
     Reste : saisir à la main la date réelle d'un paiement (le front pose « maintenant »).
-  - **Prochain lot Pennylane : U6** (mentions légales), puis U7, U8. Mis en pause le 03/10/2026
-    pour la revue Planning / Tournées demandée par l'utilisateur.
+  - **Prochain lot Pennylane : U6** (mentions légales), puis U7, U8 (reprise après la revue
+    Tournées, terminée le 06/10/2026).
 - **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
   classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
 - **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·
@@ -259,18 +259,20 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - **Dépenses véhicule** (Carburant + Entretiens) : plan `mca-spec/tabs/30-depenses-vehicule.md`
   à lire AVANT d'y toucher ; étapes 0-1 faites, étape 2 (table unifiée) attend le « go ».
   Pas d'immobilisation ni de prorata km dans ces écrans.
-- Planning : changer chauffeur / jour détache la course de sa tournée (choix à confirmer) ;
-  heure de début de tournée = suggestion tant que `tours.started_at` n'existe pas.
+- Planning : changer chauffeur / jour détache la course de sa tournée (choix à confirmer).
 - **Revue 04a Tournées** (`mca-spec/revue/04a-tournees.md`, 04/10/2026) : lots T1 → T5.
   **T1 fait** (PR #49, déployé : optimize-tours v20 avec `exigerPermission(planning.tournees/
   update)` + société de l'appelant ; optimize-tour v13 = 410) : « mon ordre » écrit
   `driver_id` / `vehicle_id`, affectations reprises, confirmation avant écrasement. Décision :
   temps d'arrêt **5 min par livraison** (T3). **T2 fait** (PR #50, mergé, sans migration ni
   Edge) : retirer une course, supprimer une tournée, badge « Tournée X », documents échus.
-  **T3 + T4 + T5 en PR** : départ choisi (`tours.heure_depart`), 5 min / arrêt, créneaux,
-  urgent, `tours.started_at` (trigger), carburant inventé retiré, retraits en paires (géocodés
-  à la volée par optimize-tours, sans colonne), écran 2 colonnes. Migration
-  `20261004090000_tours_depart_demarrage` AVANT le merge et l'Edge optimize-tours.
+  **T3 + T4 + T5 faits** (PR #51, mergé et déployé le 06/10/2026 : migration
+  `20261004090000_tours_depart_demarrage` appliquée, optimize-tours v21) : départ choisi
+  (`tours.heure_depart`), 5 min / arrêt, créneaux, urgent, `tours.started_at` (trigger
+  `tours_started_at`), carburant inventé retiré, retraits en paires (géocodés à la volée par
+  optimize-tours, sans colonne), écran 2 colonnes. Revue Tournées terminée.
+  Piège MCP : `apply_migration` expire sur plusieurs instructions groupées ou un corps `$$` →
+  appliquer instruction par instruction (corps de fonction entre apostrophes).
 - Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)
