@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Route, Clock, MapPin, AlertTriangle, ArrowUp, ArrowDown, PackageOpen } from 'lucide-react'
+import { Route, Clock, MapPin, AlertTriangle, ArrowUp, ArrowDown, PackageOpen, ChevronDown } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
@@ -14,15 +14,17 @@ import {
   getCompanyDepot, getActiveVehicles, getActiveDrivers,
   fetchPlannableDeliveries, getDeliveriesForDate, fetchToursByDate,
   dispatchAndOptimize, repartirDansMonOrdre,
-  fetchLateDeliveries, replanifierRetardsAffectes,
+  fetchLateDeliveries, replanifierRetardsAffectes, setRetraitAFaire,
 } from './tournees.queries'
 import {
   isGeocoded, canDispatch, groupToursWithStops, totalsAcrossTours,
   deplacerArret, planDeChargement,
   coursesEnRetard, fusionnerPool, estEnRetard, libelleRetard, dateDepuisParam,
   affectationsSuggerees, affectationsEcrasees,
+  departInitial, urgentesDAbord, hhmm, DEPART_DEFAUT,
   type TourDeliveryAvecTournee,
 } from './tournees.logic'
+import { libelleCreneau } from '../livraisons/livraisons.logic'
 import { TourCard, formatDuration } from './TourCard'
 import { colorForIndex } from './tours.palette'
 import type { OverviewTour } from './ToursOverviewMap'
@@ -65,6 +67,9 @@ export function Tournees() {
    * L'ordre devient réel au moment de la répartition, pas avant.
    */
   const [ordrePool, setOrdrePool] = useState<string[]>([])
+  /** Départ du dépôt envoyé à l'optimiseur (lot T3). */
+  const [heureDepart, setHeureDepart] = useState(DEPART_DEFAUT)
+  const [planOuvert, setPlanOuvert] = useState(false)
 
   const [loadingList, setLoadingList] = useState(false)
   // Affectations reprises une fois par date (jamais par-dessus un choix fait à l'écran).
@@ -113,7 +118,8 @@ export function Tournees() {
     const retards = coursesEnRetard(
       (retardsRes.data as unknown as TourDeliveryAvecTournee[]) ?? [], aujourdHui,
     )
-    const poolList = fusionnerPool((poolRes.data as unknown as TourDelivery[]) ?? [], retards)
+    // Urgentes en tête : c'est l'ordre proposé pour « mon ordre ».
+    const poolList = urgentesDAbord(fusionnerPool((poolRes.data as unknown as TourDelivery[]) ?? [], retards))
     setPool(poolList)
     setOrdrePool(poolList.map(d => d.id))
     const duJour = (allRes.data as unknown as TourDelivery[]) ?? []
@@ -128,6 +134,7 @@ export function Tournees() {
       const sugg = affectationsSuggerees(toursDuJour, [...duJour, ...poolList])
       setSelectedVehicles(new Set(sugg.vehicules))
       setDriverByVehicle(sugg.chauffeurParVehicule)
+      setHeureDepart(departInitial(toursDuJour))
     }
 
     // Pré-coche les géocodées non encore rattachées (tour_id null). Les retards
@@ -242,7 +249,8 @@ export function Tournees() {
    */
   const chargement = useMemo(() => planDeChargement(selectedDeliveries), [selectedDeliveries])
 
-  const dispatchReady = canDispatch(assignments, selectedDeliveries)
+  const departValide = hhmm(heureDepart) !== ''
+  const dispatchReady = canDispatch(assignments, selectedDeliveries) && departValide
 
   // « Répartir dans mon ordre » n'a de sens que sur UN véhicule : répartir sur
   // plusieurs, c'est exactement le travail de l'optimiseur, et un ordre unique
@@ -345,7 +353,7 @@ export function Tournees() {
       driverId: driverByVehicle[vehiculeUnique] || null,
       depotLat: depot.lat,
       depotLng: depot.lng,
-      idsDansLOrdre: idsSelectionnesOrdonnes,
+      coursesDansLOrdre: selectedDeliveries,
     })
     setDispatching(false)
     if (error) { toast(error.message, 'error'); return }
@@ -358,7 +366,7 @@ export function Tournees() {
     if (!dispatchReady) return
     setDispatching(true)
     try {
-      const data = await dispatchAndOptimize(date, assignments, idsSelectionnesOrdonnes)
+      const data = await dispatchAndOptimize(date, hhmm(heureDepart), assignments, idsSelectionnesOrdonnes)
       // L'Edge n'écrit pas `date` : les retards effectivement répartis sont
       // replanifiés ici au jour de la tournée.
       const idsRetard = selectedDeliveries.filter(d => estEnRetard(d, date)).map(d => d.id)
@@ -370,6 +378,9 @@ export function Tournees() {
       toast(un > 0
         ? `Réparti — ${un} livraison(s) non réparties`
         : `${data.tours.length} tournée(s) réparties et optimisées`)
+      if ((data.retraits_non_localises ?? 0) > 0) {
+        toast(`${data.retraits_non_localises} adresse(s) de retrait introuvable(s) : ces courses partent du dépôt dans le calcul`, 'error')
+      }
       await loadBoard()
     } catch (e) {
       toast((e as Error).message, 'error')
@@ -378,284 +389,315 @@ export function Tournees() {
     }
   }
 
+  /** Retrait à faire, coché dès le pool (lot T4) : l'optimiseur en fait une paire retrait → livraison. */
+  const [retraitBusy, setRetraitBusy] = useState<string | null>(null)
+  const basculerRetraitPool = async (d: TourDelivery) => {
+    setRetraitBusy(d.id)
+    const { error } = await setRetraitAFaire(d.id, !d.retrait_a_faire)
+    setRetraitBusy(null)
+    if (error) { toast(error.message, 'error'); return }
+    // Mise à jour locale : un rechargement complet perdrait l'ordre choisi.
+    setPool(prev => prev.map(x => (x.id === d.id ? { ...x, retrait_a_faire: !d.retrait_a_faire } : x)))
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────────
   const poolCount = pool.length
+  const nonLocalisees = pool.filter(d => !isGeocoded(d)).length
 
   return (
     <Shell pageTitle="Tournées">
-      <div className="max-w-3xl space-y-6">
+      {/* PC : préparation à gauche, carte et tournées à droite ; chaque colonne
+          défile seule, l'écran tient sans faire défiler la page. Mobile : une colonne. */}
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] lg:h-[calc(100dvh-var(--topbar-h)-6.75rem)] [&>*]:min-w-0 lg:[&>*]:min-h-0">
 
-        {/* Date */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <Field label="Date">
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} />
-          </Field>
-        </div>
+        {/* ── Colonne préparation ─────────────────────────────────────────── */}
+        <div className="flex flex-col gap-3 lg:overflow-y-auto lg:pr-1">
 
-        {/* Dépôt non géocodé — bouton de rattrapage 1-clic (Edge geocode). */}
-        {!depotGeocoded && (
-          <div className="flex flex-wrap items-start gap-3 px-4 py-3 rounded-[var(--r-md)]
-            bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-[var(--fs-sm)]">
-            <AlertTriangle size={16} className="text-[var(--warning)] mt-0.5 shrink-0" />
-            <span className="text-[var(--text-muted)] flex-1 min-w-0">
-              Le dépôt et certaines livraisons ne sont pas encore localisés.
-            </span>
-            <Button
-              variant="secondary"
-              size="compact"
-              onClick={handleBackfillGeocode}
-              disabled={geocoding}
-            >
-              {geocoding ? 'Géocodage…' : 'Géocoder les adresses manquantes'}
-            </Button>
+          {/* Date + départ du dépôt */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Date">
+              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} />
+            </Field>
+            <Field label="Départ du dépôt">
+              <input type="time" value={heureDepart} onChange={e => setHeureDepart(e.target.value)}
+                className={inputCls} aria-invalid={!departValide} />
+            </Field>
           </div>
-        )}
+          <p className="text-xs text-[var(--text-muted)] -mt-1">
+            L'optimisation compte 5 min par arrêt et respecte les créneaux des courses ; les urgentes passent en priorité.
+          </p>
 
-        {/* Rapport du dernier backfill — adresses non résolues (à corriger manuellement). */}
-        {geocodeReport && (geocodeReport.echecs.length > 0 || geocodeReport.depotMissingAddress) && (
-          <div className="flex flex-col gap-2 px-4 py-3 rounded-[var(--r-md)]
-            bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-[var(--fs-sm)]">
-            <div className="flex items-start gap-2">
-              <AlertTriangle size={16} className="text-[var(--danger)] mt-0.5 shrink-0" />
-              <span className="text-[var(--text)] font-medium flex-1">
-                {geocodeReport.depotMissingAddress
-                  ? "Adresse du dépôt manquante — renseigne-la dans Paramètres puis relance le géocodage."
-                  : `${geocodeReport.echecs.length} adresse(s) non résolue(s) — corrige-les puis relance :`}
+          {/* Adresses non localisées — bouton de rattrapage 1-clic (Edge geocode). */}
+          {(!depotGeocoded || nonLocalisees > 0) && (
+            <div className="flex flex-wrap items-start gap-3 px-3 py-2.5 rounded-[var(--r-md)]
+              bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-sm">
+              <AlertTriangle size={16} className="text-[var(--warning)] mt-0.5 shrink-0" />
+              <span className="text-[var(--text-muted)] flex-1 min-w-0">
+                {!depotGeocoded
+                  ? 'Le dépôt n’est pas encore localisé.'
+                  : `${nonLocalisees} livraison(s) non localisée(s) : elles ne peuvent pas être optimisées.`}
               </span>
-              <button
-                type="button"
-                onClick={() => setGeocodeReport(null)}
-                className="text-[var(--text-muted)] hover:text-[var(--text)] text-[var(--fs-xs)]"
-              >
-                Fermer
-              </button>
+              <Button variant="secondary" size="compact" onClick={handleBackfillGeocode} disabled={geocoding}>
+                {geocoding ? 'Géocodage…' : 'Géocoder les adresses manquantes'}
+              </Button>
             </div>
-            {geocodeReport.echecs.length > 0 && (
-              <ul className="list-disc pl-8 text-[var(--fs-xs)] text-[var(--text-muted)] max-h-40 overflow-auto">
-                {geocodeReport.echecs.map((addr, i) => (
-                  <li key={i} className="font-mono">{addr}</li>
-                ))}
-              </ul>
-            )}
-          </div>
-        )}
-
-        {/* Véhicules & chauffeurs (affectations) */}
-        <Section title={`Véhicules & chauffeurs (${vehiculesCoches.length} sélectionné${vehiculesCoches.length > 1 ? 's' : ''})`}>
-          {vehicles.length === 0 ? (
-            <p className="text-[var(--fs-sm)] text-[var(--text-muted)] py-2">Aucun véhicule actif.</p>
-          ) : (
-            <ul className="flex flex-col divide-y divide-[var(--border)]">
-              {vehicles.map(v => {
-                const checked = selectedVehicles.has(v.id)
-                return (
-                  <li key={v.id} className="flex items-center gap-3 py-2.5">
-                    <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
-                      <input type="checkbox" checked={checked} onChange={() => toggleVehicle(v.id)}
-                        className="w-4 h-4 rounded accent-[var(--brand)] shrink-0" />
-                      <span className="text-[var(--fs-sm)] text-[var(--text)] truncate">{v.label}</span>
-                    </label>
-                    <select
-                      value={driverByVehicle[v.id] ?? ''}
-                      disabled={!checked}
-                      onChange={e => setDriverByVehicle(p => ({ ...p, [v.id]: e.target.value }))}
-                      className={`${inputCls} max-w-[180px]`}
-                    >
-                      <option value="">— Chauffeur —</option>
-                      {drivers.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-                    </select>
-                  </li>
-                )
-              })}
-            </ul>
           )}
-        </Section>
 
-        {/* Pool de livraisons à répartir */}
-        <Section title={`Livraisons à répartir (${poolCount})`}>
-          {loadingList ? (
-            <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-12" />)}</div>
-          ) : poolCount === 0 ? (
-            <p className="text-[var(--fs-sm)] text-[var(--text-muted)] py-4 text-center">
-              Aucune livraison planifiée pour cette date, ni en retard.
-            </p>
-          ) : (
-            <>
-              {/* L'ordre se lit ici, et il compte : c'est celui qui deviendra
-                  l'ordre des arrêts si tu répartis sans optimiser. */}
-              <p className="text-[var(--fs-xs)] text-[var(--text-muted)] pb-2">
-                Range-les dans l'ordre où tu veux LIVRER. Le plan de chargement en dessous
-                s'en déduit tout seul. Une course « En retard » cochée puis répartie passe
-                à la date de la tournée.
-              </p>
+          {/* Rapport du dernier backfill — adresses non résolues (à corriger manuellement). */}
+          {geocodeReport && (geocodeReport.echecs.length > 0 || geocodeReport.depotMissingAddress) && (
+            <div className="flex flex-col gap-2 px-3 py-2.5 rounded-[var(--r-md)]
+              bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-sm">
+              <div className="flex items-start gap-2">
+                <AlertTriangle size={16} className="text-[var(--danger)] mt-0.5 shrink-0" />
+                <span className="text-[var(--text)] font-medium flex-1">
+                  {geocodeReport.depotMissingAddress
+                    ? "Adresse du dépôt manquante — renseigne-la dans Paramètres puis relance le géocodage."
+                    : `${geocodeReport.echecs.length} adresse(s) non résolue(s) — corrige-les puis relance :`}
+                </span>
+                <button type="button" onClick={() => setGeocodeReport(null)}
+                  className="text-[var(--text-muted)] hover:text-[var(--text)] text-xs">
+                  Fermer
+                </button>
+              </div>
+              {geocodeReport.echecs.length > 0 && (
+                <ul className="list-disc pl-8 text-xs text-[var(--text-muted)] max-h-40 overflow-auto">
+                  {geocodeReport.echecs.map((addr, i) => (
+                    <li key={i} className="font-mono">{addr}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {/* Véhicules & chauffeurs (affectations) */}
+          <Section title={`Véhicules & chauffeurs (${vehiculesCoches.length} sélectionné${vehiculesCoches.length > 1 ? 's' : ''})`}>
+            {vehicles.length === 0 ? (
+              <p className="text-sm text-[var(--text-muted)] py-1">Aucun véhicule actif.</p>
+            ) : (
               <ul className="flex flex-col divide-y divide-[var(--border)]">
-                {poolOrdonne.map((d, i) => {
-                  const geo = isGeocoded(d)
-                  const coche = selectedIds.has(d.id)
-                  // Numéro de livraison : compté parmi les cochées seulement,
-                  // parce que seules celles-là partiront en tournée.
-                  const rang = coche ? idsSelectionnesOrdonnes.indexOf(d.id) + 1 : null
+                {vehicles.map(v => {
+                  const checked = selectedVehicles.has(v.id)
                   return (
-                    <li key={d.id} className="flex items-center gap-2 py-2.5">
-                      <label className={`flex items-center gap-3 flex-1 min-w-0 ${geo ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
-                        <input type="checkbox" checked={coche} disabled={!geo}
-                          onChange={() => toggleDelivery(d.id)}
+                    <li key={v.id} className="flex items-center gap-3 py-2">
+                      <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                        <input type="checkbox" checked={checked} onChange={() => toggleVehicle(v.id)}
                           className="w-4 h-4 rounded accent-[var(--brand)] shrink-0" />
-                        <span className={`flex items-center justify-center w-6 h-6 shrink-0 rounded-full text-[var(--fs-xs)] font-bold
-                          ${rang ? 'bg-[var(--brand-soft)] text-[var(--brand)]' : 'text-[var(--text-disabled)]'}`}>
-                          {rang ?? '–'}
-                        </span>
-                        <div className="flex flex-col min-w-0 flex-1">
-                          <span className="flex items-center gap-2 min-w-0">
-                            <span className="text-sm text-[var(--text)] truncate">
-                              {d.clients?.name ?? '—'}
-                              {d.description && <span className="text-[var(--text-muted)]"> · {d.description}</span>}
-                            </span>
-                            {estEnRetard(d, date) && (
-                              <span className="shrink-0"><Badge color="danger">{libelleRetard(d.date)}</Badge></span>
-                            )}
-                            {d.statut === 'en_cours' && (
-                              <span className="shrink-0"><Badge color="warning">En cours</Badge></span>
-                            )}
-                            {d.tour_id && (
-                              <span className="shrink-0"><Badge color="info">
-                                Tournée {vehicleLabel(tours.find(t => t.id === d.tour_id)?.vehicle_id ?? null) ?? 'existante'}
-                              </Badge></span>
-                            )}
-                          </span>
-                          <span className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">{d.delivery_address ?? '—'}</span>
-                          {d.pickup_address && (
-                            <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] truncate">
-                              retrait : {d.pickup_address}
-                            </span>
-                          )}
-                        </div>
-                        {geo
-                          ? <MapPin size={14} className="text-[var(--success)] shrink-0" />
-                          : <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] shrink-0">adresse à géocoder</span>}
+                        <span className="text-sm text-[var(--text)] truncate">{v.label}</span>
                       </label>
-                      <span className="flex items-center shrink-0">
-                        <button type="button" onClick={() => deplacerDansPool(d.id, 'haut')}
-                          disabled={i === 0} aria-label="Monter cette livraison"
-                          className={flecheCls}><ArrowUp size={15} /></button>
-                        <button type="button" onClick={() => deplacerDansPool(d.id, 'bas')}
-                          disabled={i === poolOrdonne.length - 1} aria-label="Descendre cette livraison"
-                          className={flecheCls}><ArrowDown size={15} /></button>
-                      </span>
+                      <select
+                        value={driverByVehicle[v.id] ?? ''}
+                        disabled={!checked}
+                        onChange={e => setDriverByVehicle(p => ({ ...p, [v.id]: e.target.value }))}
+                        className={`${inputCls} max-w-[13rem]`}
+                      >
+                        <option value="">— Chauffeur —</option>
+                        {drivers.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                      </select>
                     </li>
                   )
                 })}
               </ul>
+            )}
+          </Section>
 
-              {/* PLAN DE CHARGEMENT — l'inverse de l'ordre de livraison. */}
-              {chargement.length > 1 && (
-                <div className="mt-3 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] p-3">
-                  <div className="flex items-center gap-1.5 mb-1 text-[var(--brand)]">
-                    <PackageOpen size={15} />
-                    <span className="text-[var(--fs-xs)] font-semibold uppercase tracking-wide">
-                      Plan de chargement
-                    </span>
-                  </div>
-                  <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mb-2">
-                    Un fourgon se vide par une seule porte : ce qu'on charge en premier finit au
-                    fond. Donc le premier client livré se charge en dernier.
-                  </p>
-                  <ol className="flex flex-col gap-1">
-                    {chargement.map(({ item, rangChargement, rangLivraison }) => (
-                      <li key={item.id} className="flex items-center gap-2 text-[var(--fs-sm)]">
-                        <span className="flex items-center justify-center w-6 h-6 shrink-0 rounded-full
-                          bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--fs-xs)] font-bold text-[var(--text)]">
-                          {rangChargement}
+          {/* Pool de livraisons à répartir */}
+          <Section title={`Livraisons à répartir (${poolCount})`}>
+            {loadingList ? (
+              <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-12" />)}</div>
+            ) : poolCount === 0 ? (
+              <p className="text-sm text-[var(--text-muted)] py-3 text-center">
+                Aucune livraison planifiée pour cette date, ni en retard.
+              </p>
+            ) : (
+              <>
+                {/* L'ordre se lit ici, et il compte : c'est celui qui deviendra
+                    l'ordre des arrêts si tu répartis sans optimiser. */}
+                <p className="text-xs text-[var(--text-muted)] pb-2">
+                  Range-les dans l'ordre où tu veux LIVRER (urgentes en tête). Une course « En retard »
+                  cochée puis répartie passe à la date de la tournée.
+                </p>
+                <ul className="flex flex-col divide-y divide-[var(--border)]">
+                  {poolOrdonne.map((d, i) => {
+                    const geo = isGeocoded(d)
+                    const coche = selectedIds.has(d.id)
+                    // Numéro de livraison : compté parmi les cochées seulement,
+                    // parce que seules celles-là partiront en tournée.
+                    const rang = coche ? idsSelectionnesOrdonnes.indexOf(d.id) + 1 : null
+                    const creneau = libelleCreneau(d.creneau_livraison_debut, d.creneau_livraison_fin)
+                    return (
+                      <li key={d.id} className="flex flex-wrap items-start gap-2 py-2">
+                        <label className={`flex items-start gap-3 flex-1 min-w-0 ${geo ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+                          <input type="checkbox" checked={coche} disabled={!geo}
+                            onChange={() => toggleDelivery(d.id)}
+                            className="w-4 h-4 mt-1 rounded accent-[var(--brand)] shrink-0" />
+                          <span className={`flex items-center justify-center w-6 h-6 shrink-0 rounded-full text-xs font-bold
+                            ${rang ? 'bg-[var(--brand-soft)] text-[var(--brand)]' : 'text-[var(--text-disabled)]'}`}>
+                            {rang ?? '–'}
+                          </span>
+                          <div className="flex flex-col min-w-0 flex-1">
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                              <span className="text-sm text-[var(--text)] truncate max-w-full">
+                                {d.clients?.name ?? '—'}
+                                {d.description && <span className="text-[var(--text-muted)]"> · {d.description}</span>}
+                              </span>
+                              {d.urgent && <Badge color="danger">Urgent</Badge>}
+                              {creneau && <Badge color="muted">{creneau}</Badge>}
+                              {estEnRetard(d, date) && <Badge color="danger">{libelleRetard(d.date)}</Badge>}
+                              {d.statut === 'en_cours' && <Badge color="warning">En cours</Badge>}
+                              {d.tour_id && (
+                                <Badge color="info">
+                                  Tournée {vehicleLabel(tours.find(t => t.id === d.tour_id)?.vehicle_id ?? null) ?? 'existante'}
+                                </Badge>
+                              )}
+                            </span>
+                            <span className="text-xs text-[var(--text-muted)] truncate">{d.delivery_address ?? '—'}</span>
+                          </div>
+                          {geo
+                            ? <MapPin size={14} className="text-[var(--success)] shrink-0 mt-1" />
+                            : <span className="text-xs text-[var(--text-disabled)] shrink-0">à géocoder</span>}
+                        </label>
+                        <span className="flex items-center shrink-0">
+                          <button type="button" onClick={() => deplacerDansPool(d.id, 'haut')}
+                            disabled={i === 0} aria-label="Monter cette livraison"
+                            className={flecheCls}><ArrowUp size={15} /></button>
+                          <button type="button" onClick={() => deplacerDansPool(d.id, 'bas')}
+                            disabled={i === poolOrdonne.length - 1} aria-label="Descendre cette livraison"
+                            className={flecheCls}><ArrowDown size={15} /></button>
                         </span>
-                        <span className="text-[var(--text)] truncate flex-1 min-w-0">{item.clients?.name ?? '—'}</span>
-                        <span className="text-[var(--fs-xs)] text-[var(--text-muted)] shrink-0">
-                          livré n° {rangLivraison}
-                        </span>
+                        {/* Retrait : coché à la main (la marchandise peut déjà être au dépôt). */}
+                        {d.pickup_address && (
+                          <label className="basis-full flex items-center gap-2 pl-16 cursor-pointer -mt-1">
+                            <input type="checkbox" checked={d.retrait_a_faire}
+                              onChange={() => basculerRetraitPool(d)} disabled={retraitBusy === d.id}
+                              className="accent-[var(--brand)] w-4 h-4 cursor-pointer shrink-0" />
+                            <span className="text-xs text-[var(--text-muted)] truncate">
+                              Retrait à faire : {d.pickup_address}
+                              {libelleCreneau(d.creneau_retrait_debut, d.creneau_retrait_fin)
+                                && ` (${libelleCreneau(d.creneau_retrait_debut, d.creneau_retrait_fin)})`}
+                            </span>
+                          </label>
+                        )}
                       </li>
-                    ))}
-                  </ol>
-                </div>
-              )}
-            </>
-          )}
+                    )
+                  })}
+                </ul>
 
-          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[var(--border)] mt-3">
-            <Button variant="primary" className="min-h-[44px]" onClick={() => demander('optimiser')}
-              disabled={dispatching || !dispatchReady}
-              title={!dispatchReady ? 'Coche au moins un véhicule et une livraison géocodée' : undefined}>
-              {dispatching ? 'Répartition…' : 'Répartir & optimiser'}
-            </Button>
-            <Button variant="secondary" className="min-h-[44px]" onClick={() => demander('ordre')}
-              disabled={dispatching || !ordreReady}
-              title={!ordreReady
-                ? 'Coche UN seul véhicule et au moins une livraison'
-                : undefined}>
-              Répartir dans mon ordre
-            </Button>
-            <span className="text-[var(--fs-xs)] text-[var(--text-muted)] ml-auto">
-              {selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}
-            </span>
-          </div>
-
-          {/* Dire ce que chaque bouton fait à l'ordre, avant le clic et non après. */}
-          <p className="text-[var(--fs-xs)] text-[var(--text-disabled)] mt-2">
-            « Répartir & optimiser » recalcule l'ordre des arrêts (et donne distance et durée) :
-            ton ordre sera remplacé. « Répartir dans mon ordre » garde exactement cette liste,
-            sur un seul véhicule, sans calcul de distance.
-          </p>
-        </Section>
-
-        {/* Avertissement non réparties */}
-        {unassignedCount > 0 && (
-          <div className="flex items-start gap-2 px-4 py-3 rounded-[var(--r-md)]
-            bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-[var(--fs-sm)]">
-            <AlertTriangle size={16} className="text-[var(--warning)] mt-0.5 shrink-0" />
-            <span className="text-[var(--text-muted)]">
-              {unassignedCount} livraison(s) non réparties (capacité insuffisante ou non géocodées).
-            </span>
-          </div>
-        )}
-
-        {/* Récap + carte d'ensemble + tournées */}
-        {tours.length > 0 && (
-          <>
-            <div className="grid grid-cols-2 gap-3">
-              <Stat icon={<Route size={15} />} label="Distance cumulée"
-                value={`${totals.totalKm.toFixed(1)} km`} />
-              <Stat icon={<Clock size={15} />} label="Durée cumulée"
-                value={formatDuration(totals.totalMin)} />
-            </div>
-
-            {/* Carte d'ensemble — toutes les tournées, une couleur par véhicule */}
-            {hasMapData && (
-              <Suspense fallback={
-                <div className="h-[420px] w-full rounded-[var(--r-lg)] border border-[var(--border)]
-                  flex items-center justify-center text-[var(--fs-sm)] text-[var(--text-muted)]">
-                  Chargement de la carte…
-                </div>
-              }>
-                <ToursOverviewMap
-                  tours={overviewTours}
-                  depot={depotPourCarte}
-                />
-              </Suspense>
+                {/* PLAN DE CHARGEMENT — l'inverse de l'ordre de livraison. Repliable. */}
+                {chargement.length > 1 && (
+                  <div className="mt-2 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)]">
+                    <button type="button" onClick={() => setPlanOuvert(o => !o)} aria-expanded={planOuvert}
+                      className="w-full flex items-center gap-2 px-3 min-h-10 text-left">
+                      <PackageOpen size={15} className="text-[var(--brand)] shrink-0" />
+                      <span className="text-sm font-medium text-[var(--text)] flex-1">Plan de chargement</span>
+                      <ChevronDown size={16}
+                        className={`text-[var(--text-muted)] shrink-0 transition-transform ${planOuvert ? 'rotate-180' : ''}`} />
+                    </button>
+                    {planOuvert && (
+                      <div className="px-3 pb-3">
+                        <p className="text-xs text-[var(--text-muted)] mb-2">
+                          Un fourgon se vide par une seule porte : ce qu'on charge en premier finit au
+                          fond. Donc le premier client livré se charge en dernier.
+                        </p>
+                        <ol className="flex flex-col gap-1">
+                          {chargement.map(({ item, rangChargement, rangLivraison }) => (
+                            <li key={item.id} className="flex items-center gap-2 text-sm">
+                              <span className="flex items-center justify-center w-6 h-6 shrink-0 rounded-full
+                                bg-[var(--bg-elevated)] border border-[var(--border)] text-xs font-bold text-[var(--text)]">
+                                {rangChargement}
+                              </span>
+                              <span className="text-[var(--text)] truncate flex-1 min-w-0">{item.clients?.name ?? '—'}</span>
+                              <span className="text-xs text-[var(--text-muted)] shrink-0">livré n° {rangLivraison}</span>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
             )}
 
-            <div className="flex flex-col gap-4">
-              {grouped.map((g, i) => (
-                <TourCard
-                  key={g.tour.id}
-                  tour={g.tour}
-                  stops={g.stops}
-                  vehicleLabel={vehicleLabel(g.tour.vehicle_id)}
-                  driverLabel={driverLabel(g.tour.driver_id)}
-                  color={colorForIndex(i)}
-                  onChanged={loadBoard}
-                />
-              ))}
+            <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[var(--border)] mt-3">
+              <Button variant="primary" className="min-h-11" onClick={() => demander('optimiser')}
+                disabled={dispatching || !dispatchReady}
+                title={!departValide ? 'Heure de départ invalide'
+                  : !dispatchReady ? 'Coche au moins un véhicule et une livraison géocodée' : undefined}>
+                {dispatching ? 'Répartition…' : 'Répartir & optimiser'}
+              </Button>
+              <Button variant="secondary" className="min-h-11" onClick={() => demander('ordre')}
+                disabled={dispatching || !ordreReady}
+                title={!ordreReady ? 'Coche UN seul véhicule et au moins une livraison' : undefined}>
+                Répartir dans mon ordre
+              </Button>
+              <span className="text-xs text-[var(--text-muted)] ml-auto">
+                {selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}
+              </span>
             </div>
-          </>
-        )}
+
+            {/* Dire ce que chaque bouton fait à l'ordre, avant le clic et non après. */}
+            <p className="text-xs text-[var(--text-disabled)] mt-2">
+              « Répartir & optimiser » recalcule l'ordre des arrêts et les heures prévues : ton ordre
+              sera remplacé. « Répartir dans mon ordre » garde exactement cette liste, sur un seul
+              véhicule, sans calcul de distance ni d'heure.
+            </p>
+          </Section>
+        </div>
+
+        {/* ── Colonne tournées ────────────────────────────────────────────── */}
+        <div className="flex flex-col gap-3 lg:overflow-y-auto lg:pr-1">
+          {/* Avertissement non réparties */}
+          {unassignedCount > 0 && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-[var(--r-md)]
+              bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-sm">
+              <AlertTriangle size={16} className="text-[var(--warning)] mt-0.5 shrink-0" />
+              <span className="text-[var(--text-muted)]">
+                {unassignedCount} livraison(s) non réparties : capacité insuffisante, ou créneau
+                impossible à tenir avec ce départ.
+              </span>
+            </div>
+          )}
+
+          {tours.length === 0 ? (
+            <div className="glass rounded-[var(--r-xl)] p-6 text-center text-sm text-[var(--text-muted)]">
+              Aucune tournée ce jour. Coche les véhicules et les livraisons, puis répartis.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Stat icon={<Route size={15} />} label="Distance cumulée"
+                  value={`${totals.totalKm.toFixed(1)} km`} />
+                <Stat icon={<Clock size={15} />} label="Durée cumulée"
+                  value={formatDuration(totals.totalMin)} />
+              </div>
+
+              {/* Carte d'ensemble — toutes les tournées, une couleur par véhicule */}
+              {hasMapData && (
+                <Suspense fallback={
+                  <div className="h-[22rem] w-full rounded-[var(--r-lg)] border border-[var(--border)]
+                    flex items-center justify-center text-sm text-[var(--text-muted)]">
+                    Chargement de la carte…
+                  </div>
+                }>
+                  <ToursOverviewMap tours={overviewTours} depot={depotPourCarte} />
+                </Suspense>
+              )}
+
+              <div className="flex flex-col gap-3">
+                {grouped.map((g, i) => (
+                  <TourCard
+                    key={g.tour.id}
+                    tour={g.tour}
+                    stops={g.stops}
+                    vehicleLabel={vehicleLabel(g.tour.vehicle_id)}
+                    driverLabel={driverLabel(g.tour.driver_id)}
+                    color={colorForIndex(i)}
+                    onChanged={loadBoard}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       <ConfirmDialog
@@ -687,10 +729,10 @@ const flecheCls = `p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="glass rounded-[var(--r-xl)] overflow-hidden">
-      <div className="px-4 py-2.5 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
-        <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">{title}</span>
+      <div className="px-4 py-2 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
+        <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">{title}</span>
       </div>
-      <div className="p-4">{children}</div>
+      <div className="p-3">{children}</div>
     </div>
   )
 }
@@ -700,9 +742,9 @@ function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: s
     <div className="bg-[var(--bg-card)] rounded-[var(--r-md)] border border-[var(--border)] px-3 py-2.5">
       <div className="flex items-center gap-1.5 text-[var(--text-muted)] mb-1">
         {icon}
-        <span className="text-[var(--fs-xs)] uppercase tracking-wide">{label}</span>
+        <span className="text-xs uppercase tracking-wide">{label}</span>
       </div>
-      <p className="text-[var(--fs-lg)] font-semibold text-[var(--text)]">{value}</p>
+      <p className="text-lg font-semibold text-[var(--text)]">{value}</p>
     </div>
   )
 }

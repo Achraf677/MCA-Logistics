@@ -116,7 +116,7 @@ function ToursOverviewMap({ tours, depot }: Props) {
 
   return (
     <div className="rounded-[var(--r-lg)] overflow-hidden border border-[var(--border)]">
-      <div className="h-[420px] w-full">
+      <div className="h-[22rem] w-full">
         <MapContainer center={center} zoom={12} scrollWheelZoom style={{ height: '100%', width: '100%' }}>
           <TileLayer
             attribution="© OpenStreetMap contributors"
@@ -143,7 +143,7 @@ function ToursOverviewMap({ tours, depot }: Props) {
       {/* Légende : pastille couleur + véhicule + km/durée */}
       <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-3 py-2.5 border-t border-[var(--border)] bg-[var(--bg-elevated)]">
         {tours.map(t => (
-          <div key={t.id} className="flex items-center gap-1.5 text-[var(--fs-xs)]">
+          <div key={t.id} className="flex items-center gap-1.5 text-xs">
             <span className="w-3 h-3 rounded-full shrink-0" style={{ background: t.color }} />
             <span className="text-[var(--text)] font-medium">{t.vehicleLabel}</span>
             <span className="text-[var(--text-muted)] font-mono">
@@ -153,7 +153,7 @@ function ToursOverviewMap({ tours, depot }: Props) {
             </span>
           </div>
         ))}
-        <div className="flex items-center gap-1.5 text-[var(--fs-xs)]">
+        <div className="flex items-center gap-1.5 text-xs">
           <span className="w-3 h-3 rounded-full shrink-0" style={{ background: DEPOT_COLOR }} />
           <span className="text-[var(--text-muted)]">Dépôt</span>
         </div>

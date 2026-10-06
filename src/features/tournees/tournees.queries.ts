@@ -2,7 +2,7 @@ import { supabase } from '../../app/providers'
 import type { Tour, TourDelivery, TourStatus } from './tournees.types'
 import type { Assignment, DispatchData } from './tournees.types'
 import type { LigneHeuresTournee } from './tournees.logic'
-import { majTourneeApresRetrait } from './tournees.logic'
+import { majTourneeApresRetrait, positionsDansLOrdre } from './tournees.logic'
 
 // ── Société / dépôt ───────────────────────────────────────────────────────────
 // (feature étanche : on ne ré-importe pas les queries d'autres features)
@@ -38,7 +38,7 @@ export async function getActiveDrivers() {
 // ── Livraisons d'une journée (statuts éligibles) ──────────────────────────────
 
 const DELIVERY_COLS =
-  'id, date, statut, description, weight_kg, pickup_address, retrait_a_faire, delivery_address, delivery_lat, delivery_lng, tour_id, stop_order, arrival_time, delivered_at, driver_id, vehicle_id, clients!client_id(name)'
+  'id, date, statut, description, weight_kg, pickup_address, retrait_a_faire, delivery_address, delivery_lat, delivery_lng, tour_id, stop_order, pickup_order, arrival_time, delivered_at, driver_id, vehicle_id, urgent, creneau_retrait_debut, creneau_retrait_fin, creneau_livraison_debut, creneau_livraison_fin, clients!client_id(name)'
 
 export async function getDeliveriesForDate(companyId: string, date: string) {
   return supabase
@@ -194,11 +194,12 @@ async function readFunctionErrorMessage(error: unknown): Promise<string | null> 
  */
 export async function dispatchAndOptimize(
   date: string,
+  heureDepart: string,
   assignments: Assignment[],
   deliveryIds: string[],
 ): Promise<DispatchData> {
   const { data, error } = await supabase.functions.invoke('optimize-tours', {
-    body: { date, assignments, delivery_ids: deliveryIds },
+    body: { date, heure_depart: heureDepart, assignments, delivery_ids: deliveryIds },
   })
 
   if (error) {
@@ -284,7 +285,8 @@ export async function setRetraitAFaire(deliveryId: string, valeur: boolean) {
 /**
  * Enregistre l'ordre manuel des arrêts d'une tournée.
  *
- * `stop_order` part de 1 et suit l'ordre du tableau reçu. Les écritures
+ * Positions dans la séquence unique des arrêts (`positionsDansLOrdre`) : le
+ * retrait à faire juste avant sa livraison, comme Mes courses. Les écritures
  * partent en parallèle : sur une tournée de vingt arrêts, les faire en série
  * ferait attendre le chauffeur sans raison — aucune ne dépend d'une autre.
  *
@@ -293,10 +295,15 @@ export async function setRetraitAFaire(deliveryId: string, valeur: boolean) {
  * volontaire — sinon « optimiser » ne voudrait plus rien dire — et l'écran le
  * dit avant de lancer une optimisation.
  */
-export async function enregistrerOrdreArrets(idsDansLOrdre: string[]) {
+export async function enregistrerOrdreArrets(
+  coursesDansLOrdre: Array<Pick<TourDelivery, 'id' | 'retrait_a_faire' | 'pickup_address'>>,
+) {
   const resultats = await Promise.all(
-    idsDansLOrdre.map((id, i) =>
-      supabase.from('deliveries').update({ stop_order: i + 1 }).eq('id', id),
+    positionsDansLOrdre(coursesDansLOrdre).map(p =>
+      supabase.from('deliveries')
+        // Heure prévue effacée : elle valait pour l'ordre calculé, plus pour celui-ci.
+        .update({ stop_order: p.stop_order, pickup_order: p.pickup_order, arrival_time: null })
+        .eq('id', p.id),
     ),
   )
   const echec = resultats.find(r => r.error)
@@ -330,9 +337,10 @@ export async function repartirDansMonOrdre(params: {
   driverId: string | null
   depotLat: number | null
   depotLng: number | null
-  idsDansLOrdre: string[]
+  coursesDansLOrdre: Array<Pick<TourDelivery, 'id' | 'retrait_a_faire' | 'pickup_address'>>
 }): Promise<{ error: { message: string } | null }> {
-  const { companyId, date, vehicleId, driverId, depotLat, depotLng, idsDansLOrdre } = params
+  const { companyId, date, vehicleId, driverId, depotLat, depotLng, coursesDansLOrdre } = params
+  const idsDansLOrdre = coursesDansLOrdre.map(c => c.id)
   if (idsDansLOrdre.length === 0) return { error: { message: 'Aucune livraison sélectionnée' } }
 
   const { data: existante, error: findErr } = await findTour(companyId, date, vehicleId)
@@ -364,7 +372,7 @@ export async function repartirDansMonOrdre(params: {
   const { error: assignErr } = await assignDeliveries(idsDansLOrdre, tourId, date, { vehicleId, driverId })
   if (assignErr) return { error: assignErr }
 
-  const { error: ordreErr } = await enregistrerOrdreArrets(idsDansLOrdre)
+  const { error: ordreErr } = await enregistrerOrdreArrets(coursesDansLOrdre)
   if (ordreErr) return { error: ordreErr }
 
   const { error: majErr } = await updateTour(tourId, {

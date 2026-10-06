@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  isGeocoded, estimateFuelCostCts, affectationsSuggerees, affectationsEcrasees,
+  isGeocoded, affectationsSuggerees, affectationsEcrasees,
   majTourneeApresRetrait, peutRetirerArret, peutSupprimerTournee,
   googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
   isDelivered, deliveredProgress, hasUndeliveredStops,
@@ -9,6 +9,7 @@ import {
   googleMapsAdresseUrl, wazeAdresseUrl, deplacerArret,
   estEnRetard, coursesEnRetard, fusionnerPool, libelleRetard, dateDepuisParam,
   debutTourneeSuggere, construireLigneHeures, aDejaDesHeures, heureLocale,
+  departInitial, hhmm, horsCreneau, urgentesDAbord, positionsDansLOrdre,
   type TourDeliveryAvecTournee,
 } from './tournees.logic'
 import type { Tour, TourDelivery } from './tournees.types'
@@ -19,8 +20,10 @@ function mk(partial: Partial<TourDelivery>): TourDelivery {
     description: null, weight_kg: null, pickup_address: null, retrait_a_faire: false,
     delivery_address: null,
     delivery_lat: null, delivery_lng: null,
-    tour_id: null, stop_order: null, arrival_time: null,
+    tour_id: null, stop_order: null, pickup_order: null, arrival_time: null,
     delivered_at: null, clients: null, driver_id: null, vehicle_id: null,
+    urgent: null, creneau_retrait_debut: null, creneau_retrait_fin: null,
+    creneau_livraison_debut: null, creneau_livraison_fin: null,
     ...partial,
   }
 }
@@ -44,20 +47,6 @@ describe('isGeocoded', () => {
   it('faux si une coordonnée manque', () => {
     expect(isGeocoded(mk({ delivery_lat: 48.5, delivery_lng: null }))).toBe(false)
     expect(isGeocoded(mk({ delivery_lat: null, delivery_lng: 7.7 }))).toBe(false)
-  })
-})
-
-describe('estimateFuelCostCts', () => {
-  it('applique 0,15 €/km par défaut et arrondit au centime', () => {
-    expect(estimateFuelCostCts(100)).toBe(1500)      // 100 km × 15 cts
-    expect(estimateFuelCostCts(7.77)).toBe(117)      // 116.55 → 117 (arrondi)
-  })
-  it('accepte un coût/km personnalisé', () => {
-    expect(estimateFuelCostCts(100, 20)).toBe(2000)
-  })
-  it('renvoie 0 pour km absent ou nul', () => {
-    expect(estimateFuelCostCts(null)).toBe(0)
-    expect(estimateFuelCostCts(0)).toBe(0)
   })
 })
 
@@ -425,5 +414,44 @@ describe('gérer une tournée (T2)', () => {
     expect(peutSupprimerTournee('optimisee', [{ statut: 'planifiee' }])).toBe(true)
     expect(peutSupprimerTournee('optimisee', [{ statut: 'livree' }])).toBe(false)
     expect(peutSupprimerTournee('en_cours', [])).toBe(false)
+  })
+})
+
+describe('heures et ordre (lot T3 / T4)', () => {
+  it('hhmm : HH:MM depuis une heure Postgres', () => {
+    expect(hhmm('09:05:00')).toBe('09:05')
+    expect(hhmm('7:05')).toBe('')
+    expect(hhmm(null)).toBe('')
+  })
+  it('départ : celui d une tournée du jour, sinon 08:00', () => {
+    expect(departInitial([])).toBe('08:00')
+    expect(departInitial([{ heure_depart: null }, { heure_depart: '07:30:00' }])).toBe('07:30')
+  })
+  it('hors créneau : prévu après la fin du créneau seulement', () => {
+    expect(horsCreneau({ arrival_time: '12:10:00', creneau_livraison_fin: '12:00:00' })).toBe(true)
+    expect(horsCreneau({ arrival_time: '11:50:00', creneau_livraison_fin: '12:00:00' })).toBe(false)
+    expect(horsCreneau({ arrival_time: null, creneau_livraison_fin: '12:00:00' })).toBe(false)
+    expect(horsCreneau({ arrival_time: '12:10:00', creneau_livraison_fin: null })).toBe(false)
+  })
+  it('urgentes d abord, ordre stable', () => {
+    const l = [{ id: 'a', urgent: false }, { id: 'b', urgent: true }, { id: 'c', urgent: null }, { id: 'd', urgent: true }]
+    expect(urgentesDAbord(l).map(x => x.id)).toEqual(['b', 'd', 'a', 'c'])
+  })
+  it('positions : une séquence, le retrait à faire juste avant sa livraison', () => {
+    expect(positionsDansLOrdre([
+      { id: 'a', retrait_a_faire: false, pickup_address: 'X' },
+      { id: 'b', retrait_a_faire: true, pickup_address: 'Y' },
+      { id: 'c', retrait_a_faire: true, pickup_address: '  ' },
+    ])).toEqual([
+      { id: 'a', pickup_order: 1, stop_order: 1 },
+      { id: 'b', pickup_order: 2, stop_order: 3 },
+      { id: 'c', pickup_order: 4, stop_order: 4 },
+    ])
+  })
+  it('début suggéré : started_at d abord', () => {
+    const d = new Date(2026, 9, 4, 7, 12).toISOString()
+    const u = new Date(2026, 9, 4, 9, 0).toISOString()
+    expect(debutTourneeSuggere({ status: 'terminee', updated_at: u, date: '2026-10-04', started_at: d })).toBe('07:12')
+    expect(debutTourneeSuggere({ status: 'en_cours', updated_at: u, date: '2026-10-04', started_at: null })).toBe('09:00')
   })
 })

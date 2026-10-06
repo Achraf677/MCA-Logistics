@@ -43,6 +43,14 @@
   Edge pennylane-sync, lire-facture, lire-releve, suggest-categorie-ia.
 - **tours** : tournees, mescourses ; Edge optimize-tours (écrit aussi `deliveries.driver_id` /
   `vehicle_id` des courses réparties). `optimize-tour` n'a plus d'appelant (revue 04a, 04/10/2026).
+  Lots T3 / T4 : `tours.heure_depart` (écrit par optimize-tours, lu par TourCard et pour proposer
+  le départ), `tours.started_at` (posé par le trigger `tours_started_at` au passage `en_cours`,
+  que le démarrage vienne de Tournées ou de Mes courses ; lu pour les heures du chauffeur).
+  optimize-tours lit sur `deliveries` `urgent`, `creneau_*`, `retrait_a_faire`, `pickup_address`
+  (retrait géocodé à la volée via `_shared/geocode`, rien de stocké) et écrit `stop_order`,
+  `pickup_order` (séquence unique retraits + livraisons, celle de Mes courses), `arrival_time`.
+  Règles pures : `_shared/vroom.ts`. « Mon ordre » et les flèches de TourCard écrivent la même
+  séquence (`tournees.logic#positionsDansLOrdre`) et effacent `arrival_time`.
 - **work_hours** : heures (écrit tout), equipe ; tournees (lot P3 : après « Terminer la
   tournée », propose d'insérer la ligne du chauffeur — date, début, fin — si aucune ligne
   n'existe déjà pour ce chauffeur ce jour-là).

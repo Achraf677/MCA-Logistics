@@ -1,23 +1,22 @@
 import { useState, useEffect, useMemo, memo } from 'react'
 import type { ReactNode } from 'react'
-import { Route, Navigation2, ExternalLink, Check, Clock, Fuel, Truck, User, ArrowUp, ArrowDown, PackageOpen, ChevronDown, X, Trash2 } from 'lucide-react'
+import { Route, Navigation2, ExternalLink, Check, Clock, Timer, Truck, User, ArrowUp, ArrowDown, PackageOpen, ChevronDown, X, Trash2 } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
-import { formatMoney } from '../../shared/lib/money'
 import { poidsTotal, libellePoids } from '../../shared/lib/poids'
 // Machine d'états unique (réutilisée, pas dupliquée).
-import { canTransition } from '../livraisons/livraisons.logic'
+import { canTransition, libelleCreneau } from '../livraisons/livraisons.logic'
 import { markDelivered, setTourStatus, updateTour, setRetraitAFaire, enregistrerOrdreArrets, getHeuresChauffeurJour, retirerDeTournee, supprimerTournee } from './tournees.queries'
 import { DialogueHeuresTournee } from './DialogueHeuresTournee'
 import {
-  estimateFuelCostCts, googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
+  googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
   googleMapsAdresseUrl, wazeAdresseUrl, deplacerArret, planDeChargement,
   type NavOptions,
   isDelivered, deliveredProgress, hasUndeliveredStops, canStartTour, canFinishTour,
   debutTourneeSuggere, heureLocale, aDejaDesHeures,
-  peutRetirerArret, peutSupprimerTournee,
+  peutRetirerArret, peutSupprimerTournee, hhmm, horsCreneau,
 } from './tournees.logic'
 import type { Tour, TourDelivery, TourStatus } from './tournees.types'
 
@@ -101,7 +100,8 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
     // impossible : on ne va pas ecrire en base pour rien.
     if (nouveau.every((v, i) => v === ids[i])) return
     setOrdreBusy(true)
-    const { error } = await enregistrerOrdreArrets(nouveau)
+    const parId = new Map(stops.map(s => [s.id, s]))
+    const { error } = await enregistrerOrdreArrets(nouveau.map(i => parId.get(i)!).filter(Boolean))
     setOrdreBusy(false)
     if (error) { toast(error.message, 'error'); return }
     await onChanged()
@@ -116,7 +116,8 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
   }
 
   const depotGeocoded = tour.depot_lat != null && tour.depot_lng != null
-  const fuelCts = estimateFuelCostCts(tour.total_km)
+  const depart = hhmm(tour.heure_depart)
+  const demarree = tour.started_at ? heureLocale(tour.started_at) : null
   const progress = deliveredProgress(stops)
   const undeliveredCount = stops.filter(s => !isDelivered(s)).length
 
@@ -231,12 +232,12 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
           : <Truck size={16} className="text-[var(--brand)] shrink-0" />}
         <span className="font-display font-semibold text-[var(--text)]">{vehicleLabel ?? 'Véhicule'}</span>
         {driverLabel && (
-          <span className="inline-flex items-center gap-1 text-[var(--fs-sm)] text-[var(--text-muted)]">
+          <span className="inline-flex items-center gap-1 text-sm text-[var(--text-muted)]">
             <User size={13} /> {driverLabel}
           </span>
         )}
         <Badge color={STATUS_COLORS[tour.status]}>{STATUS_LABELS[tour.status]}</Badge>
-        <span className="ml-auto text-[var(--fs-sm)] font-medium text-[var(--text)]">
+        <span className="ml-auto text-sm font-medium text-[var(--text)]">
           {progress.delivered} / {progress.total} livrés
         </span>
       </div>
@@ -248,19 +249,19 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
             value={tour.total_km != null ? `${Number(tour.total_km).toFixed(1)} km` : '—'} />
           <Stat icon={<Clock size={15} />} label="Durée"
             value={tour.total_duration_min != null ? formatDuration(tour.total_duration_min) : '—'} />
-          <Stat icon={<Fuel size={15} />} label="Carburant (est.)"
-            value={fuelCts > 0 ? formatMoney(fuelCts) : '—'} />
+          <Stat icon={<Timer size={15} />} label={demarree ? 'Démarrée' : 'Départ prévu'}
+            value={demarree ?? (depart || '—')} />
         </div>
 
         {/* Cycle de vie + itinéraire complet */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
           {canStartTour(tour.status, stops.length) && (
-            <Button variant="primary" className="min-h-[44px]" onClick={handleStartTour} disabled={lifecycleBusy}>
+            <Button variant="primary" className="min-h-11" onClick={handleStartTour} disabled={lifecycleBusy}>
               {lifecycleBusy ? '…' : 'Démarrer la tournée'}
             </Button>
           )}
           {canFinishTour(tour.status) && (
-            <Button variant="primary" className="min-h-[44px]" onClick={handleFinishTour} disabled={lifecycleBusy}>
+            <Button variant="primary" className="min-h-11" onClick={handleFinishTour} disabled={lifecycleBusy}>
               {lifecycleBusy ? '…' : 'Terminer la tournée'}
             </Button>
           )}
@@ -270,7 +271,7 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
             </a>
           )}
           {peutSupprimerTournee(tour.status, stops) && (
-            <Button variant="ghost" className="min-h-[44px] ml-auto text-[var(--danger)]"
+            <Button variant="ghost" className="min-h-11 ml-auto text-[var(--danger)]"
               onClick={() => setConfirmSuppr(true)} disabled={lifecycleBusy}>
               <Trash2 size={15} /> Supprimer la tournée
             </Button>
@@ -288,9 +289,9 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
             disabled={peagesBusy}
             className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer"
           />
-          <span className="text-[var(--fs-sm)] text-[var(--text)]">
+          <span className="text-sm text-[var(--text)]">
             Éviter les péages
-            <span className="block text-[var(--fs-xs)] text-[var(--text-muted)]">
+            <span className="block text-xs text-[var(--text-muted)]">
               S'applique aux liens Maps et Waze de cette tournée, pas à l'ordre des arrêts.
             </span>
           </span>
@@ -298,7 +299,7 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
 
         {/* Deux limites qu'il vaut mieux lire ici que decouvrir en route. */}
         {stops.length > 1 && (
-          <p className="text-[var(--fs-xs)] text-[var(--text-disabled)]">
+          <p className="text-xs text-[var(--text-disabled)]">
             Les flèches imposent ton ordre. Relancer l'optimisation le remplacera.
             {stops.some(s => s.retrait_a_faire) && " Les retraits ne figurent pas dans « Itinéraire complet » : ils n'ont pas de coordonnées, seulement une adresse."}
           </p>
@@ -310,9 +311,9 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
           <div className="mt-3 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)]">
             <button type="button" onClick={() => setPlanOuvert(o => !o)}
               aria-expanded={planOuvert}
-              className="w-full flex items-center gap-2 px-3 min-h-[44px] text-left">
+              className="w-full flex items-center gap-2 px-3 min-h-11 text-left">
               <PackageOpen size={15} className="text-[var(--brand)] shrink-0" />
-              <span className="text-[var(--fs-sm)] font-medium text-[var(--text)] flex-1">
+              <span className="text-sm font-medium text-[var(--text)] flex-1">
                 Plan de chargement
               </span>
               <ChevronDown size={16}
@@ -320,21 +321,21 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
             </button>
             {planOuvert && (
               <div className="px-3 pb-3">
-                <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mb-2">
+                <p className="text-xs text-[var(--text-muted)] mb-2">
                   Un fourgon se vide par une seule porte : ce qu'on charge en premier finit au
                   fond. Le premier client livré se charge donc en dernier, contre la porte.
                 </p>
                 {/* Le poids total, la ou on decide si tout rentre. */}
                 {libellePoids(poidsTotal(stops)) && (
-                  <p className="text-[var(--fs-sm)] font-medium text-[var(--text)] mb-2">
+                  <p className="text-sm font-medium text-[var(--text)] mb-2">
                     Charge : {libellePoids(poidsTotal(stops))}
                   </p>
                 )}
                 <ol className="flex flex-col gap-1">
                   {planDeChargement(stops).map(({ item, rangChargement, rangLivraison }) => (
-                    <li key={item.id} className="flex items-start gap-2 text-[var(--fs-sm)]">
+                    <li key={item.id} className="flex items-start gap-2 text-sm">
                       <span className="flex items-center justify-center w-6 h-6 shrink-0 rounded-full
-                        bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--fs-xs)] font-bold text-[var(--text)]">
+                        bg-[var(--bg-elevated)] border border-[var(--border)] text-xs font-bold text-[var(--text)]">
                         {rangChargement}
                       </span>
                       {/* Ce qu'on charge d'abord, pour qui ensuite : devant la
@@ -344,16 +345,16 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                         <span className="block text-[var(--text)] break-words">
                           {item.description?.trim() || 'Sans description'}
                           {item.weight_kg != null && (
-                            <span className="ml-1.5 font-mono text-[var(--fs-xs)] text-[var(--brand)]">
+                            <span className="ml-1.5 font-mono text-xs text-[var(--brand)]">
                               {item.weight_kg} kg
                             </span>
                           )}
                         </span>
-                        <span className="block text-[var(--fs-xs)] text-[var(--text-muted)] truncate">
+                        <span className="block text-xs text-[var(--text-muted)] truncate">
                           {item.clients?.name ?? '—'}
                         </span>
                       </span>
-                      <span className="text-[var(--fs-xs)] text-[var(--text-muted)] shrink-0 pt-0.5">
+                      <span className="text-xs text-[var(--text-muted)] shrink-0 pt-0.5">
                         livré n° {rangLivraison}
                       </span>
                     </li>
@@ -385,8 +386,12 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                       <PackageOpen size={14} />
                     </span>
                     <div className="flex flex-col min-w-0 flex-1">
-                      <span className="text-[var(--fs-xs)] font-medium text-[var(--warning)]">Retrait</span>
-                      <span className="text-[var(--fs-sm)] text-[var(--text)] break-words">{s.pickup_address}</span>
+                      <span className="text-xs font-medium text-[var(--warning)]">
+                        Retrait{s.pickup_order != null && s.pickup_order !== s.stop_order ? ` · arrêt ${s.pickup_order}` : ''}
+                        {libelleCreneau(s.creneau_retrait_debut, s.creneau_retrait_fin)
+                          && ` · ${libelleCreneau(s.creneau_retrait_debut, s.creneau_retrait_fin)}`}
+                      </span>
+                      <span className="text-sm text-[var(--text)] break-words">{s.pickup_address}</span>
                       <div className="flex items-center gap-2 mt-1">
                         <a href={googleMapsAdresseUrl(s.pickup_address, navOpts)}
                           target="_blank" rel="noopener noreferrer" className={linkBtnCls}>
@@ -394,7 +399,7 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                         </a>
                         <a href={wazeAdresseUrl(s.pickup_address)}
                           target="_blank" rel="noopener noreferrer"
-                          className="text-[var(--fs-xs)] text-[var(--text-muted)] underline px-1 py-2">
+                          className="text-xs text-[var(--text-muted)] underline px-1 py-2">
                           Waze
                         </a>
                       </div>
@@ -403,23 +408,34 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                 )}
 
                 <div className="flex items-start gap-3">
-                  <span className={`flex items-center justify-center w-7 h-7 rounded-full shrink-0 text-[var(--fs-xs)] font-bold
+                  <span className={`flex items-center justify-center w-7 h-7 rounded-full shrink-0 text-xs font-bold
                     ${delivered ? 'bg-[var(--success)] text-white' : 'bg-[var(--brand-soft)] text-[var(--brand)]'}`}>
                     {delivered ? <Check size={15} /> : (s.stop_order ?? i + 1)}
                   </span>
                   <div className="flex flex-col min-w-0 flex-1">
-                    <span className={`text-[var(--fs-sm)] text-[var(--text)] truncate ${delivered ? 'line-through' : ''}`}>
+                    <span className={`text-sm text-[var(--text)] truncate ${delivered ? 'line-through' : ''}`}>
                       {s.clients?.name ?? '—'}
                     </span>
-                    <span className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">{s.delivery_address ?? '—'}</span>
+                    <span className="text-xs text-[var(--text-muted)] truncate">{s.delivery_address ?? '—'}</span>
                   </div>
                   <div className="flex flex-col items-end shrink-0">
                     {delivered && s.delivered_at && (
-                      <span className="font-mono text-[var(--fs-xs)] text-[var(--success)]">livré {formatTime(s.delivered_at)}</span>
+                      <span className="font-mono text-xs text-[var(--success)]">livré {formatTime(s.delivered_at)}</span>
                     )}
+                    {/* Heure PRÉVUE par l'optimiseur (départ choisi, 5 min par arrêt) :
+                        une estimation, dite comme telle. */}
                     {!delivered && s.arrival_time && (
-                      <span className="font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">~ {s.arrival_time.slice(0, 5)}</span>
+                      <span className={`font-mono text-xs ${horsCreneau(s) ? 'text-[var(--danger)]' : 'text-[var(--text-muted)]'}`}
+                        title={horsCreneau(s) ? 'Prévu après la fin du créneau' : 'Heure prévue (estimation)'}>
+                        prévu ~{hhmm(s.arrival_time)}
+                      </span>
                     )}
+                    {!delivered && libelleCreneau(s.creneau_livraison_debut, s.creneau_livraison_fin) && (
+                      <span className="text-xs text-[var(--text-muted)]">
+                        créneau {libelleCreneau(s.creneau_livraison_debut, s.creneau_livraison_fin)}
+                      </span>
+                    )}
+                    {s.urgent && !delivered && <Badge color="danger">Urgent</Badge>}
                   </div>
                 </div>
 
@@ -433,7 +449,7 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                       onChange={() => basculerRetrait(s)}
                       disabled={stopBusy === s.id}
                       className="accent-[var(--brand)] w-4 h-4 cursor-pointer" />
-                    <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                    <span className="text-xs text-[var(--text-muted)]">
                       Passer par l'adresse de retrait
                     </span>
                   </label>
@@ -471,7 +487,7 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                       </a>
                       <a href={wazeUrl(s.delivery_lat as number, s.delivery_lng as number, navOpts)}
                         target="_blank" rel="noopener noreferrer"
-                        className="text-[var(--fs-xs)] text-[var(--text-muted)] underline px-1 py-2">
+                        className="text-xs text-[var(--text-muted)] underline px-1 py-2">
                         Waze
                       </a>
                     </>
@@ -486,7 +502,7 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                     </button>
                   )}
                   {!delivered && canTransition(s.statut, 'livree') && (
-                    <Button variant="primary" className="min-h-[40px] ml-auto"
+                    <Button variant="primary" className="min-h-10 ml-auto"
                       onClick={() => handleMarkDelivered(s)} disabled={stopBusy === s.id}>
                       <Check size={15} /> {stopBusy === s.id ? '…' : 'Livré'}
                     </Button>
@@ -496,9 +512,11 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
             )
           })}
         </ol>
-        <p className="text-[var(--fs-xs)] text-[var(--text-disabled)] mt-3">
-          Estimation à 0,15 €/km.
-        </p>
+        {tour.total_duration_min != null && (
+          <p className="text-xs text-[var(--text-disabled)] mt-3">
+            Durée = conduite + 5 min par arrêt + attente des créneaux. Heures prévues : estimations.
+          </p>
+        )}
       </div>
 
       <ConfirmDialog
@@ -553,8 +571,8 @@ export const TourCard = memo(TourCardBase)
 
 // ── Helpers ─────────────────────────────────────────────────────────────────────
 
-const linkBtnCls = `inline-flex items-center gap-1.5 min-h-[40px] px-3 rounded-[var(--r-md)]
-  border border-[var(--border-soft)] text-[var(--text)] text-[var(--fs-sm)]
+const linkBtnCls = `inline-flex items-center gap-1.5 min-h-10 px-3 rounded-[var(--r-md)]
+  border border-[var(--border-soft)] text-[var(--text)] text-sm
   hover:bg-[var(--bg-card-hover)] transition-colors no-underline`
 
 export function formatDuration(min: number): string {
@@ -572,9 +590,9 @@ function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: s
     <div className="bg-[var(--bg-card)] rounded-[var(--r-md)] border border-[var(--border)] px-3 py-2.5">
       <div className="flex items-center gap-1.5 text-[var(--text-muted)] mb-1">
         {icon}
-        <span className="text-[var(--fs-xs)] uppercase tracking-wide">{label}</span>
+        <span className="text-xs uppercase tracking-wide">{label}</span>
       </div>
-      <p className="text-[var(--fs-lg)] font-semibold text-[var(--text)]">{value}</p>
+      <p className="text-lg font-semibold text-[var(--text)]">{value}</p>
     </div>
   )
 }

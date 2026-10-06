@@ -152,7 +152,7 @@
 - ✔ Bug : l'avertissement « N non réparties » ne s'affichait jamais (l'Edge renvoie un nombre).
 - Décision : temps d'arrêt par défaut = **5 min par livraison** (pour T3, validé le 04/10/2026).
 
-### Fait (lot T2, PR en cours, 04/10/2026)
+### Fait (lot T2, PR #50, mergé le 04/10/2026 ; sans migration ni Edge)
 - ✔ Retirer une course d'une tournée (picto croix, confirmé) : `retirerDeTournee` ; la tournée perd
   km / durée / tracé et redevient brouillon (reste « en cours » si elle roule) ; le chauffeur reste
   posé sur la course. Impossible si livrée ou tournée terminée (`peutRetirerArret`).
@@ -168,3 +168,28 @@
 - Course affectée à Pierre dans le Planning → menu Tournées pré-rempli « Pierre ».
 - Retirer une course d'une tournée → elle revient dans le pool, `stop_order` à null.
 - Course avec créneau 14 h – 16 h → heure prévue dans le créneau.
+
+### Fait (lots T3 + T4 + T5, PR en cours, 04/10/2026)
+- ✔ T3 Départ du dépôt choisi à l'écran (défaut 08:00, repris d'une tournée déjà optimisée ce
+  jour), envoyé à `optimize-tours` et gardé sur `tours.heure_depart` (migration
+  `20261004090000_tours_depart_demarrage`).
+- ✔ T3 5 min d'arrêt par livraison ET par retrait ; créneaux de la fiche en fenêtres horaires ;
+  urgentes prioritaires (et en tête du pool pour « mon ordre ») ; durée = conduite + arrêts +
+  attente ; « prévu ~HH:MM » en rouge si après la fin du créneau ; créneau et « Urgent » affichés.
+- ✔ T3 Carburant à 0,15 €/km retiré (chiffre inventé). Un vrai coût demande la consommation du
+  véhicule : la base ne l'a pas (pleins sans kilométrage). Remplacé par « Départ prévu » /
+  « Démarrée ».
+- ✔ T3 `tours.started_at` posé par la base au premier « Démarrer » (trigger, Tournées et Mes
+  courses) ; début des heures du chauffeur = cette heure.
+- ✔ T4 Retrait à faire (case dans le pool et sur la tournée) : l'Edge géocode l'adresse de retrait
+  au moment d'optimiser (BAN, rien de stocké → jamais une position périmée) et envoie une paire
+  retrait → livraison (`shipments`) ; retraits et livraisons dans une seule séquence
+  (`pickup_order` / `stop_order`, comme Mes courses). Retrait introuvable → signalé, la course
+  part du dépôt dans le calcul. Choix : pas de colonnes `pickup_lat/lng` (prévues au plan).
+- ✔ T5 Écran 2 colonnes PC (préparation | carte + tournées), chaque colonne défile seule, la
+  page tient sur un écran ; mobile une colonne ; plus de `text-[var(--fs-*)]` ni de px dans
+  l'onglet ; plan de chargement du pool repliable ; bandeau géocodage aussi quand des livraisons
+  ne sont pas localisées.
+- Limites : la position des retraits n'est pas sur la carte ni dans « Itinéraire complet »
+  (pas de coordonnées stockées) ; « urgent » = priorité (servi si tout ne rentre pas), pas
+  « en premier » : pour imposer une heure, mettre un créneau.
