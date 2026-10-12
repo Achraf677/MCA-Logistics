@@ -6,6 +6,40 @@
 
 ---
 
+## 0. Décisions du 12/10/2026 (font foi sur le reste du plan)
+- **Heures : retirées de l'app.** On achète le LIC papier (livret individuel de contrôle).
+  Le salarié ne saisit plus début / fin ; plus de contrôle SMIC dans l'app. L'onglet
+  Heures du bureau reste tel quel.
+- **Tarifs salarié** : un prix au colis **domicile** et un prix au colis **point relais**,
+  différents, dans la fiche Équipe du salarié.
+- **Client** : le prix client n'a rien à voir avec la paie (D FAST = 1 € HT / colis, sans
+  relais). Le relevé client déduit des journées reste une option (lot S4, plus tard).
+- **Retours** : non ; à la place **colis en litige + raison** (texte).
+- **Deux clients le même jour** : oui, c'est l'admin qui les fixe (le salarié ne choisit pas).
+- **Clôture du mois et validation** : l'admin. Une journée validée : le salarié ne peut plus
+  ni modifier ni supprimer. L'admin peut corriger, mais avec **double confirmation** et
+  **historique des modifications** (qui, quand, avant / après, pourquoi).
+- **Tickets de Mohammed** : tantôt carte société, tantôt note de frais : **il choisit** à
+  la saisie, dans un vrai espace propre pour lui (lot S3).
+- **Faille plus large que prévu** : en plus de `team_members` / `work_hours`, toute la
+  finance (charges, trésorerie, transactions Qonto, paiements, fournisseurs…) était lisible
+  par n'importe quel compte de la société → fermée pour le salarié en S0.
+
+### Lots révisés
+- **S0 — Sécurité + accès** (codé, PR #52) : policies restrictives « pas pour le salarié »
+  (migration `20261012090000_salarie_cloisonnement`), onglet « Accès au site » dans la fiche
+  Équipe (créer le compte avec mot de passe ou invitation, ou « C'est mon compte »), Edge
+  `admin-users` (`team_member_id`, `link_member`).
+- **S1 — Journée de colis** : client(s) du jour fixés par l'admin ; colis domicile, relais,
+  litige + raison ; photo de l'appareil ; envoi ; validation admin ; verrou ; historique.
+- **S2 — Rapports + clôture** : jour / mois / salarié ; € dus (domicile × tarif + relais ×
+  tarif) ; export CSV ; clôture du mois.
+- **S3 — Espace dépenses** (Mohammed et autres) : ticket → carte société ou note de frais
+  → Pennylane.
+- **S4 (option)** : relevé client déduit des journées validées.
+
+---
+
 ## 1. Ce qui existe aujourd'hui (vérifié le 12/10/2026)
 
 - **Mes courses** (`features/mescourses`, route `/mes-courses`) : écran terrain du chauffeur

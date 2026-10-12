@@ -276,8 +276,12 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - **Espace salarié** (demandé le 12/10/2026, PRIORITAIRE) : plan `mca-spec/PLAN-ESPACE-SALARIE.md`
   (heures saisies par le salarié, journée messagerie colis domicile / relais + photo,
   validation bureau avec verrou, rapports jour / mois / salarié, relevé client déduit, ticket →
-  Pennylane). Lots S0 → S5 ; questions ouvertes § 7 du plan. Faille relevée : `team_members` et
-  `work_hours` lisibles par toute la société (salaires) → S0 avant tout compte salarié.
+  Pennylane). Décisions du 12/10 en § 0 du plan (heures retirées : LIC papier ; tarifs domicile
+  et relais ; litige + raison ; validation admin + double confirmation + historique). Lots S0
+  → S4. **S0 codé (PR #52)** : cloisonnement du salarié (migration
+  `20261012090000_salarie_cloisonnement` : toute la finance était lisible par tout compte) +
+  « Accès au site » dans la fiche Équipe (Edge `admin-users`). Règle : toute nouvelle table
+  reçoit sa policy salarié.
 - U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;
   pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
 - Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.

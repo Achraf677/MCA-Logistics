@@ -74,3 +74,32 @@ export function masseSalariale(members: TeamMember[]): number {
 
 /** @deprecated use masseSalariale */
 export const getMasseSalariale = masseSalariale
+
+// ── Accès au site d'un salarié (lot S0, plan PLAN-ESPACE-SALARIE) ──────────────
+
+export type ModeAcces = 'mot_de_passe' | 'invitation'
+
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+/** Ce qui manque pour créer l'accès ; null si tout est bon. */
+export function erreurAcces(p: { email: string; mode: ModeAcces; motDePasse: string }): string | null {
+  if (!EMAIL.test(p.email.trim())) return 'E-mail invalide.'
+  if (p.mode === 'mot_de_passe' && p.motDePasse.length < 8) return 'Mot de passe : 8 caractères minimum.'
+  return null
+}
+
+const ERREURS_ACCES: Record<string, string> = {
+  fiche_deja_reliee: 'Cette fiche est déjà reliée à un compte.',
+  fiche_introuvable: 'Fiche introuvable.',
+  compte_deja_relie: 'Ce compte est déjà relié à une autre fiche.',
+  create_failed: 'Création refusée (e-mail déjà utilisé ?).',
+  invite_failed: "Invitation non envoyée (e-mail du serveur non configuré) : choisis « Mot de passe ».",
+  forbidden_president_only: 'Réservé au président.',
+  link_failed: 'Compte créé mais pas relié à la fiche : réessaie « C’est mon compte » ou contacte le support.',
+}
+
+/** Message lisible d'un code d'erreur de l'Edge admin-users. */
+export function libelleErreurAcces(code: string | null | undefined, detail?: string | null): string {
+  if (code && ERREURS_ACCES[code]) return ERREURS_ACCES[code]
+  return detail || code || 'Erreur inconnue.'
+}

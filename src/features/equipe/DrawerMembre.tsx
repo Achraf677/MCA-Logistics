@@ -10,6 +10,7 @@ import {
   CONTRACT_LABELS, ROLE_LABELS, memberEcheances, isDriverRole,
 } from './equipe.logic'
 import type { TeamMember, TeamMemberInsert } from './equipe.types'
+import { AccesSite } from './AccesSite'
 import type { EcheanceStatus } from '../../shared/lib/echeances'
 
 interface DrawerMembreProps {
@@ -69,7 +70,7 @@ function ValiditesBloc({ member }: { member: TeamMember }) {
   )
 }
 
-type Tab = 'detail' | 'validites' | 'historique' | 'documents'
+type Tab = 'detail' | 'validites' | 'historique' | 'documents' | 'acces'
 
 export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembreProps) {
   const { companyId } = useProfile()
@@ -166,6 +167,7 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
     ...(showValidites ? [{ key: 'validites' as Tab, label: 'Validités' }] : []),
     { key: 'historique', label: 'Historique' },
     { key: 'documents',  label: 'Documents' },
+    { key: 'acces',      label: 'Accès au site' },
   ]
 
   return (
@@ -330,6 +332,11 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
         {/* ── Tab : Documents ── */}
         {isEdit && tab === 'documents' && (
           <DocumentsPanel entityType="team_member" entityId={member?.id ?? null} />
+        )}
+
+        {/* ── Tab : Accès au site (lot S0) ── */}
+        {isEdit && tab === 'acces' && member && (
+          <AccesSite member={member} onChanged={() => { onSaved(); onClose() }} />
         )}
 
       <ConfirmDialog

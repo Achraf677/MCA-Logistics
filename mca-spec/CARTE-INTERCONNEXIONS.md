@@ -137,3 +137,16 @@
 - assistant → presque tout (hub IA).
 - planning, tournees, dashboard → livraisons (drawer, types, queries).
 - livraisons → parametres.
+
+## Cloisonnement du salarié (lot S0, 12/10/2026)
+- `public.est_salarie()` (profil au rôle `chauffeur`) et `public.ma_fiche_equipe()` (fiche
+  `team_members` reliée au compte) : utilisées par des policies RESTRICTIVES de lecture.
+- Le salarié ne lit que : ses courses / tournées, les clients de ses courses, sa fiche, ses
+  heures, ses documents (déposés par lui ou rattachés à ses courses) et leurs fichiers, ses
+  tickets ; plus véhicules et société. Rien en finance, flotte (pleins, entretiens,
+  inspections, incidents), fournisseurs, coûts.
+- `team_members.profile_id` : écrit par l'Edge `admin-users` (create / invite avec
+  `team_member_id`, `link_member`), depuis Équipe › fiche › « Accès au site ». Lu par les
+  policies `deliveries_select_own` / `tours_select_own` et par Mes courses.
+- Toute NOUVELLE table lisible par la société doit recevoir sa policy « pas pour le salarié »
+  (ou « les siennes ») dans la même migration.

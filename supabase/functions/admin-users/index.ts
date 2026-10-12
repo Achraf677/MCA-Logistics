@@ -6,6 +6,9 @@
 //  - set_active { user_id, active } ; delete { user_id }
 //  - set_password { user_id, password }  (l'admin definit le mot de passe)
 //  - send_reset { user_id, redirect_to? } (lien de reinitialisation par e-mail)
+//  - create / invite acceptent `team_member_id` : le compte est relié à la fiche Équipe
+//    (`team_members.profile_id`), sans quoi un salarié ne voit aucune course (lot S0).
+//  - link_member { user_id, team_member_id } : relie un compte existant à une fiche.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -35,6 +38,7 @@ Deno.serve(async (req: Request) => {
   const targetUserId = typeof body.user_id === 'string' ? body.user_id : '';
   // Origine reelle du site, fournie par le front pour `send_reset`.
   const redirectTo = typeof body.redirect_to === 'string' ? body.redirect_to : '';
+  const teamMemberId = typeof body.team_member_id === 'string' ? body.team_member_id : '';
 
   const url = Deno.env.get('SUPABASE_URL')!;
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -54,11 +58,30 @@ Deno.serve(async (req: Request) => {
   if (me.role !== 'president') return json({ ok: false, error: 'forbidden_president_only' }, 403);
   const companyId = me.company_id;
 
+  // Fiche Équipe à relier : de la société, et pas déjà reliée à un autre compte.
+  async function ficheLiable(): Promise<string | null> {
+    if (!teamMemberId) return null;
+    const { data: fiche } = await service
+      .from('team_members').select('id, company_id, profile_id').eq('id', teamMemberId).maybeSingle();
+    if (!fiche || fiche.company_id !== companyId) return 'fiche_introuvable';
+    if (fiche.profile_id) return 'fiche_deja_reliee';
+    return null;
+  }
+  async function relierFiche(userId: string): Promise<string | null> {
+    if (!teamMemberId) return null;
+    const { error } = await service
+      .from('team_members').update({ profile_id: userId })
+      .eq('id', teamMemberId).eq('company_id', companyId).is('profile_id', null);
+    return error ? error.message : null;
+  }
+
   // ---- CRÉER ----
   if (action === 'create') {
     if (!email || !password || !fullName) return json({ ok: false, error: 'email, password, full_name requis' }, 400);
     if (password.length < 8) return json({ ok: false, error: 'mot de passe trop court (min 8)' }, 400);
     const role = pickRole(body.role);
+    const refusFiche = await ficheLiable();
+    if (refusFiche) return json({ ok: false, error: refusFiche }, 400);
     const { data: created, error: cErr } = await service.auth.admin.createUser({
       email, password, email_confirm: true,
     });
@@ -71,13 +94,17 @@ Deno.serve(async (req: Request) => {
       await service.auth.admin.deleteUser(newId);
       return json({ ok: false, error: 'profile_failed', detail: pErr.message }, 500);
     }
-    return json({ ok: true, user_id: newId, role, mode: 'created' });
+    const lienErr = await relierFiche(newId);
+    if (lienErr) return json({ ok: false, error: 'link_failed', detail: lienErr, user_id: newId }, 500);
+    return json({ ok: true, user_id: newId, role, mode: 'created', linked: !!teamMemberId });
   }
 
   // ---- INVITER ----
   if (action === 'invite') {
     if (!email || !fullName) return json({ ok: false, error: 'email, full_name requis' }, 400);
     const role = pickRole(body.role);
+    const refusFiche = await ficheLiable();
+    if (refusFiche) return json({ ok: false, error: refusFiche }, 400);
     const { data: invited, error: iErr } = await service.auth.admin.inviteUserByEmail(email);
     if (iErr || !invited?.user) {
       return json({ ok: false, error: 'invite_failed', detail: iErr?.message ?? 'SMTP non configuré ?' }, 400);
@@ -87,7 +114,28 @@ Deno.serve(async (req: Request) => {
       id: newId, company_id: companyId, full_name: fullName, role, email, active: true,
     }, { onConflict: 'id' });
     if (pErr) return json({ ok: false, error: 'profile_failed', detail: pErr.message }, 500);
-    return json({ ok: true, user_id: newId, role, mode: 'invited' });
+    const lienErr = await relierFiche(newId);
+    if (lienErr) return json({ ok: false, error: 'link_failed', detail: lienErr, user_id: newId }, 500);
+    return json({ ok: true, user_id: newId, role, mode: 'invited', linked: !!teamMemberId });
+  }
+
+  // ---- RELIER UN COMPTE EXISTANT À UNE FICHE ÉQUIPE ----
+  // Avant la garde « pas sur soi-même » : relier SON compte à SA fiche (associé qui
+  // conduit) n'a rien de destructeur.
+  if (action === 'link_member') {
+    if (!targetUserId) return json({ ok: false, error: 'user_id requis' }, 400);
+    const { data: cible } = await service
+      .from('profiles').select('id, company_id').eq('id', targetUserId).maybeSingle();
+    if (!cible || cible.company_id !== companyId) return json({ ok: false, error: 'cible_introuvable' }, 404);
+    if (!teamMemberId) return json({ ok: false, error: 'team_member_id requis' }, 400);
+    const refusFiche = await ficheLiable();
+    if (refusFiche) return json({ ok: false, error: refusFiche }, 400);
+    const { data: dejaRelie } = await service
+      .from('team_members').select('id').eq('profile_id', targetUserId).limit(1).maybeSingle();
+    if (dejaRelie) return json({ ok: false, error: 'compte_deja_relie' }, 400);
+    const lienErr = await relierFiche(targetUserId);
+    if (lienErr) return json({ ok: false, error: 'link_failed', detail: lienErr }, 500);
+    return json({ ok: true, linked: true });
   }
 
   // Actions ciblant un compte existant.
