@@ -1,14 +1,17 @@
 // Edge `admin-users` — création et gestion des comptes. verify_jwt=true. RÉSERVÉ PRÉSIDENT.
 // Garde anti-lockout : aucune action destructrice sur soi-même ; 'president' non assignable via l'UI.
-//  - create  { email, password, full_name, role? }  (role par défaut 'admin')
+//  - create  { email, password, full_name, role? }  (role par défaut 'chauffeur' : moindre privilège)
 //  - invite  { email, full_name, role? }
 //  - set_role { user_id, role }   (role ∈ admin/dg/chauffeur/comptable)
-//  - set_active { user_id, active } ; delete { user_id }
+//  - set_active { user_id, active } : profil + bannissement Auth (coupe aussi la reconnexion)
+//  - delete { user_id } : délie la fiche Équipe, supprime le profil puis le compte
 //  - set_password { user_id, password }  (l'admin definit le mot de passe)
 //  - send_reset { user_id, redirect_to? } (lien de reinitialisation par e-mail)
 //  - create / invite acceptent `team_member_id` : le compte est relié à la fiche Équipe
 //    (`team_members.profile_id`), sans quoi un salarié ne voit aucune course (lot S0).
 //  - link_member { user_id, team_member_id } : relie un compte existant à une fiche.
+//  - get_access { team_member_id } → { ok, access: null | { user_id, email, role, active, last_sign_in_at } }
+//  - unlink_member { team_member_id } : délie la fiche de son compte (le compte reste).
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -21,7 +24,11 @@ const json = (b: unknown, s = 200) =>
 
 // Rôles assignables via l'interface (PAS 'president' : non créable/assignable ici).
 const ASSIGNABLE_ROLES = ['admin', 'dg', 'chauffeur', 'comptable'];
-const pickRole = (v: unknown) => (typeof v === 'string' && ASSIGNABLE_ROLES.includes(v) ? v : 'admin');
+// Rôle absent ou inconnu → 'chauffeur' (moindre privilège), jamais 'admin'.
+const pickRole = (v: unknown) => (typeof v === 'string' && ASSIGNABLE_ROLES.includes(v) ? v : 'chauffeur');
+// Désactiver = bannir côté Auth (~100 ans) : plus de connexion ni de
+// renouvellement de session. 'none' lève le bannissement.
+const BAN_DESACTIVE = '876000h';
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
@@ -53,8 +60,9 @@ Deno.serve(async (req: Request) => {
 
   const service = createClient(url, svcKey, { auth: { persistSession: false } });
   const { data: me } = await service
-    .from('profiles').select('company_id, role').eq('id', user.id).single();
+    .from('profiles').select('company_id, role, active').eq('id', user.id).single();
   if (!me?.company_id) return json({ ok: false, error: 'société introuvable' }, 400);
+  if (me.active === false) return json({ ok: false, error: 'compte_desactive' }, 403);
   if (me.role !== 'president') return json({ ok: false, error: 'forbidden_president_only' }, 403);
   const companyId = me.company_id;
 
@@ -67,13 +75,21 @@ Deno.serve(async (req: Request) => {
     if (fiche.profile_id) return 'fiche_deja_reliee';
     return null;
   }
+  // Écriture conditionnelle (`profile_id is null`) : si une autre liaison est
+  // passée entre `ficheLiable` et ici, aucune ligne n'est modifiée → refus.
   async function relierFiche(userId: string): Promise<string | null> {
     if (!teamMemberId) return null;
-    const { error } = await service
+    const { data: lignes, error } = await service
       .from('team_members').update({ profile_id: userId })
-      .eq('id', teamMemberId).eq('company_id', companyId).is('profile_id', null);
-    return error ? error.message : null;
+      .eq('id', teamMemberId).eq('company_id', companyId).is('profile_id', null)
+      .select('id');
+    if (error) return error.message;
+    if (!lignes || lignes.length === 0) return 'fiche_deja_reliee';
+    return null;
   }
+  const erreurLien = (lienErr: string) => (lienErr === 'fiche_deja_reliee'
+    ? json({ ok: false, error: 'fiche_deja_reliee' }, 400)
+    : json({ ok: false, error: 'link_failed', detail: lienErr }, 500));
 
   // ---- CRÉER ----
   if (action === 'create') {
@@ -95,7 +111,12 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: 'profile_failed', detail: pErr.message }, 500);
     }
     const lienErr = await relierFiche(newId);
-    if (lienErr) return json({ ok: false, error: 'link_failed', detail: lienErr, user_id: newId }, 500);
+    if (lienErr) {
+      // Pas de compte orphelin (créé mais relié à rien) : on le retire, le
+      // profil part avec (profiles.id → auth.users ON DELETE CASCADE).
+      await service.auth.admin.deleteUser(newId);
+      return erreurLien(lienErr);
+    }
     return json({ ok: true, user_id: newId, role, mode: 'created', linked: !!teamMemberId });
   }
 
@@ -110,12 +131,27 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: 'invite_failed', detail: iErr?.message ?? 'SMTP non configuré ?' }, 400);
     }
     const newId = invited.user.id;
+    // Une ré-invitation renvoie un compte qui existait déjà : celui-là, on ne
+    // le supprime jamais en cas d'échec (seul un compte né de CET appel l'est).
+    const { data: profilExistant } = await service
+      .from('profiles').select('id, company_id, role').eq('id', newId).maybeSingle();
+    // Jamais « aspirer » le compte d'une autre société ni réécrire un président.
+    if (profilExistant && (profilExistant.company_id !== companyId || profilExistant.role === 'president')) {
+      return json({ ok: false, error: 'compte_existant_non_modifiable' }, 400);
+    }
+    const annulerCompte = async () => { if (!profilExistant) await service.auth.admin.deleteUser(newId); };
     const { error: pErr } = await service.from('profiles').upsert({
       id: newId, company_id: companyId, full_name: fullName, role, email, active: true,
     }, { onConflict: 'id' });
-    if (pErr) return json({ ok: false, error: 'profile_failed', detail: pErr.message }, 500);
+    if (pErr) {
+      await annulerCompte();
+      return json({ ok: false, error: 'profile_failed', detail: pErr.message }, 500);
+    }
     const lienErr = await relierFiche(newId);
-    if (lienErr) return json({ ok: false, error: 'link_failed', detail: lienErr, user_id: newId }, 500);
+    if (lienErr) {
+      await annulerCompte();
+      return erreurLien(lienErr);
+    }
     return json({ ok: true, user_id: newId, role, mode: 'invited', linked: !!teamMemberId });
   }
 
@@ -134,8 +170,52 @@ Deno.serve(async (req: Request) => {
       .from('team_members').select('id').eq('profile_id', targetUserId).limit(1).maybeSingle();
     if (dejaRelie) return json({ ok: false, error: 'compte_deja_relie' }, 400);
     const lienErr = await relierFiche(targetUserId);
-    if (lienErr) return json({ ok: false, error: 'link_failed', detail: lienErr }, 500);
+    if (lienErr) return erreurLien(lienErr);
     return json({ ok: true, linked: true });
+  }
+
+  // ---- ACCÈS AU SITE D'UNE FICHE ÉQUIPE (lecture) ----
+  // Lecture seule : permise aussi sur sa propre fiche.
+  if (action === 'get_access') {
+    if (!teamMemberId) return json({ ok: false, error: 'team_member_id requis' }, 400);
+    const { data: fiche } = await service
+      .from('team_members').select('id, company_id, profile_id').eq('id', teamMemberId).maybeSingle();
+    if (!fiche || fiche.company_id !== companyId) return json({ ok: false, error: 'fiche_introuvable' }, 404);
+    if (!fiche.profile_id) return json({ ok: true, access: null });
+    const { data: prof } = await service
+      .from('profiles').select('id, role, active, email, company_id').eq('id', fiche.profile_id).maybeSingle();
+    if (!prof || prof.company_id !== companyId) return json({ ok: true, access: null });
+    const { data: authUser } = await service.auth.admin.getUserById(prof.id);
+    return json({
+      ok: true,
+      access: {
+        user_id: prof.id,
+        email: authUser?.user?.email ?? prof.email ?? null,
+        role: prof.role ?? null,
+        active: prof.active !== false,
+        last_sign_in_at: authUser?.user?.last_sign_in_at ?? null,
+      },
+    });
+  }
+
+  // ---- DÉLIER UNE FICHE ÉQUIPE DE SON COMPTE ----
+  // Le compte reste (à désactiver ou supprimer à part) ; il ne voit plus aucune
+  // course. Jamais sur sa propre fiche ni sur celle d'un président.
+  if (action === 'unlink_member') {
+    if (!teamMemberId) return json({ ok: false, error: 'team_member_id requis' }, 400);
+    const { data: fiche } = await service
+      .from('team_members').select('id, company_id, profile_id').eq('id', teamMemberId).maybeSingle();
+    if (!fiche || fiche.company_id !== companyId) return json({ ok: false, error: 'fiche_introuvable' }, 404);
+    if (!fiche.profile_id) return json({ ok: true });
+    if (fiche.profile_id === user.id) return json({ ok: false, error: 'action_interdite_sur_soi_meme' }, 400);
+    const { data: relie } = await service
+      .from('profiles').select('role').eq('id', fiche.profile_id).maybeSingle();
+    if (relie?.role === 'president') return json({ ok: false, error: 'president_non_modifiable' }, 400);
+    const { error } = await service
+      .from('team_members').update({ profile_id: null })
+      .eq('id', teamMemberId).eq('company_id', companyId);
+    if (error) return json({ ok: false, error: 'unlink_failed', detail: error.message }, 500);
+    return json({ ok: true });
   }
 
   // Actions ciblant un compte existant.
@@ -156,10 +236,19 @@ Deno.serve(async (req: Request) => {
   }
 
   // ---- ACTIVER / DÉSACTIVER ----
+  // `profiles.active` coupe la base (current_company_id) et les Edge
+  // (exigerPermission) ; le bannissement Auth coupe la connexion et le
+  // renouvellement de session (une session ouverte expire d'elle-même, ≤ 1 h).
+  // Un compte relié à une fiche Équipe se coupe comme les autres.
   if (action === 'set_active') {
+    if (target.role === 'president') return json({ ok: false, error: 'president_non_modifiable' }, 400);
     const active = body.active === true;
     const { error } = await service.from('profiles').update({ active }).eq('id', targetUserId);
-    if (error) return json({ ok: false, error: 'set_active_failed' }, 500);
+    if (error) return json({ ok: false, error: 'set_active_failed', detail: error.message }, 500);
+    const { error: banErr } = await service.auth.admin.updateUserById(targetUserId, {
+      ban_duration: active ? 'none' : BAN_DESACTIVE,
+    });
+    if (banErr) return json({ ok: false, error: 'set_active_failed', detail: banErr.message }, 500);
     return json({ ok: true, active });
   }
 
@@ -213,7 +302,14 @@ Deno.serve(async (req: Request) => {
   // ---- SUPPRIMER ----
   if (action === 'delete') {
     if (target.role === 'president') return json({ ok: false, error: 'suppression_president_interdite' }, 400);
-    await service.from('profiles').delete().eq('id', targetUserId);
+    // La fiche Équipe survit au compte : on la délie d'abord (la FK le fera
+    // aussi une fois la migration appliquée, on ne s'appuie pas dessus).
+    const { error: tmErr } = await service
+      .from('team_members').update({ profile_id: null })
+      .eq('profile_id', targetUserId).eq('company_id', companyId);
+    if (tmErr) return json({ ok: false, error: 'delete_failed', detail: tmErr.message }, 500);
+    const { error: pErr } = await service.from('profiles').delete().eq('id', targetUserId);
+    if (pErr) return json({ ok: false, error: 'delete_failed', detail: pErr.message }, 500);
     const { error } = await service.auth.admin.deleteUser(targetUserId);
     if (error) return json({ ok: false, error: 'delete_failed', detail: error.message }, 500);
     return json({ ok: true });

@@ -12,6 +12,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { extractText, getDocumentProxy } from 'npm:unpdf@0.12.1'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
+import { exigerUneDesPermissions } from '../_shared/auth.ts'
 import { generateJson, generateJsonFromImage } from '../_shared/mistral.ts'
 import {
   detecterImage, estPdf, jpegsDuPdf, telechargerFichier, urlFraichePennylane, versDataUrl,
@@ -78,18 +79,11 @@ Deno.serve(async (req: Request) => {
       return jsonResponse({ ok: false, error: 'server misconfiguration' }, 500)
     }
 
-    const userClient = createClient(url, anonKey, {
-      global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } },
-      auth: { persistSession: false },
-    })
-    const { data: { user }, error: uErr } = await userClient.auth.getUser()
-    if (uErr || !user) return jsonResponse({ ok: false, error: 'invalid session' }, 401)
-
     const service = createClient(url, svcKey, { auth: { persistSession: false } })
-    const { data: me } = await service
-      .from('profiles').select('company_id').eq('id', user.id).single()
-    const companyId = me?.company_id as string | undefined
-    if (!companyId) return jsonResponse({ ok: false, error: 'société introuvable' }, 400)
+    // Droit réel (pas seulement « connecté ») : un compte chauffeur n'a rien à lire ici.
+    const acces = await exigerUneDesPermissions(req, service, ['flotte.carburant', 'finance.charges'], 'view')
+    if (!acces.ok) return acces.response
+    const companyId = acces.companyId
 
     const { data: charge } = await service
       .from('charges')

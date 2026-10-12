@@ -1,9 +1,9 @@
 // Edge `drive-disconnect` — révoque le refresh_token chez Google puis supprime la
 // ligne google_drive_tokens de la société. verify_jwt = true, company_id dérivé du JWT.
 // Le refresh_token n'est jamais renvoyé au client.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
+import { exigerPermission } from '../_shared/auth.ts';
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return optionsResponse();
@@ -11,19 +11,12 @@ Deno.serve(async (req: Request) => {
   const authHeader = req.headers.get('Authorization') ?? '';
   if (!authHeader) return jsonResponse({ ok: false, error: 'missing Authorization' }, 401);
 
-  const url = Deno.env.get('SUPABASE_URL')!;
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-  const userClient = createClient(url, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false },
-  });
-  const { data: { user }, error: userErr } = await userClient.auth.getUser();
-  if (userErr || !user) return jsonResponse({ ok: false, error: 'invalid session' }, 401);
-
+  // Déconnecter le Drive de la société = un réglage : président ou
+  // `systeme.parametres : update` (un chauffeur ne coupe pas le Drive de tous).
   const service = getServiceClient();
-  const { data: profile } = await service
-    .from('profiles').select('company_id').eq('id', user.id).single();
-  if (!profile?.company_id) return jsonResponse({ ok: false, error: 'société introuvable' }, 400);
+  const acces = await exigerPermission(req, service, 'systeme.parametres', 'update');
+  if (!acces.ok) return acces.response;
+  const profile = { company_id: acces.companyId };
 
   const { data: tok } = await service
     .from('google_drive_tokens')

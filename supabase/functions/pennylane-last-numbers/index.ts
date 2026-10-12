@@ -9,7 +9,7 @@
 // Tri : `sort=-date` (plus récent d'abord). Si l'API le refuse pour une
 // ressource (4xx), on retombe sur `sort=-id`, puis sans tri, puis sans filtre.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
-import { AuthError, lireAppelant } from '../_shared/auth.ts';
+import { AuthError, aLaPermission, lireAppelant } from '../_shared/auth.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
 import { PENNYLANE_BASE, pennylaneHeaders, pennylaneToken } from '../_shared/pennylane.ts';
 import { anneeParis } from '../_shared/dates.ts';
@@ -69,9 +69,17 @@ async function listerAnnee(
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return optionsResponse();
 
-  // ── Contrôle d'accès : compte connecté, rattaché à une société ─────────────
+  // ── Contrôle d'accès : compte connecté, actif, avec un droit de lecture sur
+  // les livraisons ou les devis (un chauffeur n'a pas à lire la numérotation
+  // Pennylane). Refus → le front affiche « — » (getDerniersNumeros).
   try {
-    await lireAppelant(req);
+    const appelant = await lireAppelant(req);
+    const { data: prof } = await appelant.service
+      .from('profiles').select('active').eq('id', appelant.userId).maybeSingle();
+    if (prof?.active === false) return jsonResponse({ ok: false, error: 'Compte désactivé.' }, 403);
+    const autorise = (await aLaPermission(appelant, 'livraisons.livraisons', 'view'))
+      || (await aLaPermission(appelant, 'livraisons.devis', 'view'));
+    if (!autorise) return jsonResponse({ ok: false, error: 'Droit insuffisant.' }, 403);
   } catch (err) {
     if (err instanceof AuthError) return jsonResponse({ ok: false, error: err.message }, err.status);
     return jsonResponse({ ok: false, error: (err as Error).message }, 500);

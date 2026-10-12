@@ -12,6 +12,7 @@
 //     appartenir à cette company.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
+import { exigerUneDesPermissions } from '../_shared/auth.ts'
 import { generateJson, ocrDocument } from '../_shared/mistral.ts'
 
 const SEUIL_CONFIANCE = 0.7
@@ -42,19 +43,11 @@ Deno.serve(async (req: Request) => {
     }
 
     // Auth JWT → company de l'appelant (jamais depuis le body).
-    const authHeader = req.headers.get('Authorization') ?? ''
-    const userClient = createClient(url, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-      auth: { persistSession: false },
-    })
-    const { data: { user }, error: uErr } = await userClient.auth.getUser()
-    if (uErr || !user) return jsonResponse({ ok: false, error: 'invalid session' }, 401)
-
     const service = createClient(url, svcKey, { auth: { persistSession: false } })
-    const { data: me } = await service
-      .from('profiles').select('company_id').eq('id', user.id).single()
-    const companyId = me?.company_id as string | undefined
-    if (!companyId) return jsonResponse({ ok: false, error: 'société introuvable' }, 400)
+    // Droit réel (pas seulement « connecté ») : un compte chauffeur n'a rien à lire ici.
+    const acces = await exigerUneDesPermissions(req, service, ['finance.charges'], 'view')
+    if (!acces.ok) return acces.response
+    const companyId = acces.companyId
 
     // Charge + garde company.
     const { data: charge } = await service

@@ -21,6 +21,7 @@
 // Token Google : un seul refresh par appel, partagé entre le repli Drive et
 // l'envoi Gmail.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { exigerPermission } from '../_shared/auth.ts'
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -150,21 +151,14 @@ Deno.serve(async (req: Request) => {
 
   try {
     const url = Deno.env.get('SUPABASE_URL')!
-    const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
     const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-    const userClient = createClient(url, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-      auth: { persistSession: false },
-    })
-    const { data: { user }, error: uErr } = await userClient.auth.getUser()
-    if (uErr || !user) return json({ ok: false, error: 'invalid session' }, 401)
-
     const service = createClient(url, svcKey, { auth: { persistSession: false } })
-    const { data: profile } = await service
-      .from('profiles').select('company_id').eq('id', user.id).single()
-    const companyId = profile?.company_id as string | undefined
-    if (!companyId) return json({ ok: false, error: 'société introuvable' }, 400)
+    // Envoyer une facture au client part de la boîte de la société : président
+    // ou `livraisons.livraisons : update` (pas un simple compte connecté).
+    const acces = await exigerPermission(req, service, 'livraisons.livraisons', 'update')
+    if (!acces.ok) return acces.response
+    const companyId = acces.companyId
 
     // Livraison + client (garde company).
     const { data: delivery } = await service
