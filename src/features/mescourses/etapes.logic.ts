@@ -72,7 +72,43 @@ export function libelleEtat(c: EtatCourse): string {
   switch (etapeCourante(c)) {
     case 'a_demarrer':      return 'À faire'
     case 'vers_chargement': return 'Vers le retrait'
-    case 'vers_livraison':  return 'Chargé'
+    // « Chargé » seulement si on a VRAIMENT chargé quelque part : une course
+    // sans retrait, juste démarrée, est en route vers le destinataire.
+    case 'vers_livraison':  return c.charge_le ? 'Chargé' : 'En route'
     case 'terminee':        return c.statut === 'annulee' ? 'Annulée' : 'Livrée'
   }
+}
+
+export type ActionArret = 'demarrer' | 'charger' | 'livrer'
+
+/**
+ * Le geste proposé sur UN arrêt, compte tenu des autres arrêts de la course.
+ *
+ * « Démarrer » n'apparaît qu'une fois par course : sur son PREMIER arrêt dans
+ * la séquence du jour (le retrait en général). Deux boutons « Démarrer » pour
+ * une même course laissaient croire à deux courses.
+ *
+ * `arrets` = la séquence du jour, dans l'ordre de la route.
+ */
+export function actionArret(
+  arret: { cle: string; courseId: string; type: 'retrait' | 'livraison'; fait: boolean; course: EtatCourse },
+  arrets: Array<{ cle: string; courseId: string }>,
+): ActionArret | null {
+  if (arret.fait) return null
+  const etape = etapeCourante(arret.course)
+  if (etape === 'a_demarrer') {
+    const premier = arrets.find(a => a.courseId === arret.courseId)
+    return !premier || premier.cle === arret.cle ? 'demarrer' : null
+  }
+  if (arret.type === 'retrait') return etape === 'vers_chargement' ? 'charger' : null
+  return etape === 'vers_livraison' ? 'livrer' : null
+}
+
+/**
+ * Une preuve existe-t-elle ? Un nom, une photo OU une signature suffisent :
+ * `pod_captured_at` doit être posé dès qu'il y a quelque chose à montrer,
+ * sinon une livraison photographiée ressort « sans justificatif ».
+ */
+export function aUnePreuve(p: { nom: string | null; photos: number; signee: boolean }): boolean {
+  return !!p.nom?.trim() || p.photos > 0 || p.signee
 }

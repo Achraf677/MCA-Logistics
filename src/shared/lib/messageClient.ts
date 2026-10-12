@@ -8,8 +8,17 @@
  * abonnement.
  */
 
-/** Messages tout prets, pour ne pas taper au volant. */
-export const MESSAGES_TYPES: Array<{ cle: string; libelle: string; texte: (client: string | null) => string }> = [
+export interface MessageType {
+  cle: string
+  libelle: string
+  texte: (client: string | null) => string
+}
+
+/**
+ * Messages tout prets, pour ne pas taper au volant — a la LIVRAISON
+ * (destinataire). Garde son nom historique : c'est le jeu par defaut.
+ */
+export const MESSAGES_TYPES: MessageType[] = [
   {
     cle: 'en_route',
     libelle: 'En route',
@@ -18,7 +27,7 @@ export const MESSAGES_TYPES: Array<{ cle: string; libelle: string; texte: (clien
   {
     cle: 'arrive_bientot',
     libelle: 'J’arrive',
-    texte: () => "Bonjour, j'arrive dans une dizaine de minutes.",
+    texte: () => "Bonjour, j'arrive dans une dizaine de minutes pour la livraison.",
   },
   {
     cle: 'sur_place',
@@ -31,6 +40,57 @@ export const MESSAGES_TYPES: Array<{ cle: string; libelle: string; texte: (clien
     texte: () => "Bonjour, je suis passé pour votre livraison mais personne n'a répondu. Pouvez-vous me rappeler ?",
   },
 ]
+
+/**
+ * Messages au RETRAIT : on s'adresse a celui qui REMET la marchandise.
+ * Lui parler de « votre livraison » serait faux — ce n'est pas lui qui la recoit.
+ */
+export const MESSAGES_RETRAIT: MessageType[] = [
+  {
+    cle: 'en_route',
+    libelle: 'En route',
+    texte: () => 'Bonjour, je suis en route pour récupérer la marchandise.',
+  },
+  {
+    cle: 'arrive_bientot',
+    libelle: 'J’arrive',
+    texte: () => "Bonjour, j'arrive dans une dizaine de minutes pour l'enlèvement.",
+  },
+  {
+    cle: 'sur_place',
+    libelle: 'Sur place',
+    texte: () => "Bonjour, je suis sur place pour l'enlèvement de la marchandise.",
+  },
+  {
+    cle: 'absent',
+    libelle: 'Personne',
+    texte: () => "Bonjour, je suis passé pour l'enlèvement mais personne n'a répondu. Pouvez-vous me rappeler ?",
+  },
+]
+
+/** Le bon jeu de messages selon l'arret. */
+export function messagesPour(type: 'retrait' | 'livraison'): MessageType[] {
+  return type === 'retrait' ? MESSAGES_RETRAIT : MESSAGES_TYPES
+}
+
+/**
+ * Qui joindre a cet arret ?
+ *
+ * Le contact SUR PLACE d'abord (expediteur au retrait, destinataire a la
+ * livraison). A defaut, le donneur d'ordre (client facture : plateforme,
+ * commissionnaire) — mais seulement pour l'APPELER : un SMS « je suis devant
+ * chez vous » envoye a une plateforme n'a aucun sens, et c'est elle qui paie.
+ */
+export function contactArret(
+  type: 'retrait' | 'livraison',
+  c: { expediteur_tel: string | null; destinataire_tel: string | null; clients: { phone: string | null } | null },
+): { tel: string | null; source: 'sur_place' | 'donneur_ordre' | null; smsPossible: boolean } {
+  const surPlace = type === 'retrait' ? c.expediteur_tel : c.destinataire_tel
+  if (numeroUtilisable(surPlace)) return { tel: surPlace, source: 'sur_place', smsPossible: true }
+  const donneur = c.clients?.phone ?? null
+  if (numeroUtilisable(donneur)) return { tel: donneur, source: 'donneur_ordre', smsPossible: false }
+  return { tel: null, source: null, smsPossible: false }
+}
 
 /**
  * Numero utilisable pour un `sms:` ?

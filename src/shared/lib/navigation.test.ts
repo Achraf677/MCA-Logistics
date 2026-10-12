@@ -1,8 +1,40 @@
 import { describe, it, expect } from 'vitest'
 import {
   lienNavigation, plansStopUrl, plansAdresseUrl, APPS_NAVIGATION,
-  googleMapsRouteUrl,
+  googleMapsRouteUrl, itineraireEnLots,
 } from './navigation'
+
+describe('itineraireEnLots', () => {
+  const p = (n: number) => ({ lat: n, lng: n })
+
+  it('part de la position du téléphone (pas d’origine) et finit au dépôt', () => {
+    const [url] = itineraireEnLots([p(1), { adresse: '2 rue X' }], { retour: { lat: 9, lng: 9 } })
+    expect(url).not.toContain('origin=')
+    expect(url).toContain(`destination=${encodeURIComponent('9,9')}`)
+    expect(decodeURIComponent(url)).toContain('waypoints=1,1|2 rue X')
+  })
+
+  it('ignore les étapes sans rien à viser, rend [] si plus rien', () => {
+    expect(itineraireEnLots([{ adresse: '  ' }])).toEqual([])
+    expect(itineraireEnLots([{ adresse: '' }, p(1)])).toHaveLength(1)
+  })
+
+  it('découpe en lots de 9 étapes intermédiaires, chaque lot repartant du précédent', () => {
+    const etapes = Array.from({ length: 25 }, (_, i) => p(i + 1))
+    const liens = itineraireEnLots(etapes)
+    expect(liens).toHaveLength(3) // 10 + 10 + 5
+    for (const l of liens) {
+      const wp = new URL(l).searchParams.get('waypoints')
+      expect((wp ?? '').split('|').filter(Boolean).length).toBeLessThanOrEqual(9)
+    }
+    expect(new URL(liens[1]).searchParams.get('origin')).toBe('10,10')
+    expect(new URL(liens[2]).searchParams.get('destination')).toBe('25,25')
+  })
+
+  it('passe l’évitement des péages', () => {
+    expect(itineraireEnLots([p(1)], { eviterPeages: true })[0]).toContain('avoid=tolls')
+  })
+})
 
 describe('lienNavigation', () => {
   const point = { lat: 48.58, lng: 7.75, adresse: '1 rue de Belfort, Strasbourg' }

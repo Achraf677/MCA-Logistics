@@ -13,6 +13,8 @@ import { deposerTicket } from '../../shared/lib/receiptsInbox.queries'
 import { getDownloadUrl } from '../../shared/lib/documents.queries'
 import { enregistrerPod } from '../../shared/lib/pod.queries'
 import { canTransition } from '../../shared/lib/livraisonStatuts'
+import { toLocalISO } from '../../shared/lib/dates'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import {
   getMesCourses, avancerCourse, getDocumentsDesCourses, marquerCharge,
   enregistrerOrdreArretsJour, getTourneesDuChauffeur, changerStatutTournee, getDepot,
@@ -28,17 +30,19 @@ import {
 } from '../../shared/lib/arretsJour'
 import { canStartTour, canFinishTour } from '../../shared/lib/tourneeStatuts'
 import {
-  googleMapsRouteUrl, lienNavigation, APPS_NAVIGATION, type AppNavigation,
+  itineraireEnLots, lienNavigation, APPS_NAVIGATION, type AppNavigation, type EtapeItineraire,
 } from '../../shared/lib/navigation'
 import { lireAppNavigation, ecrireAppNavigation } from '../../shared/lib/prefChauffeur'
-import { MESSAGES_TYPES, lienSms, lienTel } from '../../shared/lib/messageClient'
+import { messagesPour, contactArret, lienSms, lienTel } from '../../shared/lib/messageClient'
 import { usePermissions } from '../../shared/permissions/usePermissions'
-import { etapeCourante, libelleEtat } from './etapes.logic'
+import { etapeCourante, libelleEtat, actionArret, type ActionArret } from './etapes.logic'
 import { EtapeTerrain } from './EtapeTerrain'
 import {
   bornesPeriode, decalerPeriode, libellePeriode, grouperParJour,
-  prochainArret, progression, etatHoraire, libelleHeure, filtrerMesCourses,
-  type ModePeriode, libelleCreneauArret,
+  prochainArret, progression, etatHoraire, filtrerMesCourses,
+  type ModePeriode, libelleCreneauArret, libelleProgression, rangDansSequence,
+  libelleHeureEstimee, libelleDateCourte, confirmationAutreJour, messageTransitionImpossible,
+  traduireErreurEcriture, libelleCategorieDocument, documentsPourChauffeur, vehiculesDuJour,
 } from './mescourses.logic'
 import type { CourseChauffeur, DocumentCourse, TourneeChauffeur } from './mescourses.types'
 
@@ -55,7 +59,8 @@ function maintenantLocal() {
   return { jour, minutes: d.getHours() * 60 + d.getMinutes() }
 }
 
-const aujourdhui = () => new Date().toISOString().slice(0, 10)
+// Date LOCALE du téléphone : `toISOString()` donnerait la veille avant 2 h.
+const aujourdhui = () => toLocalISO(new Date())
 
 /**
  * Écran chauffeur — « Mes courses ».
@@ -136,16 +141,34 @@ export function MesCourses() {
 
   useEffect(() => { rechargerTournees() }, [rechargerTournees])
 
+  // Fiche équipe de l'utilisateur, pour TOUS les rôles : le président / DG
+  // s'en sert pour filtrer, le chauffeur pour savoir si son compte est relié
+  // (sans fiche reliée, la RLS ne lui rend aucune course — et l'écran disait
+  // « change de période », ce qui l'envoyait chercher pour rien).
+  const [ficheVerifiee, setFicheVerifiee] = useState(false)
   useEffect(() => {
-    if (!voitTout || !profile) return
+    if (!profile) return
     let annule = false
-    getMaFicheEquipe(profile.id).then(({ data }) => {
-      if (annule || !data) return
+    getMaFicheEquipe(profile.id).then(({ data, error }) => {
+      if (annule) return
+      // Une erreur de lecture ne prouve pas l'absence de fiche : on ne dit rien.
+      if (error) return
+      setFicheVerifiee(true)
+      if (!data) return
       setMonId(data.id)
-      setVue('moi')
+      if (voitTout) setVue('moi')
     })
     return () => { annule = true }
   }, [voitTout, profile])
+  const ficheNonReliee = profile?.role === 'chauffeur' && ficheVerifiee && !monId
+
+  // Geste sur une course d'un autre jour : on demande avant (voir confirmationAutreJour).
+  const [aConfirmer, setAConfirmer] = useState<{ message: string; suite: () => void } | null>(null)
+  const confirmerSiAutreJour = useCallback((date: string, suite: () => void) => {
+    const message = confirmationAutreJour(date, aujourdhui())
+    if (message) setAConfirmer({ message, suite })
+    else suite()
+  }, [])
 
   useEffect(() => {
     if (!companyId) return
@@ -162,7 +185,7 @@ export function MesCourses() {
     getDocumentsDesCourses(courses.map(c => c.id)).then(({ data }) => {
       if (annule) return
       const par = new Map<string, DocumentCourse[]>()
-      for (const d of (data ?? []) as DocumentCourse[]) {
+      for (const d of documentsPourChauffeur((data ?? []) as DocumentCourse[], profile?.id ?? null)) {
         const liste = par.get(d.entity_id) ?? []
         liste.push(d)
         par.set(d.entity_id, liste)
@@ -170,7 +193,7 @@ export function MesCourses() {
       setDocuments(par)
     })
     return () => { annule = true }
-  }, [courses])
+  }, [courses, profile?.id])
 
   // useMemo : sans lui, ce tri/filtrage de TOUTES les courses est refait à
   // chaque rendu — y compris quand seul `busyId` change, donc à chaque clic
@@ -200,12 +223,12 @@ export function MesCourses() {
    */
   const demarrer = async (c: CourseChauffeur) => {
     if (!canTransition(c.statut, 'en_cours')) {
-      toast(`Passage ${c.statut} → en_cours impossible`, 'error'); return
+      toast(messageTransitionImpossible(c.statut, 'en_cours'), 'error'); return
     }
     setBusyId(c.id)
     const { error } = await avancerCourse(c.id, 'en_cours')
     setBusyId(null)
-    if (error) { toast(error.message, 'error'); return }
+    if (error) { toast(traduireErreurEcriture(error), 'error'); return }
     toast('Course démarrée')
     await rechargerListe()
   }
@@ -226,10 +249,15 @@ export function MesCourses() {
     const apres = deplacerArretJour(sequence, cle, sens)
     // Reference inchangee = mouvement impossible : inutile d'ecrire pour rien.
     if (apres === sequence) return
+    // L'ordre d'une TOURNÉE appartient à la tournée (bureau, optimisation) :
+    // on n'écrit jamais la position d'une course rattachée à une tournée.
+    const enTournee = new Set(courses.filter(c => c.tour_id).map(c => c.id))
+    const positions = positionsAEcrire(apres).filter(p => !enTournee.has(p.courseId))
+    if (positions.length === 0) return
     setBusyId(cle.split(':')[0])
-    const { error } = await enregistrerOrdreArretsJour(positionsAEcrire(apres))
+    const { error } = await enregistrerOrdreArretsJour(positions)
     setBusyId(null)
-    if (error) { toast(error.message, 'error'); return }
+    if (error) { toast(traduireErreurEcriture(error), 'error'); return }
     await rechargerListe()
   }
 
@@ -243,7 +271,7 @@ export function MesCourses() {
     setBusyId(c.id)
     const { error } = await marquerCharge(c.id, expediteur)
     setBusyId(null)
-    if (error) { toast(error.message, 'error'); return }
+    if (error) { toast(traduireErreurEcriture(error), 'error'); return }
     toast(expediteur ? 'Chargé, preuve enregistrée' : 'Chargé')
     await rechargerListe()
   }
@@ -257,24 +285,27 @@ export function MesCourses() {
    * ensuite — laisserait des courses livrées sans preuve alors que le
    * chauffeur croit avoir tout fait.
    *
-   * `recipient` à `null` = livraison sans preuve, volontairement autorisée :
+   * `preuve` = il existe un nom, une photo OU une signature : on horodate alors
+   * la preuve (`pod_captured_at`), même sans nom.
+   *
+   * Aucune preuve = livraison sans preuve, volontairement autorisée :
    * un chauffeur n'a pas toujours quelqu'un pour signer ni du réseau. Ces
    * courses ressortent ensuite dans l'alerte « livraison sans justificatif »,
    * qui existe exactement pour ça.
    */
-  const livrer = async (c: CourseChauffeur, recipient: string | null) => {
+  const livrer = async (c: CourseChauffeur, recipient: string | null, preuve: boolean) => {
     if (!canTransition(c.statut, 'livree')) {
-      toast(`Passage ${c.statut} → livree impossible`, 'error'); return
+      toast(messageTransitionImpossible(c.statut, 'livree'), 'error'); return
     }
     setBusyId(c.id)
-    if (recipient) {
+    if (preuve) {
       const { error } = await enregistrerPod(c.id, recipient)
-      if (error) { setBusyId(null); toast(error.message, 'error'); return }
+      if (error) { setBusyId(null); toast(traduireErreurEcriture(error), 'error'); return }
     }
     const { error } = await avancerCourse(c.id, 'livree')
     setBusyId(null)
-    if (error) { toast(error.message, 'error'); return }
-    toast(recipient ? 'Livrée, preuve enregistrée' : 'Course livrée')
+    if (error) { toast(traduireErreurEcriture(error), 'error'); return }
+    toast(preuve ? 'Livrée, preuve enregistrée' : 'Course livrée')
     await rechargerListe()
   }
 
@@ -283,7 +314,7 @@ export function MesCourses() {
     setBusyId(c.id)
     const { error } = await signalerProbleme(c.id, motif, note)
     setBusyId(null)
-    if (error) { toast(error.message, 'error'); return }
+    if (error) { toast(traduireErreurEcriture(error), 'error'); return }
     toast('Problème signalé au bureau')
     await rechargerListe()
   }
@@ -298,12 +329,14 @@ export function MesCourses() {
         <div className="flex items-center gap-1.5">
           <BoutonIcone icone={ChevronLeft} libelle="Période précédente" onClick={() => setAncre(a => decalerPeriode(a, mode, -1))} />
           <div className="flex-1 min-w-0 text-center">
-            <span className="block text-[var(--fs-sm)] font-medium text-[var(--text)] first-letter:uppercase truncate">
-              {mode === 'jour' && ancre === aujourdhui() ? "Aujourd'hui" : libellePeriode(ancre, mode)}
+            <span className="block text-sm font-medium text-[var(--text)] first-letter:uppercase truncate">
+              {mode === 'jour'
+                ? (ancre === aujourdhui() ? "Aujourd'hui" : libelleDateCourte(ancre))
+                : libellePeriode(ancre, mode)}
             </span>
             {!loading && (
-              <span className="block text-[var(--fs-xs)] text-[var(--text-muted)]">
-                {total === 0 ? 'aucun arrêt' : `${faits} / ${total} arrêt${total > 1 ? 's' : ''} fait${faits > 1 ? 's' : ''}`}
+              <span className="block text-xs text-[var(--text-muted)]">
+                {libelleProgression(faits, total)}
               </span>
             )}
           </div>
@@ -311,7 +344,7 @@ export function MesCourses() {
           <div className="flex items-center p-0.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
             {MODES.map(m => (
               <button key={m.key} onClick={() => setMode(m.key)}
-                className={`min-h-[36px] px-2.5 rounded-[var(--r-sm)] text-[var(--fs-xs)] font-medium transition-colors ${
+                className={`min-h-9 px-2.5 rounded-[var(--r-sm)] text-xs font-medium transition-colors ${
                   mode === m.key ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}>
                 {m.label}
@@ -326,7 +359,7 @@ export function MesCourses() {
           <div className="flex items-center gap-1 p-0.5 self-start rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
             {([['moi', 'Mes courses'], ['tous', 'Tous les chauffeurs']] as const).map(([v, l]) => (
               <button key={v} onClick={() => setVue(v)}
-                className={`min-h-[32px] px-3 rounded-[var(--r-sm)] text-[var(--fs-xs)] font-medium transition-colors ${
+                className={`min-h-8 px-3 rounded-[var(--r-sm)] text-xs font-medium transition-colors ${
                   vue === v ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                 }`}>
                 {l}
@@ -340,7 +373,7 @@ export function MesCourses() {
             <div className="flex items-center gap-1 p-1 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
               {APPS_NAVIGATION.map(a => (
                 <button key={a.cle} onClick={() => changerAppNav(a.cle)}
-                  className={`flex-1 min-h-[36px] rounded-[var(--r-md)] text-[var(--fs-xs)] font-medium transition-colors ${
+                  className={`flex-1 min-h-9 rounded-[var(--r-md)] text-xs font-medium transition-colors ${
                     appNav === a.cle ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                   }`}>
                   {a.libelle}
@@ -352,7 +385,7 @@ export function MesCourses() {
 
         {ancre !== aujourdhui() && (
           <button onClick={() => setAncre(aujourdhui())}
-            className="self-center text-[var(--fs-xs)] text-[var(--brand)] underline min-h-[28px]">
+            className="self-center text-xs text-[var(--brand)] underline min-h-7">
             Revenir à aujourd'hui
           </button>
         )}
@@ -365,19 +398,21 @@ export function MesCourses() {
           className="w-full mb-4 flex items-center gap-3 p-3 rounded-[var(--r-lg)] text-left
             border border-[var(--brand)] bg-[var(--bg-card)]">
           <span className="flex flex-col min-w-0 flex-1">
-            <span className="text-[var(--fs-xs)] font-semibold uppercase tracking-wide text-[var(--brand)]">
+            <span className="text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">
               Prochain arrêt · {prochain.type === 'retrait' ? 'Retrait' : 'Livraison'}
-              {prochain.course.date !== aujourdhui() && ` · ${libellePeriode(prochain.course.date, 'jour')}`}
+              {prochain.course.date !== aujourdhui() && ` · ${libelleDateCourte(prochain.course.date)}`}
             </span>
-            <span className="text-[var(--fs-sm)] font-medium text-[var(--text)] truncate">
+            <span className="text-sm font-medium text-[var(--text)] truncate">
               {prochain.course.clients?.name ?? '—'}
             </span>
-            <span className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">
+            <span className="text-xs text-[var(--text-muted)] truncate">
               {prochain.adresse || 'Adresse manquante'}
             </span>
           </span>
           <span className="flex flex-col items-end gap-1 shrink-0">
-            <span className="text-[var(--fs-xs)] text-[var(--text-muted)] tabular-nums">{faits + 1} / {total}</span>
+            <span className="text-xs text-[var(--text-muted)] tabular-nums">
+              {rangDansSequence(tousArrets, prochain.cle) ?? '—'} / {total}
+            </span>
             <span className="w-16 h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
               <span className="block h-full bg-[var(--brand)]" style={{ width: `${total ? (faits / total) * 100 : 0}%` }} />
             </span>
@@ -386,7 +421,7 @@ export function MesCourses() {
       )}
 
       {erreur && (
-        <p className="mb-4 text-[var(--fs-sm)] text-[var(--danger)]">{erreur}</p>
+        <p className="mb-4 text-sm text-[var(--danger)]">{erreur}</p>
       )}
 
       {loading ? (
@@ -394,7 +429,13 @@ export function MesCourses() {
           {[0, 1, 2].map(i => <Skeleton key={i} className="h-24" />)}
         </div>
       ) : visibles.length === 0 ? (
-        <EmptyState
+        ficheNonReliee ? (
+          <EmptyState
+            icon={<User size={28} />}
+            title="Compte pas encore relié"
+            description="Ton compte n'est pas encore relié à ta fiche : préviens le bureau."
+          />
+        ) : <EmptyState
           icon={<Package size={28} />}
           title="Aucune course sur cette période"
           description={voitTout && vue === 'moi'
@@ -407,15 +448,24 @@ export function MesCourses() {
             <section key={jour} className="flex flex-col gap-2">
               {/* En-tête de jour : inutile en mode « jour », le titre le dit déjà */}
               {mode !== 'jour' && (
-                <h2 className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide first-letter:uppercase">
+                <h2 className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide first-letter:uppercase">
                   {libellePeriode(jour, 'jour')}
                 </h2>
               )}
 
+              {/* Véhicule du jour : ce qu'on prend au dépôt (vue « tous » : un par chauffeur, on ne l'affiche pas). */}
+              {!afficherChauffeur && vehiculesDuJour(duJour).length > 0 && (
+                <p className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                  <Truck size={13} className="shrink-0" /> {vehiculesDuJour(duJour).join(' / ')}
+                </p>
+              )}
+
               <BandeauJour
                 courses={duJour}
+                arrets={arrets}
                 tournee={tournees.find(t => t.date === jour) ?? null}
                 depot={depot}
+                appNav={appNav}
                 peutPiloter={peutPiloterTournee}
                 onTourneeChangee={rechargerTournees}
               />
@@ -432,9 +482,11 @@ export function MesCourses() {
                   arret={a}
                   busy={busyId === a.courseId}
                   documents={documents.get(a.courseId) ?? []}
+                  action={actionArret(a, tous)}
+                  confirmer={suite => confirmerSiAutreJour(a.course.date, suite)}
                   onDemarrer={() => demarrer(a.course)}
                   onCharger={expediteur => charger(a.course, expediteur)}
-                  onLivrer={destinataire => livrer(a.course, destinataire)}
+                  onLivrer={(destinataire, preuve) => livrer(a.course, destinataire, preuve)}
                   onSignaler={(motif, note) => signaler(a.course, motif, note)}
                   prochain={prochain?.cle === a.cle}
                   afficherChauffeur={afficherChauffeur}
@@ -451,6 +503,15 @@ export function MesCourses() {
       )}
 
       <ScannerTicket />
+
+      <ConfirmDialog
+        open={!!aConfirmer}
+        title="Pas aujourd'hui"
+        message={aConfirmer?.message ?? ''}
+        confirmLabel="Oui, continuer"
+        onConfirm={() => { const s = aConfirmer?.suite; setAConfirmer(null); s?.() }}
+        onCancel={() => setAConfirmer(null)}
+      />
     </Shell>
   )
 }
@@ -465,10 +526,13 @@ export function MesCourses() {
  * optimisation) reste au bureau : ce sont des gestes de preparation, sur grand
  * ecran, pas des gestes de chauffeur.
  */
-function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }: {
+function BandeauJour({ courses, arrets, tournee, depot, appNav, peutPiloter, onTourneeChangee }: {
   courses: CourseChauffeur[]
+  /** Séquence des arrêts du jour, dans l'ordre de la route. */
+  arrets: Array<ArretJour<CourseChauffeur>>
   tournee: TourneeChauffeur | null
   depot: { lat: number | null; lng: number | null }
+  appNav: AppNavigation
   peutPiloter: boolean
   onTourneeChangee: () => void | Promise<void>
 }) {
@@ -476,99 +540,104 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
   const [planOuvert, setPlanOuvert] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  // Le plan ne concerne que ce qui reste a livrer : replanifier le chargement
-  // autour de colis deja deposes n'aurait aucun sens.
-  const aLivrer = courses.filter(c => etapeCourante(c) !== 'terminee')
-
-  // Arrets de CETTE tournee, pas de la journee entiere. La nuance compte : un
+  // Courses de CETTE tournee, pas de la journee entiere. La nuance compte : un
   // president voit ici les courses de tout le monde (policy `deliveries_select_own`,
   // documentee dans mescourses.queries.ts), et un itineraire qui melangerait les
   // camions ne menerait nulle part.
-  const arretsDeLaTournee = tournee ? courses.filter(c => c.tour_id === tournee.id) : []
-
-  const depotGeocode = depot.lat != null && depot.lng != null
-  const arretsGeocodes = arretsDeLaTournee
-    .filter(c => c.delivery_lat != null && c.delivery_lng != null)
-    .map((c, i) => ({ stop_order: c.stop_order ?? i + 1, lat: c.delivery_lat as number, lng: c.delivery_lng as number }))
+  const coursesDeLaTournee = tournee ? courses.filter(c => c.tour_id === tournee.id) : []
+  const arretsDeLaTournee = tournee ? arrets.filter(a => a.course.tour_id === tournee.id) : []
 
   // Une tournee dont aucun arret n'est visible ici n'a rien a dire au
-  // chauffeur : on la traite comme absente plutot que d'afficher un entete vide.
-  const tourneeVisible = tournee && arretsDeLaTournee.length > 0 ? tournee : null
+  // chauffeur. Et sans tournee, pas de bandeau : le plan de chargement n'a de
+  // sens que pour une tournee (des express avec retraits ailleurs se chargent
+  // au fil des retraits, pas au depot).
+  if (!tournee || arretsDeLaTournee.length === 0) return null
 
-  // « 3 sur 8 » plutot qu'une etiquette : c'est le seul chiffre qui interesse
-  // quelqu'un qui roule.
-  const restantes = arretsDeLaTournee.filter(c => etapeCourante(c) !== 'terminee').length
+  // Meme compteur, meme sens que l'en-tete : « X faits sur N » (arrets).
+  const { faits, total } = progression(arretsDeLaTournee)
 
-  const lienItineraire = arretsGeocodes.length > 0
-    ? googleMapsRouteUrl(
-        depotGeocode ? { lat: depot.lat as number, lng: depot.lng as number } : null,
-        arretsGeocodes,
-        { eviterPeages: tournee?.eviter_peages ?? false },
-      )
-    : null
+  // ITINERAIRE : seulement ce qui RESTE, dans l'ordre de la route. Les points
+  // geocodes (livraisons) partent en coordonnees ; un retrait n'a que son
+  // adresse ecrite, que Google sait resoudre ; un arret sans rien est ignore.
+  const restants = arretsDeLaTournee.filter(a => !a.fait)
+  const etapes: EtapeItineraire[] = restants.flatMap((a): EtapeItineraire[] => {
+    const c = a.course
+    if (a.type === 'livraison' && c.delivery_lat != null && c.delivery_lng != null) {
+      return [{ lat: c.delivery_lat, lng: c.delivery_lng }]
+    }
+    return a.adresse ? [{ adresse: a.adresse }] : []
+  })
+  const ignores = restants.length - etapes.length
+  const depotGeocode = depot.lat != null && depot.lng != null
+  const liens = itineraireEnLots(etapes, {
+    eviterPeages: tournee.eviter_peages ?? false,
+    retour: depotGeocode ? { lat: depot.lat as number, lng: depot.lng as number } : null,
+  })
+
+  // Le plan ne concerne que ce qui reste a livrer : replanifier le chargement
+  // autour de colis deja deposes n'aurait aucun sens.
+  const aLivrer = coursesDeLaTournee.filter(c => etapeCourante(c) !== 'terminee')
 
   const changerStatut = async (statut: 'en_cours' | 'terminee') => {
-    if (!tournee) return
     setBusy(true)
     const { error } = await changerStatutTournee(tournee.id, statut)
     setBusy(false)
-    if (error) { toast(error.message, 'error'); return }
+    if (error) { toast(traduireErreurEcriture(error), 'error'); return }
     toast(statut === 'en_cours' ? 'Tournée démarrée' : 'Tournée terminée')
     await onTourneeChangee()
   }
 
-  // Rien d'utile a montrer : pas de tournee exploitable, et moins de deux
-  // colis a ranger.
-  if (arretsDeLaTournee.length === 0 && aLivrer.length < 2) return null
-
   return (
     <div className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)]">
-      {tourneeVisible && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 border-b border-[var(--border)]">
-          {/* Ce qui reste : ce qu'on ne peut pas deviner en roulant. Le nom du
-              camion a saute (le chauffeur est dedans) et la pastille de statut
-              aussi — les boutons « Démarrer » / « Terminer » disent deja ou en
-              est la tournee, et mieux qu'une etiquette. */}
-          <Truck size={15} className="text-[var(--brand)] shrink-0" />
-          <span className="text-[var(--fs-sm)] font-medium text-[var(--text)]">
-            {restantes} sur {arretsDeLaTournee.length}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 border-b border-[var(--border)]">
+        <Truck size={15} className="text-[var(--brand)] shrink-0" />
+        <span className="text-sm font-medium text-[var(--text)]">
+          Tournée · {libelleProgression(faits, total)}
+        </span>
+        {tournee.total_km != null && (
+          <span className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)]">
+            <Route size={12} /> {Number(tournee.total_km).toFixed(1)} km
           </span>
-          {tourneeVisible.total_km != null && (
-            <span className="inline-flex items-center gap-1 text-[var(--fs-xs)] text-[var(--text-muted)]">
-              <Route size={12} /> {Number(tourneeVisible.total_km).toFixed(1)} km
-            </span>
-          )}
-          {tourneeVisible.total_duration_min != null && (
-            <span className="inline-flex items-center gap-1 text-[var(--fs-xs)] text-[var(--text-muted)]">
-              <Clock size={12} /> {formatDuree(tourneeVisible.total_duration_min)}
-            </span>
-          )}
-        </div>
-      )}
+        )}
+        {tournee.total_duration_min != null && (
+          <span className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)]">
+            <Clock size={12} /> {formatDuree(tournee.total_duration_min)}
+          </span>
+        )}
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 px-3 py-2.5">
-        {lienItineraire && (
-          <a href={lienItineraire} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-[var(--r-md)]
-              border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)]
+        {/* Google Maps limite les etapes d'un lien : au-dela, un lien par lot,
+            chaque lot repartant de la fin du precedent. */}
+        {liens.map((url, i) => (
+          <a key={url} href={url} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 min-h-11 px-3 rounded-[var(--r-md)]
+              border border-[var(--border)] text-sm text-[var(--text)]
               hover:border-[var(--brand)] transition-colors no-underline">
-            <ExternalLink size={16} /> Itinéraire
+            <ExternalLink size={16} /> Itinéraire{liens.length > 1 ? ` ${i + 1}/${liens.length}` : ''}
           </a>
-        )}
+        ))}
 
         {/* Le pilotage de la tournee n'apparait que si la base l'autorisera :
             meme condition que la policy `tours_update_perm`. */}
-        {tourneeVisible && peutPiloter && canStartTour(tourneeVisible.status, arretsDeLaTournee.length) && (
-          <Button variant="primary" className="min-h-[44px]" disabled={busy}
+        {peutPiloter && canStartTour(tournee.status, coursesDeLaTournee.length) && (
+          <Button variant="primary" className="min-h-11" disabled={busy}
             onClick={() => changerStatut('en_cours')}>
-            {busy ? '…' : 'Démarrer'}
+            {busy ? '…' : 'Démarrer la tournée'}
           </Button>
         )}
-        {tourneeVisible && peutPiloter && canFinishTour(tourneeVisible.status) && (
-          <Button variant="primary" className="min-h-[44px]" disabled={busy}
+        {peutPiloter && canFinishTour(tournee.status) && (
+          <Button variant="primary" className="min-h-11" disabled={busy}
             onClick={() => changerStatut('terminee')}>
-            {busy ? '…' : 'Terminer'}
+            {busy ? '…' : 'Terminer la tournée'}
           </Button>
+        )}
+
+        {liens.length > 0 && (appNav !== 'google' || ignores > 0) && (
+          <p className="w-full text-xs text-[var(--text-muted)]">
+            {appNav !== 'google' && "Itinéraire complet dans Google Maps : Waze et Plans n'acceptent qu'une destination. "}
+            {ignores > 0 && `${ignores} arrêt${ignores > 1 ? 's' : ''} sans adresse non inclus.`}
+          </p>
         )}
       </div>
 
@@ -576,9 +645,9 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
       {aLivrer.length > 1 && (
         <>
           <button type="button" onClick={() => setPlanOuvert(o => !o)} aria-expanded={planOuvert}
-            className="w-full flex items-center gap-2 px-3 min-h-[44px] text-left border-t border-[var(--border)]">
+            className="w-full flex items-center gap-2 px-3 min-h-11 text-left border-t border-[var(--border)]">
             <PackageOpen size={15} className="text-[var(--brand)] shrink-0" />
-            <span className="text-[var(--fs-sm)] font-medium text-[var(--text)] flex-1">
+            <span className="text-sm font-medium text-[var(--text)] flex-1">
               Plan de chargement
             </span>
             <ChevronDown size={16}
@@ -586,7 +655,7 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
           </button>
           {planOuvert && (
             <div className="px-3 pb-3">
-              <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mb-2">
+              <p className="text-xs text-[var(--text-muted)] mb-2">
                 Le camion se vide par une seule porte : ce qu'on charge en premier finit au fond.
                 Le premier client livré se charge donc en dernier, contre la porte.
               </p>
@@ -595,7 +664,7 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
                   transformerait un minimum en total, et c'est exactement ce qui
                   fait passer un 3,5 t en surcharge. */}
               {libellePoids(poidsTotal(aLivrer)) && (
-                <p className="text-[var(--fs-sm)] font-medium text-[var(--text)] mb-2">
+                <p className="text-sm font-medium text-[var(--text)] mb-2">
                   Charge : {libellePoids(poidsTotal(aLivrer))}
                 </p>
               )}
@@ -603,27 +672,27 @@ function BandeauJour({ courses, tournee, depot, peutPiloter, onTourneeChangee }:
                 {planDeChargement(aLivrer).map(({ item, rangChargement, rangLivraison }) => (
                   <li key={item.id} className="flex items-start gap-2">
                     <span className="flex items-center justify-center w-6 h-6 shrink-0 rounded-full
-                      bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--fs-xs)] font-bold text-[var(--text)]">
+                      bg-[var(--bg-elevated)] border border-[var(--border)] text-xs font-bold text-[var(--text)]">
                       {rangChargement}
                     </span>
                     <span className="min-w-0 flex-1">
                       {/* CE QU'ON CHARGE, avant qui le recoit : devant la porte
                           du camion, la question est « c'est quoi et ca pese
                           combien », pas « c'est pour qui ». */}
-                      <span className="block text-[var(--fs-sm)] text-[var(--text)] break-words">
+                      <span className="block text-sm text-[var(--text)] break-words">
                         {item.description?.trim() || 'Sans description'}
                         {item.weight_kg != null && (
-                          <span className="ml-1.5 font-mono text-[var(--fs-xs)] text-[var(--brand)]">
+                          <span className="ml-1.5 font-mono text-xs text-[var(--brand)]">
                             {item.weight_kg} kg
                           </span>
                         )}
                       </span>
-                      <span className="block text-[var(--fs-xs)] text-[var(--text-muted)] break-words">
+                      <span className="block text-xs text-[var(--text-muted)] break-words">
                         {item.clients?.name ?? '—'}
                         {item.pickup_address && ` · à prendre : ${item.pickup_address}`}
                       </span>
                     </span>
-                    <span className="text-[var(--fs-xs)] text-[var(--text-muted)] shrink-0 pt-1">
+                    <span className="text-xs text-[var(--text-muted)] shrink-0 pt-1">
                       livré n° {rangLivraison}
                     </span>
                   </li>
@@ -653,15 +722,23 @@ function formatDuree(min: number): string {
  * permettait pas.
  */
 function CarteArret({
-  arret, busy, documents, onDemarrer, onCharger, onLivrer, onSignaler,
+  arret, busy, documents, action, confirmer, onDemarrer, onCharger, onLivrer, onSignaler,
   premier, dernier, onDeplacer, appNav, prochain, afficherChauffeur, maintenant,
 }: {
   arret: ArretJour<CourseChauffeur>
   busy: boolean
   documents: DocumentCourse[]
+  /**
+   * Le geste à faire ICI (`etapes.logic#actionArret`) : « Démarrer » une seule
+   * fois par course, sur son premier arrêt ; « Charger » au retrait ;
+   * « Livrer » à la livraison.
+   */
+  action: ActionArret | null
+  /** Demande confirmation si la course n'est pas d'aujourd'hui, puis lance `suite`. */
+  confirmer: (suite: () => void) => void
   onDemarrer: () => void
   onCharger: (expediteur: string | null) => void
-  onLivrer: (destinataire: string | null) => void
+  onLivrer: (destinataire: string | null, preuve: boolean) => void
   premier: boolean
   dernier: boolean
   onDeplacer: (sens: 'haut' | 'bas') => void
@@ -680,28 +757,31 @@ function CarteArret({
 
   const [panneauOuvert, setPanneauOuvert] = useState(false)
   const [problemeOuvert, setProblemeOuvert] = useState(false)
-  // L'heure prévue concerne la LIVRAISON (colonne `arrival_time`).
-  const heure = !estRetrait ? libelleHeure(c.arrival_time) : null
-  const horaire = !estRetrait && !arret.fait ? etatHoraire(c.date, c.arrival_time, maintenant) : null
   const probleme = aProblemeOuvert(c)
   const creneau = estRetrait
     ? libelleCreneauArret(c.creneau_retrait_debut, c.creneau_retrait_fin)
     : libelleCreneauArret(c.creneau_livraison_debut, c.creneau_livraison_fin)
+  // URGENCE : rouge / orange UNIQUEMENT d'après la fin du créneau promis au
+  // client. `arrival_time` n'est que l'estimation de la tournée : affichée en
+  // gris, jamais en alerte.
+  const horaire = !arret.fait
+    ? etatHoraire(c.date, estRetrait ? c.creneau_retrait_fin : c.creneau_livraison_fin, maintenant)
+    : null
+  const estime = !estRetrait && !arret.fait ? libelleHeureEstimee(c.arrival_time) : null
   const [messagesOuverts, setMessagesOuverts] = useState(false)
 
   /**
    * LE BON NUMÉRO AU BON MOMENT.
    *
    * Au retrait, on appelle celui qui REMET ; à la livraison, celui qui REÇOIT.
-   * Le téléphone du client facturé ne sert qu'en dernier recours : sur un
-   * déménagement de particulier, le donneur d'ordre n'est souvent ni l'un ni
-   * l'autre, et le chauffeur appelait jusqu'ici le mauvais interlocuteur pour
-   * demander un code d'immeuble.
+   * Le téléphone du donneur d'ordre (client facturé) ne sert qu'en dernier
+   * recours, et seulement pour APPELER : un SMS « je suis devant chez vous »
+   * envoyé à une plateforme n'a pas de sens (`messageClient#contactArret`).
    */
-  const tel = (estRetrait ? c.expediteur_tel : c.destinataire_tel) ?? c.clients?.phone ?? null
-  const telEstCeluiDuClient = !(estRetrait ? c.expediteur_tel : c.destinataire_tel)
-  const lienAppel = lienTel(tel)
-  const peutEcrire = !!lienSms(tel, 'x')
+  const contact = contactArret(arret.type, c)
+  const lienAppel = lienTel(contact.tel)
+  const peutEcrire = contact.smsPossible && !!lienSms(contact.tel, 'x')
+  const messages = messagesPour(arret.type)
 
   // Coordonnées seulement pour l'adresse de LIVRAISON : `deliveries` ne géocode
   // qu'elle. Un point de retrait n'a que son texte.
@@ -711,20 +791,6 @@ function CarteArret({
       ? { lat: c.delivery_lat, lng: c.delivery_lng }
       : { adresse: arret.adresse },
   )
-
-  /**
-   * Le geste à faire ICI, et nulle part ailleurs.
-   *
-   * L'arrêt de retrait ne propose « Charger » que si la course est partie ;
-   * sinon il propose « Démarrer », parce qu'on ne charge pas une course qu'on
-   * n'a pas commencée. L'arrêt de livraison ne propose « Livrer » que lorsque
-   * c'est bien l'étape en cours.
-   */
-  const action: 'demarrer' | 'charger' | 'livrer' | null =
-    arret.fait ? null
-      : estRetrait
-        ? (etape === 'a_demarrer' ? 'demarrer' : etape === 'vers_chargement' ? 'charger' : null)
-        : (etape === 'a_demarrer' ? 'demarrer' : etape === 'vers_livraison' ? 'livrer' : null)
 
   const LIBELLE: Record<'demarrer' | 'charger' | 'livrer', string> = {
     demarrer: 'Démarrer', charger: 'Charger', livrer: 'Livrer',
@@ -740,22 +806,27 @@ function CarteArret({
     }`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <span className={`inline-flex items-center gap-1.5 text-[var(--fs-xs)] font-semibold uppercase tracking-wide ${
+          <span className={`inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide ${
             estRetrait ? 'text-[var(--warning)]' : 'text-[var(--brand)]'
           }`}>
             {estRetrait ? <PackageOpen size={13} /> : <Flag size={13} />}
             {estRetrait ? 'Retrait' : 'Livraison'}
           </span>
           <p className="font-medium text-[var(--text)] break-words">{c.clients?.name ?? '—'}</p>
+          {c.reference_client?.trim() && (
+            <p className="text-xs text-[var(--text-muted)] break-words">Réf. {c.reference_client.trim()}</p>
+          )}
           {afficherChauffeur && (
-            <p className="inline-flex items-center gap-1 text-[var(--fs-xs)] text-[var(--text-muted)]">
+            <p className="inline-flex items-center gap-1 text-xs text-[var(--text-muted)]">
               <User size={12} /> {c.team_members?.full_name ?? 'Sans chauffeur'}
             </p>
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {/* L'ordre se change tant qu'il reste quelque chose à faire ici. */}
-          {!arret.fait && !(premier && dernier) && (
+          {/* L'ordre se change tant qu'il reste quelque chose à faire ici —
+              sauf dans une TOURNÉE : son ordre vient du bureau (optimisation,
+              heures estimées) et les flèches l'écraseraient. */}
+          {!arret.fait && !c.tour_id && !(premier && dernier) && (
             <>
               <button onClick={() => onDeplacer('haut')} disabled={busy || premier}
                 aria-label="Monter cet arrêt" className={flecheCls}>
@@ -767,8 +838,8 @@ function CarteArret({
               </button>
             </>
           )}
-          <Badge color={arret.fait ? 'success' : estRetrait ? 'warning' : 'info'}>
-            {arret.fait ? 'Fait' : libelleEtat(c)}
+          <Badge color={arret.annule ? 'danger' : arret.fait ? 'success' : estRetrait ? 'warning' : 'info'}>
+            {arret.annule ? 'Annulée' : arret.fait ? 'Fait' : libelleEtat(c)}
           </Badge>
         </div>
       </div>
@@ -776,38 +847,42 @@ function CarteArret({
       {/* L'ADRESSE DE CET ARRÊT, en grand : c'est la seule information dont on
           a besoin devant le pare-brise. */}
       {arret.adresse ? (
-        <p className="text-[var(--fs-sm)] text-[var(--text)] break-words">{arret.adresse}</p>
+        <p className="text-sm text-[var(--text)] break-words">{arret.adresse}</p>
       ) : (
-        <p className="text-[var(--fs-sm)] font-medium text-[var(--danger)]">
+        <p className="text-sm font-medium text-[var(--danger)]">
           Adresse manquante — à compléter au bureau
         </p>
       )}
 
-      {/* HEURE PRÉVUE, colorée quand elle presse : l'urgence d'un express. */}
-      {heure && (
-        <p className={`inline-flex items-center gap-1.5 text-[var(--fs-sm)] font-medium ${
-          horaire === 'retard' ? 'text-[var(--danger)]' : horaire === 'bientot' ? 'text-[var(--warning)]' : 'text-[var(--text)]'
-        }`}>
-          <Clock size={14} /> Prévu à {heure}
-          {horaire === 'retard' && ' · en retard'}
-          {horaire === 'bientot' && ' · dans moins d’une heure'}
-        </p>
-      )}
-
-      {/* CRÉNEAU demandé par le client pour CET arrêt, et l'urgence. */}
-      {!arret.fait && (creneau || c.urgent) && (
-        <p className="inline-flex flex-wrap items-center gap-1.5 text-sm font-medium text-[var(--text)]">
+      {/* HORAIRE, une seule horloge : le CRÉNEAU promis au client (coloré
+          quand il presse) et, en gris, le passage estimé par la tournée. */}
+      {!arret.fait && (creneau || c.urgent || estime) && (
+        <p className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
           {c.urgent && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-pill)] bg-[var(--danger)]/15 text-[var(--danger)] text-xs">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-pill)] bg-[var(--danger)]/15 text-[var(--danger)] text-xs font-medium">
               <Zap size={12} /> Urgent
             </span>
           )}
-          {creneau && <><Clock size={14} /> Créneau {creneau}</>}
+          {(creneau || estime) && <Clock size={14} className="text-[var(--text-muted)]" />}
+          {creneau && (
+            <span className={`font-medium ${
+              horaire === 'retard' ? 'text-[var(--danger)]' : horaire === 'bientot' ? 'text-[var(--warning)]' : 'text-[var(--text)]'
+            }`}>
+              Créneau {creneau}
+              {horaire === 'retard' && ' · en retard'}
+              {horaire === 'bientot' && ' · moins d’une heure'}
+            </span>
+          )}
+          {estime && (
+            <span className="text-xs text-[var(--text-muted)]">
+              {creneau ? '· ' : ''}Passage estimé {estime}
+            </span>
+          )}
         </p>
       )}
 
       {(c.description || c.weight_kg != null || c.nb_colis != null) && (
-        <p className="text-[var(--fs-xs)] text-[var(--text-muted)] break-words">
+        <p className="text-xs text-[var(--text-muted)] break-words">
           {[
             c.nb_colis != null ? `${c.nb_colis} colis` : null,
             c.description,
@@ -819,20 +894,20 @@ function CarteArret({
       {/* CONSIGNES du bureau : code, étage, horaires… Invisibles jusqu'ici. */}
       {c.notes?.trim() && !arret.fait && (
         <p className="flex items-start gap-2 p-2.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)]
-          text-[var(--fs-sm)] text-[var(--text)] whitespace-pre-line break-words">
+          text-sm text-[var(--text)] whitespace-pre-line break-words">
           <Info size={15} className="text-[var(--brand)] shrink-0 mt-0.5" /> {c.notes.trim()}
         </p>
       )}
 
       {probleme && !arret.fait && (
         <div className="flex items-start gap-2 p-2.5 rounded-[var(--r-md)] border border-[var(--danger)]
-          text-[var(--fs-sm)] text-[var(--danger)] break-words">
+          text-sm text-[var(--danger)] break-words">
           <AlertTriangle size={15} className="shrink-0 mt-0.5" />
           <span>
             Signalé : {libelleMotif(c.probleme_motif)}
             {c.probleme_le && ` à ${new Date(c.probleme_le).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`}
             {c.probleme_note && ` — ${c.probleme_note}`}
-            <span className="block text-[var(--fs-xs)] text-[var(--text-muted)]">
+            <span className="block text-xs text-[var(--text-muted)]">
               Le bureau est prévenu. Tu peux encore livrer si le client revient.
             </span>
           </span>
@@ -868,14 +943,14 @@ function CarteArret({
         )}
 
         {action && !panneauOuvert && !problemeOuvert && (
-          <Button variant="primary" className="min-h-[44px] ml-auto" disabled={busy}
-            onClick={() => (action === 'demarrer' ? onDemarrer() : setPanneauOuvert(true))}>
+          <Button variant="primary" className="min-h-11 ml-auto" disabled={busy}
+            onClick={() => confirmer(() => (action === 'demarrer' ? onDemarrer() : setPanneauOuvert(true)))}>
             {busy ? '…' : LIBELLE[action]}
           </Button>
         )}
 
-        {arret.fait && !estRetrait && c.pod_captured_at && (
-          <span className="ml-auto inline-flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--success)]">
+        {arret.fait && !arret.annule && !estRetrait && c.pod_captured_at && (
+          <span className="ml-auto inline-flex items-center gap-1.5 text-xs text-[var(--success)]">
             <ShieldCheck size={14} /> Preuve
           </span>
         )}
@@ -884,22 +959,22 @@ function CarteArret({
       {/* Dire QUI on appelle quand ce n'est pas le contact de cet arrêt :
           composer le numéro du donneur d'ordre en croyant joindre le
           destinataire fait perdre un appel et parfois la livraison. */}
-      {(lienAppel || peutEcrire) && !arret.fait && telEstCeluiDuClient && (
-        <p className="text-[var(--fs-xs)] text-[var(--text-disabled)]">
-          Numéro du client facturé — pas de contact {estRetrait ? 'expéditeur' : 'destinataire'} renseigné.
+      {lienAppel && !arret.fait && contact.source === 'donneur_ordre' && (
+        <p className="text-xs text-[var(--text-disabled)]">
+          Numéro du donneur d'ordre (pas de contact sur place).
         </p>
       )}
 
       {messagesOuverts && peutEcrire && (
         <div className="flex flex-wrap gap-2">
-          {MESSAGES_TYPES.map(m => {
-            const lien = lienSms(tel, m.texte(c.clients?.name ?? null))
+          {messages.map(m => {
+            const lien = lienSms(contact.tel, m.texte(c.clients?.name ?? null))
             if (!lien) return null
             return (
               <a key={m.cle} href={lien} onClick={() => setMessagesOuverts(false)}
-                className="inline-flex items-center min-h-[40px] px-3 rounded-[var(--r-md)]
+                className="inline-flex items-center min-h-10 px-3 rounded-[var(--r-md)]
                   border border-[var(--border-soft)] bg-[var(--bg-card)]
-                  text-[var(--fs-sm)] text-[var(--text)] no-underline
+                  text-sm text-[var(--text)] no-underline
                   hover:border-[var(--brand)] transition-colors">
                 {m.libelle}
               </a>
@@ -944,7 +1019,7 @@ function CarteArret({
           demanderTransporteur={!c.pickup_address?.trim()}
           transporteurDejaSigne={!!c.lv_signatures?.transporteur}
           busy={busy}
-          onValider={nom => { setPanneauOuvert(false); onLivrer(nom) }}
+          onValider={(nom, preuve) => { setPanneauOuvert(false); onLivrer(nom, preuve) }}
           onAnnuler={() => setPanneauOuvert(false)}
         />
       )}
@@ -956,8 +1031,8 @@ const flecheCls = `p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
   hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
   disabled:opacity-30 disabled:cursor-not-allowed transition-colors`
 
-const boutonCls = `inline-flex items-center gap-1.5 min-h-[44px] px-3 rounded-[var(--r-md)]
-  border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)] no-underline
+const boutonCls = `inline-flex items-center gap-1.5 min-h-11 px-3 rounded-[var(--r-md)]
+  border border-[var(--border)] text-sm text-[var(--text)] no-underline
   hover:border-[var(--brand)] transition-colors`
 
 function ScannerTicket() {
@@ -999,7 +1074,7 @@ function ScannerTicket() {
         <button onClick={() => setOuvert(true)} aria-label="Scanner un ticket"
           className="fixed z-20 right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] lg:right-8 lg:bottom-8
             inline-flex items-center gap-2 h-14 pl-4 pr-5 rounded-full shadow-lg
-            bg-[var(--brand)] text-white text-[var(--fs-sm)] font-medium">
+            bg-[var(--brand)] text-white text-sm font-medium">
           <Camera size={20} /> Ticket
         </button>
       )}
@@ -1010,16 +1085,16 @@ function ScannerTicket() {
             className="w-full lg:max-w-md flex flex-col gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]
               rounded-t-[var(--r-lg)] lg:rounded-[var(--r-lg)] bg-[var(--bg-card)] border border-[var(--border)]">
             <div className="flex items-center justify-between">
-              <span className="text-[var(--fs-sm)] font-semibold text-[var(--text)]">Scanner un ticket</span>
+              <span className="text-sm font-semibold text-[var(--text)]">Scanner un ticket</span>
               <button onClick={fermer} disabled={envoi} aria-label="Fermer"
                 className="p-2 text-[var(--text-muted)] hover:text-[var(--text)]"><X size={18} /></button>
             </div>
             <input type="text" value={note} onChange={e => setNote(e.target.value)}
               placeholder="De quoi s'agit-il ? (péage A35, plein Movano…)"
-              className="w-full min-h-[44px] px-3 rounded-[var(--r-md)] bg-[var(--bg)]
-                border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)]
+              className="w-full min-h-11 px-3 rounded-[var(--r-md)] bg-[var(--bg)]
+                border border-[var(--border)] text-[var(--text)] text-sm
                 focus:outline-none focus:border-[var(--brand)]" />
-            <Button variant="primary" className="min-h-[48px]" onClick={() => inputRef.current?.click()} disabled={envoi}>
+            <Button variant="primary" className="min-h-12" onClick={() => inputRef.current?.click()} disabled={envoi}>
               <Camera size={16} /> {envoi ? 'Envoi…' : 'Prendre la photo'}
             </Button>
           </div>
@@ -1058,7 +1133,7 @@ function PiecesJointes({ documents }: { documents: DocumentCourse[] }) {
 
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="inline-flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
+      <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
         <Paperclip size={13} />
         {documents.length > 1 ? `${documents.length} documents` : '1 document'}
       </span>
@@ -1071,7 +1146,7 @@ function PiecesJointes({ documents }: { documents: DocumentCourse[] }) {
               key={d.id}
               onClick={() => ouvrir(d)}
               disabled={ouverture === d.id}
-              className="flex items-center gap-2 min-h-[44px] px-3 rounded-[var(--r-md)] text-left
+              className="flex items-center gap-2 min-h-11 px-3 rounded-[var(--r-md)] text-left
                 border border-[var(--border)] bg-[var(--bg-deep)]
                 hover:border-[var(--brand)] transition-colors disabled:opacity-50"
             >
@@ -1079,13 +1154,11 @@ function PiecesJointes({ documents }: { documents: DocumentCourse[] }) {
                 {estImage ? <ImageIcon size={15} /> : <FileText size={15} />}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-[var(--fs-sm)] text-[var(--text)] truncate">{d.file_name}</span>
-                {d.category && (
-                  <span className="block text-[var(--fs-xs)] text-[var(--text-disabled)]">{d.category}</span>
-                )}
+                <span className="block text-sm text-[var(--text)] truncate">{d.file_name}</span>
+                <span className="block text-xs text-[var(--text-disabled)]">{libelleCategorieDocument(d.category)}</span>
               </span>
               {ouverture === d.id && (
-                <span className="text-[var(--fs-xs)] text-[var(--text-muted)] shrink-0">Ouverture…</span>
+                <span className="text-xs text-[var(--text-muted)] shrink-0">Ouverture…</span>
               )}
             </button>
           )

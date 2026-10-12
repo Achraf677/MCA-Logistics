@@ -8,6 +8,8 @@ import { uploadDocument, deleteDocument } from '../../shared/lib/documents.queri
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import type { DocumentCategory } from '../../shared/lib/documents.types'
 import { ajouterSignature } from './mescourses.queries'
+import { messageEnvoiPhoto, traduireErreurEcriture } from './mescourses.logic'
+import { aUnePreuve } from './etapes.logic'
 
 type Role = 'expediteur' | 'destinataire'
 
@@ -32,7 +34,7 @@ interface Props {
   transporteurDejaSigne: boolean
   busy: boolean
   /** Valide l'étape. `null` = l'utilisateur passe sans preuve. */
-  onValider: (nom: string | null) => void
+  onValider: (nom: string | null, preuve: boolean) => void
   onAnnuler: () => void
 }
 
@@ -146,14 +148,7 @@ export function EtapeTerrain({
       entity_type: 'delivery', entity_id: courseId, category: cfg.categorie,
     })
     setPhotoEnvoi(false)
-    if (error || !data) {
-      const message = error?.message ?? 'Envoi impossible'
-      const refus = /row-level security|permission|policy/i.test(message)
-      toast(refus
-        ? "Ton compte n'a pas le droit d'ajouter des photos. Préviens la gestion — tu peux valider sans."
-        : message, 'error')
-      return
-    }
+    if (error || !data) { toast(messageEnvoiPhoto(error?.message), 'error'); return }
     setPhotos(p => [...p, { doc: data, apercu: URL.createObjectURL(file) }])
     // On NE PASSE PAS a l'etape suivante : le chauffeur en prend souvent
     // plusieurs, et avancer tout seul l'obligerait a revenir en arriere a
@@ -187,10 +182,20 @@ export function EtapeTerrain({
     const { error } = await ajouterSignature(courseId, cle, {
       png, ts: new Date().toISOString(), ...(geo ? { geo } : {}),
     })
-    if (error) { toast(error.message, 'error'); return }
+    if (error) { toast(traduireErreurEcriture(error), 'error'); return }
     if (cle === 'transporteur') setSigneeTransp(true); else setSignee(true)
     toast('Signature enregistrée')
     suivant()
+  }
+
+  /**
+   * Valide l'étape en disant au parent s'il existe une preuve : un nom, une
+   * photo OU la signature de la partie. Sans nom, une livraison photographiée
+   * ou signée doit quand même être horodatée (`pod_captured_at`).
+   */
+  const valider = () => {
+    const n = nom.trim() || null
+    onValider(n, aUnePreuve({ nom: n, photos: photos.length, signee }))
   }
 
   return (
@@ -203,10 +208,10 @@ export function EtapeTerrain({
             <ChevronLeft size={16} />
           </button>
         )}
-        <span className="text-[var(--fs-xs)] font-semibold text-[var(--text)] uppercase tracking-wide">
+        <span className="text-xs font-semibold text-[var(--text)] uppercase tracking-wide">
           {cfg.titre}
         </span>
-        <span className="ml-auto text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
+        <span className="ml-auto text-xs text-[var(--text-muted)] font-mono">
           {index + 1}/{etapes.length}
         </span>
       </div>
@@ -242,7 +247,7 @@ export function EtapeTerrain({
             </ul>
           )}
 
-          <Button variant={photos.length > 0 ? 'secondary' : 'primary'} className="min-h-[48px]"
+          <Button variant={photos.length > 0 ? 'secondary' : 'primary'} className="min-h-12"
                   onClick={() => photoRef.current?.click()} disabled={photoEnvoi || busy}>
             <span className="inline-flex items-center gap-1.5">
               <Camera size={16} />
@@ -251,7 +256,7 @@ export function EtapeTerrain({
           </Button>
 
           {photos.length > 0 ? (
-            <Button variant="primary" className="min-h-[48px]" onClick={suivant} disabled={photoEnvoi || busy}>
+            <Button variant="primary" className="min-h-12" onClick={suivant} disabled={photoEnvoi || busy}>
               Suivant
             </Button>
           ) : (
@@ -263,8 +268,8 @@ export function EtapeTerrain({
       {etape === 'nom' && (
         <>
           <input type="text" value={nom} onChange={e => setNom(e.target.value)} autoFocus
-                 placeholder={cfg.question} className="field min-h-[48px] h-auto" />
-          <Button variant="primary" className="min-h-[48px]" onClick={suivant} disabled={busy}>
+                 placeholder={cfg.question} className="field min-h-12 h-auto" />
+          <Button variant="primary" className="min-h-12" onClick={suivant} disabled={busy}>
             Suivant
           </Button>
         </>
@@ -273,10 +278,10 @@ export function EtapeTerrain({
       {etape === 'signature' && (
         signee ? (
           <>
-            <span className="inline-flex items-center gap-1.5 text-[var(--fs-sm)] text-[var(--success)]">
+            <span className="inline-flex items-center gap-1.5 text-sm text-[var(--success)]">
               <Check size={16} /> {cfg.labelSignature} enregistrée
             </span>
-            <Button variant="primary" className="min-h-[48px]" onClick={suivant} disabled={busy}>
+            <Button variant="primary" className="min-h-12" onClick={suivant} disabled={busy}>
               Suivant
             </Button>
           </>
@@ -292,10 +297,10 @@ export function EtapeTerrain({
       {etape === 'transporteur' && (
         signeeTransp ? (
           <>
-            <span className="inline-flex items-center gap-1.5 text-[var(--fs-sm)] text-[var(--success)]">
+            <span className="inline-flex items-center gap-1.5 text-sm text-[var(--success)]">
               <Check size={16} /> Signature du transporteur enregistrée
             </span>
-            <Button variant="primary" className="min-h-[48px]" onClick={suivant} disabled={busy}>
+            <Button variant="primary" className="min-h-12" onClick={suivant} disabled={busy}>
               Suivant
             </Button>
           </>
@@ -320,8 +325,8 @@ export function EtapeTerrain({
             <LigneRecap fait={signee} texte={cfg.labelSignature} />
             {demanderTransporteur && <LigneRecap fait={signeeTransp} texte="Signature du transporteur" />}
           </ul>
-          <Button variant="primary" className="min-h-[48px]"
-                  onClick={() => onValider(nom.trim() || null)} disabled={busy || photoEnvoi}>
+          <Button variant="primary" className="min-h-12"
+                  onClick={valider} disabled={busy || photoEnvoi}>
             {busy ? '…' : cfg.actionFinale}
           </Button>
         </>
@@ -333,14 +338,14 @@ export function EtapeTerrain({
           de facturer — qui existent exactement pour ca. */}
       <div className="flex items-center gap-2 pt-1 border-t border-[var(--border)]">
         {!dernier && (
-          <button onClick={() => onValider(nom.trim() || null)} disabled={busy || photoEnvoi}
-            className="flex-1 min-h-[44px] text-[var(--fs-xs)] text-[var(--text-muted)]
+          <button onClick={valider} disabled={busy || photoEnvoi}
+            className="flex-1 min-h-11 text-xs text-[var(--text-muted)]
               hover:text-[var(--text)] transition-colors disabled:opacity-40">
             {cfg.actionFinale} sans preuve
           </button>
         )}
         <button onClick={onAnnuler} disabled={busy}
-          className="min-h-[44px] px-3 text-[var(--fs-xs)] text-[var(--text-muted)]
+          className="min-h-11 px-3 text-xs text-[var(--text-muted)]
             hover:text-[var(--text)] transition-colors disabled:opacity-40">
           Annuler
         </button>
@@ -353,7 +358,7 @@ export function EtapeTerrain({
 function BoutonPasser({ onClick, disabled }: { onClick: () => void; disabled: boolean }) {
   return (
     <button onClick={onClick} disabled={disabled}
-      className="min-h-[44px] text-[var(--fs-sm)] text-[var(--text-muted)]
+      className="min-h-11 text-sm text-[var(--text-muted)]
         hover:text-[var(--text)] transition-colors disabled:opacity-40">
       Passer
     </button>
@@ -362,7 +367,7 @@ function BoutonPasser({ onClick, disabled }: { onClick: () => void; disabled: bo
 
 function LigneRecap({ fait, texte }: { fait: boolean; texte: string }) {
   return (
-    <li className={`flex items-center gap-2 text-[var(--fs-sm)] ${
+    <li className={`flex items-center gap-2 text-sm ${
       fait ? 'text-[var(--text)]' : 'text-[var(--text-disabled)]'
     }`}>
       {fait

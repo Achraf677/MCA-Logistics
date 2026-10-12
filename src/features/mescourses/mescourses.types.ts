@@ -43,7 +43,10 @@ export interface CourseChauffeur {
   vehicles: { label: string; plate: string } | null
   /** Consignes saisies au bureau (code, étage, horaires d'ouverture…). */
   notes: string | null
-  /** Heure prévue / limite, « HH:MM:SS ». */
+  /**
+   * Heure de passage ESTIMÉE par la tournée, « HH:MM:SS » — pas un engagement.
+   * Les engagements envers le client sont les `creneau_*`.
+   */
   arrival_time: string | null
   nb_colis: number | null
   /** Fiche équipe du chauffeur (team_members.id). */
@@ -74,6 +77,8 @@ export interface DocumentCourse {
   /** Dernier recours pour les pièces pas encore rapatriées de Google Drive. */
   drive_link: string | null
   created_at: string
+  /** Compte qui a déposé la pièce : sert à ne pas relister au chauffeur ses propres photos. */
+  uploaded_by: string | null
 }
 
 /**
