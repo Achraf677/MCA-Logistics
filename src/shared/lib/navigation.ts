@@ -93,6 +93,61 @@ export function googleMapsRouteUrl(
   return url
 }
 
+/** Une etape d'itineraire : un point geocode, ou a defaut une adresse ecrite. */
+export type EtapeItineraire = { lat: number; lng: number } | { adresse: string }
+
+/**
+ * Nombre maximal d'etapes INTERMEDIAIRES qu'un lien Google Maps accepte.
+ * Google documente 9 waypoints sur mobile (au-dela, les suivants sont ignores
+ * sans prevenir) : on decoupe donc l'itineraire en plusieurs liens.
+ */
+export const MAX_ETAPES_GOOGLE = 9
+
+function texteEtape(e: EtapeItineraire): string {
+  return 'adresse' in e ? e.adresse.trim() : `${e.lat},${e.lng}`
+}
+
+/**
+ * Itineraire des arrets RESTANTS, decoupe en lots que Google Maps sait ouvrir.
+ *
+ * - Le premier lien n'a PAS d'origine : Google part alors de la position du
+ *   telephone, c'est-a-dire de la ou le chauffeur se trouve vraiment.
+ * - Chaque lien suivant repart du dernier point du precedent.
+ * - `retour` (le depot, s'il est geocode) ferme la boucle a la fin.
+ * - Une etape sans coordonnees ni adresse est ignoree (rien a viser).
+ *
+ * Renvoie [] quand il n'y a aucune etape.
+ */
+export function itineraireEnLots(
+  etapes: EtapeItineraire[],
+  opts: NavOptions & { retour?: GeoPoint | null; maxEtapes?: number } = {},
+): string[] {
+  const max = Math.max(1, opts.maxEtapes ?? MAX_ETAPES_GOOGLE)
+  const points = etapes.map(texteEtape).filter(t => t.length > 0)
+  if (points.length === 0) return []
+  if (opts.retour) points.push(`${opts.retour.lat},${opts.retour.lng}`)
+
+  const liens: string[] = []
+  let origine: string | null = null
+  let i = 0
+  while (i < points.length) {
+    // Un lot = jusqu'a `max` etapes intermediaires + 1 destination.
+    const lot = points.slice(i, i + max + 1)
+    const destination = lot[lot.length - 1]
+    const intermediaires = lot.slice(0, -1)
+    let url = 'https://www.google.com/maps/dir/?api=1'
+    if (origine) url += `&origin=${encodeURIComponent(origine)}`
+    url += `&destination=${encodeURIComponent(destination)}`
+    if (intermediaires.length > 0) url += `&waypoints=${encodeURIComponent(intermediaires.join('|'))}`
+    url += '&travelmode=driving'
+    if (opts.eviterPeages) url += '&avoid=tolls'
+    liens.push(url)
+    origine = destination
+    i += lot.length
+  }
+  return liens
+}
+
 // ── Choix de l'application de navigation ──────────────────────────────────────
 
 /**

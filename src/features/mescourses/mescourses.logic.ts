@@ -138,15 +138,39 @@ export function prochainArret<T extends { fait: boolean }>(arrets: T[]): T | nul
   return arrets.find(a => !a.fait) ?? null
 }
 
-/** « 3 / 12 » : arrêts faits sur le total. */
-export function progression(arrets: Array<{ fait: boolean }>): { faits: number; total: number } {
-  return { faits: arrets.filter(a => a.fait).length, total: arrets.length }
+/**
+ * « 3 faits sur 12 » : arrêts faits sur le total. Les arrêts d'une course
+ * ANNULÉE ne comptent ni d'un côté ni de l'autre : ils ne sont pas « faits »,
+ * et il n'y a plus rien à y faire.
+ */
+export function progression(arrets: Array<{ fait: boolean; annule?: boolean }>): { faits: number; total: number } {
+  const comptes = arrets.filter(a => !a.annule)
+  return { faits: comptes.filter(a => a.fait).length, total: comptes.length }
+}
+
+/** Libellé unique du compteur, partout le même sens : « 3 faits sur 12 ». */
+export function libelleProgression(faits: number, total: number): string {
+  if (total === 0) return 'aucun arrêt'
+  return `${faits} fait${faits > 1 ? 's' : ''} sur ${total}`
+}
+
+/**
+ * Rang réel d'un arrêt dans la séquence (1 = premier), arrêts annulés exclus.
+ * `null` si l'arrêt n'est pas dans la séquence (ou annulé).
+ */
+export function rangDansSequence(arrets: Array<{ cle: string; annule?: boolean }>, cle: string): number | null {
+  const i = arrets.filter(a => !a.annule).findIndex(a => a.cle === cle)
+  return i === -1 ? null : i + 1
 }
 
 export type EtatHoraire = 'retard' | 'bientot' | 'ok'
 
 /**
- * Où en est-on par rapport à l'heure prévue (`arrival_time`, « HH:MM[:SS] ») ?
+ * Où en est-on par rapport à une heure LIMITE (« HH:MM[:SS] ») ?
+ *
+ * À appeler avec la FIN du créneau promis au client (`creneau_*_fin`), jamais
+ * avec `arrival_time` : celle-ci n'est qu'une estimation de la tournée, et
+ * afficher « en retard » sur une estimation affole pour rien.
  *
  * `maintenant` est passé en paramètre (heure LOCALE du téléphone, « AAAA-MM-JJ »
  * + minutes depuis minuit) : le module reste pur et testable. Un jour passé
@@ -199,4 +223,116 @@ export function libelleCreneauArret(debut: string | null | undefined, fin: strin
   if (f) return `avant ${f}`
   if (d) return `à partir de ${d}`
   return null
+}
+
+/** « 14:30:00 » → « ~14:30 » : heure de passage ESTIMÉE (tournée), pas un engagement. */
+export function libelleHeureEstimee(heure: string | null): string | null {
+  const m = heure ? /^(\d{1,2}):(\d{2})/.exec(heure) : null
+  return m ? `~${m[1].padStart(2, '0')}:${m[2]}` : null
+}
+
+// ── Dates du jour, confirmations ────────────────────────────────────────────
+
+/** « 2026-10-12 » → « lun. 12 oct. » : tient dans l'en-tête à 390 px. */
+export function libelleDateCourte(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`)
+  if (Number.isNaN(d.getTime())) return iso
+  return new Intl.DateTimeFormat('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).format(d)
+}
+
+/**
+ * Faut-il confirmer un geste (Démarrer / Charger / Livrer) ? Oui quand la course
+ * n'est pas d'aujourd'hui : un doigt qui glisse sur la semaine ne doit pas
+ * démarrer la course de jeudi. Renvoie la question, ou `null` si rien à demander.
+ */
+export function confirmationAutreJour(dateCourse: string, aujourdhui: string): string | null {
+  if (dateCourse === aujourdhui) return null
+  const quand = dateCourse < aujourdhui ? 'prévue un jour passé' : 'prévue plus tard'
+  return `Cette course est ${quand} (${libelleDateCourte(dateCourse)}), pas aujourd'hui. Continuer quand même ?`
+}
+
+// ── Messages ────────────────────────────────────────────────────────────────
+
+/**
+ * Libellés lisibles des statuts de course. Mêmes mots que l'écran Livraisons
+ * (`livraisons.logic#STATUS_LABELS`), en minuscule pour une phrase ;
+ * `shared/lib/livraisonStatuts` ne porte pas (encore) de libellés.
+ */
+const LIBELLE_STATUT: Record<string, string> = {
+  planifiee: 'planifiée', en_cours: 'en cours', livree: 'livrée',
+  facturee: 'facturée', payee: 'payée', annulee: 'annulée',
+}
+
+/** « Cette course est livrée : impossible de la démarrer. » — sans code brut. */
+export function messageTransitionImpossible(statut: string, cible: 'en_cours' | 'livree'): string {
+  const etat = LIBELLE_STATUT[statut] ?? 'dans un état inattendu'
+  const geste = cible === 'en_cours' ? 'la démarrer' : 'la livrer'
+  return `Cette course est ${etat} : impossible de ${geste}. Recharge la page ou préviens le bureau.`
+}
+
+export const MESSAGE_DROIT_MANQUANT =
+  "Enregistrement refusé : ton compte n'a pas encore ce droit, préviens le bureau."
+
+/**
+ * Traduit une erreur d'écriture en phrase pour le chauffeur.
+ *
+ * - 0 ligne modifiée (RLS silencieuse, code `0_LIGNE`, ou `.single()` qui
+ *   répond « JSON object requested, multiple (or no) rows returned » / PGRST116),
+ * - refus explicite (row-level security, permission denied, 42501)
+ * → « Enregistrement refusé : ton compte n'a pas encore ce droit… ».
+ * Le reste passe tel quel (à défaut d'un message vide).
+ */
+export function traduireErreurEcriture(error: { message?: string; code?: string } | null | undefined): string {
+  if (!error) return ''
+  const msg = error.message ?? ''
+  if (error.code === '0_LIGNE' || error.code === 'PGRST116' || error.code === '42501') return MESSAGE_DROIT_MANQUANT
+  if (/JSON object requested|row-level security|permission denied|violates.*policy/i.test(msg)) return MESSAGE_DROIT_MANQUANT
+  if (/failed to fetch|network/i.test(msg)) return "Pas de réseau : rien n'a été enregistré, réessaie dans un instant."
+  return msg || 'Enregistrement impossible, réessaie ou préviens le bureau.'
+}
+
+/** Envoi de photo refusé : même phrase partout (preuve, problème). */
+export function messageEnvoiPhoto(message: string | undefined): string {
+  const m = message ?? 'Envoi impossible'
+  return /row-level security|permission|policy/i.test(m)
+    ? "Ton compte n'a pas le droit d'ajouter des photos. Préviens le bureau — tu peux valider sans."
+    : m
+}
+
+// ── Pièces jointes, véhicule ────────────────────────────────────────────────
+
+const LIBELLE_CATEGORIE: Record<string, string> = {
+  POD: 'Preuve de livraison',
+  Chargement: 'Photo au chargement',
+  LV: 'Lettre de voiture',
+  Client: 'Document client',
+  Administratif: 'Document administratif',
+  Comptable: 'Document comptable',
+  RH: 'Document RH',
+  'Véhicule': 'Document véhicule',
+  Autre: 'Document',
+}
+
+export function libelleCategorieDocument(categorie: string | null | undefined): string {
+  return (categorie && LIBELLE_CATEGORIE[categorie]) || 'Document'
+}
+
+/**
+ * Pièces à montrer au chauffeur : celles du BUREAU (bon de commande, étiquette,
+ * consignes…). Ses propres photos, il vient de les prendre — les relister
+ * noie le document utile au milieu de ses clichés.
+ */
+export function documentsPourChauffeur<T extends { uploaded_by: string | null }>(docs: T[], monCompte: string | null): T[] {
+  return monCompte ? docs.filter(d => d.uploaded_by !== monCompte) : docs
+}
+
+/** Véhicule(s) du jour, sans doublon : « Movano · AB-123-CD ». Annulées exclues. */
+export function vehiculesDuJour(courses: Array<{ statut: string; vehicles: { label: string; plate: string } | null }>): string[] {
+  const vus = new Set<string>()
+  for (const c of courses) {
+    if (c.statut === 'annulee' || !c.vehicles) continue
+    const l = [c.vehicles.label, c.vehicles.plate].filter(Boolean).join(' · ')
+    if (l) vus.add(l)
+  }
+  return [...vus]
 }
