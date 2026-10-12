@@ -11,6 +11,7 @@
 --   déposés + ceux de ses courses), ses tickets, véhicules, société (dépôt).
 -- Additive et réversible (DOWN en bas).
 -- Application MCP : une instruction par appel (l'outil expire sur les blocs groupés).
+-- APPLIQUÉE en prod le 12/10/2026 (vérifié : un compte chauffeur lit 0 charge / 0 fiche ; président inchangé).
 
 -- UP -------------------------------------------------------------------------
 
