@@ -4,7 +4,8 @@ import { Button } from '../../shared/ui/Button'
 import { useToast } from '../../shared/ui/useToast'
 import { supabase, useProfile } from '../../app/providers'
 import { createWorkHour, updateWorkHour } from './heures.queries'
-import { formatMinutes } from './heures.logic'
+import { formatMinutes, dureeNetteMinutes, passeMinuit } from './heures.logic'
+import { toLocalISO } from '../../shared/lib/dates'
 import type { WorkHourRow, WorkHourInsert } from './heures.types'
 import { Field } from '../../shared/ui/Field'
 
@@ -19,25 +20,13 @@ type Lookup = { id: string; label: string }
 type DeliveryLookup = { id: string; label: string }
 
 const EMPTY_FORM = {
-  date:          new Date().toISOString().slice(0, 10),
+  date:          '',
   member_id:     '',
   start_time:    '',
   end_time:      '',
   break_minutes: '0',
   delivery_id:   '',
   notes:         '',
-}
-
-function timeToMinutes(t: string): number {
-  if (!t) return 0
-  const [h, m] = t.split(':').map(Number)
-  return (h ?? 0) * 60 + (m ?? 0)
-}
-
-function computeTotal(start: string, end: string, breakMin: number): number | null {
-  if (!start || !end) return null
-  const diff = timeToMinutes(end) - timeToMinutes(start)
-  return diff > 0 ? diff - breakMin : null
 }
 
 export function DrawerHeure({ open, onClose, workHour, onSaved }: Props) {
@@ -54,20 +43,29 @@ export function DrawerHeure({ open, onClose, workHour, onSaved }: Props) {
     if (!open) return
     supabase.from('team_members').select('id, full_name').eq('active', true).order('full_name')
       .then(({ data }) => setMembers((data ?? []).map(m => ({ id: m.id, label: m.full_name }))))
+  }, [open])
+
+  // Livraisons du salarié CE jour-là (et pas les 50 dernières de toute la société).
+  useEffect(() => {
+    if (!open || !form.member_id || !form.date) { setDeliveries([]); return }
+    let annule = false
     supabase
       .from('deliveries')
-      .select('id, date, clients!client_id(name)')
+      .select('id, delivery_address, clients!client_id(name)')
+      .eq('driver_id', form.member_id)
+      .eq('date', form.date)
       // Relevés de messagerie et forfaits : pas des courses où l'on pointe des heures.
       .or('prestation.is.null,prestation.not.in.(messagerie,forfait)')
-      .order('date', { ascending: false })
-      .limit(50)
-      .then(({ data }) =>
-        setDeliveries((data ?? []).map(d => ({
-          id: d.id,
-          label: `${new Date(d.date).toLocaleDateString('fr-FR')} — ${(d.clients as unknown as { name: string } | null)?.name ?? '?'}`,
-        })))
-      )
-  }, [open])
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        if (annule) return
+        setDeliveries((data ?? []).map(d => {
+          const client = (d.clients as unknown as { name: string } | null)?.name ?? 'Client ?'
+          return { id: d.id, label: d.delivery_address ? `${client} — ${d.delivery_address}` : client }
+        }))
+      })
+    return () => { annule = true }
+  }, [open, form.member_id, form.date])
 
   useEffect(() => {
     if (workHour) {
@@ -81,17 +79,21 @@ export function DrawerHeure({ open, onClose, workHour, onSaved }: Props) {
         notes:         workHour.notes ?? '',
       })
     } else {
-      setForm({ ...EMPTY_FORM, date: new Date().toISOString().slice(0, 10) })
+      // Date du jour LOCALE (toISOString donnerait la veille avant 2 h).
+      setForm({ ...EMPTY_FORM, date: toLocalISO(new Date()) })
     }
   }, [workHour, open])
 
   const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
 
   const breakMin = parseInt(form.break_minutes || '0') || 0
-  const previewTotal = computeTotal(form.start_time, form.end_time, breakMin)
+  const previewTotal = dureeNetteMinutes(form.start_time, form.end_time, breakMin)
+  const nuit = passeMinuit(form.start_time, form.end_time)
+  // Livraison déjà liée mais hors de la liste (autre jour / autre salarié) : on la garde visible.
+  const lieeHorsListe = !!form.delivery_id && !deliveries.some(d => d.id === form.delivery_id)
 
   const handleSave = async () => {
-    if (!form.member_id) { toast('Le chauffeur est requis', 'error'); return }
+    if (!form.member_id) { toast('Le salarié est requis', 'error'); return }
     if (!form.date)      { toast('La date est requise', 'error'); return }
 
     setSaving(true)
@@ -137,7 +139,7 @@ export function DrawerHeure({ open, onClose, workHour, onSaved }: Props) {
           <Field label="Date *">
             <Input type="date" value={form.date} onChange={v => set('date', v)} />
           </Field>
-          <Field label="Chauffeur *">
+          <Field label="Salarié *">
             <select value={form.member_id} onChange={e => set('member_id', e.target.value)} className={inputCls}>
               <option value="">— Sélectionner —</option>
               {members.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
@@ -147,7 +149,7 @@ export function DrawerHeure({ open, onClose, workHour, onSaved }: Props) {
 
         {/* Horaires */}
         <div className="rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3">
-          <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+          <span className="text-[length:var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
             Horaires
           </span>
           <div className="grid grid-cols-3 gap-3">
@@ -164,7 +166,7 @@ export function DrawerHeure({ open, onClose, workHour, onSaved }: Props) {
 
           {previewTotal != null && (
             <div className="flex items-center justify-between px-3 py-2 rounded-[var(--r-md)] bg-[var(--bg-elevated)]">
-              <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">Durée nette</span>
+              <span className="text-sm text-[var(--text-muted)]">Durée nette{nuit ? ' (passe minuit)' : ''}</span>
               <span className="font-mono font-semibold text-[var(--brand)]">{formatMinutes(previewTotal)}</span>
             </div>
           )}
@@ -173,8 +175,12 @@ export function DrawerHeure({ open, onClose, workHour, onSaved }: Props) {
         <Field label="Livraison associée">
           <select value={form.delivery_id} onChange={e => set('delivery_id', e.target.value)} className={inputCls}>
             <option value="">— Aucune —</option>
+            {lieeHorsListe && <option value={form.delivery_id}>Livraison déjà liée (autre jour ou autre salarié)</option>}
             {deliveries.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
           </select>
+          {(!form.member_id || !form.date)
+            ? <span className="text-xs text-[var(--text-muted)]">Choisis le salarié et le jour pour voir ses livraisons.</span>
+            : deliveries.length === 0 && <span className="text-xs text-[var(--text-muted)]">Aucune livraison de ce salarié ce jour-là.</span>}
         </Field>
 
         <Field label="Notes">

@@ -1,5 +1,6 @@
 import { computeEcheance } from '../../shared/lib/echeances'
 import type { EcheanceStatus } from '../../shared/lib/echeances'
+import { libelleErreurAdmin } from '../../shared/lib/adminUsers'
 import type { TeamMember } from './equipe.types'
 
 export const ROLE_LABELS: Record<NonNullable<TeamMember['role']>, string> = {
@@ -46,7 +47,7 @@ export interface MemberEcheance {
 export function memberEcheances(member: TeamMember, today = new Date()): MemberEcheance[] {
   const entries: Array<{ label: string; date: string | null }> = [
     { label: 'Permis B',         date: member.licence_b_expiry },
-    { label: 'Visite médicale',  date: member.medical_visit_expiry },
+    { label: 'Prochaine visite médicale', date: member.medical_visit_expiry },
   ]
   return entries.map(({ label, date }) => {
     const { daysLeft, status } = computeEcheance(date, today)
@@ -54,10 +55,17 @@ export function memberEcheances(member: TeamMember, today = new Date()): MemberE
   })
 }
 
-/** 'a_regulariser' seulement si au moins une validité est 'overdue'. 'none' n'impacte pas l'aptitude. */
-export function aptitude(member: TeamMember, today = new Date()): 'apte' | 'a_regulariser' {
+export type Aptitude = 'apte' | 'a_completer' | 'a_regulariser'
+
+/**
+ * 'a_regulariser' si une validité est dépassée ; 'a_completer' si une date
+ * manque (on ne peut pas dire « Apte » sans permis ni visite connus) ; sinon 'apte'.
+ */
+export function aptitude(member: TeamMember, today = new Date()): Aptitude {
   const echeances = memberEcheances(member, today)
-  return echeances.some(e => e.status === 'overdue') ? 'a_regulariser' : 'apte'
+  if (echeances.some(e => e.status === 'overdue')) return 'a_regulariser'
+  if (echeances.some(e => e.status === 'none'))    return 'a_completer'
+  return 'apte'
 }
 
 export function isDriverRole(role: TeamMember['role']): boolean {
@@ -88,18 +96,53 @@ export function erreurAcces(p: { email: string; mode: ModeAcces; motDePasse: str
   return null
 }
 
-const ERREURS_ACCES: Record<string, string> = {
-  fiche_deja_reliee: 'Cette fiche est déjà reliée à un compte.',
-  fiche_introuvable: 'Fiche introuvable.',
-  compte_deja_relie: 'Ce compte est déjà relié à une autre fiche.',
-  create_failed: 'Création refusée (e-mail déjà utilisé ?).',
-  invite_failed: "Invitation non envoyée (e-mail du serveur non configuré) : choisis « Mot de passe ».",
-  forbidden_president_only: 'Réservé au président.',
-  link_failed: 'Compte créé mais pas relié à la fiche : réessaie « C’est mon compte » ou contacte le support.',
+/** Message lisible d'un code d'erreur de l'Edge admin-users (règle partagée avec Administrateurs). */
+export function libelleErreurAcces(code: string | null | undefined, detail?: string | null, message?: string | null): string {
+  return libelleErreurAdmin({ error: code ?? undefined, detail: detail ?? undefined, message: message ?? undefined })
 }
 
-/** Message lisible d'un code d'erreur de l'Edge admin-users. */
-export function libelleErreurAcces(code: string | null | undefined, detail?: string | null): string {
-  if (code && ERREURS_ACCES[code]) return ERREURS_ACCES[code]
-  return detail || code || 'Erreur inconnue.'
+// ── Saisie de la fiche ───────────────────────────────────────────────────────
+
+/** Salaire saisi en euros → centimes ; vide (ou illisible) = null, jamais 0. */
+export function salaireSaisiCts(v: string): number | null {
+  const t = v.trim().replace(/\s/g, '').replace(',', '.')
+  if (!t) return null
+  const n = Number(t)
+  return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) : null
+}
+
+/** Date 'AAAA-MM-JJ' en français 'JJ/MM/AAAA' (sans passer par UTC). */
+export function dateFr(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso)
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso
+}
+
+/** Date de fin de contrat à la désactivation : refus si avant l'entrée. */
+export function erreurDateFin(dateFin: string, dateEntree: string | null | undefined): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFin)) return 'Date de fin requise.'
+  if (dateEntree && dateFin < dateEntree) return 'La date de fin est avant la date d’entrée.'
+  return null
+}
+
+// ── Export CSV ───────────────────────────────────────────────────────────────
+
+function celluleCsv(v: string): string {
+  return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v
+}
+
+/** Export des membres (séparateur « ; », dates françaises). */
+export function membresCsv(members: TeamMember[]): string {
+  const entetes = ['Nom', 'Fonction', 'Contrat', 'Entrée', 'Sortie', 'Permis B (fin)', 'Prochaine visite médicale', 'Actif']
+  const lignes = members.map(m => [
+    m.full_name,
+    m.role_label?.trim() || getRoleLabel(m.role),
+    getContractLabel(m.contract_type),
+    dateFr(m.start_date),
+    dateFr(m.end_date),
+    dateFr(m.licence_b_expiry),
+    dateFr(m.medical_visit_expiry),
+    m.active ? 'Oui' : 'Non',
+  ])
+  return [entetes, ...lignes].map(l => l.map(celluleCsv).join(';')).join('\n')
 }

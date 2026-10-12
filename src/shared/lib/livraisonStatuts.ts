@@ -35,3 +35,21 @@ export function canTransition(from: string, to: string): boolean {
 export function allowedNextStatuses(from: string): DeliveryStatus[] {
   return TRANSITIONS[from as DeliveryStatus] ?? []
 }
+
+// ── Libellés ────────────────────────────────────────────────────────────────
+// Pour les écrans hors de features/livraisons (qui garde STATUS_LABELS) :
+// mêmes mots partout.
+const LIBELLES_STATUT: Record<DeliveryStatus, string> = {
+  planifiee: 'Planifiée',
+  en_cours:  'En cours',
+  livree:    'Livrée',
+  facturee:  'Facturée',
+  payee:     'Payée',
+  annulee:   'Annulée',
+}
+
+/** Libellé d'un statut de livraison ; le code brut s'il est inconnu, « — » s'il manque. */
+export function libelleStatutLivraison(statut: string | null | undefined): string {
+  if (!statut) return '—'
+  return LIBELLES_STATUT[statut as DeliveryStatus] ?? statut
+}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
-import { supabase } from '../../app/providers'
+import { creerCompte } from '../../shared/lib/adminUsers.queries'
+import { libelleErreurAdmin } from '../../shared/lib/adminUsers'
 import { useToast } from '../../shared/ui/useToast'
 import { Button } from '../../shared/ui/Button'
 import { ROLE_OPTIONS } from './admins.types'
@@ -47,12 +48,10 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
   async function handleCreate() {
     if (!email || !fullName || !password) return
     setLoading(true)
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'create', email, full_name: fullName, password, role },
-    })
+    const r = await creerCompte({ mode: 'mot_de_passe', email, fullName, motDePasse: password, role })
     setLoading(false)
-    if (error || !data?.ok) {
-      toast(error?.message ?? 'Erreur lors de la création du compte', 'error')
+    if (!r.ok) {
+      toast(libelleErreurAdmin(r), 'error')
       return
     }
     toast(`Compte créé pour ${fullName}`)
@@ -64,17 +63,15 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
     if (!email || !fullName) return
     setInviteWarning(null)
     setLoading(true)
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'invite', email, full_name: fullName, role },
-    })
+    const r = await creerCompte({ mode: 'invitation', email, fullName, role })
     setLoading(false)
-    if (error || !data?.ok) {
-      if (data?.error === 'invite_failed') {
+    if (!r.ok) {
+      if (r.error === 'invite_failed' && !libelleErreurAdmin(r).includes('déjà un compte')) {
         setInviteWarning(
           "L'invitation n'a pas pu être envoyée. Vérifiez que le serveur SMTP est configuré dans Supabase Auth."
         )
       } else {
-        toast(error?.message ?? "Erreur lors de l'invitation", 'error')
+        toast(libelleErreurAdmin(r), 'error')
       }
       return
     }
@@ -101,7 +98,7 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
       <div className="relative w-full max-w-md bg-[var(--bg-elevated)] border border-[var(--border)] rounded-[var(--r-lg)] shadow-lg flex flex-col gap-0 anim-dialog overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
-          <h2 className="font-display font-semibold text-[var(--fs-h3)] text-[var(--text)]">
+          <h2 className="font-display font-semibold text-[length:var(--fs-h3)] text-[var(--text)]">
             Ajouter un administrateur
           </h2>
           <button
@@ -120,7 +117,7 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
             <button
               key={t}
               onClick={() => { setTab(t); setInviteWarning(null) }}
-              className={`flex-1 py-2.5 text-[var(--fs-sm)] transition-colors -mb-px
+              className={`flex-1 py-2.5 text-[length:var(--fs-sm)] transition-colors -mb-px
                 ${tab === t
                   ? 'text-[var(--brand)] border-b-2 border-[var(--brand)] font-medium'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}
@@ -132,6 +129,10 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
 
         {/* Formulaire */}
         <div className="p-5 flex flex-col gap-4">
+          <p className="text-xs text-[var(--text-muted)]">
+            Pour un salarié (livreur), crée son accès depuis sa fiche Équipe › Accès au site :
+            le compte y est relié à sa fiche et cloisonné.
+          </p>
           {tab === 'create' ? (
             <>
               <Field label="Nom complet *">
@@ -169,11 +170,11 @@ export function ModalAddAdmin({ open, onClose, onSuccess }: Props) {
                   {ROLE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </Field>
-              <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+              <p className="text-[length:var(--fs-xs)] text-[var(--text-muted)]">
                 Un e-mail d'invitation sera envoyé.
               </p>
               {inviteWarning && (
-                <p className="text-[var(--fs-xs)] text-[var(--danger,#dc2626)] bg-[var(--danger,#dc2626)]/10 px-3 py-2 rounded-[var(--r-md)]">
+                <p className="text-[length:var(--fs-xs)] text-[var(--danger,#dc2626)] bg-[var(--danger,#dc2626)]/10 px-3 py-2 rounded-[var(--r-md)]">
                   {inviteWarning}
                 </p>
               )}

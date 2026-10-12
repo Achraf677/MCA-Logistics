@@ -14,6 +14,7 @@ import { TabActions } from '../shared/ui/TabbedSection'
 import { SyncIndicator } from '../shared/ui/SyncIndicator'
 import { supabase, useProfile } from './providers'
 import { usePermissions } from '../shared/permissions/usePermissions'
+import { libelleRole, estCompteSalarie } from '../shared/permissions/roles'
 
 interface NavItem {
   key:        string
@@ -63,7 +64,7 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
             <NavLink
               to={item.path}
               className={() =>
-                `flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--r-md)] text-[var(--fs-sm)] transition-colors ${
+                `flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--r-md)] text-[length:var(--fs-sm)] transition-colors ${
                   isItemActive(item)
                     ? 'bg-[var(--brand-soft)] text-[var(--brand)] font-medium'
                     : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]'
@@ -102,6 +103,14 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
   const [logoutLoading, setLogoutLoading] = useState(false)
   const [q, setQ] = useState('')
   const { profile } = useProfile()
+  // Compte salarié (cloisonné) : une seule entrée (Mes courses) → ni barre
+  // latérale, ni burger, ni recherche « livraison », ni synchro, ni alertes.
+  // Le rôle vient du profil (déjà chargé par ProfileGate) : aucun flash du menu
+  // complet pendant le chargement des droits.
+  const salarie = estCompteSalarie(profile?.role)
+  const initiales = profile
+    ? profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
+    : ''
 
   const handleLogout = async () => {
     setLogoutLoading(true)
@@ -119,6 +128,42 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
           </TabActions>
         )}
         {children}
+      </div>
+    )
+  }
+
+  if (salarie) {
+    return (
+      <div className="flex flex-col h-full min-w-0">
+        <header className="flex items-center h-[var(--topbar-h)] px-4 gap-3 bg-[var(--bg-elevated)] border-b border-[var(--border)] shrink-0">
+          <h1 className="font-display font-semibold text-[length:var(--fs-h2)] text-[var(--text)] truncate min-w-0">
+            {pageTitle}
+          </h1>
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            <ActionBar actions={actions} onAction={onAction} />
+            {profile && (
+              <div className="hidden sm:flex flex-col items-end min-w-0 leading-tight">
+                <span className="text-sm font-medium text-[var(--text)] truncate max-w-[12rem]">{profile.full_name}</span>
+                <span className="text-xs text-[var(--text-muted)]">{libelleRole(profile.role)}</span>
+              </div>
+            )}
+            <button
+              onClick={handleLogout}
+              disabled={logoutLoading}
+              className="flex items-center gap-1.5 h-9 px-3 rounded-[var(--r-md)] border border-[var(--border)] text-sm text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--bg-card-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <LogOut size={15} />
+              <span>{logoutLoading ? 'Déconnexion…' : 'Se déconnecter'}</span>
+            </button>
+          </div>
+        </header>
+        <main className="flex-1 overflow-auto px-4 pt-4 pb-6 md:px-6 md:pt-5">
+          <div key={location.pathname} className="page-enter">
+            <ShellNestContext.Provider value={true}>
+              {children}
+            </ShellNestContext.Provider>
+          </div>
+        </main>
       </div>
     )
   }
@@ -150,8 +195,8 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
               <span className="inline-grid place-items-center w-10 h-10 rounded-[var(--r-lg)] shrink-0 font-display font-bold text-white text-[calc(16rem/14)]"
                     style={{ background: 'linear-gradient(135deg, var(--brand), var(--brand-deep))' }}>M</span>
               <div className="flex flex-col min-w-0">
-                <span className="font-display font-bold text-[var(--fs-h3)] text-[var(--text)] leading-tight">MCA Logistics</span>
-                <span className="text-[var(--fs-xs)] text-[var(--text-muted)] leading-tight">Pilotage interne</span>
+                <span className="font-display font-bold text-[length:var(--fs-h3)] text-[var(--text)] leading-tight">MCA Logistics</span>
+                <span className="text-[length:var(--fs-xs)] text-[var(--text-muted)] leading-tight">Pilotage interne</span>
               </div>
             </div>
           )}
@@ -177,13 +222,13 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
         <div className="shrink-0 border-t border-[var(--border)] p-3">
           {!collapsed && profile ? (
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-full grid place-items-center text-white font-display font-semibold text-[var(--fs-sm)] shrink-0"
+              <div className="w-9 h-9 rounded-full grid place-items-center text-white font-display font-semibold text-[length:var(--fs-sm)] shrink-0"
                    style={{ background: 'var(--grad)' }}>
-                {profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                {initiales}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[var(--fs-sm)] font-medium text-[var(--text)] truncate leading-tight">{profile.full_name}</p>
-                <p className="text-[var(--fs-xs)] text-[var(--text-muted)] leading-tight">Président</p>
+                <p className="text-[length:var(--fs-sm)] font-medium text-[var(--text)] truncate leading-tight">{profile.full_name}</p>
+                <p className="text-[length:var(--fs-xs)] text-[var(--text-muted)] leading-tight">{libelleRole(profile.role)}</p>
               </div>
               <button
                 onClick={handleLogout}
@@ -219,7 +264,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
             >
               <Menu size={16} />
             </button>
-            <h1 className="font-display font-semibold text-[var(--fs-h2)] text-[var(--text)]">
+            <h1 className="font-display font-semibold text-[length:var(--fs-h2)] text-[var(--text)]">
               {pageTitle}
             </h1>
           </div>
@@ -229,7 +274,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
               onChange={e => setQ(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && q.trim()) navigate('/livraisons?q=' + encodeURIComponent(q.trim())) }}
               placeholder="Rechercher une livraison, un client…"
-              className="w-full h-9 rounded-[var(--r-pill)] bg-[var(--bg-card)] border border-[var(--border)] px-4 text-[var(--fs-sm)] text-[var(--text)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--brand)] transition-colors"
+              className="w-full h-9 rounded-[var(--r-pill)] bg-[var(--bg-card)] border border-[var(--border)] px-4 text-[length:var(--fs-sm)] text-[var(--text)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--brand)] transition-colors"
             />
           </div>
           <div className="flex items-center gap-2 ml-auto shrink-0">
@@ -238,11 +283,11 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
             <AlertesBell />
             {profile && (
               <div
-                className="w-9 h-9 rounded-full grid place-items-center text-white font-display font-semibold text-[var(--fs-sm)] shrink-0"
+                className="w-9 h-9 rounded-full grid place-items-center text-white font-display font-semibold text-[length:var(--fs-sm)] shrink-0"
                 style={{ background: 'var(--grad)' }}
                 title={profile.full_name}
               >
-                {profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()}
+                {initiales}
               </div>
             )}
           </div>

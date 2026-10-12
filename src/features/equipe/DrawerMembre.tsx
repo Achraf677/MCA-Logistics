@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
-import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { useProfile } from '../../app/providers'
+import { usePermissions } from '../../shared/permissions/usePermissions'
+import { toLocalISO } from '../../shared/lib/dates'
+import { libelleStatutLivraison } from '../../shared/lib/livraisonStatuts'
+import { changerActif } from '../../shared/lib/adminUsers.queries'
 import { createTeamMember, updateTeamMember, deactivateTeamMember, getMemberRecentDeliveries } from './equipe.queries'
 import {
   CONTRACT_LABELS, ROLE_LABELS, memberEcheances, isDriverRole,
+  salaireSaisiCts, dateFr, erreurDateFin, libelleErreurAcces,
 } from './equipe.logic'
 import type { TeamMember, TeamMemberInsert } from './equipe.types'
 import { AccesSite } from './AccesSite'
@@ -24,7 +28,7 @@ const inputClass = 'field'
 function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
+      <label className="text-[length:var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
       {children}
     </div>
   )
@@ -48,14 +52,14 @@ function ValiditesBloc({ member }: { member: TeamMember }) {
   return (
     <div className="flex flex-col gap-2">
       {echeances.map(e => (
-        <div key={e.label} className="flex items-center justify-between bg-[var(--bg)] rounded-[var(--r-md)] px-3 py-2 text-[var(--fs-sm)]">
+        <div key={e.label} className="flex items-center justify-between bg-[var(--bg)] rounded-[var(--r-md)] px-3 py-2 text-[length:var(--fs-sm)]">
           <span className="text-[var(--text-muted)]">{e.label}</span>
           <div className="flex items-center gap-2">
-            <span className="text-[var(--text-disabled)] font-mono text-[var(--fs-xs)]">
-              {e.date ?? '—'}
+            <span className="text-[var(--text-disabled)] font-mono text-[length:var(--fs-xs)]">
+              {dateFr(e.date)}
             </span>
             {e.daysLeft !== null && e.status !== 'none' && (
-              <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+              <span className="text-[length:var(--fs-xs)] text-[var(--text-muted)]">
                 ({e.daysLeft < 0 ? `${Math.abs(e.daysLeft)} j dépassé` : `${e.daysLeft} j`})
               </span>
             )}
@@ -73,20 +77,27 @@ function ValiditesBloc({ member }: { member: TeamMember }) {
 type Tab = 'detail' | 'validites' | 'historique' | 'documents' | 'acces'
 
 export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembreProps) {
-  const { companyId } = useProfile()
+  const { companyId, profile } = useProfile()
+  const { isPresident } = usePermissions()
   const { toast } = useToast()
   const [tab, setTab] = useState<Tab>('detail')
   const [form, setForm] = useState<Partial<TeamMemberInsert>>({})
   const [saving, setSaving] = useState(false)
   const [deliveries, setDeliveries] = useState<Array<{ id: string; date: string | null; delivery_address: string | null; statut: string | null }>>([])
   const [loadingHistory, setLoadingHistory] = useState(false)
+  // Désactivation : confirmation en ligne avec la date de fin (aujourd'hui par défaut).
   const [confirmDeactivate, setConfirmDeactivate] = useState(false)
+  const [dateFin, setDateFin] = useState('')
+  const [deactivating, setDeactivating] = useState(false)
+  const [salaireTexte, setSalaireTexte] = useState('')
   const isEdit = !!member
   const showValidites = isDriverRole(member?.role ?? null)
 
   useEffect(() => {
     if (!open) return
     setTab('detail')
+    setConfirmDeactivate(false)
+    setSalaireTexte(member?.salary_gross_cts != null ? (member.salary_gross_cts / 100).toFixed(2) : '')
     setForm(member ? {
       full_name: member.full_name,
       role: member.role ?? undefined,
@@ -94,7 +105,7 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
       idcc: member.idcc,
       coefficient: member.coefficient ?? undefined,
       contract_type: member.contract_type,
-      salary_gross_cts: member.salary_gross_cts ?? undefined,
+      salary_gross_cts: member.salary_gross_cts,
       start_date: member.start_date ?? '',
       end_date: member.end_date ?? '',
       phone: member.phone ?? '',
@@ -148,17 +159,43 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
     }
   }
 
+  // Accès au site relié : on le coupe aussi — sauf son propre compte (refusé par
+  // le serveur) et hors président (seul à pouvoir le faire).
+  const accesRelie = !!member?.profile_id
+  const accesEstMoi = accesRelie && member?.profile_id === profile?.id
+  const peutCouperAcces = accesRelie && !accesEstMoi && isPresident
+
   const handleDeactivate = () => {
     if (!member) return
+    setDateFin(toLocalISO(new Date()))
     setConfirmDeactivate(true)
   }
 
   const doDeactivate = async () => {
     if (!member) return
+    const refus = erreurDateFin(dateFin, member.start_date)
+    if (refus) { toast(refus, 'error'); return }
+    setDeactivating(true)
+    if (peutCouperAcces && member.profile_id) {
+      const r = await changerActif(member.profile_id, false)
+      if (!r.ok) {
+        setDeactivating(false)
+        toast(`Accès au site non coupé, membre non désactivé : ${libelleErreurAcces(r.error, r.detail, r.message)}`, 'error')
+        return
+      }
+    }
+    const { error } = await deactivateTeamMember(member.id, dateFin)
+    setDeactivating(false)
+    if (error) {
+      toast(peutCouperAcces
+        ? `Accès au site coupé, mais fiche non désactivée : ${error.message}`
+        : error.message, 'error')
+      return
+    }
     setConfirmDeactivate(false)
-    const { error } = await deactivateTeamMember(member.id)
-    if (error) { toast(error.message, 'error'); return }
-    toast(`${member.full_name} désactivé`)
+    toast(peutCouperAcces
+      ? `${member.full_name} désactivé (fin le ${dateFr(dateFin)}) et accès au site coupé`
+      : `${member.full_name} désactivé (fin le ${dateFr(dateFin)})`)
     onSaved(); onClose()
   }
 
@@ -175,10 +212,10 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
       <div className="flex flex-col gap-4">
         {/* Onglets */}
         {isEdit && (
-          <div className="flex gap-1 border-b border-[var(--border)] pb-1">
+          <div className="flex gap-1 border-b border-[var(--border)] pb-1 overflow-x-auto">
             {tabs.map(t => (
               <button key={t.key} onClick={() => setTab(t.key)}
-                className={`px-3 py-1 text-[var(--fs-sm)] rounded-[var(--r-md)] transition-colors
+                className={`shrink-0 whitespace-nowrap px-3 py-1 text-sm rounded-[var(--r-md)] transition-colors
                   ${tab === t.key
                     ? 'bg-[var(--brand)] text-white font-medium'
                     : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}>
@@ -223,9 +260,9 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
 
             <div className="grid grid-cols-2 gap-3">
               <FieldGroup label="Salaire brut / mois (€)">
-                <input type="number" min={0} step={0.01}
-                  value={form.salary_gross_cts != null ? (form.salary_gross_cts / 100).toFixed(2) : ''}
-                  onChange={e => set('salary_gross_cts', Math.round(parseFloat(e.target.value || '0') * 100))}
+                <input type="text" inputMode="decimal"
+                  value={salaireTexte}
+                  onChange={e => { setSalaireTexte(e.target.value); set('salary_gross_cts', salaireSaisiCts(e.target.value)) }}
                   className={inputClass} placeholder="2 500,00" />
               </FieldGroup>
               <FieldGroup label="Coefficient">
@@ -257,6 +294,27 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
               </FieldGroup>
             </div>
 
+            {confirmDeactivate && member ? (
+              <div className="flex flex-col gap-3 rounded-[var(--r-md)] border border-[var(--danger)]/40 bg-[var(--danger)]/5 p-3">
+                <p className="text-sm font-medium text-[var(--text)]">Désactiver {member.full_name} ?</p>
+                <FieldGroup label="Date de fin (sortie)">
+                  <input type="date" value={dateFin} onChange={e => setDateFin(e.target.value)} className={inputClass} />
+                </FieldGroup>
+                <p className="text-sm text-[var(--text-muted)]">
+                  La fiche sera masquée de l’équipe active (son historique reste).
+                  {peutCouperAcces && ' Son accès au site sera aussi coupé : il ne pourra plus se connecter.'}
+                  {accesEstMoi && ' La fiche est reliée à ton compte : ton accès au site n’est pas coupé.'}
+                  {accesRelie && !accesEstMoi && !isPresident && ' Attention : son accès au site reste ouvert ; seul le président peut le couper (Accès au site).'}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="primary" onClick={doDeactivate} disabled={deactivating}
+                    className="!bg-[var(--danger)] hover:!bg-[var(--danger)]/90">
+                    {deactivating ? '…' : peutCouperAcces ? 'Désactiver et couper l’accès' : 'Désactiver'}
+                  </Button>
+                  <Button variant="secondary" onClick={() => setConfirmDeactivate(false)} disabled={deactivating}>Annuler</Button>
+                </div>
+              </div>
+            ) : (
             <div className="flex gap-2 pt-2 border-t border-[var(--border)]">
               <Button variant="primary" onClick={handleSave} disabled={saving}>
                 {saving ? 'Enregistrement…' : 'Enregistrer'}
@@ -266,6 +324,7 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
                 <Button variant="ghost" onClick={handleDeactivate} className="ml-auto text-[var(--danger)]">Désactiver</Button>
               )}
             </div>
+            )}
           </>
         )}
 
@@ -273,7 +332,7 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
         {isEdit && tab === 'validites' && showValidites && (
           <>
             <div className="flex flex-col gap-3">
-              <p className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">Dates de validité</p>
+              <p className="text-[length:var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">Dates de validité</p>
               <div className="grid grid-cols-2 gap-3">
                 <FieldGroup label="Permis B — expiration">
                   <input type="date"
@@ -281,7 +340,7 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
                     onChange={e => set('licence_b_expiry', e.target.value || null)}
                     className={inputClass} />
                 </FieldGroup>
-                <FieldGroup label="Visite médicale — expiration">
+                <FieldGroup label="Prochaine visite médicale">
                   <input type="date"
                     value={form.medical_visit_expiry ?? ''}
                     onChange={e => set('medical_visit_expiry', e.target.value || null)}
@@ -290,7 +349,7 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
               </div>
 
               {/* Pastilles de statut */}
-              <p className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide mt-2">Statut actuel</p>
+              <p className="text-[length:var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide mt-2">Statut actuel</p>
               <ValiditesBloc member={{ ...member!, ...form as Partial<TeamMember> } as TeamMember} />
             </div>
 
@@ -307,27 +366,26 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
         {isEdit && tab === 'historique' && (
           <div className="flex flex-col gap-2">
             {loadingHistory ? (
-              <p className="text-[var(--text-muted)] text-[var(--fs-sm)]">Chargement…</p>
+              <p className="text-[var(--text-muted)] text-[length:var(--fs-sm)]">Chargement…</p>
             ) : deliveries.length === 0 ? (
-              <p className="text-[var(--text-muted)] text-[var(--fs-sm)] py-6 text-center">Aucune livraison récente</p>
+              <p className="text-[var(--text-muted)] text-[length:var(--fs-sm)] py-6 text-center">Aucune livraison récente</p>
             ) : (
               deliveries.map(d => (
-                <div key={d.id} className="flex items-center justify-between bg-[var(--bg)] rounded-[var(--r-md)] px-3 py-2 text-[var(--fs-sm)]">
-                  <div>
-                    <span className="font-mono text-[var(--text-disabled)] text-[var(--fs-xs)]">{d.date ?? '—'}</span>
+                <div key={d.id} className="flex items-center justify-between gap-2 bg-[var(--bg)] rounded-[var(--r-md)] px-3 py-2 text-[length:var(--fs-sm)]">
+                  <div className="min-w-0 truncate">
+                    <span className="font-mono text-[var(--text-disabled)] text-xs">{dateFr(d.date)}</span>
                     {d.delivery_address && (
                       <span className="ml-2 text-[var(--text-muted)]">{d.delivery_address}</span>
                     )}
                   </div>
                   {d.statut && (
-                    <span className="text-[var(--fs-xs)] text-[var(--text-muted)] capitalize">{d.statut}</span>
+                    <span className="text-xs text-[var(--text-muted)] shrink-0">{libelleStatutLivraison(d.statut)}</span>
                   )}
                 </div>
               ))
             )}
           </div>
         )}
-      </div>
 
         {/* ── Tab : Documents ── */}
         {isEdit && tab === 'documents' && (
@@ -338,16 +396,7 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
         {isEdit && tab === 'acces' && member && (
           <AccesSite member={member} onChanged={() => { onSaved(); onClose() }} />
         )}
-
-      <ConfirmDialog
-        open={confirmDeactivate}
-        title="Désactiver le membre"
-        message={member ? `Le membre « ${member.full_name} » sera désactivé et masqué de l'équipe active.` : ''}
-        confirmLabel="Désactiver"
-        onConfirm={doDeactivate}
-        onCancel={() => setConfirmDeactivate(false)}
-        loading={false}
-      />
+      </div>
     </Drawer>
   )
 }
