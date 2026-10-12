@@ -1,9 +1,9 @@
 // Edge `drive-connect` — reçoit le provider_refresh_token Google capté au login Drive,
 // le VALIDE (en obtenant un access_token), puis le stocke dans google_drive_tokens pour
 // la société du user. Token jamais loggué. verify_jwt = true. company_id dérivé du JWT.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
+import { exigerPermission } from '../_shared/auth.ts';
 
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
@@ -24,22 +24,12 @@ Deno.serve(async (req: Request) => {
   }
   if (!refreshToken) return jsonResponse({ ok: false, error: 'refresh_token requis' }, 400);
 
-  // Identité : company_id dérivé du JWT (jamais du body)
-  const url = Deno.env.get('SUPABASE_URL')!;
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-  const userClient = createClient(url, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false },
-  });
-  const { data: { user }, error: userErr } = await userClient.auth.getUser();
-  if (userErr || !user) return jsonResponse({ ok: false, error: 'invalid session' }, 401);
-
+  // Identité : company_id dérivé du JWT (jamais du body). Connecter le Drive de
+  // la société = un réglage : président ou `systeme.parametres : update`.
   const service = getServiceClient();
-  const { data: profile, error: profErr } = await service
-    .from('profiles').select('company_id').eq('id', user.id).single();
-  if (profErr || !profile?.company_id) {
-    return jsonResponse({ ok: false, error: 'profil/société introuvable' }, 400);
-  }
+  const acces = await exigerPermission(req, service, 'systeme.parametres', 'update');
+  if (!acces.ok) return acces.response;
+  const profile = { company_id: acces.companyId };
 
   // Valide le refresh_token en obtenant un access_token (qu'on ne stocke pas)
   const clientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');

@@ -3,6 +3,7 @@
 // (sans JWT). Sécurité : le `state` est un nonce à usage unique en base + le `code` Google
 // est à usage unique et lié à notre client. Aucun token n'est jamais loggué.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { verifierDroitCompte } from '../_shared/auth.ts';
 
 const REDIRECT_URI = 'https://pzfgtcugmqeqixogwzcu.supabase.co/functions/v1/drive-oauth-callback';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -27,6 +28,7 @@ Deno.serve(async (req: Request) => {
 
   let origin = '';
   let companyId = '';
+  let userId = '';
   let expired = false;
   if (state) {
     const { data: st } = await service
@@ -34,6 +36,7 @@ Deno.serve(async (req: Request) => {
     if (st) {
       origin = st.redirect_origin ?? '';
       companyId = st.company_id;
+      userId = st.user_id ?? '';
       expired = new Date(st.expires_at).getTime() < Date.now();
     }
   }
@@ -44,6 +47,17 @@ Deno.serve(async (req: Request) => {
   if (oauthErr) { await cleanup(); return redirectTo(safeOrigin, { drive: 'error', reason: oauthErr }); }
   if (expired) { await cleanup(); return redirectTo(safeOrigin, { drive: 'error', reason: 'expired' }); }
   if (!code || !state || !companyId) return redirectTo(safeOrigin, { drive: 'error', reason: 'missing_code_or_state' });
+
+  // Pas de JWT ici (c'est Google qui redirige) : on revérifie le compte qui a
+  // lancé le flux (noté dans le `state` par drive-oauth-start) — même société,
+  // toujours actif, président ou `systeme.parametres : update`. Un droit retiré
+  // entre les deux étapes, ou un `state` sans compte, ne connecte rien.
+  if (!userId) { await cleanup(); return redirectTo(safeOrigin, { drive: 'error', reason: 'forbidden' }); }
+  const acces = await verifierDroitCompte(service, userId, 'systeme.parametres', 'update');
+  if (!acces.ok || acces.companyId !== companyId) {
+    await cleanup();
+    return redirectTo(safeOrigin, { drive: 'error', reason: 'forbidden' });
+  }
 
   const clientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
   const clientSecret = Deno.env.get('GOOGLE_OAUTH_CLIENT_SECRET');

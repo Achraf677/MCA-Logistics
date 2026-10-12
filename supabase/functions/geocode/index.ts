@@ -14,6 +14,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { geocode } from '../_shared/geocode.ts'
+import { exigerUneDesPermissions } from '../_shared/auth.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return optionsResponse()
@@ -36,25 +37,20 @@ Deno.serve(async (req: Request) => {
       if (!authHeader) return jsonResponse({ ok: false, error: 'missing Authorization' }, 401)
 
       const url = Deno.env.get('SUPABASE_URL')
-      const anonKey = Deno.env.get('SUPABASE_ANON_KEY')
       const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-      if (!url || !anonKey || !svcKey) {
+      if (!url || !svcKey) {
         return jsonResponse({ ok: false, error: 'server misconfiguration' }, 500)
       }
 
-      // Auth JWT → user + company_id (jamais depuis le body).
-      const userClient = createClient(url, anonKey, {
-        global: { headers: { Authorization: authHeader } },
-        auth: { persistSession: false },
-      })
-      const { data: { user }, error: uErr } = await userClient.auth.getUser()
-      if (uErr || !user) return jsonResponse({ ok: false, error: 'invalid session' }, 401)
-
+      // Auth JWT → company_id (jamais depuis le body). Le backfill ÉCRIT
+      // (dépôt + coordonnées des courses) : président, ou droit de modifier
+      // les tournées ou les livraisons — pas un simple compte connecté.
       const service = createClient(url, svcKey, { auth: { persistSession: false } })
-      const { data: me } = await service
-        .from('profiles').select('company_id').eq('id', user.id).single()
-      const companyId = me?.company_id as string | undefined
-      if (!companyId) return jsonResponse({ ok: false, error: 'société introuvable' }, 400)
+      const acces = await exigerUneDesPermissions(
+        req, service, ['planning.tournees', 'livraisons.livraisons'], 'update',
+      )
+      if (!acces.ok) return acces.response
+      const companyId = acces.companyId
 
       // ── Dépôt ────────────────────────────────────────────────────────────
       // 'skipped' = déjà géocodé (rien à faire)
