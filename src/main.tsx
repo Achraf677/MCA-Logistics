@@ -14,6 +14,16 @@ import { AssistantWidget } from './features/assistant/AssistantWidget'
 import { PermissionsProvider } from './shared/permissions/PermissionsProvider'
 import { ErrorBoundary } from './app/ErrorBoundary'
 import { SyncProvider } from './app/SyncProvider'
+import { estCompteSalarie } from './shared/permissions/roles'
+
+// Assistant IA : outil du bureau. Pas pour un compte salarié (cloisonné) — il y
+// lirait des données qui ne sont pas les siennes, et sa bulle cachait le bouton
+// « Ticket » de Mes courses.
+function AssistantBureau() {
+  const { profile } = useProfile()
+  if (!profile || estCompteSalarie(profile.role)) return null
+  return <AssistantWidget />
+}
 
 // ── Garde profil ─────────────────────────────────────────────────────────────
 // Bloque l'app si l'utilisateur authentifié n'a pas encore de ligne en profiles
@@ -88,7 +98,7 @@ function AppCore() {
                   d'affichage local et rendu superflu à chaque changement
                   d'onglet. Son état de conversation était déjà ici
                   (AssistantProvider) ; le composant visible le rejoint. */}
-              <AssistantWidget />
+              <AssistantBureau />
             </AssistantProvider>
           </SyncProvider>
         </PermissionsProvider>

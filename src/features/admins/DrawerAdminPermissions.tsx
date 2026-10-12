@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../app/providers'
 import { useToast } from '../../shared/ui/useToast'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Button } from '../../shared/ui/Button'
@@ -7,7 +6,13 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { PERMISSION_CATALOG, CATALOG_SECTIONS, CATALOG_BY_SECTION } from '../../shared/permissions/catalog'
 import type { AdminMember, ResourcePermission, AdminRole } from './admins.types'
-import { ROLE_OPTIONS, ROLE_LABELS } from './admins.types'
+import { ROLE_LABELS } from './admins.types'
+import { changementRoleSensible, optionsRole } from './admins.logic'
+import { estCompteSalarie } from '../../shared/permissions/roles'
+import { libelleErreurAdmin } from '../../shared/lib/adminUsers'
+import {
+  appelPermissions, changerRole, changerActif, definirMotDePasse, envoyerLienReinit, supprimerCompte,
+} from '../../shared/lib/adminUsers.queries'
 
 interface Props {
   member: AdminMember | null
@@ -51,8 +56,10 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
   const [resetLoading, setResetLoading] = useState(false)
   const [pwdDefini, setPwdDefini]     = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [roleEnAttente, setRoleEnAttente] = useState<AdminRole | null>(null)
 
   const isSelf = member?.id === currentUserId
+  const salarie = estCompteSalarie(member?.role)
 
   useEffect(() => {
     if (!open || !member) return
@@ -65,14 +72,16 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
     setPwdDefini(false)
     setPermLoading(true)
 
-    supabase.functions
-      .invoke('admin-permissions', { body: { action: 'get', user_id: member.id } })
-      .then(({ data }) => {
-        if (data?.ok && Array.isArray(data.permissions)) {
-          setPermMap(mergePermissions(data.permissions))
-        }
+    setRoleEnAttente(null)
+    // Compte salarié : ses droits ne se règlent pas ici (cloisonné en base).
+    if (estCompteSalarie(member.role)) { setPermLoading(false); return }
+    appelPermissions<{ permissions: ResourcePermission[] }>({ action: 'get', user_id: member.id })
+      .then(r => {
+        if (r.ok && Array.isArray(r.permissions)) setPermMap(mergePermissions(r.permissions))
+        else if (!r.ok) toast(libelleErreurAdmin(r), 'error')
       })
       .finally(() => setPermLoading(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, member])
 
   function togglePerm(key: string, field: keyof Omit<ResourcePermission, 'resource'>, value: boolean) {
@@ -104,28 +113,29 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
     if (!member) return
     setSaving(true)
     const permissions = PERMISSION_CATALOG.map(r => permMap[r.key])
-    const { data, error } = await supabase.functions.invoke('admin-permissions', {
-      body: { action: 'set_bulk', user_id: member.id, permissions },
-    })
+    const r = await appelPermissions({ action: 'set_bulk', user_id: member.id, permissions })
     setSaving(false)
-    if (error || !data?.ok) {
-      toast(error?.message ?? 'Erreur lors de la sauvegarde', 'error')
-    } else {
-      toast('Permissions enregistrées')
-    }
+    if (!r.ok) toast(libelleErreurAdmin(r), 'error')
+    else toast('Permissions enregistrées')
   }
 
-  async function handleSetRole(role: AdminRole) {
+  /** Demande de changement de rôle : un compte salarié passe d'abord par une confirmation. */
+  function demanderRole(role: AdminRole) {
+    if (!member || isSelf || role === roleValue) return
+    if (changementRoleSensible(member.role, role)) { setRoleEnAttente(role); return }
+    void appliquerRole(role)
+  }
+
+  async function appliquerRole(role: AdminRole) {
     if (!member || isSelf) return
+    setRoleEnAttente(null)
     setRoleValue(role)
     setRoleLoading(true)
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'set_role', user_id: member.id, role },
-    })
+    const r = await changerRole(member.id, role)
     setRoleLoading(false)
-    if (error || !data?.ok) {
+    if (!r.ok) {
       setRoleValue(member.role)
-      toast(error?.message ?? 'Erreur lors du changement de rôle', 'error')
+      toast(libelleErreurAdmin(r), 'error')
     } else {
       toast('Rôle mis à jour')
       onMemberUpdated()
@@ -136,69 +146,51 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
     if (!member || isSelf) return
     setActiveValue(active)
     setActiveLoading(true)
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'set_active', user_id: member.id, active },
-    })
+    const r = await changerActif(member.id, active)
     setActiveLoading(false)
-    if (error || !data?.ok) {
+    if (!r.ok) {
       setActiveValue(!active)
-      toast(error?.message ?? "Erreur lors de la mise à jour", 'error')
+      toast(libelleErreurAdmin(r), 'error')
     } else {
-      toast(active ? 'Compte activé' : 'Compte désactivé')
+      toast(active ? 'Accès rétabli' : 'Accès coupé : la personne ne peut plus se connecter')
       onMemberUpdated()
     }
   }
 
-  /** L'admin fixe le mot de passe : marche meme sans SMTP configure. */
+  /** L'admin fixe le mot de passe : marche même sans SMTP configuré. */
   async function handleSetPassword() {
     if (!member || isSelf) return
     const pwd = newPassword.trim()
     if (pwd.length < 8) { toast('8 caractères minimum', 'error'); return }
     setPwdLoading(true)
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'set_password', user_id: member.id, password: pwd },
-    })
+    const r = await definirMotDePasse(member.id, pwd)
     setPwdLoading(false)
-    if (error || !data?.ok) {
-      toast(data?.detail ?? error?.message ?? 'Échec de la mise à jour', 'error')
-      return
-    }
-    // On vide le champ : laisser le mot de passe a l'ecran apres coup n'apporte
-    // rien et le fait trainer sur un poste partage.
+    if (!r.ok) { toast(libelleErreurAdmin(r), 'error'); return }
+    // On vide le champ : laisser le mot de passe à l'écran après coup n'apporte
+    // rien et le fait traîner sur un poste partagé.
     setNewPassword('')
     setPwdDefini(true)
     toast('Mot de passe mis à jour')
   }
 
-  /** Lien de reinitialisation par e-mail : personne ne connait le mot de passe. */
+  /** Lien de réinitialisation par e-mail : personne ne connaît le mot de passe. */
   async function handleSendReset() {
     if (!member || isSelf) return
     setResetLoading(true)
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      // `redirect_to` : sans lui, Supabase renvoie le salarié sur l'URL par
-      // défaut du projet, qui n'est pas forcément ce site. On donne l'origine
-      // réelle depuis laquelle l'invitation part.
-      body: { action: 'send_reset', user_id: member.id, redirect_to: `${window.location.origin}/auth/callback` },
-    })
+    const r = await envoyerLienReinit(member.id)
     setResetLoading(false)
-    if (error || !data?.ok) {
-      // `message` porte le repli explicite quand l'envoi d'e-mail echoue.
-      toast(data?.message ?? data?.detail ?? error?.message ?? "Échec de l'envoi", 'error')
-      return
-    }
-    toast(`Lien envoyé à ${data.email}`)
+    if (!r.ok) { toast(libelleErreurAdmin(r), 'error'); return }
+    toast(`Lien envoyé à ${r.email ?? member.email ?? 'la personne'}`)
   }
 
   async function handleDelete() {
     if (!member || isSelf) return
     setDeleteLoading(true)
-    const { data, error } = await supabase.functions.invoke('admin-users', {
-      body: { action: 'delete', user_id: member.id },
-    })
+    const r = await supprimerCompte(member.id)
     setDeleteLoading(false)
     setDeleteOpen(false)
-    if (error || !data?.ok) {
-      toast(error?.message ?? 'Erreur lors de la suppression', 'error')
+    if (!r.ok) {
+      toast(libelleErreurAdmin(r), 'error')
     } else {
       toast(`Compte de ${member.full_name} supprimé`)
       onMemberUpdated()
@@ -215,24 +207,33 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
           {/* Infos membre */}
           <div className="flex items-center gap-3 p-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]">
             <div className="flex-1 min-w-0">
-              <p className="text-[var(--fs-sm)] font-medium text-[var(--text)] truncate">{member.full_name}</p>
+              <p className="text-[length:var(--fs-sm)] font-medium text-[var(--text)] truncate">{member.full_name}</p>
               {member.email && (
-                <p className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">{member.email}</p>
+                <p className="text-[length:var(--fs-xs)] text-[var(--text-muted)] truncate">{member.email}</p>
               )}
             </div>
-            <span className="shrink-0 px-2 py-0.5 rounded text-[var(--fs-xs)] bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-muted)]">
+            <span className="shrink-0 px-2 py-0.5 rounded text-[length:var(--fs-xs)] bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-muted)]">
               {ROLE_LABELS[member.role] ?? member.role}
             </span>
             {isSelf && (
-              <span className="shrink-0 px-2 py-0.5 rounded text-[var(--fs-xs)] bg-[var(--brand)]/10 text-[var(--brand)] font-medium">
+              <span className="shrink-0 px-2 py-0.5 rounded text-[length:var(--fs-xs)] bg-[var(--brand)]/10 text-[var(--brand)] font-medium">
                 Vous
               </span>
             )}
           </div>
 
-          {/* Matrice permissions */}
+          {/* Matrice permissions — sans objet pour un compte salarié (cloisonné en base) */}
+          {salarie ? (
+            <div className="flex flex-col gap-1 p-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]">
+              <h3 className="text-sm font-semibold text-[var(--text)]">Compte salarié</h3>
+              <p className="text-sm text-[var(--text-muted)]">
+                Il ne voit que Mes courses, et uniquement ses propres données. Ses droits ne se
+                règlent pas ici : son accès se gère depuis sa fiche Équipe › Accès au site.
+              </p>
+            </div>
+          ) : (
           <div className="flex flex-col gap-4">
-            <h3 className="text-[var(--fs-sm)] font-semibold text-[var(--text)]">Permissions</h3>
+            <h3 className="text-[length:var(--fs-sm)] font-semibold text-[var(--text)]">Permissions</h3>
 
             {permLoading ? (
               <div className="flex flex-col gap-2">
@@ -246,20 +247,20 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                     <div key={section} className="flex flex-col gap-1.5">
                       {/* En-tête section */}
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+                        <span className="text-[length:var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
                           {section}
                         </span>
                         <div className="flex items-center gap-2">
                           <button
                             onClick={() => sectionToggleVoir(section, true)}
-                            className="text-[var(--fs-xs)] text-[var(--brand)] hover:underline"
+                            className="text-[length:var(--fs-xs)] text-[var(--brand)] hover:underline"
                           >
                             Tout voir
                           </button>
-                          <span className="text-[var(--text-muted)] text-[var(--fs-xs)]">·</span>
+                          <span className="text-[var(--text-muted)] text-[length:var(--fs-xs)]">·</span>
                           <button
                             onClick={() => sectionToggleVoir(section, false)}
-                            className="text-[var(--fs-xs)] text-[var(--text-muted)] hover:text-[var(--text)] hover:underline"
+                            className="text-[length:var(--fs-xs)] text-[var(--text-muted)] hover:text-[var(--text)] hover:underline"
                           >
                             Tout décocher
                           </button>
@@ -269,10 +270,10 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                       {/* Tableau */}
                       <div className="rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden">
                         {/* Colonnes header */}
-                        <div className="grid grid-cols-[1fr_60px_60px_60px_72px] gap-0 px-3 py-1.5 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
+                        <div className="hidden sm:grid grid-cols-[1fr_repeat(4,5rem)] gap-0 px-3 py-1.5 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
                           <span />
                           {(['Voir', 'Créer', 'Modifier', 'Supprimer'] as const).map(col => (
-                            <span key={col} className="text-center text-[var(--fs-xs)] text-[var(--text-muted)] font-medium">
+                            <span key={col} className="text-center text-[length:var(--fs-xs)] text-[var(--text-muted)] font-medium">
                               {col}
                             </span>
                           ))}
@@ -284,22 +285,24 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                           return (
                             <div
                               key={r.key}
-                              className={`grid grid-cols-[1fr_60px_60px_60px_72px] items-center px-3 py-2
+                              className={`grid grid-cols-4 sm:grid-cols-[1fr_repeat(4,5rem)] items-center gap-y-1.5 px-3 py-2
                                 ${idx < resources.length - 1 ? 'border-b border-[var(--border)]' : ''}
                                 ${voirOff ? 'opacity-60' : ''}`}
                             >
-                              <span className="text-[var(--fs-sm)] text-[var(--text)]">{r.label}</span>
+                              <span className="col-span-4 sm:col-span-1 text-sm text-[var(--text)]">{r.label}</span>
                               {/* Voir */}
-                              <div className="flex justify-center">
+                              <label className="flex flex-col sm:flex-row items-center justify-center gap-0.5 text-xs text-[var(--text-muted)]">
+                                <span className="sm:hidden">Voir</span>
                                 <input
                                   type="checkbox"
                                   checked={p?.voir ?? false}
                                   onChange={e => togglePerm(r.key, 'voir', e.target.checked)}
                                   className="w-4 h-4 accent-[var(--brand)] cursor-pointer"
                                 />
-                              </div>
+                              </label>
                               {/* Créer */}
-                              <div className="flex justify-center">
+                              <label className="flex flex-col sm:flex-row items-center justify-center gap-0.5 text-xs text-[var(--text-muted)]">
+                                <span className="sm:hidden">Créer</span>
                                 <input
                                   type="checkbox"
                                   checked={p?.creer ?? false}
@@ -307,9 +310,10 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                                   onChange={e => togglePerm(r.key, 'creer', e.target.checked)}
                                   className="w-4 h-4 accent-[var(--brand)] cursor-pointer disabled:cursor-not-allowed"
                                 />
-                              </div>
+                              </label>
                               {/* Modifier */}
-                              <div className="flex justify-center">
+                              <label className="flex flex-col sm:flex-row items-center justify-center gap-0.5 text-xs text-[var(--text-muted)]">
+                                <span className="sm:hidden">Modifier</span>
                                 <input
                                   type="checkbox"
                                   checked={p?.modifier ?? false}
@@ -317,9 +321,10 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                                   onChange={e => togglePerm(r.key, 'modifier', e.target.checked)}
                                   className="w-4 h-4 accent-[var(--brand)] cursor-pointer disabled:cursor-not-allowed"
                                 />
-                              </div>
+                              </label>
                               {/* Supprimer */}
-                              <div className="flex justify-center">
+                              <label className="flex flex-col sm:flex-row items-center justify-center gap-0.5 text-xs text-[var(--text-muted)]">
+                                <span className="sm:hidden">Supprimer</span>
                                 <input
                                   type="checkbox"
                                   checked={p?.supprimer ?? false}
@@ -327,7 +332,7 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                                   onChange={e => togglePerm(r.key, 'supprimer', e.target.checked)}
                                   className="w-4 h-4 accent-[var(--brand)] cursor-pointer disabled:cursor-not-allowed"
                                 />
-                              </div>
+                              </label>
                             </div>
                           )
                         })}
@@ -344,13 +349,14 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
               </Button>
             </div>
           </div>
+          )}
 
           {/* Actions compte */}
           <div className="flex flex-col gap-4 pt-2 border-t border-[var(--border)]">
-            <h3 className="text-[var(--fs-sm)] font-semibold text-[var(--text)]">Gestion du compte</h3>
+            <h3 className="text-[length:var(--fs-sm)] font-semibold text-[var(--text)]">Gestion du compte</h3>
 
             {isSelf ? (
-              <p className="text-[var(--fs-sm)] text-[var(--text-muted)]">
+              <p className="text-[length:var(--fs-sm)] text-[var(--text-muted)]">
                 Vous ne pouvez pas modifier votre propre compte depuis cet écran.
               </p>
             ) : (
@@ -358,15 +364,15 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                 {/* Rôle */}
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-[var(--fs-sm)] font-medium text-[var(--text)]">Rôle</p>
+                    <p className="text-[length:var(--fs-sm)] font-medium text-[var(--text)]">Rôle</p>
                   </div>
                   <select
                     value={roleValue}
                     disabled={roleLoading}
-                    onChange={e => handleSetRole(e.target.value as AdminRole)}
+                    onChange={e => demanderRole(e.target.value as AdminRole)}
                     className="field field-sm w-auto"
                   >
-                    {ROLE_OPTIONS.map(o => (
+                    {optionsRole(member.role, ROLE_LABELS).map(o => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
@@ -375,8 +381,8 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                 {/* Activer / Désactiver */}
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="text-[var(--fs-sm)] font-medium text-[var(--text)]">Compte actif</p>
-                    <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">Un compte désactivé ne peut plus se connecter</p>
+                    <p className="text-[length:var(--fs-sm)] font-medium text-[var(--text)]">Compte actif</p>
+                    <p className="text-xs text-[var(--text-muted)]">Coupé, le compte ne peut plus se connecter (sa session en cours est fermée)</p>
                   </div>
                   <button
                     role="switch"
@@ -398,8 +404,8 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                 {/* Mot de passe — deux chemins, cf. Edge admin-users */}
                 <div className="flex flex-col gap-2 pt-1">
                   <div>
-                    <p className="text-[var(--fs-sm)] font-medium text-[var(--text)]">Mot de passe</p>
-                    <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                    <p className="text-[length:var(--fs-sm)] font-medium text-[var(--text)]">Mot de passe</p>
+                    <p className="text-[length:var(--fs-xs)] text-[var(--text-muted)]">
                       Définis-en un si la personne est devant toi, ou envoie-lui un lien si elle est à distance.
                     </p>
                   </div>
@@ -411,7 +417,7 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                       onChange={e => setNewPassword(e.target.value)}
                       placeholder="Nouveau mot de passe (8 caractères min.)"
                       autoComplete="off"
-                      className="field field-sm flex-1 w-auto min-w-[220px]"
+                      className="field field-sm flex-1 w-auto min-w-[14rem]"
                     />
                     <Button
                       variant="secondary"
@@ -428,7 +434,7 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                   {/* Le mot de passe defini n'est visible qu'ici, une fois : il
                       n'est jamais relisible ensuite, meme par le president. */}
                   {pwdDefini && (
-                    <p className="text-[var(--fs-xs)] text-[var(--success)]">
+                    <p className="text-[length:var(--fs-xs)] text-[var(--success)]">
                       Mot de passe enregistré — communique-le à la personne, il ne sera plus affiché.
                     </p>
                   )}
@@ -437,8 +443,8 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
                 {/* Supprimer */}
                 <div className="flex items-center justify-between gap-4 pt-1">
                   <div>
-                    <p className="text-[var(--fs-sm)] font-medium text-[var(--danger,#dc2626)]">Supprimer le compte</p>
-                    <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">Action irréversible — supprime l'accès définitivement</p>
+                    <p className="text-[length:var(--fs-sm)] font-medium text-[var(--danger,#dc2626)]">Supprimer le compte</p>
+                    <p className="text-[length:var(--fs-xs)] text-[var(--text-muted)]">Action irréversible — supprime l'accès définitivement</p>
                   </div>
                   <Button
                     variant="ghost"
@@ -453,6 +459,17 @@ export function DrawerAdminPermissions({ member, currentUserId, open, onClose, o
           </div>
         </div>
       </Drawer>
+
+      <ConfirmDialog
+        open={roleEnAttente !== null}
+        title={`Changer le rôle de ${member.full_name} ?`}
+        message={`C'est un compte salarié : il ne voit aujourd'hui que Mes courses et ses propres données. En « ${roleEnAttente ? ROLE_LABELS[roleEnAttente] : ''} », il ne sera plus cloisonné et verra le menu du bureau selon les droits que tu lui donneras.`}
+        confirmLabel="Changer le rôle"
+        acknowledgeLabel="Je comprends qu'il ne sera plus cloisonné"
+        onConfirm={() => { if (roleEnAttente) void appliquerRole(roleEnAttente) }}
+        onCancel={() => setRoleEnAttente(null)}
+        loading={roleLoading}
+      />
 
       <ConfirmDialog
         open={deleteOpen}
