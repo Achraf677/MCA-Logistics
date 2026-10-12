@@ -10,6 +10,8 @@ export type DocumentCategory =
   // differentes. Les confondre rendrait impossible de savoir lequel manque.
   | 'Chargement'
   | 'LV'
+  // Photo du compteur de l'appareil de scan, preuve d'une journée de colis (lot S1).
+  | 'Compteur appareil'
   | 'Autre'
 
 export interface DocumentRow {

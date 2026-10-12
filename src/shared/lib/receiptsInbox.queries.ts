@@ -19,6 +19,20 @@ export interface TicketInbox {
   charge_id: string | null
   traite_at: string | null
   created_at: string
+  /** Dépense (lot S1, migration 20261012110000) : montant, catégorie, moyen, date, refus. */
+  montant_ttc_cts?: number | null
+  categorie?: string | null
+  moyen_paiement?: string | null
+  date_depense?: string | null
+  motif_refus?: string | null
+}
+
+/** Détails d'une dépense déclarée avec son justificatif. */
+export interface DetailsDepense {
+  montant_ttc_cts: number | null
+  categorie: string | null
+  moyen_paiement: string | null
+  date_depense: string | null
 }
 
 /**
@@ -43,6 +57,7 @@ export async function deposerTicket(
   file: File,
   companyId: string,
   note?: string,
+  details?: DetailsDepense,
 ): Promise<{ data: TicketInbox | null; error: Error | null }> {
   if (file.size > MAX_BYTES) {
     return { data: null, error: new Error('Fichier trop volumineux (limite 20 Mo)') }
@@ -77,6 +92,7 @@ export async function deposerTicket(
       mime_type:    file.type || null,
       size_bytes:   aEnvoyer.size,
       note:         note?.trim() || null,
+      ...(details ?? {}),
     })
     .select()
     .single()
@@ -131,5 +147,41 @@ export async function classerTicket(
   return supabase
     .from('receipts_inbox')
     .update({ statut, charge_id: chargeId ?? null, traite_at: new Date().toISOString() })
+    .eq('id', id)
+}
+
+// ── Dépenses du déclarant (lot S1) ───────────────────────────────────────────
+
+/** Mes dépenses (RLS : celles que j'ai déposées), plus récentes d'abord. */
+export async function mesDepenses(limite = 100) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { data: [] as TicketInbox[], error: new Error('Session expirée') }
+  const { data, error } = await supabase
+    .from('receipts_inbox').select('*').eq('uploaded_by', user.id)
+    .order('created_at', { ascending: false }).limit(limite)
+  return { data: (data ?? []) as TicketInbox[], error: error ? new Error(error.message) : null }
+}
+
+/** Corrige une dépense encore « à traiter » (le bureau ne l'a pas prise). */
+export async function modifierDepense(id: string, maj: DetailsDepense & { note?: string | null }) {
+  const { data, error } = await supabase.from('receipts_inbox').update(maj).eq('id', id).select('id')
+  if (error) return { error: new Error(error.message) }
+  if (!data || data.length === 0) return { error: new Error('Modification refusée : la dépense a déjà été traitée par le bureau.') }
+  return { error: null }
+}
+
+/** Retire une dépense encore « à traiter » : la ligne d'abord, puis le fichier. */
+export async function supprimerDepense(t: TicketInbox) {
+  const { data, error } = await supabase.from('receipts_inbox').delete().eq('id', t.id).select('id')
+  if (error) return { error: new Error(error.message) }
+  if (!data || data.length === 0) return { error: new Error('Suppression refusée : la dépense a déjà été traitée par le bureau.') }
+  await supabase.storage.from(BUCKET).remove([t.storage_path])
+  return { error: null }
+}
+
+/** Refuse une dépense (bureau), avec le motif lu par le déclarant. */
+export async function refuserDepense(id: string, motif: string) {
+  return supabase.from('receipts_inbox')
+    .update({ statut: 'ignore', motif_refus: motif, traite_at: new Date().toISOString() })
     .eq('id', id)
 }

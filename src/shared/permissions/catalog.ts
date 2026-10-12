@@ -30,6 +30,7 @@ export const PERMISSION_CATALOG: PermResource[] = [
   // Équipe
   { section: 'Équipe',      key: 'equipe.membres',        label: 'Membres' },
   { section: 'Équipe',      key: 'equipe.heures',         label: 'Heures' },
+  { section: 'Équipe',      key: 'equipe.journees',       label: 'Journées (validation)' },
   // Système
   { section: 'Système',     key: 'systeme.documents',     label: 'Documents' },
   { section: 'Système',     key: 'systeme.parametres',    label: 'Paramètres' },
