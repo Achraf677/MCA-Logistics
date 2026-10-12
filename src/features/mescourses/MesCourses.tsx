@@ -87,11 +87,12 @@ export function MesCourses() {
     const t = window.setInterval(() => setMaintenant(maintenantLocal()), 60_000)
     return () => window.clearInterval(t)
   }, [])
-  // `tours_update_perm` exige président ou `planning.tournees:update`. On lit
-  // ici la MÊME condition que la base : proposer un bouton que la RLS
-  // refusera ensuite serait pire que ne pas l'afficher.
+  // Même condition que la base : `tours_update_perm` (président ou
+  // `planning.tournees:update`) OU `tours_update_salarie` (migration
+  // 20261012100000 : le salarié démarre / termine SA tournée — il ne lit que
+  // les siennes). Un bouton que la RLS refuserait serait pire que rien.
   const { can } = usePermissions()
-  const peutPiloterTournee = can('planning.tournees', 'update')
+  const peutPiloterTournee = can('planning.tournees', 'update') || profile?.role === 'chauffeur'
   const [mode, setMode]     = useState<ModePeriode>('jour')
   const [ancre, setAncre]   = useState(aujourdhui)
   const [courses, setCourses] = useState<CourseChauffeur[]>([])

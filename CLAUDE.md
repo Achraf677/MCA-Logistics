@@ -281,7 +281,18 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   → S4. **S0 codé (PR #52)** : cloisonnement du salarié (migration
   `20261012090000_salarie_cloisonnement` : toute la finance était lisible par tout compte) +
   « Accès au site » dans la fiche Équipe (Edge `admin-users`). Règle : toute nouvelle table
-  reçoit sa policy salarié.
+  reçoit sa policy salarié. **Migration S0 appliquée le 12/10/2026** (vérifié en simulant le
+  compte chauffeur de Lucas : 0 charge / 0 fiche lue ; président inchangé).
+  **S0-bis (PR #52, audit de 3 agents)** : migration `20261012100000_salarie_terrain` (écritures
+  terrain du salarié sur SES courses / SA tournée bornées par triggers, compte désactivé =
+  `current_company_id()` null, Qonto / produits véhicule fermés, profile_id unique, FK SET NULL),
+  Edge avec contrôle de droit (admin-users, drive-*, geocode, lire-facture, lire-releve,
+  suggest-categorie-ia, send-client-email, pennylane-last-numbers), Mes courses corrigé (faux
+  « enregistré », créneaux, compteurs, SMS, itinéraire), cadre chauffeur épuré, Accès au site
+  complet, Équipe / Heures corrigés. Restent : montants lisibles par le salarié sur ses courses
+  (vue dédiée à faire), Edge ai-extract-deliveries / assistant-chat / alertes-briefing /
+  brouillons-generate / route-calc / drive-status sans contrôle de droit, colonne
+  `work_hours.total_minutes` fausse sur une nuit.
 - U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;
   pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
 - Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.
