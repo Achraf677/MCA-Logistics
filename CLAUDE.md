@@ -273,6 +273,13 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   optimize-tours, sans colonne), écran 2 colonnes. Revue Tournées terminée.
   Piège MCP : `apply_migration` expire sur plusieurs instructions groupées ou un corps `$$` →
   appliquer instruction par instruction (corps de fonction entre apostrophes).
+- **Espace salarié** (demandé le 12/10/2026, PRIORITAIRE) : plan `mca-spec/PLAN-ESPACE-SALARIE.md`
+  (heures saisies par le salarié, journée messagerie colis domicile / relais + photo,
+  validation bureau avec verrou, rapports jour / mois / salarié, relevé client déduit, ticket →
+  Pennylane). Lots S0 → S5 ; questions ouvertes § 7 du plan. Faille relevée : `team_members` et
+  `work_hours` lisibles par toute la société (salaires) → S0 avant tout compte salarié.
+- U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;
+  pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
 - Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)
