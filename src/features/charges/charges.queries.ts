@@ -92,3 +92,21 @@ export async function exportChargesCSV(filters: ChargeFilters = {}) {
   ])
   return [headers, ...lines].map(r => r.join(';')).join('\n')
 }
+
+/** Noms des déclarants de dépenses (boîte des justificatifs) : fiche Équipe reliée, sinon profil. */
+export async function nomsDeclarants(ids: string[]): Promise<Record<string, string>> {
+  const uniques = [...new Set(ids.filter(Boolean))]
+  if (uniques.length === 0) return {}
+  const [fiches, profils] = await Promise.all([
+    supabase.from('team_members').select('profile_id, full_name').in('profile_id', uniques),
+    supabase.from('profiles').select('id, full_name').in('id', uniques),
+  ])
+  const noms: Record<string, string> = {}
+  for (const p of (profils.data ?? []) as Array<{ id: string; full_name: string | null }>) {
+    if (p.full_name) noms[p.id] = p.full_name
+  }
+  for (const f of (fiches.data ?? []) as Array<{ profile_id: string | null; full_name: string }>) {
+    if (f.profile_id) noms[f.profile_id] = f.full_name
+  }
+  return noms
+}
