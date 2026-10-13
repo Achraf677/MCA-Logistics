@@ -127,7 +127,8 @@ begin
       end if;
     elsif old.statut = ''validee'' and (to_jsonb(new) - array[''updated_at'', ''motif_modification''])
           is distinct from (to_jsonb(old) - array[''updated_at'', ''motif_modification''])
-          and coalesce(trim(new.motif_modification), '''') = '''' then
+          and (coalesce(trim(new.motif_modification), '''') = ''''
+               or new.motif_modification is not distinct from old.motif_modification) then
       raise exception ''Journée validée : indique le motif de la modification.'' using errcode = ''22023'';
     end if;
     new.updated_at := now();
@@ -187,6 +188,9 @@ begin
   elsif new.statut is distinct from old.statut then
     act := case new.statut when ''validee'' then ''validation'' when ''refusee'' then ''refus''
                            when ''envoyee'' then ''envoi'' else ''retour_brouillon'' end;
+  elsif (to_jsonb(new) - array[''updated_at'', ''motif_modification''])
+        is not distinct from (to_jsonb(old) - array[''updated_at'', ''motif_modification'']) then
+    return new;
   elsif old.statut = ''validee'' then
     act := ''correction'';
   else
@@ -194,7 +198,9 @@ begin
   end if;
   insert into public.journees_colis_historique (company_id, journee_id, action, avant, apres, motif, par)
   values (new.company_id, new.id, act, case when tg_op = ''UPDATE'' then to_jsonb(old) end, to_jsonb(new),
-          coalesce(nullif(trim(new.motif_modification), ''''), new.motif_refus), auth.uid());
+          coalesce(case when tg_op = ''INSERT'' or new.motif_modification is distinct from old.motif_modification
+                        then nullif(trim(new.motif_modification), '''') end,
+                   case when new.statut = ''refusee'' then new.motif_refus end), auth.uid());
   return new;
 end';
 

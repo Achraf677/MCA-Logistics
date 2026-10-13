@@ -293,6 +293,15 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   (vue dédiée à faire), Edge ai-extract-deliveries / assistant-chat / alertes-briefing /
   brouillons-generate / route-calc / drive-status sans contrôle de droit, colonne
   `work_hours.total_minutes` fausse sur une nuit.
+  **S1 (PR #52, 13/10/2026)** : migration `20261012110000_journees_colis_depenses` (tarifs domicile /
+  relais + clients de messagerie dans la fiche, `journees_colis` + historique, garde : validée =
+  verrouillée, motif obligatoire pour la toucher, photos `entity_type = 'journee_colis'`, dépenses
+  enrichies dans `receipts_inbox`) ; droit `equipe.journees`. Salarié (Mes courses, 4 onglets) :
+  Courses · Ma journée (+ Mon mois, paie estimée) · Dépenses (photo vérifiable, carte société /
+  note de frais, suivi) · Moi. Bureau : Équipe › À valider / Journées / Rapports (+ CSV), fiche
+  Messagerie, justificatifs enrichis dans Charges, cloche. Reste : téléphone de la société pour
+  « Appeler le bureau » ; « Créer la charge » ne reprend pas encore montant / note de frais ;
+  clôture du mois ; dépense → Pennylane (S3).
 - U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;
   pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
 - Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.
