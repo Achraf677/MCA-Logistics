@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, Camera, ShieldCheck, Paperclip, FileText, Image as ImageIcon, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare, AlertTriangle, Info, User, X, Zap } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { ChevronLeft, ChevronRight, Navigation2, Phone, PackageOpen, Package, ShieldCheck, Paperclip, FileText, Image as ImageIcon, Flag, ArrowUp, ArrowDown, ChevronDown, Route, Clock, ExternalLink, Truck, MessageSquare, AlertTriangle, Info, User, Zap } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { BoutonIcone, PanneauReglages } from '../../shared/ui/BoutonIcone'
@@ -9,16 +9,22 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { InstallAppButton } from '../../shared/ui/InstallAppButton'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
-import { deposerTicket } from '../../shared/lib/receiptsInbox.queries'
 import { getDownloadUrl } from '../../shared/lib/documents.queries'
 import { enregistrerPod } from '../../shared/lib/pod.queries'
 import { canTransition } from '../../shared/lib/livraisonStatuts'
 import { toLocalISO } from '../../shared/lib/dates'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
+import { useSearchParams } from 'react-router-dom'
+import { BarreOnglets } from './BarreOnglets'
+import { MaJournee } from './MaJournee'
+import { MesDepenses } from './MesDepenses'
+import { Moi } from './Moi'
+import { lireOnglet, type OngletEspace } from './espace.logic'
+import { remonterEnHaut } from './EspaceCommun'
 import {
   getMesCourses, avancerCourse, getDocumentsDesCourses, marquerCharge,
   enregistrerOrdreArretsJour, getTourneesDuChauffeur, changerStatutTournee, getDepot,
-  signalerProbleme, getMaFicheEquipe,
+  signalerProbleme, getMaFicheEquipe, getMaFicheComplete,
 } from './mescourses.queries'
 import { PanneauProbleme } from './PanneauProbleme'
 import { libelleMotif, aProblemeOuvert } from '../../shared/lib/problemeTerrain'
@@ -44,7 +50,54 @@ import {
   libelleHeureEstimee, libelleDateCourte, confirmationAutreJour, messageTransitionImpossible,
   traduireErreurEcriture, libelleCategorieDocument, documentsPourChauffeur, vehiculesDuJour,
 } from './mescourses.logic'
-import type { CourseChauffeur, DocumentCourse, TourneeChauffeur } from './mescourses.types'
+import type { CourseChauffeur, DocumentCourse, EtatFiche, TourneeChauffeur } from './mescourses.types'
+
+const TITRES: Record<OngletEspace, string> = {
+  courses: 'Mes courses', journee: 'Ma journée', depenses: 'Mes dépenses', moi: 'Moi',
+}
+
+/**
+ * Espace salarié — « Mes courses » et ses 4 onglets (navigation en bas) :
+ * Courses (l'écran terrain) · Ma journée (colis de messagerie) · Dépenses · Moi.
+ * L'onglet vit dans l'URL (`?onglet=`) : un retour arrière, un lien ou un
+ * rechargement retombent au même endroit.
+ */
+export function MesCourses() {
+  const { profile } = useProfile()
+  const [params, setParams] = useSearchParams()
+  const onglet = lireOnglet(params.get('onglet'))
+  const changerOnglet = (o: OngletEspace) => {
+    setParams(prev => {
+      const p = new URLSearchParams(prev)
+      if (o === 'courses') p.delete('onglet'); else p.set('onglet', o)
+      return p
+    })
+    remonterEnHaut()
+  }
+
+  // Fiche Équipe du compte (Ma journée, Moi) : lue une fois pour les onglets.
+  const [fiche, setFiche] = useState<EtatFiche>({ chargee: false, data: null, erreur: null })
+  useEffect(() => {
+    if (!profile) return
+    let annule = false
+    getMaFicheComplete(profile.id).then(({ data, error }) => {
+      if (!annule) setFiche({ chargee: true, data, erreur: error ? error.message : null })
+    })
+    return () => { annule = true }
+  }, [profile])
+
+  return (
+    <Shell pageTitle={TITRES[onglet]}>
+      <div className="mx-auto w-full max-w-[40rem]">
+        {onglet === 'courses' && <OngletCourses />}
+        {onglet === 'journee' && <MaJournee fiche={fiche} />}
+        {onglet === 'depenses' && <MesDepenses />}
+        {onglet === 'moi' && <Moi fiche={fiche} />}
+      </div>
+      <BarreOnglets actif={onglet} onChange={changerOnglet} />
+    </Shell>
+  )
+}
 
 // Pas de « Mois » : un chauffeur regarde sa journée, parfois sa semaine.
 const MODES: Array<{ key: ModePeriode; label: string }> = [
@@ -72,7 +125,7 @@ const aujourdhui = () => toLocalISO(new Date())
  *
  * Pensé pour un téléphone tenu d'une main : cibles tactiles hautes, une colonne.
  */
-export function MesCourses() {
+function OngletCourses() {
   const { toast } = useToast()
   const { companyId, profile } = useProfile()
   // Un président / DG / comptable voit TOUTES les courses (RLS). S'il roule
@@ -321,7 +374,7 @@ export function MesCourses() {
   }
 
   return (
-    <Shell pageTitle="Mes courses">
+    <>
       <InstallAppButton />
 
       {/* EN-TÊTE COMPACT : une seule ligne avant le premier arrêt. Le choix de
@@ -503,8 +556,6 @@ export function MesCourses() {
         </div>
       )}
 
-      <ScannerTicket />
-
       <ConfirmDialog
         open={!!aConfirmer}
         title="Pas aujourd'hui"
@@ -513,7 +564,7 @@ export function MesCourses() {
         onConfirm={() => { const s = aConfirmer?.suite; setAConfirmer(null); s?.() }}
         onCancel={() => setAConfirmer(null)}
       />
-    </Shell>
+    </>
   )
 }
 
@@ -1035,75 +1086,6 @@ const flecheCls = `p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
 const boutonCls = `inline-flex items-center gap-1.5 min-h-11 px-3 rounded-[var(--r-md)]
   border border-[var(--border)] text-sm text-[var(--text)] no-underline
   hover:border-[var(--brand)] transition-colors`
-
-function ScannerTicket() {
-  const { toast } = useToast()
-  const { companyId } = useProfile()
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [note, setNote] = useState('')
-  const [envoi, setEnvoi] = useState(false)
-  const [ouvert, setOuvert] = useState(false)
-
-  const choisir = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    e.target.value = '' // permet de reprendre le même fichier après une erreur
-    if (!file || !companyId) return
-
-    setEnvoi(true)
-    const { error } = await deposerTicket(file, companyId, note)
-    setEnvoi(false)
-    if (error) { toast(error.message, 'error'); return }
-
-    setNote('')
-    setOuvert(false)
-    toast('Ticket envoyé — il apparaît côté gestion')
-  }
-
-  // BOUTON FLOTTANT : toujours sous le pouce, sans occuper la liste. Le
-  // ticket (péage, plein…) arrive à n'importe quel moment de la journée.
-  const fermer = () => { if (!envoi) { setOuvert(false); setNote('') } }
-
-  return (
-    <>
-      <input ref={inputRef} type="file" accept="image/*,application/pdf" capture="environment"
-        className="hidden" onChange={choisir} />
-
-      {/* Espace réservé en bas de liste : le bouton ne cache jamais le dernier arrêt. */}
-      <div className="h-20" aria-hidden />
-
-      {!ouvert && (
-        <button onClick={() => setOuvert(true)} aria-label="Scanner un ticket"
-          className="fixed z-20 right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] lg:right-8 lg:bottom-8
-            inline-flex items-center gap-2 h-14 pl-4 pr-5 rounded-full shadow-lg
-            bg-[var(--brand)] text-white text-sm font-medium">
-          <Camera size={20} /> Ticket
-        </button>
-      )}
-
-      {ouvert && (
-        <div className="fixed inset-0 z-30 flex items-end lg:items-center justify-center bg-black/50" onClick={fermer}>
-          <div onClick={e => e.stopPropagation()}
-            className="w-full lg:max-w-md flex flex-col gap-3 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]
-              rounded-t-[var(--r-lg)] lg:rounded-[var(--r-lg)] bg-[var(--bg-card)] border border-[var(--border)]">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-[var(--text)]">Scanner un ticket</span>
-              <button onClick={fermer} disabled={envoi} aria-label="Fermer"
-                className="p-2 text-[var(--text-muted)] hover:text-[var(--text)]"><X size={18} /></button>
-            </div>
-            <input type="text" value={note} onChange={e => setNote(e.target.value)}
-              placeholder="De quoi s'agit-il ? (péage A35, plein Movano…)"
-              className="w-full min-h-11 px-3 rounded-[var(--r-md)] bg-[var(--bg)]
-                border border-[var(--border)] text-[var(--text)] text-sm
-                focus:outline-none focus:border-[var(--brand)]" />
-            <Button variant="primary" className="min-h-12" onClick={() => inputRef.current?.click()} disabled={envoi}>
-              <Camera size={16} /> {envoi ? 'Envoi…' : 'Prendre la photo'}
-            </Button>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
 
 /**
  * Pièces jointes d'une course, ouvrables depuis le téléphone.
