@@ -57,3 +57,30 @@ export function creerAccesSalarie(p: {
 export function relierCompte(userId: string, teamMemberId: string) {
   return relierFiche(userId, teamMemberId)
 }
+
+// ── Messagerie (lot S1) ──────────────────────────────────────────────────────
+
+/** Clients actifs (choix des clients de messagerie d'un salarié). */
+export async function getClientsActifs() {
+  const { data, error } = await supabase.from('clients').select('id, name, tariff_mode')
+    .eq('active', true).order('name')
+  return { data: (data ?? []) as Array<{ id: string; name: string; tariff_mode: string | null }>, error }
+}
+
+/** Noms des comptes (historique « par qui ») : fiche Équipe reliée, sinon profil. */
+export async function nomsComptes(ids: string[]): Promise<Record<string, string>> {
+  const uniques = [...new Set(ids.filter(Boolean))]
+  if (uniques.length === 0) return {}
+  const [fiches, profils] = await Promise.all([
+    supabase.from('team_members').select('profile_id, full_name').in('profile_id', uniques),
+    supabase.from('profiles').select('id, full_name').in('id', uniques),
+  ])
+  const noms: Record<string, string> = {}
+  for (const p of (profils.data ?? []) as Array<{ id: string; full_name: string | null }>) {
+    if (p.full_name) noms[p.id] = p.full_name
+  }
+  for (const f of (fiches.data ?? []) as Array<{ profile_id: string | null; full_name: string }>) {
+    if (f.profile_id) noms[f.profile_id] = f.full_name
+  }
+  return noms
+}

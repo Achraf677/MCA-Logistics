@@ -194,6 +194,22 @@ describe('tri + résumé', () => {
   })
 })
 
+describe('journées de colis à valider', () => {
+  const trouve = (journeesAValider?: number) =>
+    buildAlertes({ journeesAValider }, TODAY).find(a => a.id === 'journees-a-valider')
+  it('absente à zéro ou non fournie', () => {
+    expect(trouve(0)).toBeUndefined()
+    expect(trouve()).toBeUndefined()
+  })
+  it('compte et lien vers Équipe › À valider', () => {
+    const a = trouve(2)!
+    expect(a.label).toBe('2 journées de colis à valider')
+    expect(a.lien).toBe('/equipe-hub?tab=a-valider')
+    expect(a.domaine).toBe('equipe')
+    expect(trouve(1)!.label).toBe('1 journée de colis à valider')
+  })
+})
+
 describe('tickets chauffeurs a traiter', () => {
   const trouve = (ticketsATraiter?: number) =>
     buildAlertes({ ticketsATraiter }, TODAY).find(a => a.id === 'tickets-inbox')

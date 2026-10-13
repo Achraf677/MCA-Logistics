@@ -1,5 +1,17 @@
 import { describe, it, expect } from 'vitest'
-import { kpiSummary } from './charges.logic'
+import { kpiSummary, ticketsAffiches, jourFr } from './charges.logic'
+
+describe('boîte des justificatifs', () => {
+  const t = [{ id: 'a', moyen_paiement: 'personnel' }, { id: 'b', moyen_paiement: 'carte_societe' }, { id: 'c', moyen_paiement: null }]
+  it('filtre les notes de frais à rembourser', () => {
+    expect(ticketsAffiches(t, true).map(x => x.id)).toEqual(['a'])
+    expect(ticketsAffiches(t, false).length).toBe(3)
+  })
+  it('date française sans UTC', () => {
+    expect(jourFr('2026-10-12')).toBe('12/10/2026')
+    expect(jourFr(null)).toBeNull()
+  })
+})
 import type { ChargeRow } from './charges.types'
 
 // Forme minimale suffisante pour kpiSummary — pas besoin de tous les champs Charge.

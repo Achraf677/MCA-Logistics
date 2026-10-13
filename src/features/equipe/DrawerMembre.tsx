@@ -15,6 +15,8 @@ import {
 } from './equipe.logic'
 import type { TeamMember, TeamMemberInsert } from './equipe.types'
 import { AccesSite } from './AccesSite'
+import { BlocMessagerie } from './BlocMessagerie'
+import { tarifSaisiCts, tarifEnTexte } from './journees.logic'
 import type { EcheanceStatus } from '../../shared/lib/echeances'
 
 interface DrawerMembreProps {
@@ -90,6 +92,9 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
   const [dateFin, setDateFin] = useState('')
   const [deactivating, setDeactivating] = useState(false)
   const [salaireTexte, setSalaireTexte] = useState('')
+  // Messagerie (lot S1) : tarifs saisis en euros, clients fixés par l'admin.
+  const [tarifs, setTarifs] = useState({ domicile: '', relais: '' })
+  const [clientsMessagerie, setClientsMessagerie] = useState<string[]>([])
   const isEdit = !!member
   const showValidites = isDriverRole(member?.role ?? null)
 
@@ -98,6 +103,8 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
     setTab('detail')
     setConfirmDeactivate(false)
     setSalaireTexte(member?.salary_gross_cts != null ? (member.salary_gross_cts / 100).toFixed(2) : '')
+    setTarifs({ domicile: tarifEnTexte(member?.tarif_domicile_cts), relais: tarifEnTexte(member?.tarif_relais_cts) })
+    setClientsMessagerie(member?.clients_messagerie ?? [])
     setForm(member ? {
       full_name: member.full_name,
       role: member.role ?? undefined,
@@ -131,10 +138,23 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
 
   const handleSave = async () => {
     if (!form.full_name?.trim()) { toast('Le nom est requis', 'error'); return }
+    const tarifDom = tarifSaisiCts(tarifs.domicile)
+    const tarifRel = tarifSaisiCts(tarifs.relais)
+    if (tarifDom === 'invalide' || tarifRel === 'invalide') {
+      toast('Tarif au colis illisible : saisir un montant en euros (ex. 1,20) ou laisser vide', 'error'); return
+    }
+    // Champs messagerie envoyés seulement s'ils changent : la fiche reste enregistrable
+    // tant que la migration des journées de colis n'est pas passée.
+    const messagerie: Record<string, unknown> = {}
+    if (tarifDom !== (member?.tarif_domicile_cts ?? null)) messagerie.tarif_domicile_cts = tarifDom
+    if (tarifRel !== (member?.tarif_relais_cts ?? null)) messagerie.tarif_relais_cts = tarifRel
+    const avant = [...(member?.clients_messagerie ?? [])].sort().join(',')
+    if ([...clientsMessagerie].sort().join(',') !== avant) messagerie.clients_messagerie = clientsMessagerie
     setSaving(true)
     // Normalize optional date fields: empty string '' → null to avoid Postgres type error.
     const payload = {
       ...form,
+      ...messagerie,
       start_date:           form.start_date           || null,
       end_date:             form.end_date             || null,
       licence_b_expiry:     form.licence_b_expiry     || null,
@@ -293,6 +313,12 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
                 <input type="tel" value={form.phone ?? ''} onChange={e => set('phone', e.target.value)} className={inputClass} />
               </FieldGroup>
             </div>
+
+            <BlocMessagerie
+              tarifDomicile={tarifs.domicile} tarifRelais={tarifs.relais}
+              onTarifs={t => setTarifs(p => ({ ...p, ...t }))}
+              clients={clientsMessagerie} onClients={setClientsMessagerie}
+            />
 
             {confirmDeactivate && member ? (
               <div className="flex flex-col gap-3 rounded-[var(--r-md)] border border-[var(--danger)]/40 bg-[var(--danger)]/5 p-3">
