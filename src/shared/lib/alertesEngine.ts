@@ -22,7 +22,7 @@ export interface AlerteMetier {
   /** Clé stable (dédup / React key). */
   id: string
   /** Domaine fonctionnel (regroupement + libellé). */
-  domaine: 'tresorerie' | 'charges' | 'encaissement' | 'facturation' | 'devis' | 'vehicule' | 'notes_frais' | 'livraison'
+  domaine: 'tresorerie' | 'charges' | 'encaissement' | 'facturation' | 'devis' | 'vehicule' | 'notes_frais' | 'livraison' | 'equipe'
   /** Libellé précis affiché à l'utilisateur. */
   label: string
   /** Nombre d'éléments concernés. */
@@ -95,6 +95,8 @@ export interface AlertesEngineInput {
   documentsLivraison?: DocumentForJustif[]
   /** Courses signalées en échec par le chauffeur (absent, refus…). */
   problemesTerrain?: ProblemeTerrainRow[]
+  /** Journées de colis envoyées par les salariés, à valider (0 si pas le droit). */
+  journeesAValider?: number
 }
 
 export interface ProblemeTerrainRow {
@@ -260,6 +262,18 @@ function detectTicketsInbox(count: number): AlerteMetier | null {
   }
 }
 
+/** Journées de colis à valider (Équipe › À valider) : la paie en dépend. */
+function detectJourneesAValider(count: number): AlerteMetier | null {
+  if (count <= 0) return null
+  return {
+    id: 'journees-a-valider',
+    domaine: 'equipe',
+    label: `${count} journée${count > 1 ? 's' : ''} de colis à valider`,
+    count, severite: 'orange',
+    lien: '/equipe-hub?tab=a-valider',
+  }
+}
+
 /**
  * Échecs signalés sur le terrain et pas encore traités. Rouge : un client
  * attend sa marchandise, le bureau doit replanifier ou prévenir.
@@ -369,6 +383,9 @@ export function buildAlertes(
 
   const problemes = detectProblemesTerrain(input.problemesTerrain ?? [])
   if (problemes) alertes.push(problemes)
+
+  const journees = detectJourneesAValider(input.journeesAValider ?? 0)
+  if (journees) alertes.push(journees)
 
   // Tri : rouge → orange → info, puis par count décroissant.
   return alertes.sort((a, b) =>
