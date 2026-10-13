@@ -7,6 +7,7 @@ import { compterJourneesAValider } from '../../shared/lib/journeesColis.queries'
 import { Equipe } from '../../features/equipe/Equipe'
 import { Heures } from '../../features/heures/Heures'
 import { ValidationJournees } from '../../features/equipe/ValidationJournees'
+import { JourneesListe } from '../../features/equipe/JourneesListe'
 
 /**
  * Domaine ÉQUIPE — Membres, journées de colis (à valider, consultation, rapports), Heures.
@@ -36,6 +37,7 @@ export function EquipeSection() {
             key: 'a-valider', label: aValider > 0 ? `À valider (${aValider})` : 'À valider',
             element: <ValidationJournees onChange={compter} />, permKey: 'equipe.journees',
           },
+          { key: 'journees', label: 'Journées', element: <JourneesListe />, permKey: 'equipe.journees' },
           { key: 'heures',  label: 'Heures',  element: <Heures />, permKey: 'equipe.heures'  },
         ]}
       />
