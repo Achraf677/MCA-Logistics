@@ -8,6 +8,7 @@ import { Equipe } from '../../features/equipe/Equipe'
 import { Heures } from '../../features/heures/Heures'
 import { ValidationJournees } from '../../features/equipe/ValidationJournees'
 import { JourneesListe } from '../../features/equipe/JourneesListe'
+import { RapportsColis } from '../../features/equipe/RapportsColis'
 
 /**
  * Domaine ÉQUIPE — Membres, journées de colis (à valider, consultation, rapports), Heures.
@@ -38,6 +39,7 @@ export function EquipeSection() {
             element: <ValidationJournees onChange={compter} />, permKey: 'equipe.journees',
           },
           { key: 'journees', label: 'Journées', element: <JourneesListe />, permKey: 'equipe.journees' },
+          { key: 'rapports', label: 'Rapports', element: <RapportsColis />, permKey: 'equipe.journees' },
           { key: 'heures',  label: 'Heures',  element: <Heures />, permKey: 'equipe.heures'  },
         ]}
       />

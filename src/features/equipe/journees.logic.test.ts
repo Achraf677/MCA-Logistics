@@ -2,9 +2,9 @@ import { describe, it, expect } from 'vitest'
 import {
   ecarts, nombresSaisis, versSaisie, anciennete, envoiAncien, filtrerJournees, optionsDistinctes,
   confirmationRetapee, motifValide, changementsHistorique, rapportParJour, nomFichierRapport,
-  bornesPeriode, libellePeriode, tarifSaisiCts, tarifEnTexte, declares,
+  bornesPeriode, libellePeriode, tarifSaisiCts, tarifEnTexte, declares, totalRapport,
 } from './journees.logic'
-import type { JourneeColis } from '../../shared/lib/journeesColis'
+import { rapportParSalarie, type JourneeColis } from '../../shared/lib/journeesColis'
 
 const j = (p: Partial<JourneeColis> = {}): JourneeColis => ({
   id: 'j1', company_id: 'c1', member_id: 'm1', date: '2026-10-12', client_id: 'cl1',
@@ -131,6 +131,22 @@ describe('période et export', () => {
   it('libellé', () => {
     expect(libellePeriode('mois', '2026-10')).toBe('octobre 2026')
     expect(libellePeriode('jour', '2026-10-12')).toBe('12/10/2026')
+  })
+})
+
+describe('total général du rapport', () => {
+  it('additionne le validé, signale les tarifs manquants', () => {
+    const lignes = rapportParSalarie([
+      j({ statut: 'validee', domicile_valide: 10, relais_valide: 5, litige_valide: 1 }),
+      j({ id: 'k', member_id: 'm2', statut: 'validee', colis_domicile: 4, colis_relais: 0 }),
+      j({ id: 'l', member_id: 'm2', statut: 'envoyee' }),
+    ], [
+      { id: 'm1', full_name: 'Mohammed', tarif_domicile_cts: 120, tarif_relais_cts: 80 },
+      { id: 'm2', full_name: 'Achraf', tarif_domicile_cts: null, tarif_relais_cts: null },
+    ])
+    expect(totalRapport(lignes)).toEqual({
+      domicile: 14, relais: 5, litige: 1, enAttente: 1, aCorriger: 0, du_cts: 1600, tarifsManquants: ['Achraf'],
+    })
   })
 })
 

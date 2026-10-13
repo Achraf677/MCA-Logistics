@@ -2,7 +2,7 @@
 // PUR, testé. Les règles partagées avec le salarié vivent dans shared/lib/journeesColis.ts ;
 // ici : ce que seul l'écran du bureau calcule (écarts, filtres, garde de suppression,
 // historique lisible, vue par jour, saisie des tarifs).
-import { colisRetenus, type JourneeColis, type HistoriqueJournee } from '../../shared/lib/journeesColis'
+import { colisRetenus, type JourneeColis, type HistoriqueJournee, type LigneRapport } from '../../shared/lib/journeesColis'
 import { montantSaisiEnCts } from '../../shared/lib/depenses'
 
 export interface NombresColis { domicile: number; relais: number; litige: number }
@@ -216,4 +216,33 @@ export function tarifSaisiCts(v: string): number | null | 'invalide' {
 /** Centimes → texte à éditer (« 1,20 »), vide si null. */
 export function tarifEnTexte(cts: number | null | undefined): string {
   return cts == null ? '' : (cts / 100).toFixed(2).replace('.', ',')
+}
+
+// ── Total général du rapport ─────────────────────────────────────────────────
+
+export interface TotalRapport {
+  domicile: number
+  relais: number
+  litige: number
+  enAttente: number
+  aCorriger: number
+  /** Somme des montants connus (centimes). */
+  du_cts: number
+  /** Salariés dont le montant n'a pas pu être calculé (tarif manquant). */
+  tarifsManquants: string[]
+}
+
+/** Total général (sur le validé) des lignes par salarié. */
+export function totalRapport(lignes: LigneRapport[]): TotalRapport {
+  const t: TotalRapport = { domicile: 0, relais: 0, litige: 0, enAttente: 0, aCorriger: 0, du_cts: 0, tarifsManquants: [] }
+  for (const l of lignes) {
+    t.domicile += l.totaux.valides.domicile
+    t.relais += l.totaux.valides.relais
+    t.litige += l.totaux.valides.litige
+    t.enAttente += l.totaux.enAttente
+    t.aCorriger += l.totaux.aCorriger
+    if (l.du_cts == null) t.tarifsManquants.push(l.nom)
+    else t.du_cts += l.du_cts
+  }
+  return t
 }
