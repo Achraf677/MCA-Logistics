@@ -10,7 +10,8 @@
 - **Journée de colis RETIRÉE** (« pas demandé ») : tarifs domicile / relais, clients de
   messagerie du salarié, Ma journée, Mon mois / paie estimée, Équipe › À valider / Journées /
   Rapports, droit `equipe.journees`, alerte de la cloche. Migration
-  `20261014090000_retrait_journees_colis` (0 donnée perdue).
+  `20261014090000_retrait_journees_colis` : neutralise sans DROP (règle « migrations
+  additives ») ; table et colonnes vides laissées en base, sans lecteur.
 - **Gardé** : cloisonnement (S0 / S0-bis), Accès au site, Dépenses du salarié (photo,
   carte société / note de frais), onglet Moi.
 - **Accès au site simplifié** : fiche non reliée → « Il a déjà un compte ? Relie-le » (comptes

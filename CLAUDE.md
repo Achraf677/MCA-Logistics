@@ -295,7 +295,9 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   `work_hours.total_minutes` fausse sur une nuit. **Migration appliquée le 14/10/2026.**
   **S1 → journée de colis RETIRÉE le 14/10/2026** (« pas demandé ») : tarifs domicile / relais,
   clients de messagerie du salarié, Ma journée, validation / rapports, droit `equipe.journees`.
-  Migration `20261014090000_retrait_journees_colis` (à appliquer APRÈS le merge du front).
+  Migration `20261014090000_retrait_journees_colis` (après le merge) : neutralise sans DROP (règle
+  check:arch) ; table `journees_colis` et colonnes `team_members.tarif_*` / `clients_messagerie`
+  restent VIDES en base, sans lecteur (DROP en commentaire, sur accord seulement).
   Gardé : Dépenses du salarié (photo, carte société / note de frais), Moi, cloisonnement.
   **Accès au site simplifié** : « Relier » un compte existant (liste, le plus probable en
   tête) ou « Créer l'accès » (e-mail + mot de passe) ; colonne « Accès au site » dans la liste
