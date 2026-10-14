@@ -32,7 +32,7 @@ drop policy if exists clients_salarie_ses_courses on public.clients;
 
 create policy clients_salarie_ses_courses on public.clients as restrictive for select to authenticated
   using (not (select public.est_salarie()) or id in (select client_id from public.deliveries)
-         or id = any((select public.mes_clients_messagerie())));
+         or (select public.mes_clients_messagerie()) @> array[id]);
 
 -- 4. Journées de colis.
 create table if not exists public.journees_colis (
