@@ -3,7 +3,10 @@ import { UserPlus, ShieldCheck } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
-import { useProfile, supabase } from '../../app/providers'
+import { useProfile } from '../../app/providers'
+import { useToast } from '../../shared/ui/useToast'
+import { appelPermissions } from '../../shared/lib/adminUsers.queries'
+import { libelleErreurAdmin } from '../../shared/lib/adminUsers'
 import { DrawerAdminPermissions } from './DrawerAdminPermissions'
 import { ModalAddAdmin } from './ModalAddAdmin'
 import type { AdminMember } from './admins.types'
@@ -11,6 +14,7 @@ import { ROLE_LABELS } from './admins.types'
 
 export function Admins() {
   const { profile } = useProfile()
+  const { toast } = useToast()
   const [members, setMembers] = useState<AdminMember[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<AdminMember | null>(null)
@@ -19,14 +23,11 @@ export function Admins() {
 
   const loadMembers = useCallback(async () => {
     setLoading(true)
-    const { data } = await supabase.functions.invoke('admin-permissions', {
-      body: { action: 'list_members' },
-    })
-    if (data?.ok && Array.isArray(data.members)) {
-      setMembers(data.members)
-    }
+    const r = await appelPermissions<{ members: AdminMember[] }>({ action: 'list_members' })
+    if (r.ok && Array.isArray(r.members)) setMembers(r.members)
+    else if (!r.ok) toast(libelleErreurAdmin(r), 'error')
     setLoading(false)
-  }, [])
+  }, [toast])
 
   useEffect(() => { loadMembers() }, [loadMembers])
 
@@ -52,7 +53,7 @@ export function Admins() {
 
         {/* En-tête */}
         <div className="flex items-center justify-between gap-4">
-          <p className="text-[var(--fs-sm)] text-[var(--text-muted)]">
+          <p className="text-[length:var(--fs-sm)] text-[var(--text-muted)]">
             Gérez les comptes ayant accès à l'application et définissez leurs permissions par ressource.
           </p>
           <Button
@@ -72,7 +73,7 @@ export function Admins() {
             {[0,1,2,3].map(i => <Skeleton key={i} className="h-14" />)}
           </div>
         ) : members.length === 0 ? (
-          <p className="text-[var(--fs-sm)] text-[var(--text-muted)] text-center py-8">
+          <p className="text-[length:var(--fs-sm)] text-[var(--text-muted)] text-center py-8">
             Aucun compte trouvé.
           </p>
         ) : (
@@ -92,35 +93,35 @@ export function Admins() {
                     ${selected?.id === member.id && drawerOpen ? 'bg-[var(--brand)]/5' : ''}`}
                 >
                   {/* Avatar initiales */}
-                  <div className="shrink-0 w-8 h-8 rounded-full bg-[var(--bg-elevated)] border border-[var(--border)] flex items-center justify-center text-[var(--fs-xs)] font-semibold text-[var(--text-muted)]">
+                  <div className="shrink-0 w-8 h-8 rounded-full bg-[var(--bg-elevated)] border border-[var(--border)] flex items-center justify-center text-[length:var(--fs-xs)] font-semibold text-[var(--text-muted)]">
                     {member.full_name.slice(0, 2).toUpperCase()}
                   </div>
 
                   {/* Infos */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <p className="text-[var(--fs-sm)] font-medium text-[var(--text)] truncate">
+                      <p className="text-[length:var(--fs-sm)] font-medium text-[var(--text)] truncate">
                         {member.full_name}
                       </p>
                       {isCurrentUser && (
-                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[var(--fs-xs)] bg-[var(--brand)]/10 text-[var(--brand)] font-medium">
+                        <span className="shrink-0 px-1.5 py-0.5 rounded text-[length:var(--fs-xs)] bg-[var(--brand)]/10 text-[var(--brand)] font-medium">
                           Vous
                         </span>
                       )}
                     </div>
                     {member.email && (
-                      <p className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">{member.email}</p>
+                      <p className="text-[length:var(--fs-xs)] text-[var(--text-muted)] truncate">{member.email}</p>
                     )}
                   </div>
 
                   {/* Rôle / badge */}
                   {isPresident ? (
-                    <div className="shrink-0 flex items-center gap-1.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
+                    <div className="shrink-0 flex items-center gap-1.5 text-[length:var(--fs-xs)] text-[var(--text-muted)]">
                       <ShieldCheck size={14} className="text-[var(--brand)]" />
                       <span className="text-[var(--brand)] font-medium">Accès total</span>
                     </div>
                   ) : (
-                    <span className="shrink-0 px-2 py-0.5 rounded text-[var(--fs-xs)] bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-muted)]">
+                    <span className="shrink-0 px-2 py-0.5 rounded text-[length:var(--fs-xs)] bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text-muted)]">
                       {ROLE_LABELS[member.role] ?? member.role}
                     </span>
                   )}

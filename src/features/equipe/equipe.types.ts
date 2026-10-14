@@ -16,6 +16,11 @@ export interface TeamMember {
   license_type: string | null
   licence_b_expiry: string | null
   medical_visit_expiry: string | null
+  /** Payé au colis (lot S1) : tarif domicile / point relais, en centimes. */
+  tarif_domicile_cts?: number | null
+  tarif_relais_cts?: number | null
+  /** Clients de messagerie du salarié, fixés par l'admin. */
+  clients_messagerie?: string[]
   active: boolean
   created_at: string
   updated_at: string

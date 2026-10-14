@@ -3,7 +3,9 @@ import {
   bornesPeriode, decalerPeriode, libellePeriode,
   grouperParJour, estAFaire, resteAFaire,
   etatHoraire, libelleHeure, prochainArret, progression, filtrerMesCourses,
-  libelleCreneauArret,
+  libelleCreneauArret, libelleProgression, rangDansSequence, libelleHeureEstimee, libelleDateCourte,
+  confirmationAutreJour, messageTransitionImpossible, traduireErreurEcriture, MESSAGE_DROIT_MANQUANT,
+  messageEnvoiPhoto, libelleCategorieDocument, documentsPourChauffeur, vehiculesDuJour,
 } from './mescourses.logic'
 
 describe('bornesPeriode', () => {
@@ -170,5 +172,80 @@ describe('libelleCreneauArret', () => {
     expect(libelleCreneauArret(null, '14:00:00')).toBe('avant 14h')
     expect(libelleCreneauArret('08:15', null)).toBe('à partir de 8h15')
     expect(libelleCreneauArret(null, null)).toBeNull()
+  })
+})
+
+describe('compteurs (revue 01 bis)', () => {
+  const a = [
+    { cle: 'A:r', fait: true }, { cle: 'X:l', fait: true, annule: true },
+    { cle: 'A:l', fait: false }, { cle: 'B:l', fait: false },
+  ]
+  it('une course annulée ne compte ni dans les faits ni dans le total', () => {
+    expect(progression(a)).toEqual({ faits: 1, total: 3 })
+  })
+  it('un seul sens : « X faits sur N »', () => {
+    expect(libelleProgression(1, 3)).toBe('1 fait sur 3')
+    expect(libelleProgression(2, 3)).toBe('2 faits sur 3')
+    expect(libelleProgression(0, 0)).toBe('aucun arrêt')
+  })
+  it('rang réel dans la séquence, annulés exclus', () => {
+    expect(rangDansSequence(a, 'A:l')).toBe(2)
+    expect(rangDansSequence(a, 'B:l')).toBe(3)
+    expect(rangDansSequence(a, 'X:l')).toBeNull()
+  })
+})
+
+describe('heures et dates', () => {
+  it('heure estimée en ~HH:MM', () => {
+    expect(libelleHeureEstimee('9:05:00')).toBe('~09:05')
+    expect(libelleHeureEstimee(null)).toBeNull()
+  })
+  it('date courte pour l’en-tête', () => {
+    expect(libelleDateCourte('2026-10-12')).toBe('lun. 12 oct.')
+  })
+  it('confirmation seulement hors du jour', () => {
+    expect(confirmationAutreJour('2026-10-12', '2026-10-12')).toBeNull()
+    expect(confirmationAutreJour('2026-10-15', '2026-10-12')).toMatch(/plus tard.*jeu\. 15 oct\./)
+    expect(confirmationAutreJour('2026-10-09', '2026-10-12')).toMatch(/jour passé/)
+  })
+})
+
+describe('messages', () => {
+  it('transition impossible sans code brut', () => {
+    const m = messageTransitionImpossible('livree', 'en_cours')
+    expect(m).toContain('livrée')
+    expect(m).not.toMatch(/livree|en_cours|→/)
+  })
+  it('0 ligne, .single() vide, RLS → droit manquant', () => {
+    expect(traduireErreurEcriture({ message: 'x', code: '0_LIGNE' })).toBe(MESSAGE_DROIT_MANQUANT)
+    expect(traduireErreurEcriture({ message: 'JSON object requested, multiple (or no) rows returned' })).toBe(MESSAGE_DROIT_MANQUANT)
+    expect(traduireErreurEcriture({ message: 'new row violates row-level security policy' })).toBe(MESSAGE_DROIT_MANQUANT)
+    expect(traduireErreurEcriture({ message: 'Failed to fetch' })).toMatch(/réseau/)
+    expect(traduireErreurEcriture({ message: 'autre chose' })).toBe('autre chose')
+    expect(traduireErreurEcriture(null)).toBe('')
+  })
+  it('photo refusée : phrase claire', () => {
+    expect(messageEnvoiPhoto('new row violates row-level security policy')).toMatch(/Préviens le bureau/)
+    expect(messageEnvoiPhoto('Délai dépassé')).toBe('Délai dépassé')
+  })
+})
+
+describe('pièces jointes et véhicule', () => {
+  it('libellés lisibles', () => {
+    expect(libelleCategorieDocument('POD')).toBe('Preuve de livraison')
+    expect(libelleCategorieDocument('Autre')).toBe('Document')
+    expect(libelleCategorieDocument(null)).toBe('Document')
+  })
+  it('ne reliste pas les pièces du chauffeur lui-même', () => {
+    const d = [{ id: 1, uploaded_by: 'moi' }, { id: 2, uploaded_by: 'bureau' }, { id: 3, uploaded_by: null }]
+    expect(documentsPourChauffeur(d, 'moi').map(x => x.id)).toEqual([2, 3])
+    expect(documentsPourChauffeur(d, null)).toHaveLength(3)
+  })
+  it('véhicules du jour sans doublon, annulées exclues', () => {
+    const v = { label: 'Movano', plate: 'AB-123-CD' }
+    expect(vehiculesDuJour([
+      { statut: 'planifiee', vehicles: v }, { statut: 'livree', vehicles: v },
+      { statut: 'annulee', vehicles: { label: 'Master', plate: 'ZZ' } }, { statut: 'planifiee', vehicles: null },
+    ])).toEqual(['Movano · AB-123-CD'])
   })
 })

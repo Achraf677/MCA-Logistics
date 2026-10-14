@@ -1,5 +1,7 @@
 import { supabase } from '../../app/providers'
-import type { CourseChauffeur, TourneeChauffeur } from './mescourses.types'
+import { erreurAucuneLigne } from '../../shared/lib/pod.queries'
+import type { DocumentRow } from '../../shared/lib/documents.types'
+import type { CourseChauffeur, MaFiche, TourneeChauffeur } from './mescourses.types'
 
 /**
  * Courses du chauffeur connecté sur une plage de dates.
@@ -58,15 +60,27 @@ export async function getMesCourses(debut: string, fin: string) {
  * L'écriture est de toute façon bornée par la policy RLS `deliveries_update_perm`.
  */
 export async function avancerCourse(id: string, cible: 'en_cours' | 'livree') {
-  return supabase
+  const { data, error } = await supabase
     .from('deliveries')
     // Livrer lève un éventuel échec signalé plus tôt (relivraison réussie) :
     // le motif reste en historique, seule l'alerte s'éteint.
     // `delivered_at` comme les tournées : une seule façon de « livrer ».
     .update(cible === 'livree' ? { statut: cible, probleme_le: null, delivered_at: new Date().toISOString() } : { statut: cible })
     .eq('id', id)
+    // Pas de `.single()` : sur 0 ligne (RLS) il rend un message anglais
+    // incompréhensible. On compte nous-mêmes.
     .select('id, statut')
-    .single()
+  return resultatEcriture(data, error)
+}
+
+/**
+ * Une écriture ne « réussit » que si au moins une ligne a bougé. La RLS filtre
+ * sans erreur : sans ce contrôle, l'écran dirait « Enregistré » pour rien.
+ */
+function resultatEcriture<T>(data: T[] | null, error: { message: string; code?: string } | null) {
+  if (error) return { error }
+  if (!data || data.length === 0) return { error: erreurAucuneLigne() }
+  return { error: null }
 }
 
 /**
@@ -87,7 +101,7 @@ export async function getDocumentsDesCourses(deliveryIds: string[]) {
   if (deliveryIds.length === 0) return { data: [], error: null }
   return supabase
     .from('documents')
-    .select('id, entity_id, file_name, mime_type, category, storage_path, drive_link, created_at')
+    .select('id, entity_id, file_name, mime_type, category, storage_path, drive_link, created_at, uploaded_by')
     .eq('entity_type', 'delivery')
     .in('entity_id', deliveryIds)
     .order('created_at', { ascending: false })
@@ -101,7 +115,7 @@ export async function getDocumentsDesCourses(deliveryIds: string[]) {
  * 20260913090000 pour le raisonnement complet.
  */
 export async function marquerCharge(id: string, expediteurNom: string | null) {
-  return supabase
+  const { data, error } = await supabase
     .from('deliveries')
     .update({
       charge_le: new Date().toISOString(),
@@ -110,7 +124,7 @@ export async function marquerCharge(id: string, expediteurNom: string | null) {
     })
     .eq('id', id)
     .select('id, charge_le')
-    .single()
+  return resultatEcriture(data, error)
 }
 
 /**
@@ -133,10 +147,12 @@ export async function ajouterSignature(
   if (lErr) return { error: lErr }
 
   const actuelles = (ligne?.lv_signatures ?? {}) as Record<string, unknown>
-  return supabase
+  const res = await supabase
     .from('deliveries')
     .update({ lv_signatures: { ...actuelles, [role]: data } })
     .eq('id', id)
+    .select('id')
+  return resultatEcriture(res.data, res.error)
 }
 
 /**
@@ -160,10 +176,10 @@ export async function enregistrerOrdreArretsJour(
       // on n'écrase pas une valeur qu'on n'a pas calculée.
       if (p.pickup_order != null) maj.pickup_order = p.pickup_order
       if (p.stop_order != null) maj.stop_order = p.stop_order
-      return supabase.from('deliveries').update(maj).eq('id', p.courseId)
+      return supabase.from('deliveries').update(maj).eq('id', p.courseId).select('id')
     }),
   )
-  const echec = resultats.find(r => r.error)
+  const echec = resultats.map(r => resultatEcriture(r.data, r.error)).find(r => r.error)
   return { error: echec?.error ?? null }
 }
 
@@ -202,7 +218,8 @@ export async function getTourneesDuChauffeur(debut: string, fin: string) {
  * boutons dans ce cas plutôt que de proposer un geste qui échouera.
  */
 export async function changerStatutTournee(tourId: string, status: 'en_cours' | 'terminee') {
-  return supabase.from('tours').update({ status }).eq('id', tourId)
+  const { data, error } = await supabase.from('tours').update({ status }).eq('id', tourId).select('id')
+  return resultatEcriture(data, error)
 }
 
 /** Dépôt de la société — origine et destination de l'itinéraire complet. */
@@ -220,15 +237,18 @@ export async function getDepot(companyId: string) {
  * bureau qui décide de la suite.
  */
 export async function signalerProbleme(id: string, motif: string, note: string | null) {
-  return supabase
+  const { data, error } = await supabase
     .from('deliveries')
     .update({ probleme_motif: motif, probleme_note: note, probleme_le: new Date().toISOString() })
     .eq('id', id)
+    .select('id')
+  return resultatEcriture(data, error)
 }
 
 /**
  * Fiche équipe de l'utilisateur connecté — sert au filtre « mes courses »
- * d'un président / DG qui roule aussi. `null` s'il n'a pas de fiche.
+ * d'un président / DG qui roule aussi, et à dire au chauffeur que son compte
+ * n'est pas encore relié à sa fiche. `null` s'il n'a pas de fiche.
  */
 export async function getMaFicheEquipe(profileId: string) {
   return supabase
@@ -237,4 +257,50 @@ export async function getMaFicheEquipe(profileId: string) {
     .eq('profile_id', profileId)
     .limit(1)
     .maybeSingle()
+}
+
+// ── Espace salarié (Ma journée, Dépenses, Moi) ───────────────────────────────
+
+const COLS_FICHE_BASE = 'id, full_name, licence_b_expiry, medical_visit_expiry, phone, email'
+const COLS_FICHE_JOURNEE = `${COLS_FICHE_BASE}, tarif_domicile_cts, tarif_relais_cts, clients_messagerie`
+
+/**
+ * Fiche complète du compte connecté (espace salarié). Si les colonnes de la journée de
+ * colis manquent encore en base, on relit sans elles : « Moi » reste utilisable, et
+ * « Ma journée » sait dire pourquoi elle est vide (`complete = false`).
+ * `data: null` sans erreur = compte non relié à une fiche.
+ */
+export async function getMaFicheComplete(profileId: string): Promise<{ data: MaFiche | null; error: Error | null }> {
+  const pleine = await supabase.from('team_members').select(COLS_FICHE_JOURNEE)
+    .eq('profile_id', profileId).limit(1).maybeSingle()
+  if (!pleine.error) {
+    const d = pleine.data as Omit<MaFiche, 'complete'> | null
+    return { data: d ? { ...d, clients_messagerie: d.clients_messagerie ?? [], complete: true } : null, error: null }
+  }
+  const base = await supabase.from('team_members').select(COLS_FICHE_BASE)
+    .eq('profile_id', profileId).limit(1).maybeSingle()
+  if (base.error) return { data: null, error: new Error(base.error.message) }
+  const d = base.data as Pick<MaFiche, 'id' | 'full_name' | 'phone' | 'email' | 'licence_b_expiry' | 'medical_visit_expiry'> | null
+  return {
+    data: d ? { ...d, tarif_domicile_cts: null, tarif_relais_cts: null, clients_messagerie: [], complete: false } : null,
+    error: null,
+  }
+}
+
+/** Noms des clients de messagerie (la base ouvre au salarié ceux qui lui sont attribués). */
+export async function getNomsClients(ids: string[]): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map()
+  const { data } = await supabase.from('clients').select('id, name').in('id', ids)
+  return new Map((data ?? []).map((c: { id: string; name: string }) => [c.id, c.name]))
+}
+
+/** Documents de SA fiche (permis, visite médicale…) : RLS `documents_salarie_siens`. */
+export async function getDocumentsDeMaFiche(memberId: string) {
+  const { data, error } = await supabase.from('documents').select('*')
+    .eq('entity_type', 'team_member').eq('entity_id', memberId).order('created_at', { ascending: false })
+  return { data: (data ?? []) as DocumentRow[], error: error ? new Error(error.message) : null }
+}
+
+export async function seDeconnecter() {
+  await supabase.auth.signOut()
 }

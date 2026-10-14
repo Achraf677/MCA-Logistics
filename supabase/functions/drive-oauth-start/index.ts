@@ -2,6 +2,7 @@
 // Authentifie le user (verify_jwt=true), crée un state (nonce) lié à sa société,
 // et renvoie l'URL d'autorisation Google (scope drive complet, access_type=offline).
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { exigerPermission } from '../_shared/auth.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -43,19 +44,16 @@ Deno.serve(async (req: Request) => {
   if (!origin) return json({ ok: false, error: 'origin requis' }, 400);
 
   const url = Deno.env.get('SUPABASE_URL')!;
-  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-  const userClient = createClient(url, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { persistSession: false },
-  });
-  const { data: { user }, error: uErr } = await userClient.auth.getUser();
-  if (uErr || !user) return json({ ok: false, error: 'invalid session' }, 401);
-
   const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const service = createClient(url, svcKey, { auth: { persistSession: false } });
-  const { data: profile } = await service
-    .from('profiles').select('company_id').eq('id', user.id).single();
-  if (!profile?.company_id) return json({ ok: false, error: 'société introuvable' }, 400);
+  // Connecter le Drive / Gmail de la société = un réglage : président ou
+  // `systeme.parametres : update`. Le compte est noté dans le `state` et
+  // revérifié par drive-oauth-callback (appelé par Google, sans JWT).
+  const acces = await exigerPermission(req, service, 'systeme.parametres', 'update');
+  if (!acces.ok) return acces.response;
+  const profile = { company_id: acces.companyId };
+  const { data: userData } = await service.auth.admin.getUserById(acces.userId);
+  const user = { id: acces.userId, email: userData?.user?.email ?? null };
 
   const clientId = Deno.env.get('GOOGLE_OAUTH_CLIENT_ID');
   if (!clientId) return json({ ok: false, error: 'missing GOOGLE_OAUTH_CLIENT_ID' }, 500);

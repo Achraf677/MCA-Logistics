@@ -26,3 +26,16 @@ export function kpiSummary(rows: ChargeRow[]) {
   const avoirsHtCts = avoirs.reduce((s, r) => s + r.montant_ht_cts, 0)
   return { totalHtCts, totalTtcCts, nb: exploitation.length, byCategory, nbAvoirs, avoirsHtCts }
 }
+
+// ── Boîte des justificatifs (dépenses déclarées, lot S1) ────────────────────
+
+/** Filtre « Notes de frais à rembourser » : payées de la poche du déclarant. */
+export function ticketsAffiches<T extends { moyen_paiement?: string | null }>(tickets: T[], notesDeFraisSeules: boolean): T[] {
+  return notesDeFraisSeules ? tickets.filter(t => t.moyen_paiement === 'personnel') : tickets
+}
+
+/** 'AAAA-MM-JJ' → 'JJ/MM/AAAA' (sans passer par UTC) ; null si absent. */
+export function jourFr(iso: string | null | undefined): string | null {
+  const m = iso ? /^(\d{4})-(\d{2})-(\d{2})/.exec(iso) : null
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : null
+}

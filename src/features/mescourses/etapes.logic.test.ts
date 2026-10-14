@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  etapeCourante, adresseDeNavigation, libelleAction, libelleEtat,
+  etapeCourante, adresseDeNavigation, libelleAction, libelleEtat, actionArret, aUnePreuve,
   type EtatCourse,
 } from './etapes.logic'
 
@@ -82,5 +82,51 @@ describe('libelles', () => {
     expect(libelleEtat(c({ charge_le: '2026-09-13T08:00:00Z' }))).toBe('Chargé')
     expect(libelleEtat(c({ statut: 'livree' }))).toBe('Livrée')
     expect(libelleEtat(c({ statut: 'annulee' }))).toBe('Annulée')
+  })
+
+  it('sans retrait, une course démarrée est « En route », pas « Chargé »', () => {
+    expect(libelleEtat(c({ pickup_address: null }))).toBe('En route')
+  })
+})
+
+describe('actionArret', () => {
+  const arret = (type: 'retrait' | 'livraison', course: EtatCourse, fait = false) =>
+    ({ cle: `A:${type}`, courseId: 'A', type, fait, course })
+  const seq = [{ cle: 'A:retrait', courseId: 'A' }, { cle: 'A:livraison', courseId: 'A' }]
+
+  it('un seul « Démarrer » par course : sur son premier arrêt', () => {
+    const p = c({ statut: 'planifiee' })
+    expect(actionArret(arret('retrait', p), seq)).toBe('demarrer')
+    expect(actionArret(arret('livraison', p), seq)).toBeNull()
+  })
+
+  it('si la livraison a été placée avant le retrait, c’est elle qui démarre', () => {
+    const p = c({ statut: 'planifiee' })
+    const inverse = [...seq].reverse()
+    expect(actionArret(arret('livraison', p), inverse)).toBe('demarrer')
+    expect(actionArret(arret('retrait', p), inverse)).toBeNull()
+  })
+
+  it('sans retrait, la livraison porte le « Démarrer »', () => {
+    const p = c({ statut: 'planifiee', pickup_address: null })
+    expect(actionArret(arret('livraison', p), [{ cle: 'A:livraison', courseId: 'A' }])).toBe('demarrer')
+  })
+
+  it('charger au retrait, livrer à la livraison, rien sur un arrêt fait', () => {
+    expect(actionArret(arret('retrait', c()), seq)).toBe('charger')
+    expect(actionArret(arret('livraison', c()), seq)).toBeNull()
+    const charge = c({ charge_le: 'x' })
+    expect(actionArret(arret('livraison', charge), seq)).toBe('livrer')
+    expect(actionArret(arret('livraison', charge, true), seq)).toBeNull()
+  })
+})
+
+describe('aUnePreuve', () => {
+  it('nom, photo ou signature suffisent', () => {
+    expect(aUnePreuve({ nom: null, photos: 0, signee: false })).toBe(false)
+    expect(aUnePreuve({ nom: '  ', photos: 0, signee: false })).toBe(false)
+    expect(aUnePreuve({ nom: null, photos: 1, signee: false })).toBe(true)
+    expect(aUnePreuve({ nom: null, photos: 0, signee: true })).toBe(true)
+    expect(aUnePreuve({ nom: 'M. Martin', photos: 0, signee: false })).toBe(true)
   })
 })

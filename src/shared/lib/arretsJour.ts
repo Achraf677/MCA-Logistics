@@ -34,8 +34,13 @@ export interface ArretJour<T extends CoursePourArrets> {
   type: TypeArret
   adresse: string
   ordre: number | null
-  /** L'arrêt est-il derrière nous ? */
+  /** L'arrêt est-il derrière nous ? (une course annulée l'est aussi : plus rien à y faire) */
   fait: boolean
+  /**
+   * Course annulée : l'arrêt reste visible (le chauffeur doit savoir qu'il
+   * ne faut plus y aller) mais ne compte ni dans « faits » ni dans le total.
+   */
+  annule: boolean
   course: T
 }
 
@@ -60,6 +65,7 @@ export function arretsDuJour<T extends CoursePourArrets>(courses: T[]): Array<Ar
 
   for (const c of courses) {
     const close = STATUTS_CLOS.has(c.statut)
+    const annule = c.statut === 'annulee'
 
     if (c.pickup_address?.trim()) {
       arrets.push({
@@ -69,6 +75,7 @@ export function arretsDuJour<T extends CoursePourArrets>(courses: T[]): Array<Ar
         adresse: c.pickup_address.trim(),
         ordre: c.pickup_order,
         fait: close || c.charge_le != null,
+        annule,
         course: c,
       })
     }
@@ -80,6 +87,7 @@ export function arretsDuJour<T extends CoursePourArrets>(courses: T[]): Array<Ar
       adresse: c.delivery_address?.trim() ?? '',
       ordre: c.stop_order,
       fait: close,
+      annule,
       course: c,
     })
   }

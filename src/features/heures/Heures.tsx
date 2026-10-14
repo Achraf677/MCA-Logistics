@@ -8,7 +8,7 @@ import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { DrawerHeure } from './DrawerHeure'
 import { supabase } from '../../app/providers'
 import { getWorkHours } from './heures.queries'
-import { formatMinutes, formatTime, kpiSummary } from './heures.logic'
+import { formatMinutes, formatTime, kpiSummary, dureeLigne, moisEnCours } from './heures.logic'
 import type { WorkHourRow, WorkHourFilters } from './heures.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
@@ -19,7 +19,8 @@ export function Heures() {
   const [members, setMembers] = useState<MemberLookup[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState<string | null>(null)
-  const [filters, setFilters] = useState<WorkHourFilters>({})
+  // Par défaut : le mois en cours (et pas tout l'historique).
+  const [filters, setFilters] = useState<WorkHourFilters>(() => moisEnCours())
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<WorkHourRow | null>(null)
 
@@ -45,9 +46,10 @@ export function Heures() {
   const openRow = (row: WorkHourRow) => { setSelected(row); setDrawerOpen(true) }
 
   const kpis = kpiSummary(rows)
+  const defaut = moisEnCours()
   const hasFilters = !!(
     (filters.member_id && filters.member_id !== 'all') ||
-    filters.date_from || filters.date_to
+    filters.date_from !== defaut.date_from || filters.date_to !== defaut.date_to
   )
 
   return (
@@ -61,7 +63,7 @@ export function Heures() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Saisies"        value={kpis.nb} tone="info" icon={<Clock size={18} />} />
           <KpiCard label="Heures totales" value={formatMinutes(kpis.totalMinutes)} tone="violet" icon={<Timer size={18} />} />
-          <KpiCard label="Chauffeurs"     value={kpis.uniqueDrivers} tone="info" icon={<Users size={18} />} />
+          <KpiCard label="Salariés"       value={kpis.uniqueDrivers} tone="info" icon={<Users size={18} />} />
           <KpiCard label="Avec livraison" value={kpis.withDelivery} tone="info" icon={<Package size={18} />} />
         </div>
       )}
@@ -77,11 +79,11 @@ export function Heures() {
         <select value={filters.member_id ?? 'all'}
           onChange={e => setFilters(f => ({ ...f, member_id: e.target.value || 'all' }))}
           className={filterCls}>
-          <option value="all">Tous chauffeurs</option>
+          <option value="all">Tous les salariés</option>
           {members.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
         </select>
         {hasFilters && (
-          <Button variant="ghost" size="compact" onClick={() => setFilters({})}>Réinitialiser</Button>
+          <Button variant="ghost" size="compact" onClick={() => setFilters(moisEnCours())}>Mois en cours</Button>
         )}
       </div>
 
@@ -90,7 +92,7 @@ export function Heures() {
         <SkeletonTable rows={6} />
       ) : error ? (
         <div className="flex flex-col items-center py-16 gap-3">
-          <p className="text-[var(--danger)] text-[var(--fs-sm)]">{error}</p>
+          <p className="text-[var(--danger)] text-[length:var(--fs-sm)]">{error}</p>
           <Button variant="secondary" onClick={load}>Réessayer</Button>
         </div>
       ) : rows.length === 0 ? (
@@ -104,11 +106,11 @@ export function Heures() {
         <>
           {/* Desktop */}
           <div className="hidden md:block overflow-x-auto panel rounded-[var(--r-xl)]">
-            <table className="w-full text-[var(--fs-sm)]">
+            <table className="w-full text-[length:var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['Date', 'Chauffeur', 'Début', 'Fin', 'Pause', 'Total', 'Livraison', ''].map(h => (
-                    <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
+                  {['Date', 'Salarié', 'Début', 'Fin', 'Pause', 'Total', 'Livraison', ''].map(h => (
+                    <th key={h} className="px-4 py-2.5 font-medium text-[length:var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -117,21 +119,21 @@ export function Heures() {
                   <tr key={row.id} onClick={() => openRow(row)}
                     className={`border-t border-[var(--border)] cursor-pointer transition-colors hover:bg-[var(--bg-card-hover)]
                       ${i % 2 === 0 ? '' : 'bg-[var(--bg-card)]/40'}`}>
-                    <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
+                    <td className="px-4 py-3 font-mono text-[length:var(--fs-xs)] text-[var(--text-muted)]">
                       {new Date(row.date).toLocaleDateString('fr-FR')}
                     </td>
                     <td className="px-4 py-3 font-medium text-[var(--text)]">
                       {row.team_members?.full_name ?? '—'}
                     </td>
-                    <td className="px-4 py-3 font-mono text-[var(--fs-xs)]">{formatTime(row.start_time)}</td>
-                    <td className="px-4 py-3 font-mono text-[var(--fs-xs)]">{formatTime(row.end_time)}</td>
-                    <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
+                    <td className="px-4 py-3 font-mono text-[length:var(--fs-xs)]">{formatTime(row.start_time)}</td>
+                    <td className="px-4 py-3 font-mono text-[length:var(--fs-xs)]">{formatTime(row.end_time)}</td>
+                    <td className="px-4 py-3 font-mono text-[length:var(--fs-xs)] text-[var(--text-muted)]">
                       {row.break_minutes > 0 ? `${row.break_minutes} min` : '—'}
                     </td>
                     <td className="px-4 py-3 font-mono font-semibold text-[var(--brand)]">
-                      {formatMinutes(row.total_minutes)}
+                      {formatMinutes(dureeLigne(row))}
                     </td>
-                    <td className="px-4 py-3 text-[var(--text-muted)] text-[var(--fs-xs)]">
+                    <td className="px-4 py-3 text-[var(--text-muted)] text-[length:var(--fs-xs)]">
                       {(row.deliveries as { clients: { name: string } | null } | null)?.clients?.name ?? '—'}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -150,17 +152,17 @@ export function Heures() {
                 className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 hover:bg-[var(--bg-card-hover)] transition-colors">
                 <div className="flex items-start justify-between gap-2 mb-2">
                   <span className="font-medium text-[var(--text)]">{row.team_members?.full_name ?? '—'}</span>
-                  <span className="font-mono font-semibold text-[var(--brand)]">{formatMinutes(row.total_minutes)}</span>
+                  <span className="font-mono font-semibold text-[var(--brand)]">{formatMinutes(dureeLigne(row))}</span>
                 </div>
                 <div className="flex items-end justify-between gap-2">
-                  <div className="flex flex-col gap-0.5 text-[var(--fs-xs)] text-[var(--text-muted)]">
+                  <div className="flex flex-col gap-0.5 text-[length:var(--fs-xs)] text-[var(--text-muted)]">
                     <span>{new Date(row.date).toLocaleDateString('fr-FR')}</span>
                     {row.start_time && row.end_time && (
                       <span>{formatTime(row.start_time)} → {formatTime(row.end_time)}</span>
                     )}
                   </div>
                   {row.break_minutes > 0 && (
-                    <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">{row.break_minutes} min pause</span>
+                    <span className="text-[length:var(--fs-xs)] text-[var(--text-muted)]">{row.break_minutes} min pause</span>
                   )}
                 </div>
               </button>
@@ -180,4 +182,4 @@ export function Heures() {
 }
 
 const filterCls = `h-8 px-3 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)]
-  text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] transition-colors`
+  text-[var(--text)] text-[length:var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] transition-colors`

@@ -14,6 +14,12 @@ function c(p: Partial<CoursePourArrets> & { id: string }): CoursePourArrets {
 }
 
 describe('arretsDuJour', () => {
+  it('marque les arrêts d’une course annulée (faits ET annulés), pas ceux d’une livrée', () => {
+    const a = arretsDuJour([c({ id: 'A', statut: 'annulee' }), c({ id: 'B', statut: 'livree' })])
+    expect(a.filter(x => x.courseId === 'A').every(x => x.fait && x.annule)).toBe(true)
+    expect(a.filter(x => x.courseId === 'B').every(x => x.fait && !x.annule)).toBe(true)
+  })
+
   it('découpe une course en deux arrêts', () => {
     const a = arretsDuJour([c({ id: 'A' })])
     expect(a.map(x => x.type)).toEqual(['retrait', 'livraison'])

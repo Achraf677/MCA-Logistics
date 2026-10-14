@@ -44,10 +44,26 @@ export async function exigerPermission(
     return { ok: false, response: jsonResponse({ ok: false, error: 'Session invalide — reconnectez-vous.' }, 401) };
   }
 
+  return await verifierDroitCompte(service, user.id, resourceKey, action);
+}
+
+/**
+ * Même contrôle que `exigerPermission`, mais pour un compte déjà identifié
+ * (sans JWT) : sert quand l'appel ne porte pas la session de l'utilisateur
+ * (ex. `drive-oauth-callback`, appelé par Google en redirection, qui relit le
+ * compte enregistré à l'étape `drive-oauth-start`).
+ * Société trouvée, compte actif, président OU permission (resource, action).
+ */
+export async function verifierDroitCompte(
+  service: SupabaseClient,
+  userId: string,
+  resourceKey: string,
+  action: ActionPermission,
+): Promise<ResultatAcces> {
   const { data: profile } = await service
     .from('profiles')
     .select('company_id, role, active')
-    .eq('id', user.id)
+    .eq('id', userId)
     .maybeSingle();
   if (!profile?.company_id) {
     return { ok: false, response: jsonResponse({ ok: false, error: 'Société introuvable pour ce compte.' }, 403) };
@@ -61,7 +77,7 @@ export async function exigerPermission(
     const { data: perms } = await service
       .from('user_permissions')
       .select(COLONNE[action])
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('resource_key', resourceKey);
     const autorise = (perms ?? []).some(
       (p) => (p as unknown as Record<string, unknown>)[COLONNE[action]] === true,
@@ -77,7 +93,32 @@ export async function exigerPermission(
     }
   }
 
-  return { ok: true, userId: user.id, companyId: String(profile.company_id), role };
+  return { ok: true, userId, companyId: String(profile.company_id), role };
+}
+
+/**
+ * Accès si le compte a AU MOINS UNE des permissions (resource, action).
+ * Ex. lire un justificatif : `finance.charges` OU `flotte.carburant` OU
+ * `flotte.entretiens`. Un 401 (session absente) est renvoyé tout de suite ;
+ * un 403 essaie la clé suivante, et le dernier refus est renvoyé.
+ */
+export async function exigerUneDesPermissions(
+  req: Request,
+  service: SupabaseClient,
+  resourceKeys: string[],
+  action: ActionPermission,
+): Promise<ResultatAcces> {
+  let dernier: ResultatAcces | null = null;
+  for (const key of resourceKeys) {
+    const acces = await exigerPermission(req, service, key, action);
+    if (acces.ok) return acces;
+    if (acces.response.status !== 403) return acces;
+    dernier = acces;
+  }
+  return dernier ?? {
+    ok: false,
+    response: jsonResponse({ ok: false, error: 'Droit insuffisant.' }, 403),
+  };
 }
 
 // ── Variante « appelant » (devis, derniers numéros) ─────────────────────────

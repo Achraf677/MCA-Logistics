@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { numeroUtilisable, lienSms, lienTel, MESSAGES_TYPES } from './messageClient'
+import { numeroUtilisable, lienSms, lienTel, MESSAGES_TYPES, messagesPour, contactArret } from './messageClient'
 
 describe('numeroUtilisable', () => {
   it('accepte un numéro français écrit avec des espaces', () => {
@@ -60,5 +60,31 @@ describe('MESSAGES_TYPES', () => {
       expect(m.texte(null).length).toBeGreaterThan(10)
       expect(m.libelle.length).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('messages par arrêt', () => {
+  it('au retrait, ne parle jamais de « votre livraison »', () => {
+    for (const m of messagesPour('retrait')) expect(m.texte(null)).not.toMatch(/votre livraison/)
+  })
+  it('à la livraison, garde le jeu historique', () => {
+    expect(messagesPour('livraison')).toBe(MESSAGES_TYPES)
+  })
+})
+
+describe('contactArret', () => {
+  const base = { expediteur_tel: null, destinataire_tel: null, clients: null }
+  it('prend le contact sur place selon le type d’arrêt', () => {
+    const c = { ...base, expediteur_tel: '06 11 11 11 11', destinataire_tel: '06 22 22 22 22' }
+    expect(contactArret('retrait', c)).toEqual({ tel: '06 11 11 11 11', source: 'sur_place', smsPossible: true })
+    expect(contactArret('livraison', c).tel).toBe('06 22 22 22 22')
+  })
+  it('se rabat sur le donneur d’ordre pour appeler, jamais pour un SMS', () => {
+    const r = contactArret('livraison', { ...base, clients: { phone: '03 88 00 00 00' } })
+    expect(r).toEqual({ tel: '03 88 00 00 00', source: 'donneur_ordre', smsPossible: false })
+  })
+  it('ignore un contact sur place inutilisable', () => {
+    const r = contactArret('livraison', { ...base, destinataire_tel: 'à voir', clients: { phone: null } })
+    expect(r).toEqual({ tel: null, source: null, smsPossible: false })
   })
 })

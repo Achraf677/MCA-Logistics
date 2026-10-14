@@ -7,10 +7,13 @@ import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { SkeletonTable, SkeletonKpis } from '../../shared/ui/Skeleton'
 import { useProfile } from '../../app/providers'
+import { useToast } from '../../shared/ui/useToast'
+import { downloadCSV } from '../../shared/lib/download'
+import { toLocalISO } from '../../shared/lib/dates'
 import { getTeamMembers } from './equipe.queries'
 import {
   CONTRACT_LABELS, ROLE_LABELS, getContractLabel, formatSalaryMonthly, formatSalaryAnnual,
-  masseSalariale, aptitude, memberEcheances, isDriverRole,
+  masseSalariale, aptitude, memberEcheances, isDriverRole, membresCsv,
 } from './equipe.logic'
 import { DrawerMembre } from './DrawerMembre'
 import type { TeamMember, TeamFilters } from './equipe.types'
@@ -25,10 +28,11 @@ const PASTILLE: Record<EcheanceStatus, string | null> = {
 }
 
 function AptitudeBadge({ member }: { member: TeamMember }) {
+  // Permis et visite ne se suivent que pour un rôle qui conduit.
+  if (!isDriverRole(member.role)) return <span className="text-[var(--text-disabled)]">—</span>
   const status = aptitude(member)
-  if (status === 'apte') {
-    return <Badge color="success">Apte</Badge>
-  }
+  if (status === 'apte') return <Badge color="success">Apte</Badge>
+  if (status === 'a_completer') return <Badge color="warning">À compléter</Badge>
   return <Badge color="danger">À régulariser</Badge>
 }
 
@@ -51,6 +55,7 @@ function EcheancePastille({ member }: { member: TeamMember }) {
 
 export function Equipe() {
   useProfile()
+  const { toast } = useToast()
   const [members, setMembers] = useState<TeamMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -75,6 +80,10 @@ export function Equipe() {
 
   const handleAction = (key: ActionKey) => {
     if (key === 'nouveau') openDrawer()
+    if (key === 'export') {
+      if (displayedMembers.length === 0) { toast('Aucun membre à exporter', 'error'); return }
+      downloadCSV(membresCsv(displayedMembers), `equipe-${toLocalISO(new Date())}.csv`)
+    }
   }
 
   const today = new Date()
@@ -105,7 +114,7 @@ export function Equipe() {
         <select
           value={filters.role ?? 'all'}
           onChange={e => setFilters(f => ({ ...f, role: (e.target.value || 'all') as TeamFilters['role'] }))}
-          className="h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)] focus:outline-none"
+          className="h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] text-[length:var(--fs-sm)] focus:outline-none"
         >
           <option value="all">Tous rôles</option>
           {(Object.entries(ROLE_LABELS) as [string, string][]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -113,7 +122,7 @@ export function Equipe() {
         <select
           value={filters.contract_type ?? 'all'}
           onChange={e => setFilters(f => ({ ...f, contract_type: (e.target.value || 'all') as TeamFilters['contract_type'] }))}
-          className="h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)] focus:outline-none"
+          className="h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] text-[length:var(--fs-sm)] focus:outline-none"
         >
           <option value="all">Tous contrats</option>
           {(Object.entries(CONTRACT_LABELS) as [string, string][]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -131,7 +140,7 @@ export function Equipe() {
       {loading ? <SkeletonTable rows={4} />
         : error ? (
           <div className="flex flex-col items-center py-16 gap-3">
-            <p className="text-[var(--danger)] text-[var(--fs-sm)]">{error}</p>
+            <p className="text-[var(--danger)] text-[length:var(--fs-sm)]">{error}</p>
             <Button variant="secondary" onClick={load}>Réessayer</Button>
           </div>
         ) : displayedMembers.length === 0 ? (
@@ -145,11 +154,11 @@ export function Equipe() {
           <>
             {/* Desktop */}
             <div className="hidden md:block overflow-x-auto panel rounded-[var(--r-xl)]">
-              <table className="w-full text-[var(--fs-sm)]">
+              <table className="w-full text-[length:var(--fs-sm)]">
                 <thead>
                   <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
                     {['Nom', 'Rôle', 'Contrat', 'Salaire brut / mois', 'Aptitude', ''].map(h => (
-                      <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
+                      <th key={h} className="px-4 py-2.5 font-medium text-[length:var(--fs-xs)] uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -162,7 +171,7 @@ export function Equipe() {
                         <div className="flex items-center gap-2">
                           <EcheancePastille member={m} />
                           {m.full_name}
-                          {!m.active && <span className="text-[var(--text-disabled)] text-[var(--fs-xs)]">(inactif)</span>}
+                          {!m.active && <span className="text-[var(--text-disabled)] text-[length:var(--fs-xs)]">(inactif)</span>}
                         </div>
                       </td>
                       <td className="px-4 py-3 text-[var(--text-muted)]">
@@ -198,7 +207,7 @@ export function Equipe() {
                     </div>
                     <AptitudeBadge member={m} />
                   </div>
-                  <div className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+                  <div className="text-[length:var(--fs-xs)] text-[var(--text-muted)]">
                     {(m.role ? ROLE_LABELS[m.role] : m.role_label) && (
                       <span>{m.role ? ROLE_LABELS[m.role] : m.role_label} · </span>
                     )}
