@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  erreurAcces, libelleErreurAcces, aptitude, salaireSaisiCts, dateFr, erreurDateFin, membresCsv,
+  erreurEmail, decisionDonnerAcces, presidentSurAutreFiche, lignesComptes, fichesLiables, fusionnerComptes,
+  libelleConnexionCompte, genererMotDePasse, libelleErreurAcces, aptitude, salaireSaisiCts, dateFr, erreurDateFin, membresCsv,
 } from './equipe.logic'
 import type { TeamMember } from './equipe.types'
 
@@ -12,15 +13,81 @@ const membre = (p: Partial<TeamMember> = {}): TeamMember => ({
   created_at: '', updated_at: '', ...p,
 })
 
-describe('accès au site (lot S0)', () => {
-  it('e-mail obligatoire et valide', () => {
-    expect(erreurAcces({ email: 'x', mode: 'invitation', motDePasse: '' })).toBe('E-mail invalide.')
-    expect(erreurAcces({ email: ' a@b.fr ', mode: 'invitation', motDePasse: '' })).toBeNull()
+describe('donner l’accès (un salarié = un compte)', () => {
+  const comptes = [
+    { id: 'p1', full_name: 'Mohammed Chikri', email: 'mo@x.fr', role: 'chauffeur', active: true },
+    { id: 'p2', full_name: 'Compte Lucas', email: 'zydroxxg@gmail.com', role: 'chauffeur', active: true },
+    { id: 'p3', full_name: 'Achraf', email: 'moi@x.fr', role: 'president', active: true },
+  ]
+  const fiches = [
+    { id: 'f1', full_name: 'Mohammed Chikri', email: null, profile_id: 'p1' },
+    { id: 'f2', full_name: 'Lucas Bacher', email: null, profile_id: null },
+    { id: 'f3', full_name: 'Achraf Chikri', email: 'moi@x.fr', profile_id: null },
+  ]
+  it('e-mail invalide', () => {
+    expect(decisionDonnerAcces('x', fiches[1], comptes, fiches)).toEqual({ type: 'invalide', message: 'E-mail invalide.' })
+    expect(erreurEmail(' a@b.fr ')).toBeNull()
   })
-  it('mot de passe de 8 caractères en mode mot de passe seulement', () => {
-    expect(erreurAcces({ email: 'a@b.fr', mode: 'mot_de_passe', motDePasse: '1234567' })).toMatch(/8 caractères/)
-    expect(erreurAcces({ email: 'a@b.fr', mode: 'mot_de_passe', motDePasse: '12345678' })).toBeNull()
+  it('compte existant non relié → on le relie (casse et espaces ignorés)', () => {
+    const d = decisionDonnerAcces(' ZydroxxG@gmail.com ', fiches[1], comptes, fiches)
+    expect(d).toMatchObject({ type: 'relier', compte: { id: 'p2' } })
   })
+  it('compte relié à une autre fiche → nomme la fiche', () => {
+    expect(decisionDonnerAcces('mo@x.fr', fiches[1], comptes, fiches))
+      .toMatchObject({ type: 'relie_ailleurs', fiche: 'Mohammed Chikri' })
+  })
+  it('nouvel e-mail → création', () => {
+    expect(decisionDonnerAcces('nouveau@x.fr', fiches[1], comptes, fiches)).toEqual({ type: 'creer' })
+  })
+  it('compte président : seulement sur SA fiche', () => {
+    expect(decisionDonnerAcces('moi@x.fr', fiches[1], comptes, fiches)).toMatchObject({ type: 'president' })
+    expect(decisionDonnerAcces('moi@x.fr', fiches[2], comptes, fiches)).toMatchObject({ type: 'relier', compte: { id: 'p3' } })
+    expect(presidentSurAutreFiche(comptes[2], { full_name: 'ACHRAF', email: null })).toBe(false)
+  })
+  it('liste des comptes : fiche reliée, soi, président non modifiable, sans fiche en tête', () => {
+    const l = lignesComptes(comptes, fiches, 'p3')
+    expect(l.map(c => c.id)).toEqual(['p3', 'p2', 'p1'])
+    expect(l.find(c => c.id === 'p1')?.fiche?.full_name).toBe('Mohammed Chikri')
+    expect(l.find(c => c.id === 'p3')).toMatchObject({ estMoi: true, modifiable: false })
+    expect(l.find(c => c.id === 'p2')).toMatchObject({ estMoi: false, modifiable: true, fiche: null })
+  })
+  it('fiches liables : sans compte ; un président seulement sur la sienne', () => {
+    expect(fichesLiables(comptes[1], fiches).map(f => f.id)).toEqual(['f3', 'f2'])
+    expect(fichesLiables(comptes[2], fiches).map(f => f.id)).toEqual(['f3'])
+  })
+  it('fusion Edge + profils : e-mail du profil en repli ; Edge en échec → profils', () => {
+    const profils = [{ id: 'p1', full_name: 'M', email: 'mo@x.fr', role: 'chauffeur', active: true }]
+    expect(fusionnerComptes([{ id: 'p1', full_name: 'M', email: null, role: 'chauffeur', active: true }], profils)[0].email).toBe('mo@x.fr')
+    expect(fusionnerComptes(null, profils)[0].last_sign_in_at).toBeUndefined()
+  })
+  it('dernière connexion : « — » si l’Edge ne la donne pas', () => {
+    expect(libelleConnexionCompte(undefined)).toBe('—')
+    expect(libelleConnexionCompte(null)).toBe('Jamais connecté')
+  })
+})
+
+describe('mot de passe généré', () => {
+  it('lisible : 3 groupes de 4, sans caractères ambigus, lettres et chiffres', () => {
+    for (let i = 0; i < 200; i++) {
+      const m = genererMotDePasse()
+      expect(m).toMatch(/^[a-zA-Z2-9]{4}-[a-zA-Z2-9]{4}-[a-zA-Z2-9]{4}$/)
+      expect(m.length).toBeGreaterThanOrEqual(10)
+      expect(m).not.toMatch(/[01OoIil]/)
+      expect(m).toMatch(/[a-z]/); expect(m).toMatch(/[A-Z]/); expect(m).toMatch(/[2-9]/)
+    }
+  })
+  it('deux tirages diffèrent', () => {
+    expect(genererMotDePasse()).not.toBe(genererMotDePasse())
+  })
+  it('source d’aléa injectable (déterministe), rejet des valeurs biaisées', () => {
+    let k = 0
+    const suite = [0xffffffff, 0, 23, 47, 1, 24, 48, 2, 25, 49, 3, 26, 50]
+    const alea = (t: Uint32Array<ArrayBuffer>) => { t[0] = suite[k++ % suite.length]; return t }
+    expect(genererMotDePasse(alea)).toBe('aA2b-B3cC-4dD5')
+  })
+})
+
+describe('accès au site : erreurs', () => {
   it('codes d erreur traduits, sinon le détail', () => {
     expect(libelleErreurAcces('fiche_deja_reliee')).toMatch(/déjà reliée/)
     expect(libelleErreurAcces('autre', 'boom')).toBe('boom')

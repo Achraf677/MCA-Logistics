@@ -11,7 +11,8 @@
 //    (`team_members.profile_id`), sans quoi un salarié ne voit aucune course (lot S0).
 //  - link_member { user_id, team_member_id } : relie un compte existant à une fiche.
 //  - get_access { team_member_id } → { ok, access: null | { user_id, email, role, active, last_sign_in_at } }
-//  - unlink_member { team_member_id } : délie la fiche de son compte (le compte reste).
+//  - unlink_member { team_member_id } : délie la fiche de son compte (le compte reste ;
+//    permis aussi sur sa propre fiche ou celle d'un président).
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -199,18 +200,15 @@ Deno.serve(async (req: Request) => {
   }
 
   // ---- DÉLIER UNE FICHE ÉQUIPE DE SON COMPTE ----
-  // Le compte reste (à désactiver ou supprimer à part) ; il ne voit plus aucune
-  // course. Jamais sur sa propre fiche ni sur celle d'un président.
+  // Le compte reste intact (rôle, accès, mot de passe) : seul le lien fiche ↔ compte
+  // est retiré. Permis aussi sur sa propre fiche ou celle d'un président (décision du
+  // 14/10/2026) : sinon une erreur de liaison sur un compte président est irréparable.
   if (action === 'unlink_member') {
     if (!teamMemberId) return json({ ok: false, error: 'team_member_id requis' }, 400);
     const { data: fiche } = await service
       .from('team_members').select('id, company_id, profile_id').eq('id', teamMemberId).maybeSingle();
     if (!fiche || fiche.company_id !== companyId) return json({ ok: false, error: 'fiche_introuvable' }, 404);
     if (!fiche.profile_id) return json({ ok: true });
-    if (fiche.profile_id === user.id) return json({ ok: false, error: 'action_interdite_sur_soi_meme' }, 400);
-    const { data: relie } = await service
-      .from('profiles').select('role').eq('id', fiche.profile_id).maybeSingle();
-    if (relie?.role === 'president') return json({ ok: false, error: 'president_non_modifiable' }, 400);
     const { error } = await service
       .from('team_members').update({ profile_id: null })
       .eq('id', teamMemberId).eq('company_id', companyId);
