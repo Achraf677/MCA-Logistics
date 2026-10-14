@@ -1,7 +1,8 @@
 import { supabase } from '../../app/providers'
-import { creerCompte, relierFiche } from '../../shared/lib/adminUsers.queries'
+import { creerCompte, relierFiche, appelPermissions } from '../../shared/lib/adminUsers.queries'
+import { libelleErreurAdmin } from '../../shared/lib/adminUsers'
 import type { TeamFilters, TeamMemberInsert, TeamMemberUpdate } from './equipe.types'
-import type { CompteSite } from './equipe.logic'
+import { fusionnerComptes, type CompteConnexion, type FicheLien } from './equipe.logic'
 
 export async function getTeamMembers(filters: TeamFilters = {}) {
   let q = supabase.from('team_members').select('*').order('full_name')
@@ -43,32 +44,38 @@ export async function getMemberRecentDeliveries(memberId: string) {
 // L'appel et la lecture des erreurs vivent dans shared/lib/adminUsers.queries
 // (partagés avec Système › Administrateurs).
 
-/** Crée le compte du salarié (mot de passe donné ou invitation) et le relie à sa fiche. */
-export function creerAccesSalarie(p: {
-  teamMemberId: string; email: string; fullName: string
-  mode: 'mot_de_passe' | 'invitation'; motDePasse?: string
-}) {
+/** Crée le compte du salarié (rôle « chauffeur », mot de passe donné) et le relie à sa fiche. */
+export function creerAccesSalarie(p: { teamMemberId: string; email: string; fullName: string; motDePasse: string }) {
   return creerCompte({
-    mode: p.mode, email: p.email, fullName: p.fullName, motDePasse: p.motDePasse,
+    mode: 'mot_de_passe', email: p.email, fullName: p.fullName, motDePasse: p.motDePasse,
     role: 'chauffeur', teamMemberId: p.teamMemberId,
   })
 }
 
 /**
- * Comptes de connexion de la société et ceux déjà reliés à une fiche (choix
- * « Relier un compte existant »). La RLS limite `profiles` à la société.
+ * TOUS les comptes de connexion de la société (Edge `list_members` : e-mail Auth,
+ * dernière connexion) et les fiches Équipe (qui est relié à quoi). L'Edge en échec
+ * → repli sur `profiles` (la RLS limite à la société), sans dernière connexion.
  */
-export async function getComptesEtLiens(): Promise<{ comptes: CompteSite[]; relies: string[]; error: Error | null }> {
-  const [profils, fiches] = await Promise.all([
+export async function getComptesEtFiches(): Promise<{ comptes: CompteConnexion[]; fiches: FicheLien[]; error: string | null }> {
+  const [edge, profils, fiches] = await Promise.all([
+    appelPermissions<{ members: CompteConnexion[] }>({ action: 'list_members' }),
     supabase.from('profiles').select('id, full_name, email, role, active').order('full_name'),
-    supabase.from('team_members').select('profile_id').not('profile_id', 'is', null),
+    supabase.from('team_members').select('id, full_name, email, profile_id, active').order('full_name'),
   ])
-  const err = profils.error ?? fiches.error
+  const membres = edge.ok && Array.isArray(edge.members) ? edge.members : null
+  if (!membres && profils.error) return { comptes: [], fiches: [], error: libelleErreurAdmin(edge) }
+  if (fiches.error) return { comptes: [], fiches: [], error: fiches.error.message }
   return {
-    comptes: (profils.data ?? []) as CompteSite[],
-    relies: ((fiches.data ?? []) as Array<{ profile_id: string }>).map(f => f.profile_id),
-    error: err ? new Error(err.message) : null,
+    comptes: fusionnerComptes(membres, (profils.data ?? []) as CompteConnexion[]),
+    fiches: (fiches.data ?? []) as FicheLien[],
+    error: null,
   }
+}
+
+/** E-mail enregistré sur la fiche quand elle n'en avait pas (accès donné). */
+export async function enregistrerEmailFiche(id: string, email: string) {
+  return supabase.from('team_members').update({ email }).eq('id', id).or('email.is.null,email.eq.')
 }
 
 /** Rôle de chaque compte de connexion (colonne « Accès au site » de la liste). */

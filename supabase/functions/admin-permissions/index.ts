@@ -59,17 +59,21 @@ Deno.serve(async (req: Request) => {
   // ---- LISTE DES MEMBRES (+ email) ----
   if (action === 'list_members') {
     const { data: profs, error } = await service
-      .from('profiles').select('id, full_name, role, active')
+      .from('profiles').select('id, full_name, role, active, email')
       .eq('company_id', companyId).order('role', { ascending: true });
     if (error) return json({ ok: false, error: 'list_failed' }, 500);
-    const emailById = new Map<string, string>();
+    // E-mail et dernière connexion lus dans Auth (best effort) ; e-mail du profil en repli.
+    const authById = new Map<string, { email: string | null; last_sign_in_at: string | null }>();
     try {
-      const { data: list } = await service.auth.admin.listUsers();
-      for (const u of list?.users ?? []) if (u.id && u.email) emailById.set(u.id, u.email);
+      const { data: list } = await service.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      for (const u of list?.users ?? []) {
+        if (u.id) authById.set(u.id, { email: u.email ?? null, last_sign_in_at: u.last_sign_in_at ?? null });
+      }
     } catch { /* best-effort */ }
     const members = (profs ?? []).map((p) => ({
       id: p.id, full_name: p.full_name, role: p.role, active: p.active,
-      email: emailById.get(p.id) ?? null,
+      email: authById.get(p.id)?.email ?? p.email ?? null,
+      last_sign_in_at: authById.get(p.id)?.last_sign_in_at ?? null,
     }));
     return json({ ok: true, members });
   }

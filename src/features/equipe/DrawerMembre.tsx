@@ -396,7 +396,12 @@ export function DrawerMembre({ open, onClose, member, onSaved, ouvrirAcces = fal
 
         {/* ── Tab : Accès au site (lot S0) ── */}
         {isEdit && tab === 'acces' && member && (
-          <AccesSite member={member} onChanged={() => { onSaved(); onClose() }} />
+          <AccesSite member={member} onChanged={maj => {
+            // Le tiroir reste ouvert (mot de passe généré à transmettre) ; l'e-mail
+            // enregistré sur la fiche est repris dans le formulaire pour ne pas l'écraser.
+            if (maj?.email) setForm(f => ({ ...f, email: maj.email }))
+            onSaved()
+          }} />
         )}
       </div>
     </Drawer>

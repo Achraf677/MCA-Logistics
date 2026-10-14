@@ -299,12 +299,14 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   check:arch) ; table `journees_colis` et colonnes `team_members.tarif_*` / `clients_messagerie`
   restent VIDES en base, sans lecteur (DROP en commentaire, sur accord seulement).
   Gardé : Dépenses du salarié (photo, carte société / note de frais), Moi, cloisonnement.
-  **Accès au site simplifié** : « Relier » un compte existant (liste, le plus probable en
-  tête) ou « Créer l'accès » (e-mail + mot de passe) ; colonne « Accès au site » dans la liste
-  Équipe (« Accès admin » / « Accès salarié » / « Donner l'accès »). Un compte président n'est
-  proposé que sur SA fiche (même nom / e-mail). Edge `admin-users` : `unlink_member` permis sur
-  sa propre fiche et sur celle d'un président (à déployer après merge). Donnée corrigée le
-  14/10 : fiche ACHRAF reliée au compte président, fiche LUCAS déliée (reliée par erreur).
+  **Accès au site = un salarié, un compte** (14/10) : fiche non reliée = un e-mail + « Donner
+  l'accès » (compte de la société sans fiche → relié ; relié ailleurs → la fiche est nommée ;
+  sinon compte « chauffeur » créé, mot de passe généré `equipe.logic#genererMotDePasse`, affiché
+  une fois + Copier ; e-mail enregistré sur la fiche si vide). Fiche reliée : régénérer le mot
+  de passe, lien, couper / rétablir, délier. **Équipe › Comptes** (président) : TOUS les comptes
+  de connexion (fiche, actif, dernière connexion), couper, mot de passe, relier, délier, supprimer.
+  Un compte président ne se relie qu'à SA fiche. Edge `admin-permissions` (`list_members` +
+  `last_sign_in_at`, perPage 1000) et `admin-users` (`unlink_member`) **à déployer après merge**.
   **Règle : ne plus rien ajouter à l'espace salarié sans demande explicite de l'utilisateur.**
   Piège : `id = any((select f()))` est refusé par Postgres (sous-requête) → `(select f()) @> array[id]` ;
   remplacer une policy = `alter policy` (pas de drop + create : trou d'accès et timeout MCP).
