@@ -1,37 +1,39 @@
 import { useCallback, useEffect, useState } from 'react'
-import { KeyRound, CheckCircle2, Ban, Link2Off, RotateCcw } from 'lucide-react'
+import { KeyRound, CheckCircle2, Ban, Link2Off, RotateCcw, Link2 } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { libelleRole } from '../../shared/permissions/roles'
-import {
-  confirmationMonCompte, libelleDerniereConnexion, type AccesCompte,
-} from '../../shared/lib/adminUsers'
+import { libelleDerniereConnexion, type AccesCompte } from '../../shared/lib/adminUsers'
 import {
   lireAcces, changerActif, definirMotDePasse, envoyerLienReinit, delierFiche,
 } from '../../shared/lib/adminUsers.queries'
-import { creerAccesSalarie, relierCompte } from './equipe.queries'
-import { erreurAcces, libelleErreurAcces, type ModeAcces } from './equipe.logic'
+import { creerAccesSalarie, relierCompte, getComptesEtLiens } from './equipe.queries'
+import {
+  erreurAcces, libelleErreurAcces, comptesALier, compteDuMail, type CompteALier, type CompteSite,
+} from './equipe.logic'
 import type { TeamMember } from './equipe.types'
 
-type Confirmation = 'mot_de_passe' | 'lien' | 'couper' | 'retablir' | 'delier' | 'mon_compte'
+type Confirmation = 'mot_de_passe' | 'lien' | 'couper' | 'retablir' | 'delier' | 'relier'
 
 const labelCls = 'text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide'
 
 /**
- * Accès au site d'un membre (lot S0). Le compte créé a le rôle « chauffeur » : il ne
- * voit que Mes courses, et seulement SES données (cloisonnement en base). Il est relié
- * à la fiche (`team_members.profile_id`), sans quoi le salarié ne verrait aucune course.
- * Réservé au président (comme l'Edge admin-users).
+ * Accès au site d'un membre. Fiche non reliée : deux gestes seulement —
+ * 1) « Il a déjà un compte » : la liste des comptes de la société sans fiche, le plus
+ *    probable en tête (même nom / e-mail), un bouton « Relier » ;
+ * 2) « Créer son accès » : e-mail + mot de passe (rôle « chauffeur » : il ne voit que
+ *    Mes courses, et seulement SES données).
+ * Le lien (`team_members.profile_id`) est indispensable : sans lui, le salarié ne voit
+ * aucune course. Réservé au président (comme l'Edge admin-users).
  */
 export function AccesSite({ member, onChanged }: { member: TeamMember; onChanged: () => void }) {
   const { profile } = useProfile()
   const { isPresident } = usePermissions()
   const { toast } = useToast()
   const [email, setEmail] = useState(member.email ?? '')
-  const [mode, setMode] = useState<ModeAcces>('mot_de_passe')
   const [motDePasse, setMotDePasse] = useState('')
   const [busy, setBusy] = useState(false)
   const [confirmation, setConfirmation] = useState<Confirmation | null>(null)
@@ -40,6 +42,11 @@ export function AccesSite({ member, onChanged }: { member: TeamMember; onChanged
   const [accesErreur, setAccesErreur] = useState<string | null>(null)
   const [nouveauMdp, setNouveauMdp] = useState('')
   const [mdpDefini, setMdpDefini] = useState(false)
+  // Fiche non reliée : comptes existants de la société (pour « Relier »).
+  const [comptes, setComptes] = useState<CompteSite[] | null>(null)
+  const [relies, setRelies] = useState<string[]>([])
+  const [comptesErreur, setComptesErreur] = useState<string | null>(null)
+  const [aRelier, setARelier] = useState<CompteALier | null>(null)
 
   const relie = !!member.profile_id
   const estMoi = relie && member.profile_id === profile?.id
@@ -55,30 +62,46 @@ export function AccesSite({ member, onChanged }: { member: TeamMember; onChanged
 
   useEffect(() => { void charger() }, [charger])
 
+  useEffect(() => {
+    if (relie || !isPresident) return
+    let annule = false
+    getComptesEtLiens().then(r => {
+      if (annule) return
+      setComptes(r.comptes); setRelies(r.relies)
+      setComptesErreur(r.error ? r.error.message : null)
+    })
+    return () => { annule = true }
+  }, [relie, isPresident])
+
   // ── Fiche non reliée ──────────────────────────────────────────────────────
-  const erreur = erreurAcces({ email, mode, motDePasse })
-  const niveauMonCompte = confirmationMonCompte(member.email, profile?.email)
+  const candidats = comptes ? comptesALier(comptes, relies, member, profile?.id) : []
+  const existant = comptes ? compteDuMail(comptes, email) : null
+  const erreur = existant
+    ? (relies.includes(existant.id)
+      ? 'Cet e-mail a déjà un compte, relié à une autre fiche.'
+      : 'Cet e-mail a déjà un compte : relie-le ci-dessus.')
+    : erreurAcces({ email, mode: 'mot_de_passe', motDePasse })
 
   const creer = async () => {
     if (erreur) { toast(erreur, 'error'); return }
     setBusy(true)
-    const r = await creerAccesSalarie({ teamMemberId: member.id, email, fullName: member.full_name, mode, motDePasse })
+    const r = await creerAccesSalarie({ teamMemberId: member.id, email, fullName: member.full_name, mode: 'mot_de_passe', motDePasse })
     setBusy(false)
     if (!r.ok) { toast(libelleErreurAcces(r.error, r.detail, r.message), 'error'); return }
-    toast(mode === 'mot_de_passe'
-      ? `Accès créé : ${member.full_name} se connecte avec ${email.trim()} et le mot de passe donné`
-      : `Invitation envoyée à ${email.trim()}`)
+    toast(`Accès créé : ${member.full_name} se connecte avec ${email.trim()} et le mot de passe donné`)
     onChanged()
   }
 
-  const relierMoi = async () => {
-    if (!profile) return
+  const relier = async () => {
+    if (!aRelier) return
     setBusy(true)
-    const r = await relierCompte(profile.id, member.id)
+    const r = await relierCompte(aRelier.id, member.id)
     setBusy(false)
     setConfirmation(null)
     if (!r.ok) { toast(libelleErreurAcces(r.error, r.detail, r.message), 'error'); return }
-    toast('Fiche reliée à ton compte : tes courses apparaissent dans Mes courses')
+    toast(aRelier.estMoi
+      ? 'Fiche reliée à ton compte : tes courses apparaissent dans Mes courses'
+      : `Fiche reliée : ${member.full_name} voit ses courses en se connectant avec ${aRelier.email ?? 'son compte'}`)
     onChanged()
   }
 
@@ -141,18 +164,16 @@ export function AccesSite({ member, onChanged }: { member: TeamMember; onChanged
       message: 'Le compte de connexion n’est pas supprimé, mais il ne sera plus rattaché à cette fiche : le salarié ne verra plus ses courses. Pense à couper l’accès s’il ne doit plus se connecter.',
       bouton: 'Délier',
     },
-    mon_compte: niveauMonCompte === 'double'
-      ? {
-          titre: 'Relier cette fiche à TON compte ?',
-          message: `Attention : la fiche porte l’e-mail ${member.email ?? ''}, différent du tien (${profile?.email ?? '—'}). C’est peut-être la fiche de quelqu’un d’autre : ses courses apparaîtraient dans ton Mes courses, et il ne pourrait plus avoir son propre accès.`,
-          bouton: 'Relier à mon compte',
-          coche: 'Je confirme que cette fiche est bien la mienne',
-        }
-      : {
-          titre: 'Relier cette fiche à ton compte ?',
-          message: `Tu te connectes déjà au site : cette fiche (${member.full_name}) sera rattachée à ton compte, et les courses qui lui sont affectées apparaîtront dans ton Mes courses.`,
-          bouton: 'Relier à mon compte',
-        },
+    relier: {
+      titre: 'Relier ce compte à la fiche ?',
+      message: aRelier
+        ? `${aRelier.full_name ?? aRelier.email ?? 'Ce compte'}${aRelier.email ? ` (${aRelier.email})` : ''} sera rattaché à la fiche ${member.full_name}`
+          + (aRelier.estMoi ? ' : c’est TON compte, les courses de cette fiche apparaîtront dans ton Mes courses.' : ' : il verra ses courses en se connectant.')
+        : '',
+      bouton: 'Relier',
+      // Nom / e-mail différents de la fiche : on fait cocher, pour éviter de relier la mauvaise personne.
+      coche: aRelier && !aRelier.suggere ? `Je confirme que ce compte est bien celui de ${member.full_name}` : undefined,
+    },
   }
 
   const dialogue = confirmation ? CONFIRMATIONS[confirmation] : null
@@ -163,7 +184,7 @@ export function AccesSite({ member, onChanged }: { member: TeamMember; onChanged
       message={dialogue?.message ?? ''}
       confirmLabel={dialogue?.bouton}
       acknowledgeLabel={dialogue?.coche}
-      onConfirm={() => { if (confirmation === 'mon_compte') void relierMoi(); else if (confirmation) void agir(confirmation) }}
+      onConfirm={() => { if (confirmation === 'relier') void relier(); else if (confirmation) void agir(confirmation) }}
       onCancel={() => setConfirmation(null)}
       loading={busy}
     />
@@ -266,45 +287,58 @@ export function AccesSite({ member, onChanged }: { member: TeamMember; onChanged
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm text-[var(--text-muted)]">
-        Le salarié se connectera au site sur son téléphone. Il ne verra que Mes courses, et
-        uniquement ses propres données (ni salaires, ni finance, ni les autres salariés).
-      </p>
-      <div className="flex flex-col gap-1">
-        <label className={labelCls}>E-mail de connexion</label>
-        <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="field" />
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {(['mot_de_passe', 'invitation'] as const).map(m => (
-          <button key={m} type="button" onClick={() => setMode(m)}
-            className={`px-3 py-1.5 text-sm rounded-[var(--r-md)] border transition-colors ${mode === m
-              ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand)] font-medium'
-              : 'border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}>
-            {m === 'mot_de_passe' ? 'Je donne un mot de passe' : 'Invitation par e-mail'}
-          </button>
-        ))}
-      </div>
-      {mode === 'mot_de_passe' && (
-        <div className="flex flex-col gap-1">
-          <label className={labelCls}>Mot de passe (8 caractères min.)</label>
-          <input type="text" value={motDePasse} onChange={e => setMotDePasse(e.target.value)} className="field" autoComplete="off" />
+    <div className="flex flex-col gap-5">
+      {/* 1. Il a déjà un compte : un clic. */}
+      <section className="flex flex-col gap-2">
+        <span className={labelCls}>Il a déjà un compte ? Relie-le</span>
+        {comptes == null && !comptesErreur ? (
+          <p className="text-sm text-[var(--text-muted)]">Chargement des comptes…</p>
+        ) : comptesErreur ? (
+          <p className="text-sm text-[var(--danger)]">{comptesErreur}</p>
+        ) : candidats.length === 0 ? (
+          <p className="text-sm text-[var(--text-muted)]">Aucun compte libre : crée-lui son accès ci-dessous.</p>
+        ) : (
+          <ul className="flex flex-col gap-1.5">
+            {candidats.map(c => (
+              <li key={c.id}
+                className={`flex items-center gap-3 rounded-[var(--r-md)] border px-3 py-2 ${c.suggere
+                  ? 'border-[var(--brand)] bg-[var(--brand-soft)]' : 'border-[var(--border)] bg-[var(--bg)]'}`}>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-[var(--text)] truncate">
+                    {c.full_name || c.email || 'Compte sans nom'}
+                    {c.estMoi && <span className="text-[var(--text-muted)] font-normal"> (toi)</span>}
+                  </p>
+                  <p className="text-xs text-[var(--text-muted)] truncate">
+                    {c.email ?? '—'} · {libelleRole(c.role)}{c.active === false ? ' · accès coupé' : ''}
+                  </p>
+                </div>
+                <Button variant={c.suggere ? 'primary' : 'secondary'} size="compact" disabled={busy}
+                  onClick={() => { setARelier(c); setConfirmation('relier') }}>
+                  <Link2 size={14} /> Relier
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* 2. Pas de compte : on le crée, avec un mot de passe à lui donner. */}
+      <section className="flex flex-col gap-2 pt-4 border-t border-[var(--border)]">
+        <span className={labelCls}>Pas encore de compte ? Crée son accès</span>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="field"
+            placeholder="E-mail de connexion" autoComplete="off" />
+          <input type="text" value={motDePasse} onChange={e => setMotDePasse(e.target.value)} className="field"
+            placeholder="Mot de passe (8 caractères min.)" autoComplete="off" />
         </div>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <Button variant="primary" onClick={creer} disabled={busy || !!erreur}>
+        {existant && <p className="text-xs text-[var(--warning)]">{erreur}</p>}
+        <Button variant="primary" onClick={creer} disabled={busy || !!erreur} className="self-start">
           <KeyRound size={15} /> {busy ? 'Création…' : 'Créer l’accès'}
         </Button>
-        {/* Associé qui conduit : sa fiche se relie à SON compte, sans en créer un autre. */}
-        <Button variant="secondary" onClick={() => setConfirmation('mon_compte')} disabled={busy || !profile}>
-          C’est mon compte
-        </Button>
-      </div>
-      {niveauMonCompte === 'double' && (
         <p className="text-xs text-[var(--text-muted)]">
-          L’e-mail de la fiche n’est pas le tien : « C’est mon compte » demandera une double confirmation.
+          Donne-lui l’e-mail et le mot de passe : il ne verra que Mes courses, et seulement ses propres données.
         </p>
-      )}
+      </section>
       {dialogueEl}
     </div>
   )

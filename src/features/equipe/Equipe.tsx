@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { UserCheck } from 'lucide-react'
+import { UserCheck, KeyRound } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -16,6 +16,7 @@ import {
   masseSalariale, aptitude, memberEcheances, isDriverRole, membresCsv,
 } from './equipe.logic'
 import { DrawerMembre } from './DrawerMembre'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 import type { TeamMember, TeamFilters } from './equipe.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 import type { EcheanceStatus } from '../../shared/lib/echeances'
@@ -62,6 +63,8 @@ export function Equipe() {
   const [filters, setFilters] = useState<TeamFilters>({ active: true })
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<TeamMember | null>(null)
+  const [ouvrirAcces, setOuvrirAcces] = useState(false)
+  const { isPresident } = usePermissions()
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -73,10 +76,22 @@ export function Equipe() {
 
   useEffect(() => { load() }, [load])
 
-  const openDrawer = (m?: TeamMember) => {
+  const openDrawer = (m?: TeamMember, acces = false) => {
     setSelected(m ?? null)
+    setOuvrirAcces(acces)
     setDrawerOpen(true)
   }
+
+  /** Accès au site : « Compte relié », sinon (président) un bouton qui ouvre l'onglet Accès. */
+  const accesSite = (m: TeamMember) => m.profile_id
+    ? <Badge color="success">Compte relié</Badge>
+    : !isPresident
+    ? <span className="text-xs text-[var(--text-disabled)]">Sans accès</span>
+    : (
+      <Button variant="secondary" size="compact" onClick={e => { e.stopPropagation(); openDrawer(m, true) }}>
+        <KeyRound size={14} /> Donner l’accès
+      </Button>
+    )
 
   const handleAction = (key: ActionKey) => {
     if (key === 'nouveau') openDrawer()
@@ -157,7 +172,7 @@ export function Equipe() {
               <table className="w-full text-[length:var(--fs-sm)]">
                 <thead>
                   <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                    {['Nom', 'Rôle', 'Contrat', 'Salaire brut / mois', 'Aptitude', ''].map(h => (
+                    {['Nom', 'Rôle', 'Contrat', 'Salaire brut / mois', 'Aptitude', 'Accès au site', ''].map(h => (
                       <th key={h} className="px-4 py-2.5 font-medium text-[length:var(--fs-xs)] uppercase tracking-wide">{h}</th>
                     ))}
                   </tr>
@@ -186,6 +201,7 @@ export function Equipe() {
                       <td className="px-4 py-3">
                         <AptitudeBadge member={m} />
                       </td>
+                      <td className="px-4 py-3">{accesSite(m)}</td>
                       <td className="px-4 py-3 text-right">
                         <Button variant="ghost" size="compact" onClick={e => { e.stopPropagation(); openDrawer(m) }}>Voir</Button>
                       </td>
@@ -198,8 +214,9 @@ export function Equipe() {
             {/* Mobile */}
             <div className="md:hidden flex flex-col gap-3">
               {displayedMembers.map(m => (
-                <button key={m.id} onClick={() => openDrawer(m)}
-                  className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 hover:bg-[var(--bg-card-hover)] transition-colors">
+                <div key={m.id} role="button" tabIndex={0} onClick={() => openDrawer(m)}
+                  onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openDrawer(m) } }}
+                  className="w-full text-left cursor-pointer bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 hover:bg-[var(--bg-card-hover)] transition-colors">
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <div className="flex items-center gap-2">
                       <EcheancePastille member={m} />
@@ -213,7 +230,8 @@ export function Equipe() {
                     )}
                     {m.contract_type && <Badge color="info">{getContractLabel(m.contract_type)}</Badge>}
                   </div>
-                </button>
+                  <div className="mt-2">{accesSite(m)}</div>
+                </div>
               ))}
             </div>
           </>
@@ -224,6 +242,7 @@ export function Equipe() {
         onClose={() => setDrawerOpen(false)}
         member={selected}
         onSaved={load}
+        ouvrirAcces={ouvrirAcces}
       />
     </Shell>
   )

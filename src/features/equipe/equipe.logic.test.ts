@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  erreurAcces, libelleErreurAcces, aptitude, salaireSaisiCts, dateFr, erreurDateFin, membresCsv,
+  erreurAcces, libelleErreurAcces, comptesALier, compteDuMail, aptitude, salaireSaisiCts, dateFr, erreurDateFin, membresCsv,
 } from './equipe.logic'
 import type { TeamMember } from './equipe.types'
 
@@ -10,6 +10,32 @@ const membre = (p: Partial<TeamMember> = {}): TeamMember => ({
   start_date: '2026-01-05', end_date: null, phone: null, email: null, license_type: 'B',
   licence_b_expiry: null, medical_visit_expiry: null, active: true,
   created_at: '', updated_at: '', ...p,
+})
+
+describe('comptes à relier', () => {
+  const comptes = [
+    { id: 'p1', full_name: 'Mohammed Chikri', email: 'mo@x.fr', role: 'chauffeur', active: true },
+    { id: 'p2', full_name: 'LUCAS  BACHER', email: 'zyd@x.fr', role: 'chauffeur', active: true },
+    { id: 'p3', full_name: 'Achraf', email: 'moi@x.fr', role: 'president', active: true },
+    { id: 'p4', full_name: 'Déjà Relié', email: 'r@x.fr', role: 'chauffeur', active: true },
+  ]
+  it('écarte les comptes déjà reliés à une fiche', () => {
+    expect(comptesALier(comptes, ['p4'], { full_name: 'X', email: null }, null).map(c => c.id)).not.toContain('p4')
+  })
+  it('met en tête le compte du même nom (casse, espaces, accents ignorés)', () => {
+    const r = comptesALier(comptes, ['p4'], { full_name: 'Lucas Bacher', email: null }, 'p3')
+    expect(r[0].id).toBe('p2')
+    expect(r[0].suggere).toBe(true)
+    expect(r.find(c => c.id === 'p3')?.estMoi).toBe(true)
+  })
+  it('ou du même e-mail', () => {
+    expect(comptesALier(comptes, [], { full_name: 'Autre', email: 'MO@x.fr' }, null)[0].id).toBe('p1')
+  })
+  it('retrouve un compte par e-mail saisi', () => {
+    expect(compteDuMail(comptes, ' Zyd@X.fr ')?.id).toBe('p2')
+    expect(compteDuMail(comptes, 'nouveau@x.fr')).toBeNull()
+    expect(compteDuMail(comptes, '')).toBeNull()
+  })
 })
 
 describe('accès au site (lot S0)', () => {

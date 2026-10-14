@@ -1,9 +1,8 @@
-import { Route, PackageCheck, Receipt, User, type LucideIcon } from 'lucide-react'
+import { Route, Receipt, User, type LucideIcon } from 'lucide-react'
 import type { OngletEspace } from './espace.logic'
 
 const ONGLETS: Array<{ cle: OngletEspace; libelle: string; icone: LucideIcon }> = [
   { cle: 'courses', libelle: 'Courses', icone: Route },
-  { cle: 'journee', libelle: 'Ma journée', icone: PackageCheck },
   { cle: 'depenses', libelle: 'Dépenses', icone: Receipt },
   { cle: 'moi', libelle: 'Moi', icone: User },
 ]
@@ -15,7 +14,7 @@ const ONGLETS: Array<{ cle: OngletEspace; libelle: string; icone: LucideIcon }> 
 export function BarreOnglets({ actif, onChange, pastilles = {} }: {
   actif: OngletEspace
   onChange: (o: OngletEspace) => void
-  /** Petit point sur un onglet qui attend un geste (ex. journée à corriger). */
+  /** Petit point sur un onglet qui attend un geste. */
   pastilles?: Partial<Record<OngletEspace, boolean>>
 }) {
   return (
@@ -25,7 +24,7 @@ export function BarreOnglets({ actif, onChange, pastilles = {} }: {
       <nav aria-label="Espace salarié"
         className="fixed z-[15] inset-x-0 bottom-0 border-t border-[var(--border)] bg-[var(--bg-card)]
           pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto max-w-[40rem] grid grid-cols-4">
+        <div className="mx-auto max-w-[40rem] grid grid-cols-3">
           {ONGLETS.map(o => {
             const Icone = o.icone
             const on = o.cle === actif

@@ -96,6 +96,57 @@ export function erreurAcces(p: { email: string; mode: ModeAcces; motDePasse: str
   return null
 }
 
+/** Compte de connexion de la société (table `profiles`). */
+export interface CompteSite {
+  id: string
+  full_name: string | null
+  email: string | null
+  role: string | null
+  active: boolean | null
+}
+
+export interface CompteALier extends CompteSite {
+  /** Même e-mail ou même nom que la fiche : très probablement le bon. */
+  suggere: boolean
+  estMoi: boolean
+}
+
+/** Minuscules, sans accents ni espaces superflus (« Lucas  BACHER » = « lucas bacher »). */
+function normaliser(v: string | null | undefined): string {
+  return (v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+/**
+ * Comptes qu'on peut relier à une fiche : ceux de la société qui ne sont reliés à
+ * AUCUNE fiche. Le plus probable d'abord (même e-mail ou même nom), puis par nom.
+ */
+export function comptesALier(
+  comptes: CompteSite[],
+  idsDejaRelies: Iterable<string>,
+  fiche: { full_name: string; email: string | null },
+  monId: string | null | undefined,
+): CompteALier[] {
+  const relies = new Set(idsDejaRelies)
+  const nom = normaliser(fiche.full_name)
+  const mail = normaliser(fiche.email)
+  return comptes
+    .filter(c => !relies.has(c.id))
+    .map(c => ({
+      ...c,
+      suggere: (!!mail && normaliser(c.email) === mail) || (!!nom && normaliser(c.full_name) === nom),
+      estMoi: c.id === monId,
+    }))
+    .sort((a, b) => Number(b.suggere) - Number(a.suggere)
+      || normaliser(a.full_name || a.email).localeCompare(normaliser(b.full_name || b.email)))
+}
+
+/** E-mail saisi pour un nouvel accès qui appartient déjà à un compte de la société. */
+export function compteDuMail(comptes: CompteSite[], email: string): CompteSite | null {
+  const m = normaliser(email)
+  if (!m) return null
+  return comptes.find(c => normaliser(c.email) === m) ?? null
+}
+
 /** Message lisible d'un code d'erreur de l'Edge admin-users (règle partagée avec Administrateurs). */
 export function libelleErreurAcces(code: string | null | undefined, detail?: string | null, message?: string | null): string {
   return libelleErreurAdmin({ error: code ?? undefined, detail: detail ?? undefined, message: message ?? undefined })

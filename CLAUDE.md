@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **14/10/2026** (Espace salarié S0 / S0-bis / S1 appliqués ; prochain : test S1 avec Lucas, puis U6).
+> Dernière mise à jour : **14/10/2026** (journée de colis RETIRÉE à la demande ; Accès au site simplifié ; prochain : ce que l'utilisateur demande, puis U6).
 
 ---
 
@@ -293,22 +293,14 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   (vue dédiée à faire), Edge ai-extract-deliveries / assistant-chat / alertes-briefing /
   brouillons-generate / route-calc / drive-status sans contrôle de droit, colonne
   `work_hours.total_minutes` fausse sur une nuit. **Migration appliquée le 14/10/2026.**
-  **S1 (PR #52, 13/10/2026)** : migration `20261012110000_journees_colis_depenses` (tarifs domicile /
-  relais + clients de messagerie dans la fiche, `journees_colis` + historique, garde : validée =
-  verrouillée, motif obligatoire pour la toucher, photos `entity_type = 'journee_colis'`, dépenses
-  enrichies dans `receipts_inbox`) ; droit `equipe.journees`. Salarié (Mes courses, 4 onglets) :
-  Courses · Ma journée (+ Mon mois, paie estimée) · Dépenses (photo vérifiable, carte société /
-  note de frais, suivi) · Moi. Bureau : Équipe › À valider / Journées / Rapports (+ CSV), fiche
-  Messagerie, justificatifs enrichis dans Charges, cloche. Reste : téléphone de la société pour
-  « Appeler le bureau » ; « Créer la charge » ne reprend pas encore montant / note de frais ;
-  clôture du mois ; dépense → Pennylane (S3). **Migration appliquée, PR #52 mergée et Edge
-  déployées le 14/10/2026** (admin-users v10, drive-connect v10, drive-disconnect v2,
-  drive-oauth-start v13, drive-oauth-callback v11 `verify_jwt=false`, geocode v6,
-  send-client-email v5, suggest-categorie-ia v4, lire-facture v8, lire-releve v2,
-  pennylane-last-numbers v4). Note : geocode avec `address` reste ouvert sans session (simple
-  lecture IGN, aucune écriture) ; seul le `backfill` exige le droit.
-  À tester : lier Lucas à sa fiche (Accès au site), lui donner le client de messagerie + tarifs
-  domicile / relais, saisir une journée avec photo, la valider côté bureau.
+  **S1 → journée de colis RETIRÉE le 14/10/2026** (« pas demandé ») : tarifs domicile / relais,
+  clients de messagerie du salarié, Ma journée, validation / rapports, droit `equipe.journees`.
+  Migration `20261014090000_retrait_journees_colis` (à appliquer APRÈS le merge du front).
+  Gardé : Dépenses du salarié (photo, carte société / note de frais), Moi, cloisonnement.
+  **Accès au site simplifié** : « Relier » un compte existant (liste, le plus probable en
+  tête) ou « Créer l'accès » (e-mail + mot de passe) ; colonne « Accès au site » dans la liste
+  Équipe. Edge `admin-users` inchangée (`link_member` relie déjà tout compte de la société).
+  **Règle : ne plus rien ajouter à l'espace salarié sans demande explicite de l'utilisateur.**
   Piège : `id = any((select f()))` est refusé par Postgres (sous-requête) → `(select f()) @> array[id]` ;
   remplacer une policy = `alter policy` (pas de drop + create : trou d'accès et timeout MCP).
 - U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;

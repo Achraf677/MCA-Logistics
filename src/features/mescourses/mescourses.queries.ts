@@ -259,39 +259,19 @@ export async function getMaFicheEquipe(profileId: string) {
     .maybeSingle()
 }
 
-// ── Espace salarié (Ma journée, Dépenses, Moi) ───────────────────────────────
+// ── Espace salarié (Dépenses, Moi) ───────────────────────────────────────────
 
-const COLS_FICHE_BASE = 'id, full_name, licence_b_expiry, medical_visit_expiry, phone, email'
-const COLS_FICHE_JOURNEE = `${COLS_FICHE_BASE}, tarif_domicile_cts, tarif_relais_cts, clients_messagerie`
+const COLS_FICHE = 'id, full_name, licence_b_expiry, medical_visit_expiry, phone, email'
 
 /**
- * Fiche complète du compte connecté (espace salarié). Si les colonnes de la journée de
- * colis manquent encore en base, on relit sans elles : « Moi » reste utilisable, et
- * « Ma journée » sait dire pourquoi elle est vide (`complete = false`).
+ * Fiche Équipe du compte connecté (espace salarié).
  * `data: null` sans erreur = compte non relié à une fiche.
  */
 export async function getMaFicheComplete(profileId: string): Promise<{ data: MaFiche | null; error: Error | null }> {
-  const pleine = await supabase.from('team_members').select(COLS_FICHE_JOURNEE)
+  const { data, error } = await supabase.from('team_members').select(COLS_FICHE)
     .eq('profile_id', profileId).limit(1).maybeSingle()
-  if (!pleine.error) {
-    const d = pleine.data as Omit<MaFiche, 'complete'> | null
-    return { data: d ? { ...d, clients_messagerie: d.clients_messagerie ?? [], complete: true } : null, error: null }
-  }
-  const base = await supabase.from('team_members').select(COLS_FICHE_BASE)
-    .eq('profile_id', profileId).limit(1).maybeSingle()
-  if (base.error) return { data: null, error: new Error(base.error.message) }
-  const d = base.data as Pick<MaFiche, 'id' | 'full_name' | 'phone' | 'email' | 'licence_b_expiry' | 'medical_visit_expiry'> | null
-  return {
-    data: d ? { ...d, tarif_domicile_cts: null, tarif_relais_cts: null, clients_messagerie: [], complete: false } : null,
-    error: null,
-  }
-}
-
-/** Noms des clients de messagerie (la base ouvre au salarié ceux qui lui sont attribués). */
-export async function getNomsClients(ids: string[]): Promise<Map<string, string>> {
-  if (ids.length === 0) return new Map()
-  const { data } = await supabase.from('clients').select('id, name').in('id', ids)
-  return new Map((data ?? []).map((c: { id: string; name: string }) => [c.id, c.name]))
+  if (error) return { data: null, error: new Error(error.message) }
+  return { data: (data as MaFiche | null) ?? null, error: null }
 }
 
 /** Documents de SA fiche (permis, visite médicale…) : RLS `documents_salarie_siens`. */

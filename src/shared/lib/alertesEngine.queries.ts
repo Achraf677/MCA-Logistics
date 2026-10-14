@@ -12,7 +12,7 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
   // `await` glisse dans le tableau de Promise.all les ferait partir en serie.
   const { data: { user } } = await supabase.auth.getUser()
 
-  const [aRapprocher, facturesRes, livreesRes, devisRes, vehiculesRes, notesRes, sansJustifRes, docsLivraisonRes, ticketsRes, profilRes, droitChargesRes, problemesRes, journeesRes, droitJourneesRes] = await Promise.all([
+  const [aRapprocher, facturesRes, livreesRes, devisRes, vehiculesRes, notesRes, sansJustifRes, docsLivraisonRes, ticketsRes, profilRes, droitChargesRes, problemesRes] = await Promise.all([
     getARapprocherCounts().catch(() => null),
     // Factures émises non payées (encours) — avec délai de paiement du client.
     supabase
@@ -70,15 +70,6 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
       .select('id, statut, probleme_le')
       .not('probleme_le', 'is', null)
       .in('statut', ['planifiee', 'en_cours']),
-    // Journées de colis envoyées, à valider — compteur seul. Même règle que les tickets :
-    // compté seulement pour qui peut les valider (président ou `equipe.journees`), sinon un
-    // salarié verrait ses propres journées en attente comme une alerte du bureau.
-    supabase
-      .from('journees_colis')
-      .select('id', { count: 'exact', head: true })
-      .eq('statut', 'envoyee'),
-    supabase.from('user_permissions').select('can_update').eq('user_id', user?.id ?? '')
-      .eq('resource_key', 'equipe.journees').maybeSingle(),
   ])
 
   const peutTraiterLesTickets =
@@ -125,10 +116,6 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
     problemesTerrain: (problemesRes.data ?? []).map(d => ({
       id: d.id, statut: d.statut, probleme_le: d.probleme_le,
     })),
-    journeesAValider: (
-      (profilRes.data as { role?: string } | null)?.role === 'president'
-      || (droitJourneesRes.data as { can_update?: boolean } | null)?.can_update === true
-    ) ? (journeesRes.count ?? 0) : 0,
   }
 
   return buildAlertes(input, today)

@@ -6,7 +6,20 @@
 
 ---
 
-## 0. Décisions du 12/10/2026 (font foi sur le reste du plan)
+## 00. Décision du 14/10/2026 (PRIME sur tout le reste du plan)
+- **Journée de colis RETIRÉE** (« pas demandé ») : tarifs domicile / relais, clients de
+  messagerie du salarié, Ma journée, Mon mois / paie estimée, Équipe › À valider / Journées /
+  Rapports, droit `equipe.journees`, alerte de la cloche. Migration
+  `20261014090000_retrait_journees_colis` (0 donnée perdue).
+- **Gardé** : cloisonnement (S0 / S0-bis), Accès au site, Dépenses du salarié (photo,
+  carte société / note de frais), onglet Moi.
+- **Accès au site simplifié** : fiche non reliée → « Il a déjà un compte ? Relie-le » (comptes
+  de la société sans fiche, le plus probable en tête, un bouton) ou « Crée son accès »
+  (e-mail + mot de passe). Liste Équipe : colonne « Accès au site » (« Compte relié » ou
+  bouton « Donner l'accès »).
+- **On repart de ce que l'utilisateur demande** : ne rien rajouter de ce plan sans sa demande.
+
+## 0. Décisions du 12/10/2026 (historique — journée de colis retirée le 14/10)
 - **Heures : retirées de l'app.** On achète le LIC papier (livret individuel de contrôle).
   Le salarié ne saisit plus début / fin ; plus de contrôle SMIC dans l'app. L'onglet
   Heures du bureau reste tel quel.
