@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **06/10/2026** (U1 → U5 et Tournées T1 → T5 mergés et déployés ; prochain : U6).
+> Dernière mise à jour : **14/10/2026** (Espace salarié S0 / S0-bis / S1 appliqués ; prochain : test S1 avec Lucas, puis U6).
 
 ---
 
@@ -292,7 +292,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   complet, Équipe / Heures corrigés. Restent : montants lisibles par le salarié sur ses courses
   (vue dédiée à faire), Edge ai-extract-deliveries / assistant-chat / alertes-briefing /
   brouillons-generate / route-calc / drive-status sans contrôle de droit, colonne
-  `work_hours.total_minutes` fausse sur une nuit.
+  `work_hours.total_minutes` fausse sur une nuit. **Migration appliquée le 14/10/2026.**
   **S1 (PR #52, 13/10/2026)** : migration `20261012110000_journees_colis_depenses` (tarifs domicile /
   relais + clients de messagerie dans la fiche, `journees_colis` + historique, garde : validée =
   verrouillée, motif obligatoire pour la toucher, photos `entity_type = 'journee_colis'`, dépenses
@@ -301,7 +301,11 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   note de frais, suivi) · Moi. Bureau : Équipe › À valider / Journées / Rapports (+ CSV), fiche
   Messagerie, justificatifs enrichis dans Charges, cloche. Reste : téléphone de la société pour
   « Appeler le bureau » ; « Créer la charge » ne reprend pas encore montant / note de frais ;
-  clôture du mois ; dépense → Pennylane (S3).
+  clôture du mois ; dépense → Pennylane (S3). **Migration appliquée le 14/10/2026.**
+  À tester : lier Lucas à sa fiche (Accès au site), lui donner le client de messagerie + tarifs
+  domicile / relais, saisir une journée avec photo, la valider côté bureau.
+  Piège : `id = any((select f()))` est refusé par Postgres (sous-requête) → `(select f()) @> array[id]` ;
+  remplacer une policy = `alter policy` (pas de drop + create : trou d'accès et timeout MCP).
 - U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;
   pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
 - Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.
