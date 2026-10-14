@@ -301,7 +301,12 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   note de frais, suivi) · Moi. Bureau : Équipe › À valider / Journées / Rapports (+ CSV), fiche
   Messagerie, justificatifs enrichis dans Charges, cloche. Reste : téléphone de la société pour
   « Appeler le bureau » ; « Créer la charge » ne reprend pas encore montant / note de frais ;
-  clôture du mois ; dépense → Pennylane (S3). **Migration appliquée le 14/10/2026.**
+  clôture du mois ; dépense → Pennylane (S3). **Migration appliquée, PR #52 mergée et Edge
+  déployées le 14/10/2026** (admin-users v10, drive-connect v10, drive-disconnect v2,
+  drive-oauth-start v13, drive-oauth-callback v11 `verify_jwt=false`, geocode v6,
+  send-client-email v5, suggest-categorie-ia v4, lire-facture v8, lire-releve v2,
+  pennylane-last-numbers v4). Note : geocode avec `address` reste ouvert sans session (simple
+  lecture IGN, aucune écriture) ; seul le `backfill` exige le droit.
   À tester : lier Lucas à sa fiche (Accès au site), lui donner le client de messagerie + tarifs
   domicile / relais, saisir une journée avec photo, la valider côté bureau.
   Piège : `id = any((select f()))` est refusé par Postgres (sous-requête) → `(select f()) @> array[id]` ;
