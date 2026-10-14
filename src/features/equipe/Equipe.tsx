@@ -10,7 +10,7 @@ import { useProfile } from '../../app/providers'
 import { useToast } from '../../shared/ui/useToast'
 import { downloadCSV } from '../../shared/lib/download'
 import { toLocalISO } from '../../shared/lib/dates'
-import { getTeamMembers } from './equipe.queries'
+import { getTeamMembers, getRolesComptes } from './equipe.queries'
 import {
   CONTRACT_LABELS, ROLE_LABELS, getContractLabel, formatSalaryMonthly, formatSalaryAnnual,
   masseSalariale, aptitude, memberEcheances, isDriverRole, membresCsv,
@@ -65,6 +65,8 @@ export function Equipe() {
   const [selected, setSelected] = useState<TeamMember | null>(null)
   const [ouvrirAcces, setOuvrirAcces] = useState(false)
   const { isPresident } = usePermissions()
+  // Rôle du compte relié à chaque fiche (président = accès admin). Échec = sans rôle.
+  const [roles, setRoles] = useState<Record<string, string>>({})
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -72,6 +74,7 @@ export function Equipe() {
     if (error) setError(error.message)
     else setMembers(data ?? [])
     setLoading(false)
+    getRolesComptes().then(setRoles).catch(() => setRoles({}))
   }, [filters])
 
   useEffect(() => { load() }, [load])
@@ -82,9 +85,9 @@ export function Equipe() {
     setDrawerOpen(true)
   }
 
-  /** Accès au site : « Compte relié », sinon (président) un bouton qui ouvre l'onglet Accès. */
+  /** Accès au site : admin / salarié si la fiche est reliée, sinon (président) un bouton. */
   const accesSite = (m: TeamMember) => m.profile_id
-    ? <Badge color="success">Compte relié</Badge>
+    ? <Badge color="success">{roles[m.profile_id] === 'president' ? 'Accès admin' : 'Accès salarié'}</Badge>
     : !isPresident
     ? <span className="text-xs text-[var(--text-disabled)]">Sans accès</span>
     : (

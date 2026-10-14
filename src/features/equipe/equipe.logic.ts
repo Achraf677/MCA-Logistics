@@ -119,6 +119,8 @@ function normaliser(v: string | null | undefined): string {
 /**
  * Comptes qu'on peut relier à une fiche : ceux de la société qui ne sont reliés à
  * AUCUNE fiche. Le plus probable d'abord (même e-mail ou même nom), puis par nom.
+ * Un compte président (le tien, celui d'un associé) n'est proposé que sur SA fiche
+ * (même nom / e-mail) : sinon on relie par erreur la fiche d'un salarié à un compte admin.
  */
 export function comptesALier(
   comptes: CompteSite[],
@@ -136,6 +138,7 @@ export function comptesALier(
       suggere: (!!mail && normaliser(c.email) === mail) || (!!nom && normaliser(c.full_name) === nom),
       estMoi: c.id === monId,
     }))
+    .filter(c => c.suggere || c.role !== 'president')
     .sort((a, b) => Number(b.suggere) - Number(a.suggere)
       || normaliser(a.full_name || a.email).localeCompare(normaliser(b.full_name || b.email)))
 }

@@ -26,7 +26,11 @@ describe('comptes à relier', () => {
     const r = comptesALier(comptes, ['p4'], { full_name: 'Lucas Bacher', email: null }, 'p3')
     expect(r[0].id).toBe('p2')
     expect(r[0].suggere).toBe(true)
-    expect(r.find(c => c.id === 'p3')?.estMoi).toBe(true)
+  })
+  it('un compte président n’est proposé que sur SA fiche', () => {
+    expect(comptesALier(comptes, [], { full_name: 'Lucas Bacher', email: null }, 'p3').map(c => c.id)).not.toContain('p3')
+    const r = comptesALier(comptes, [], { full_name: 'ACHRAF', email: 'moi@x.fr' }, 'p3')
+    expect(r[0]).toMatchObject({ id: 'p3', suggere: true, estMoi: true })
   })
   it('ou du même e-mail', () => {
     expect(comptesALier(comptes, [], { full_name: 'Autre', email: 'MO@x.fr' }, null)[0].id).toBe('p1')

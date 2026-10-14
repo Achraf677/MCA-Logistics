@@ -301,7 +301,10 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   Gardé : Dépenses du salarié (photo, carte société / note de frais), Moi, cloisonnement.
   **Accès au site simplifié** : « Relier » un compte existant (liste, le plus probable en
   tête) ou « Créer l'accès » (e-mail + mot de passe) ; colonne « Accès au site » dans la liste
-  Équipe. Edge `admin-users` inchangée (`link_member` relie déjà tout compte de la société).
+  Équipe (« Accès admin » / « Accès salarié » / « Donner l'accès »). Un compte président n'est
+  proposé que sur SA fiche (même nom / e-mail). Edge `admin-users` : `unlink_member` permis sur
+  sa propre fiche et sur celle d'un président (à déployer après merge). Donnée corrigée le
+  14/10 : fiche ACHRAF reliée au compte président, fiche LUCAS déliée (reliée par erreur).
   **Règle : ne plus rien ajouter à l'espace salarié sans demande explicite de l'utilisateur.**
   Piège : `id = any((select f()))` est refusé par Postgres (sous-requête) → `(select f()) @> array[id]` ;
   remplacer une policy = `alter policy` (pas de drop + create : trou d'accès et timeout MCP).

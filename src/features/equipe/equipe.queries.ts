@@ -71,6 +71,14 @@ export async function getComptesEtLiens(): Promise<{ comptes: CompteSite[]; reli
   }
 }
 
+/** Rôle de chaque compte de connexion (colonne « Accès au site » de la liste). */
+export async function getRolesComptes(): Promise<Record<string, string>> {
+  const { data } = await supabase.from('profiles').select('id, role')
+  const roles: Record<string, string> = {}
+  for (const p of (data ?? []) as Array<{ id: string; role: string | null }>) if (p.role) roles[p.id] = p.role
+  return roles
+}
+
 /** Relie un compte existant de la société (le salarié, ou le sien) à une fiche. */
 export function relierCompte(userId: string, teamMemberId: string) {
   return relierFiche(userId, teamMemberId)
