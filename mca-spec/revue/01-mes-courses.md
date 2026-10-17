@@ -141,8 +141,11 @@ Pas bon — reste
   route » (aujourd'hui seulement) → une photo par page (appareil ou galerie, compressée
   ~130 Ko) → lecture page par page avec progression (Edge `lire-feuille-route`) → aperçu :
   chaque arrêt modifiable (n°, rue, commune, CP, colis, type), supprimer, ajouter ; « à
-  vérifier » si la somme des colis d'une ligne ≠ « Nb Colis » imprimé ; écart avec le total de
-  l'en-tête signalé ; localisation affichée (numéro / rue / aucune) → « Créer la tournée ».
+  vérifier » + motif si la somme des colis d'une ligne ≠ « Nb Colis » ou le nombre de numéros
+  ≠ « Nb PGEO » ; secteur (colonne District) en petit sous la rue ; page manquante (« x/y »)
+  ou en double signalée ; une page ajoutée après coup ne fait pas perdre les corrections ;
+  écart avec l'en-tête signalé ; localisation affichée (numéro / rue / aucune) → « Créer la
+  tournée » (arrêts dans l'ordre des pages lues).
 - Tournée : compteur collé en haut (arrêts et colis traités / total, livrés · en attente ·
   en retour, collectes), « Prochain : … », arrêts groupés par commune dans l'ordre de la
   feuille. Par arrêt : « Livré » / « Remis » / « Collecté » en un geste ; « … » = autres issues

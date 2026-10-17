@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   familleStatut, colisRemis, compteursTournee, avancementPct, statutApresGeste, arretsDepuisLecture,
   manquesApercu, totauxApercu, modifierArretLu, lignesArrets, fusionnerEntetes, arretVide,
+  pageDepuisLecture, pagesManquantes, pagesEnDouble, ordonnerParPage, retirerPhoto,
   STATUT_FAIT, AUTRES_STATUTS, type ArretColis, type StatutArretColis,
 } from './tourneesColis'
 
@@ -76,6 +77,8 @@ describe('aperçu', () => {
     ], 2)
     expect(r).toHaveLength(2)
     expect(r[0]).toMatchObject({ type: 'rc', quantite: 2, a_verifier: true, geo_precision: 'numero', page: 2 })
+    expect(arretsDepuisLecture([{ rue: 'R', secteur: '601 - GEUDERTHEIM EGLISE', motif: '3 colis lus, 4 annoncés' }], 1)[0])
+      .toMatchObject({ secteur: '601 - GEUDERTHEIM EGLISE', motif: '3 colis lus, 4 annoncés', a_verifier: true })
     expect(r[1]).toMatchObject({ commune: null, type: 'c', quantite: 1, geo_precision: null, lat: null })
     expect(arretsDepuisLecture('non', 1)).toEqual([])
   })
@@ -101,7 +104,33 @@ describe('aperçu', () => {
       .toEqual([[1, 'OSTWALD', 'Rue A', null, null], [2, 'OSTWALD', 'Rue A', null, null]])
   })
   it('en-têtes fusionnés : premières valeurs, plus grand total', () => {
-    expect(fusionnerEntetes([{ date: '17/10', nb_colis: 60 }, null, { date: 'x', vehicule: 'V1', nb_colis: 118 }], 3))
-      .toEqual({ pages: 3, date: '17/10', vehicule: 'V1', nb_colis: 118 })
+    expect(fusionnerEntetes([{ date: '17/10', nb_colis: 60 }, null, { date: 'x', vehicule: 'V1', nb_colis: 118, nb_pgeo: 90 }], 3))
+      .toEqual({ pages: 3, date: '17/10', vehicule: 'V1', nb_colis: 118, nb_pgeo: 90 })
+  })
+})
+
+describe('pages de la feuille', () => {
+  it('page manquante détectée (1/3 et 3/3 lues → 2)', () => {
+    expect(pagesManquantes([{ numero: 1, total: 3 }, { numero: 3, total: 3 }])).toEqual([2])
+    expect(pagesManquantes([{ numero: 1, total: 2 }, null, { numero: 2, total: 2 }])).toEqual([])
+    expect(pagesManquantes([null, undefined])).toEqual([])
+  })
+  it('page en double', () => {
+    expect(pagesEnDouble([{ numero: 2, total: 3 }, { numero: 2, total: 3 }, { numero: 1, total: 3 }])).toEqual([2])
+  })
+  it('« x/y » de l’Edge revérifié', () => {
+    expect(pageDepuisLecture({ numero: 2, total: 3 })).toEqual({ numero: 2, total: 3 })
+    expect(pageDepuisLecture({ numero: 4, total: 3 })).toBeNull()
+    expect(pageDepuisLecture('2/3')).toBeNull()
+  })
+  it('ordre de la feuille : la page 2 photographiée en dernier reprend sa place', () => {
+    const v = (page: number, rue: string) => ({ ...arretVide(page), rue })
+    const r = ordonnerParPage([v(1, 'A'), v(1, 'B'), v(2, 'E'), v(3, 'C')],
+      [{ numero: 1, total: 3 }, { numero: 3, total: 3 }, { numero: 2, total: 3 }])
+    expect(r.map(a => a.rue)).toEqual(['A', 'B', 'C', 'E'])
+  })
+  it('retirer une photo : ses arrêts partent, les suivantes remontent', () => {
+    const v = (page: number, rue: string) => ({ ...arretVide(page), rue })
+    expect(retirerPhoto([v(1, 'A'), v(2, 'B'), v(3, 'C')], 2).map(a => [a.page, a.rue])).toEqual([[1, 'A'], [2, 'C']])
   })
 })

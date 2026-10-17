@@ -40,8 +40,12 @@
   - ni arrêt ni chauffeur : exclu de Mes courses, Tournées, Planning, Calendrier, journée du
     Dashboard (filtre `prestation.is.null,prestation.not.in.(messagerie,forfait)`).
   - **Tournée de colis** (lot TC1, 17/10/2026) : la feuille de route Colissimo du matin
-    (tableau District | Rue | Nb Colis | Nb PGEO | N° | CRBT ; « (3) » = 3 colis au numéro,
-    « RC » = point relais, « [C] » = collecte) est photographiée page par page, lue par
+    — bandeau « 67170 KRIEGSHEIM » = commune des lignes suivantes ; District = SECTEUR, pas
+    commune ; colonnes Rue | Nb Colis | Nb PGEO | N° | CRBT/taxes ; « 5(2) » = 2 colis (exposant),
+    « RC13(21) » = relais, « [C]11 » = collecte (carré noir), « ? » illisible ; contrôle par
+    ligne colis = Nb Colis et numéros = Nb PGEO ; « x/y » en bas à droite ; communes déléguées
+    par alias BAN (Mittelhausen / Hohatzenheim / Gingsheim → Wingersheim les Quatre Bans 67170,
+    Keffendorf → Ohlungen 67590) — est photographiée page par page, lue par
     l'Edge `lire-feuille-route`, puis traitée arrêt par arrêt dans Mes courses › Ma tournée.
     Tables `tournees_colis` / `tournees_colis_arrets` : **ce ne sont PAS des deliveries**
     (le relevé mensuel reste la seule ligne de facturation ; rien n'est relié à la paie).

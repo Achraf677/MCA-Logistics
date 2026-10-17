@@ -11,16 +11,27 @@ export type StatutArretColis =
   | 'rc_remis' | 'rc_ferme' | 'rc_sature'
   | 'col_ok' | 'col_rien' | 'col_nf'
 
+/** En-tête « Feuille de route » Colissimo (lu sur la 1re page), + pages scannées. */
 export interface EnteteFeuille {
   date?: string | null
+  societe?: string | null
   vehicule?: string | null
+  imei?: string | null
   circuit?: string | null
-  agence?: string | null
-  tournee?: string | null
+  operateur?: string | null
+  depart?: string | null
+  remettant?: string | null
+  livreur?: string | null
   nb_colis?: number | null
-  nb_arrets?: number | null
+  nb_pgeo?: number | null
   /** Pages scannées pour créer la tournée. */
   pages?: number
+}
+
+/** « x/y » lu en bas à droite d'une page. */
+export interface PageLue {
+  numero: number
+  total: number
 }
 
 export interface TourneeColis {
@@ -65,12 +76,16 @@ export interface ArretLu {
   cle: string
   commune: string | null
   cp: string | null
+  /** Colonne District de la feuille (secteur, pas commune) : affichée, pas enregistrée. */
+  secteur: string | null
   rue: string | null
   numero: string | null
   quantite: number
   type: TypeArretColis
   note: string | null
   a_verifier: boolean
+  /** Pourquoi « à vérifier » (écart Nb Colis / Nb PGEO, chiffre illisible…). */
+  motif: string | null
   lat: number | null
   lng: number | null
   geo_precision: 'numero' | 'rue' | null
@@ -205,10 +220,11 @@ export function nouvelleCle(): string {
   return `a${Date.now().toString(36)}${compteurCle}`
 }
 
-export function arretVide(page: number, modele?: Pick<ArretLu, 'commune' | 'cp'>): ArretLu {
+export function arretVide(page: number, modele?: Pick<ArretLu, 'commune' | 'cp'> & Partial<Pick<ArretLu, 'secteur'>>): ArretLu {
   return {
-    cle: nouvelleCle(), commune: modele?.commune ?? null, cp: modele?.cp ?? null, rue: null, numero: null,
-    quantite: 1, type: 'c', note: null, a_verifier: false, lat: null, lng: null, geo_precision: null, page,
+    cle: nouvelleCle(), commune: modele?.commune ?? null, cp: modele?.cp ?? null, secteur: modele?.secteur ?? null,
+    rue: null, numero: null, quantite: 1, type: 'c', note: null, a_verifier: false, motif: null,
+    lat: null, lng: null, geo_precision: null, page,
   }
 }
 
@@ -223,9 +239,10 @@ export function arretsDepuisLecture(brut: unknown, page: number): ArretLu[] {
     const q = Number(a.quantite)
     const prec = a.geo_precision === 'numero' || a.geo_precision === 'rue' ? a.geo_precision : null
     return {
-      cle: nouvelleCle(), commune: txt(a.commune), cp: txt(a.cp), rue: txt(a.rue), numero: txt(a.numero),
+      cle: nouvelleCle(), commune: txt(a.commune), cp: txt(a.cp), secteur: txt(a.secteur),
+      rue: txt(a.rue), numero: txt(a.numero),
       quantite: Number.isInteger(q) && q >= 1 ? Math.min(q, 999) : 1, type, note: txt(a.note),
-      a_verifier: a.a_verifier === true, lat: num(a.lat), lng: num(a.lng),
+      a_verifier: a.a_verifier === true || !!txt(a.motif), motif: txt(a.motif), lat: num(a.lat), lng: num(a.lng),
       geo_precision: prec, page,
     }
   })
@@ -273,18 +290,63 @@ export function lignesArrets(arrets: ArretLu[], tourneeId: string, companyId: st
   }))
 }
 
-/** En-têtes des pages → un seul en-tête (premières valeurs lues ; colis / arrêts : la plus grande). */
+/** En-têtes des pages → un seul en-tête (premières valeurs lues ; colis / PGEO : la plus grande). */
 export function fusionnerEntetes(entetes: Array<EnteteFeuille | null | undefined>, pages: number): EnteteFeuille {
   const out: EnteteFeuille = { pages }
   for (const e of entetes) {
     if (!e) continue
-    for (const k of ['date', 'vehicule', 'circuit', 'agence', 'tournee'] as const) {
+    for (const k of ['date', 'societe', 'vehicule', 'imei', 'circuit', 'operateur', 'depart', 'remettant', 'livreur'] as const) {
       if (out[k] == null && typeof e[k] === 'string' && e[k]) out[k] = e[k]
     }
-    for (const k of ['nb_colis', 'nb_arrets'] as const) {
+    for (const k of ['nb_colis', 'nb_pgeo'] as const) {
       const v = e[k]
       if (typeof v === 'number' && (out[k] == null || v > (out[k] as number))) out[k] = v
     }
   }
   return out
+}
+
+/** Réponse de l'Edge → « x/y » sûr, sinon null. */
+export function pageDepuisLecture(brut: unknown): PageLue | null {
+  if (!brut || typeof brut !== 'object') return null
+  const { numero, total } = brut as Record<string, unknown>
+  return Number.isInteger(numero) && Number.isInteger(total) && (numero as number) >= 1
+    && (numero as number) <= (total as number) && (total as number) <= 99
+    ? { numero: numero as number, total: total as number } : null
+}
+
+/**
+ * Pages de la feuille non scannées, d'après les « x/y » lus (ex. 1/3 et 3/3 → [2]).
+ * Aucune page numérotée lue → [] (rien à affirmer). Pur.
+ */
+export function pagesManquantes(lues: Array<PageLue | null | undefined>): number[] {
+  const ok = lues.filter((p): p is PageLue => !!p)
+  if (ok.length === 0) return []
+  const total = Math.max(...ok.map(p => p.total))
+  const vues = new Set(ok.map(p => p.numero))
+  return Array.from({ length: total }, (_, i) => i + 1).filter(n => !vues.has(n))
+}
+
+/** Même page de la feuille photographiée deux fois (ex. deux « 2/3 »). Pur. */
+export function pagesEnDouble(lues: Array<PageLue | null | undefined>): number[] {
+  const vus = new Map<number, number>()
+  for (const p of lues) if (p) vus.set(p.numero, (vus.get(p.numero) ?? 0) + 1)
+  return [...vus].filter(([, n]) => n > 1).map(([numero]) => numero).sort((a, b) => a - b)
+}
+
+/**
+ * Arrêts de l'aperçu dans l'ordre de la FEUILLE : par « x/y » lu quand il l'a été (une page
+ * manquante photographiée en dernier reprend sa place), sinon par ordre des photos ; l'ordre
+ * des arrêts d'une même page est gardé. `pagesLues[i]` = page lue sur la photo i + 1. Pur.
+ */
+export function ordonnerParPage(arrets: ArretLu[], pagesLues: Array<PageLue | null | undefined>): ArretLu[] {
+  const cle = (photo: number) => pagesLues[photo - 1]?.numero ?? photo
+  return arrets.map((a, i) => ({ a, i }))
+    .sort((x, y) => cle(x.a.page) - cle(y.a.page) || x.a.page - y.a.page || x.i - y.i)
+    .map(x => x.a)
+}
+
+/** Retire la photo n° `photo` : ses arrêts partent, les photos suivantes remontent d'un rang. Pur. */
+export function retirerPhoto(arrets: ArretLu[], photo: number): ArretLu[] {
+  return arrets.filter(a => a.page !== photo).map(a => (a.page > photo ? { ...a, page: a.page - 1 } : a))
 }

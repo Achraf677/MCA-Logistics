@@ -6,7 +6,7 @@ import imageCompression from 'browser-image-compression'
 import { supabase } from '../../app/providers'
 import { lireErreurEdge } from './erreurEdge'
 import {
-  arretsDepuisLecture, lignesArrets, statutApresGeste,
+  arretsDepuisLecture, lignesArrets, pageDepuisLecture, statutApresGeste, type PageLue,
   type ArretColis, type ArretLu, type EnteteFeuille, type StatutArretColis, type StatutTourneeColis, type TourneeColis,
 } from './tourneesColis'
 
@@ -80,12 +80,15 @@ export async function compresserPage(file: File): Promise<string> {
 
 /** Lit UNE page (Edge `lire-feuille-route`). Rien n'est écrit en base. */
 export async function lirePageFeuille(dataUrl: string, page: number):
-  Promise<{ arrets: ArretLu[]; entete: EnteteFeuille | null; error: Error | null }> {
+  Promise<{ arrets: ArretLu[]; entete: EnteteFeuille | null; pageLue: PageLue | null; error: Error | null }> {
   const { data, error } = await supabase.functions.invoke('lire-feuille-route', { body: { image: dataUrl } })
   const echec = await lireErreurEdge(data, error)
-  if (echec) return { arrets: [], entete: null, error: new Error(echec.message) }
-  const d = (data ?? {}) as { arrets?: unknown; entete?: EnteteFeuille | null }
-  return { arrets: arretsDepuisLecture(d.arrets, page), entete: d.entete ?? null, error: null }
+  if (echec) return { arrets: [], entete: null, pageLue: null, error: new Error(echec.message) }
+  const d = (data ?? {}) as { arrets?: unknown; entete?: EnteteFeuille | null; page?: unknown }
+  return {
+    arrets: arretsDepuisLecture(d.arrets, page), entete: d.entete ?? null,
+    pageLue: pageDepuisLecture(d.page), error: null,
+  }
 }
 
 // ── Écriture ────────────────────────────────────────────────────────────────

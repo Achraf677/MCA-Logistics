@@ -1,20 +1,29 @@
 // Edge Function `lire-feuille-route` — lit UNE page photographiée d'une feuille de route de
-// messagerie (Colissimo : tableau « ADRESSES DE LIVRAISON ») et renvoie les arrêts lus,
-// géocodés. RIEN n'est écrit en base : l'écran montre un aperçu modifiable, le salarié (ou le
-// bureau) vérifie, puis crée la tournée (RLS de `tournees_colis`).
+// messagerie Colissimo et renvoie les arrêts lus, géocodés. RIEN n'est écrit en base : l'écran
+// montre un aperçu modifiable, le salarié (ou le bureau) vérifie, puis crée la tournée (RLS de
+// `tournees_colis`).
+//
+// La feuille réelle (validée le 17/10/2026, détail dans `_shared/feuilleRoute.ts`) :
+//   - bandeau en gras « 67170 KRIEGSHEIM » = commune des lignes qui suivent, jusqu'au bandeau
+//     suivant ; colonne District = SECTEUR (« (HC) 610 - KRIEGSHEIM »), pas la commune ;
+//   - par ligne : Rue | Nb Colis | Nb PGEO | N° | CRBT/taxes ; dans N° : « 5(2) » (exposant =
+//     colis), « RC13(21) » (relais), « [C]11 » (collecte : numéro dans un carré noir), « ? » ;
+//   - « x/y » en bas à droite (n° de page) ; en-tête « Feuille de route » sur la 1re page.
 //
 // Entrée : { image: "data:image/jpeg;base64,…" } (une page, compressée côté front ~130 Ko).
-// Sortie : { ok: true, entete: {…} | null, arrets: [{ commune, cp, rue, numero, quantite,
-//            type, note, a_verifier, lat, lng, geo_precision }] }
+// Sortie : { ok: true, entete: {…} | null, page: { numero, total } | null,
+//            arrets: [{ commune, cp, secteur, rue, numero, quantite, type, note, a_verifier,
+//                       motif, lat, lng, geo_precision }] }
 //
 // Garanties (comme `lire-facture`) :
-//   - rien d'inventé : la vision recopie, case illisible = null ; le découpage de la case
-//     « N° » (un arrêt par numéro) est fait en code, testé (`_shared/feuilleRoute.ts`) ;
-//   - contrôle « Nb Colis » de chaque ligne → arrêts « à vérifier » en cas d'écart ;
-//   - géocodage BAN : numéro, sinon centre de la rue, sinon rien (`_shared/geocodeArret.ts`).
+//   - rien d'inventé : la vision recopie, case illisible = null, chiffre illisible = « ? » ;
+//     le découpage de la case N° (un arrêt par numéro), le report de la commune et
+//     l'auto-contrôle Nb Colis / Nb PGEO sont faits en code, testés ;
+//   - géocodage BAN : numéro, sinon centre de la rue, sinon rien ; communes déléguées par alias
+//     (`_shared/geocodeArret.ts`), filtre par CP du bandeau.
 // Accès (verify_jwt = true) : compte actif relié à une fiche Équipe (le salarié scanne pour
 //   lui-même), président, ou droit `planning.tournees : update` (le bureau scanne pour un
-//   salarié). Un compte d'une autre société n'écrit rien de toute façon (rien n'est écrit).
+//   salarié).
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { exigerPermission } from '../_shared/auth.ts'
@@ -28,26 +37,40 @@ const TAILLE_MAX = 2_000_000
 /** Appels BAN en parallèle (limite publique : 50 / s par IP). */
 const PARALLELE = 6
 
-const SYSTEM = `Tu lis UNE page photographiée d'une feuille de route de messagerie (Colissimo, La Poste) d'un chauffeur-livreur en France.
-La page contient un tableau « ADRESSES DE LIVRAISON » avec les colonnes : District | Rue | Nb Colis | Nb PGEO | N° | CRBT.
-Tu RECOPIES ce qui est imprimé. Tu n'estimes rien, tu ne complètes rien, tu ne corriges pas l'orthographe des rues.
+const SYSTEM = `Tu lis UNE page photographiée d'une feuille de route Colissimo (La Poste) d'un chauffeur-livreur en France.
+Tu RECOPIES ce qui est imprimé. Tu n'estimes rien, tu ne complètes rien, tu ne corriges pas l'orthographe.
 
-Règles strictes :
-- Une entrée de "lignes" par LIGNE du tableau, dans l'ordre de haut en bas. Ne fusionne pas deux lignes, n'en saute aucune, n'en invente aucune.
-- La photo peut être prise de biais : pour CHAQUE ligne, suis la ligne d'un bord à l'autre et vérifie que la rue, le « Nb Colis » et la case « N° » sont bien sur la MÊME ligne avant de les écrire ensemble.
-- "commune" : le contenu de la case District (commune, avec code postal s'il est écrit). Case vide = null.
-- "cp" : le code postal à 5 chiffres s'il est écrit séparément, sinon null.
-- "rue" : le nom de la rue tel qu'écrit (ex. "RUE DES VOSGES").
-- "nb_colis" : le nombre de la colonne Nb Colis (entier).
-- "numeros" : le contenu EXACT de la case N°, caractère pour caractère, y compris les virgules, les « (3) », les préfixes « RC » et les « [C] ». Exemple : "12, 14 (2), RC 3".
-- "crbt" : le contenu de la case CRBT s'il y en a un, sinon null.
+MISE EN PAGE
+- Le tableau « ADRESSES DE LIVRAISON » a les colonnes : District | Rue | Nb Colis | Nb PGEO | N° | CRBT/taxes.
+- Des BANDEAUX en gras « 67170 KRIEGSHEIM » (code postal + commune) coupent le tableau : chaque bandeau ouvre un groupe de lignes.
+- La colonne District n'est PAS la commune : c'est le SECTEUR (ex. « (HC) 610 - KRIEGSHEIM », « 601 - GEUDERTHEIM EGLISE »), répété sur chaque ligne du secteur. Un mot coupé sur deux lignes se recolle.
+
+RÈGLES, pour CHAQUE ligne du tableau, de haut en bas (une entrée de "lignes" par ligne, ni fusion, ni saut, ni invention) :
+- "commune_bandeau" : le texte du bandeau (ex. "67170 KRIEGSHEIM") SEULEMENT sur la première ligne qui suit ce bandeau ; null sur toutes les autres lignes.
+- "secteur" : le contenu de la colonne District.
+- "rue" : le nom de la rue tel qu'écrit.
+- "nb_colis" : la colonne Nb Colis (entier). "nb_pgeo" : la colonne Nb PGEO (entier).
+- "numeros" : la cellule N° recopiée exactement, numéros séparés par des virgules :
+  - petits chiffres en exposant après un numéro = nombre de colis, à noter entre parenthèses : « 5(2) » ;
+  - préfixe RC = point relais : « RC13(21) » ;
+  - numéro imprimé en clair dans un petit carré NOIR (case inversée) = collecte, à noter « [C]11 » ;
+  - cellule vide = "" ; chiffre illisible = « ? » à sa place (ex. « 1? »).
+- "crbt" : la colonne CRBT/taxes si elle est remplie, sinon null.
 - Une case illisible vaut null. Mieux vaut null qu'une valeur plausible et fausse.
-- Ignore la colonne Nb PGEO, les totaux, les en-têtes répétés et tout ce qui est hors du tableau (sauf l'en-tête de page ci-dessous).
-- "entete" : en haut de la page, si c'est écrit : date de la feuille ("date"), véhicule ("vehicule"), circuit ou tournée ("circuit"), agence ("agence"), nombre total de colis ("nb_colis"), nombre d'arrêts ("nb_arrets"). Absent = null ; aucun en-tête = null.
+
+ALIGNEMENT (photo de biais) : dans chaque secteur il y a autant de noms de rue que de lignes de chiffres ; associe la n-ième rue à la n-ième ligne de chiffres, sans décaler.
+
+AUTO-CONTRÔLE, ligne par ligne, avant de répondre : la somme des colis de la cellule N° (1 par numéro sans parenthèses, sinon le nombre entre parenthèses) doit égaler Nb Colis, et le nombre de numéros doit égaler Nb PGEO. Si ce n'est pas le cas, relis la ligne sur la photo ; si l'écart reste, recopie ce que tu lis sans l'ajuster.
+
+PAGE : "page" = le « x/y » imprimé en bas à droite (ex. "2/3"), null s'il n'est pas visible.
+
+EN-TÊTE : seulement si le cadre « Feuille de route » (logo Colissimo) est sur la photo, sinon "entete": null. Champs : date (JJ/MM/AAAA), societe, vehicule, imei, circuit, operateur, depart (HH:MM), remettant, nb_colis (entier), nb_pgeo (entier), livreur. Absent = null.
+Ignore les totaux et tout ce qui est hors du tableau et de l'en-tête.
 
 Réponds UNIQUEMENT en JSON :
-{"entete": {"date": <texte|null>, "vehicule": <texte|null>, "circuit": <texte|null>, "agence": <texte|null>, "nb_colis": <entier|null>, "nb_arrets": <entier|null>} | null,
- "lignes": [{"commune": <texte|null>, "cp": <texte|null>, "rue": <texte|null>, "nb_colis": <entier|null>, "numeros": <texte|null>, "crbt": <texte|null>}]}`
+{"entete": {"date": …, "societe": …, "vehicule": …, "imei": …, "circuit": …, "operateur": …, "depart": …, "remettant": …, "nb_colis": …, "nb_pgeo": …, "livreur": …} | null,
+ "page": "<x/y>" | null,
+ "lignes": [{"commune_bandeau": <texte|null>, "secteur": <texte|null>, "rue": <texte|null>, "nb_colis": <entier|null>, "nb_pgeo": <entier|null>, "numeros": <texte>, "crbt": <texte|null>}]}`
 
 /** Géocode les arrêts (même adresse = un seul appel), quelques-uns à la fois. */
 async function geocoderTous(arrets: ArretFeuille[]): Promise<Array<PointArret | null>> {
@@ -124,12 +147,13 @@ Deno.serve(async (req: Request) => {
   const lecture = nettoyerLecture(brut)
   const arrets = lignesEnArrets(lecture.lignes)
   const points = await geocoderTous(arrets)
-  console.log('lire-feuille-route: page lue', lecture.lignes.length, 'lignes,', arrets.length, 'arrêts,',
+  console.log('lire-feuille-route: page lue', lecture.page ? `${lecture.page.numero}/${lecture.page.total}` : '?/?', lecture.lignes.length, 'lignes,', arrets.length, 'arrêts,',
     points.filter(Boolean).length, 'localisés')
 
   return jsonResponse({
     ok: true,
     entete: lecture.entete,
+    page: lecture.page,
     arrets: arrets.map((a, i) => ({
       ...a,
       lat: points[i]?.lat ?? null,

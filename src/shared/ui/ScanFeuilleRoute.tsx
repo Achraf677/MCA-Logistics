@@ -6,8 +6,8 @@ import { Badge } from './Badge'
 import { BoutonIcone } from './BoutonIcone'
 import { useToast } from './useToast'
 import {
-  LIBELLE_TYPE_ARRET, arretVide, fusionnerEntetes, manquesApercu, modifierArretLu, totauxApercu,
-  type ArretLu, type EnteteFeuille, type TypeArretColis,
+  LIBELLE_TYPE_ARRET, arretVide, fusionnerEntetes, manquesApercu, modifierArretLu, ordonnerParPage, pagesEnDouble,
+  pagesManquantes, retirerPhoto, totauxApercu, type ArretLu, type EnteteFeuille, type PageLue, type TypeArretColis,
 } from '../lib/tourneesColis'
 import { compresserPage, creerTourneeColis, lirePageFeuille } from '../lib/tourneesColis.queries'
 
@@ -18,6 +18,8 @@ interface Page {
   etat: 'attente' | 'lecture' | 'ok' | 'erreur'
   erreur?: string
   nb?: number
+  /** « x/y » lu en bas à droite de la page, s'il était visible. */
+  pageLue?: PageLue | null
 }
 
 const champ = `min-w-0 min-h-10 px-2.5 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
@@ -78,11 +80,22 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     })])
   }
 
-  const retirerPage = (cle: string) => setPages(prev => {
-    const p = prev.find(x => x.cle === cle)
-    if (p) URL.revokeObjectURL(p.apercu)
-    return prev.filter(x => x.cle !== cle)
-  })
+  /** Retire une photo ; ses arrêts déjà lus partent avec elle (les photos suivantes remontent). */
+  const retirerPage = (cle: string) => {
+    const i = pages.findIndex(x => x.cle === cle)
+    if (i < 0) return
+    URL.revokeObjectURL(pages[i].apercu)
+    setPages(prev => prev.filter(x => x.cle !== cle))
+    setArrets(prev => retirerPhoto(prev, i + 1))
+    setEntetes(prev => {
+      const out: Record<number, EnteteFeuille | null> = {}
+      for (const [k, v] of Object.entries(prev)) {
+        const n = Number(k)
+        if (n < i + 1) out[n] = v; else if (n > i + 1) out[n - 1] = v
+      }
+      return out
+    })
+  }
 
   /** Lit une page (index 0-based) et range ses arrêts à sa place (ordre des pages). */
   const lireUne = async (index: number, liste: Page[]) => {
@@ -93,24 +106,24 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     try {
       res = await lirePageFeuille(await compresserPage(p.file), numero)
     } catch (e) {
-      res = { arrets: [], entete: null, error: e as Error }
+      res = { arrets: [], entete: null, pageLue: null, error: e as Error }
     }
     if (res.error) {
       setPages(prev => prev.map(x => (x.cle === p.cle ? { ...x, etat: 'erreur', erreur: res.error!.message } : x)))
       return false
     }
-    setPages(prev => prev.map(x => (x.cle === p.cle ? { ...x, etat: 'ok', nb: res.arrets.length } : x)))
+    setPages(prev => prev.map(x => (x.cle === p.cle ? { ...x, etat: 'ok', nb: res.arrets.length, pageLue: res.pageLue } : x)))
     setEntetes(prev => ({ ...prev, [numero]: res.entete }))
-    setArrets(prev => [...prev.filter(a => a.page !== numero), ...res.arrets].sort((a, b) => a.page - b.page))
+    setArrets(prev => [...prev.filter(a => a.page !== numero), ...res.arrets])
     return true
   }
 
+  /** Lit les pages pas encore lues : une page ajoutée après coup ne fait pas perdre les corrections. */
   const toutLire = async () => {
     const liste = pages
-    setArrets([]); setEntetes({})
     setEtape('lecture')
-    let ok = 0
-    for (let i = 0; i < liste.length; i++) if (await lireUne(i, liste)) ok++
+    let ok = liste.filter(p => p.etat === 'ok').length
+    for (let i = 0; i < liste.length; i++) if (liste[i].etat !== 'ok' && await lireUne(i, liste)) ok++
     if (ok === 0) {
       toast('Aucune page lue : reprends les photos à plat, bien éclairées.', 'error')
       setEtape('photos')
@@ -126,29 +139,37 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     setArrets(prev => prev.map(a => (a.cle === cle ? modifierArretLu(a, patch) : a)))
   const supprimer = (cle: string) => setArrets(prev => prev.filter(a => a.cle !== cle))
   const ajouter = () => setArrets(prev => {
-    const dernier = prev[prev.length - 1]
+    const dernier = ordonnerParPage(prev, pages.map(p => p.pageLue)).at(-1)
     return [...prev, arretVide(dernier?.page ?? 1, dernier)]
   })
 
+  // Ordre de la feuille (« x/y » lus), qui sera aussi le rang enregistré.
+  const ordonnes = useMemo(() => ordonnerParPage(arrets, pages.map(p => p.pageLue)), [arrets, pages])
   const totaux = useMemo(() => totauxApercu(arrets), [arrets])
   const entete = useMemo(() => fusionnerEntetes(Object.values(entetes), pages.length), [entetes, pages.length])
   const manques = manquesApercu(arrets)
   const enLecture = pages.find(p => p.etat === 'lecture')
-  const lues = pages.filter(p => p.etat === 'ok' || p.etat === 'erreur').length
+  const traitees = pages.filter(p => p.etat === 'ok' || p.etat === 'erreur').length
   const enErreur = pages.filter(p => p.etat === 'erreur')
-  const affiches = seulementAVerifier ? arrets.filter(a => a.a_verifier) : arrets
+  const lues = pages.filter(p => p.etat === 'ok').map(p => p.pageLue)
+  const manquantes = pagesManquantes(lues)
+  const enDouble = pagesEnDouble(lues)
+  const totalFeuille = Math.max(0, ...lues.map(p => p?.total ?? 0))
+  const affiches = seulementAVerifier ? ordonnes.filter(a => a.a_verifier) : ordonnes
 
   const creer = async () => {
     if (manques.length) return
     setCreation(true)
     const { id, error } = await creerTourneeColis({
-      companyId, memberId, date, clientId: clientId || null, entete, arrets,
+      companyId, memberId, date, clientId: clientId || null, entete, arrets: ordonnes,
     })
     setCreation(false)
     if (error || !id) { toast(error?.message ?? 'Création impossible', 'error'); return }
     toast(`Tournée créée : ${totaux.arrets + totaux.collectes} arrêts`, 'success')
     onCree(id)
   }
+
+  const aLire = pages.filter(p => p.etat !== 'ok').length
 
   // ── Étape 1 : photos ──────────────────────────────────────────────────────
   if (etape === 'photos') {
@@ -193,8 +214,10 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
 
         <div className="flex gap-2">
           <button type="button" onClick={onAnnuler} className={`${btnSecondaire} flex-1`}>Annuler</button>
-          <button type="button" onClick={toutLire} disabled={pages.length === 0} className={`${btnPrimaire} flex-[2]`}>
-            <ScanText size={18} /> Lire {pages.length > 1 ? `les ${pages.length} pages` : 'la page'}
+          <button type="button" onClick={aLire === 0 ? () => setEtape('apercu') : toutLire}
+            disabled={pages.length === 0} className={`${btnPrimaire} flex-[2]`}>
+            <ScanText size={18} />
+            {aLire === 0 ? 'Voir les arrêts lus' : `Lire ${aLire > 1 ? `les ${aLire} pages` : 'la page'}`}
           </button>
         </div>
       </div>
@@ -203,7 +226,7 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
 
   // ── Étape 2 : lecture ─────────────────────────────────────────────────────
   if (etape === 'lecture') {
-    const pct = pages.length ? Math.round((lues / pages.length) * 100) : 0
+    const pct = pages.length ? Math.round((traitees / pages.length) * 100) : 0
     return (
       <div className="flex flex-col gap-3 py-6" aria-live="polite">
         <div className="flex items-center gap-2 text-sm font-medium text-[var(--text)]">
@@ -231,7 +254,10 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
   }
 
   // ── Étape 3 : aperçu ──────────────────────────────────────────────────────
-  const ecartFeuille = entete.nb_colis != null && entete.nb_colis !== totaux.colis
+  // Même règle que le contrôle par ligne : tous les numéros (collectes comprises).
+  const colisFeuille = arrets.reduce((n, a) => n + a.quantite, 0)
+  const ecartFeuille = entete.nb_colis != null && entete.nb_colis !== colisFeuille
+  const ecartPgeo = entete.nb_pgeo != null && entete.nb_pgeo !== arrets.length
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1 p-3 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)]">
@@ -241,13 +267,35 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
         </p>
         <p className="text-xs text-[var(--text-muted)]">
           {pages.length} page{pages.length > 1 ? 's' : ''} lue{pages.length > 1 ? 's' : ''}
+          {totalFeuille > 0 && ` sur ${totalFeuille}`}
           {entete.circuit && ` · circuit ${entete.circuit}`}{entete.vehicule && ` · ${entete.vehicule}`}
-          {entete.date && ` · feuille du ${entete.date}`}
+          {entete.date && ` · feuille du ${entete.date}`}{entete.depart && ` · départ ${entete.depart}`}
+          {entete.livreur && ` · ${entete.livreur}`}
         </p>
+        {manquantes.length > 0 && (
+          <p className="flex items-start gap-1.5 text-sm text-[var(--danger)]">
+            <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+            Page{manquantes.length > 1 ? 's' : ''} {manquantes.map(n => `${n}/${totalFeuille}`).join(', ')} non
+            scannée{manquantes.length > 1 ? 's' : ''} : ajoute {manquantes.length > 1 ? 'les photos' : 'la photo'} (bouton Photos).
+          </p>
+        )}
+        {enDouble.length > 0 && (
+          <p className="flex items-start gap-1.5 text-sm text-[var(--warning)]">
+            <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+            Page{enDouble.length > 1 ? 's' : ''} {enDouble.join(', ')} photographiée{enDouble.length > 1 ? 's' : ''} deux
+            fois : supprime les arrêts en double.
+          </p>
+        )}
+        {ecartPgeo && (
+          <p className="flex items-start gap-1.5 text-sm text-[var(--warning)]">
+            <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+            La feuille annonce {entete.nb_pgeo} PGEO, la lecture trouve {arrets.length} numéros.
+          </p>
+        )}
         {ecartFeuille && (
           <p className="flex items-start gap-1.5 text-sm text-[var(--warning)]">
             <AlertTriangle size={15} className="shrink-0 mt-0.5" />
-            La feuille annonce {entete.nb_colis} colis, la lecture en trouve {totaux.colis} : vérifie les lignes.
+            La feuille annonce {entete.nb_colis} colis, la lecture en trouve {colisFeuille} : vérifie les lignes.
           </p>
         )}
       </div>
@@ -284,7 +332,7 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
 
       <ol className="flex flex-col gap-2">
         {affiches.map(a => (
-          <LigneApercu key={a.cle} a={a} rang={arrets.indexOf(a) + 1}
+          <LigneApercu key={a.cle} a={a} rang={ordonnes.indexOf(a) + 1}
             onModifier={patch => modifier(a.cle, patch)} onSupprimer={() => supprimer(a.cle)} />
         ))}
       </ol>
@@ -337,6 +385,11 @@ function LigneApercu({ a, rang, onModifier, onSupprimer }: {
           aria-invalid={!a.rue?.trim()} />
         <BoutonIcone icone={Trash2} libelle="Supprimer l'arrêt" onClick={onSupprimer} taille="sm" />
       </div>
+      {a.secteur && (
+        <p className="pl-[6.75rem] -mt-1.5 text-xs text-[var(--text-muted)] truncate" title="Secteur (colonne District)">
+          {a.secteur}
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2 pl-9">
         <input value={a.commune ?? ''} onChange={e => onModifier({ commune: e.target.value || null })}
           placeholder="Commune" aria-label="Commune" className={`${champ} flex-1 basis-[9rem]`}
@@ -360,9 +413,10 @@ function LigneApercu({ a, rang, onModifier, onSupprimer }: {
         <span className={`inline-flex items-center gap-1 ${geo.cls}`}><MapPin size={13} /> {geo.texte}</span>
         {a.note && <span className="text-[var(--text-muted)]">{a.note}</span>}
         {a.a_verifier && (
-          <button type="button" onClick={() => onModifier({ a_verifier: false })}
-            className="inline-flex items-center gap-1 min-h-7">
+          <button type="button" onClick={() => onModifier({ a_verifier: false, motif: null })}
+            className="inline-flex flex-wrap items-center gap-1 min-h-7 text-left">
             <Badge color="warning">À vérifier</Badge>
+            {a.motif && <span className="text-[var(--warning)]">{a.motif}</span>}
             <span className="text-[var(--text-muted)] underline">c'est bon</span>
           </button>
         )}
