@@ -193,3 +193,12 @@
 - Limites : la position des retraits n'est pas sur la carte ni dans « Itinéraire complet »
   (pas de coordonnées stockées) ; « urgent » = priorité (servi si tout ne rentre pas), pas
   « en premier » : pour imposer une heure, mettre un créneau.
+
+### Tournées de colis du jour (lot TC1, 17/10/2026, PR à tester)
+- Bloc en tête de la colonne de droite : une ligne par feuille de route scannée (salarié,
+  client, statut, barre d'avancement, arrêts et colis traités / total, livrés / attente /
+  retour, collectes) ; supprimer (droit `planning.tournees : delete`).
+- « Scanner pour un salarié » (droit `planning.tournees : update`) : tiroir, choix du salarié,
+  même scanner que Mes courses (`shared/ui/ScanFeuilleRoute`), à la date choisie.
+- Ces tournées ne passent PAS par l'optimiseur ni par `tours` / `deliveries`.
+
