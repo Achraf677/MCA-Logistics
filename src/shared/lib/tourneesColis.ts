@@ -1,0 +1,290 @@
+// Tournée de colis (messagerie Colissimo, lot T1) — PUR, testé (tourneesColis.test.ts).
+// Une feuille de route scannée = une tournée ; un arrêt = un numéro d'une rue (ou la rue
+// entière), avec ses colis, son type (c domicile · rc point relais · col collecte) et son
+// statut terrain. Ces arrêts ne sont PAS des `deliveries` (le relevé mensuel reste la seule
+// ligne de facturation). Partagé : Mes courses › Ma tournée (salarié) et Tournées (bureau).
+
+export type StatutTourneeColis = 'a_faire' | 'en_cours' | 'cloturee'
+export type TypeArretColis = 'c' | 'rc' | 'col'
+export type StatutArretColis =
+  | 'livre' | 'avise' | 'instance' | 'refuse' | 'npai' | 'adresse' | 'acces' | 'endommage' | 'nonpres'
+  | 'rc_remis' | 'rc_ferme' | 'rc_sature'
+  | 'col_ok' | 'col_rien' | 'col_nf'
+
+export interface EnteteFeuille {
+  date?: string | null
+  vehicule?: string | null
+  circuit?: string | null
+  agence?: string | null
+  tournee?: string | null
+  nb_colis?: number | null
+  nb_arrets?: number | null
+  /** Pages scannées pour créer la tournée. */
+  pages?: number
+}
+
+export interface TourneeColis {
+  id: string
+  company_id: string
+  member_id: string
+  date: string
+  client_id: string | null
+  statut: StatutTourneeColis
+  entete: EnteteFeuille | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  team_members?: { full_name: string } | null
+  clients?: { name: string } | null
+}
+
+export interface ArretColis {
+  id: string
+  tournee_id: string
+  company_id: string
+  rang: number
+  commune: string
+  cp: string | null
+  rue: string
+  numero: string | null
+  type: TypeArretColis
+  quantite: number
+  colis_remis: number | null
+  lat: number | null
+  lng: number | null
+  geo_precision: 'numero' | 'rue' | null
+  statut: StatutArretColis | null
+  statut_le: string | null
+  statut_par: string | null
+  note: string | null
+}
+
+/** Arrêt lu sur la feuille (Edge `lire-feuille-route`), corrigé dans l'aperçu avant création. */
+export interface ArretLu {
+  /** Clé locale de l'aperçu (pas en base). */
+  cle: string
+  commune: string | null
+  cp: string | null
+  rue: string | null
+  numero: string | null
+  quantite: number
+  type: TypeArretColis
+  note: string | null
+  a_verifier: boolean
+  lat: number | null
+  lng: number | null
+  geo_precision: 'numero' | 'rue' | null
+  /** Page de la feuille (1, 2…). */
+  page: number
+}
+
+// ── Libellés ────────────────────────────────────────────────────────────────
+
+export const LIBELLE_TYPE_ARRET: Record<TypeArretColis, string> = {
+  c: 'Domicile', rc: 'Point relais', col: 'Collecte',
+}
+
+export const LIBELLE_STATUT_ARRET: Record<StatutArretColis, string> = {
+  livre: 'Livré', avise: 'Avisé', instance: 'En instance', refuse: 'Refusé', npai: 'NPAI',
+  adresse: 'Adresse incomplète', acces: 'Accès impossible', endommage: 'Endommagé',
+  nonpres: 'Non présenté', rc_remis: 'Remis au relais', rc_ferme: 'Relais fermé',
+  rc_sature: 'Relais saturé', col_ok: 'Collecté', col_rien: 'Rien à collecter',
+  col_nf: 'Collecte non faite',
+}
+
+export const LIBELLE_STATUT_TOURNEE: Record<StatutTourneeColis, string> = {
+  a_faire: 'À faire', en_cours: 'En cours', cloturee: 'Clôturée',
+}
+
+/** Le geste « fait » d'un arrêt, selon son type (un seul appui). */
+export const STATUT_FAIT: Record<TypeArretColis, StatutArretColis> = {
+  c: 'livre', rc: 'rc_remis', col: 'col_ok',
+}
+
+/** Les autres issues proposées, selon le type. */
+export const AUTRES_STATUTS: Record<TypeArretColis, StatutArretColis[]> = {
+  c: ['avise', 'instance', 'refuse', 'acces', 'npai', 'adresse', 'endommage'],
+  rc: ['rc_ferme', 'rc_sature', 'acces'],
+  col: ['col_rien', 'col_nf', 'acces'],
+}
+
+// ── Familles ────────────────────────────────────────────────────────────────
+
+/**
+ * - livré : le colis a quitté le véhicule chez son destinataire / au relais, ou la collecte
+ *   est faite (y compris « rien à collecter ») ;
+ * - attente : le colis reste dans le circuit (avis de passage, instance, relais fermé ou
+ *   saturé, accès impossible, non présenté, collecte non faite) ;
+ * - retour : le colis repart à l'expéditeur (refusé, NPAI, adresse incomplète, endommagé).
+ */
+export type FamilleStatut = 'livre' | 'attente' | 'retour'
+
+const FAMILLE: Record<StatutArretColis, FamilleStatut> = {
+  livre: 'livre', rc_remis: 'livre', col_ok: 'livre', col_rien: 'livre',
+  avise: 'attente', instance: 'attente', acces: 'attente', nonpres: 'attente',
+  rc_ferme: 'attente', rc_sature: 'attente', col_nf: 'attente',
+  refuse: 'retour', npai: 'retour', adresse: 'retour', endommage: 'retour',
+}
+
+export function familleStatut(s: StatutArretColis | null | undefined): FamilleStatut | null {
+  return s ? FAMILLE[s] ?? null : null
+}
+
+/** Colis réellement remis à un arrêt (partiel possible) ; 0 si non livré. */
+export function colisRemis(a: Pick<ArretColis, 'statut' | 'quantite' | 'colis_remis'>): number {
+  if (familleStatut(a.statut) !== 'livre') return 0
+  return Math.min(a.quantite, Math.max(0, a.colis_remis ?? a.quantite))
+}
+
+// ── Compteurs ───────────────────────────────────────────────────────────────
+
+export interface CompteursTournee {
+  /** Arrêts de livraison (domicile + relais). */
+  arrets: number
+  arretsTraites: number
+  /** Colis à livrer (domicile + relais). */
+  colis: number
+  colisTraites: number
+  colisLivres: number
+  colisAttente: number
+  colisRetour: number
+  collectes: number
+  collectesTraitees: number
+}
+
+/**
+ * Un arrêt est traité dès qu'il a un statut. Ses colis comptent « traités » ; « livrés » =
+ * colis remis (partiel compris), le reste d'un livré partiel compte en attente. Les
+ * collectes sont comptées à part : elles n'apportent aucun colis à livrer.
+ */
+export function compteursTournee(arrets: Array<Pick<ArretColis, 'type' | 'statut' | 'quantite' | 'colis_remis'>>): CompteursTournee {
+  const c: CompteursTournee = {
+    arrets: 0, arretsTraites: 0, colis: 0, colisTraites: 0, colisLivres: 0, colisAttente: 0,
+    colisRetour: 0, collectes: 0, collectesTraitees: 0,
+  }
+  for (const a of arrets) {
+    if (a.type === 'col') {
+      c.collectes++
+      if (a.statut) c.collectesTraitees++
+      continue
+    }
+    c.arrets++
+    c.colis += a.quantite
+    const f = familleStatut(a.statut)
+    if (!f) continue
+    c.arretsTraites++
+    c.colisTraites += a.quantite
+    if (f === 'livre') {
+      const r = colisRemis(a)
+      c.colisLivres += r
+      c.colisAttente += a.quantite - r
+    } else if (f === 'attente') c.colisAttente += a.quantite
+    else c.colisRetour += a.quantite
+  }
+  return c
+}
+
+/** Avancement 0 → 100 (arrêts traités, collectes comprises). */
+export function avancementPct(c: CompteursTournee): number {
+  const total = c.arrets + c.collectes
+  if (total === 0) return 0
+  return Math.round(((c.arretsTraites + c.collectesTraitees) / total) * 100)
+}
+
+/** Statut de la tournée après un geste : un premier arrêt traité la passe « en cours ». */
+export function statutApresGeste(t: StatutTourneeColis, arretsTraites: number): StatutTourneeColis {
+  return t === 'a_faire' && arretsTraites > 0 ? 'en_cours' : t
+}
+
+// ── Aperçu avant création ───────────────────────────────────────────────────
+
+let compteurCle = 0
+/** Clé locale unique d'un arrêt de l'aperçu. */
+export function nouvelleCle(): string {
+  compteurCle += 1
+  return `a${Date.now().toString(36)}${compteurCle}`
+}
+
+export function arretVide(page: number, modele?: Pick<ArretLu, 'commune' | 'cp'>): ArretLu {
+  return {
+    cle: nouvelleCle(), commune: modele?.commune ?? null, cp: modele?.cp ?? null, rue: null, numero: null,
+    quantite: 1, type: 'c', note: null, a_verifier: false, lat: null, lng: null, geo_precision: null, page,
+  }
+}
+
+/** Réponse de l'Edge (déjà nettoyée côté serveur) → arrêts de l'aperçu, revérifiés. */
+export function arretsDepuisLecture(brut: unknown, page: number): ArretLu[] {
+  if (!Array.isArray(brut)) return []
+  const txt = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  return brut.filter(x => x && typeof x === 'object').map(x => {
+    const a = x as Record<string, unknown>
+    const type = a.type === 'rc' || a.type === 'col' ? a.type : 'c'
+    const q = Number(a.quantite)
+    const prec = a.geo_precision === 'numero' || a.geo_precision === 'rue' ? a.geo_precision : null
+    return {
+      cle: nouvelleCle(), commune: txt(a.commune), cp: txt(a.cp), rue: txt(a.rue), numero: txt(a.numero),
+      quantite: Number.isInteger(q) && q >= 1 ? Math.min(q, 999) : 1, type, note: txt(a.note),
+      a_verifier: a.a_verifier === true, lat: num(a.lat), lng: num(a.lng),
+      geo_precision: prec, page,
+    }
+  })
+}
+
+/** Ce qui bloque la création (seul le strict minimum : commune et rue de chaque arrêt). */
+export function manquesApercu(arrets: ArretLu[]): string[] {
+  if (arrets.length === 0) return ['Aucun arrêt']
+  const m: string[] = []
+  const sansCommune = arrets.filter(a => !a.commune?.trim()).length
+  const sansRue = arrets.filter(a => !a.rue?.trim()).length
+  if (sansCommune) m.push(`${sansCommune} arrêt${sansCommune > 1 ? 's' : ''} sans commune`)
+  if (sansRue) m.push(`${sansRue} arrêt${sansRue > 1 ? 's' : ''} sans rue`)
+  return m
+}
+
+/** Totaux de l'aperçu, pour les comparer à l'en-tête de la feuille. */
+export function totauxApercu(arrets: ArretLu[]): { arrets: number; colis: number; collectes: number; aVerifier: number } {
+  let colis = 0; let collectes = 0; let aVerifier = 0; let n = 0
+  for (const a of arrets) {
+    if (a.a_verifier) aVerifier++
+    if (a.type === 'col') { collectes++; continue }
+    n++; colis += a.quantite
+  }
+  return { arrets: n, colis, collectes, aVerifier }
+}
+
+/** Un changement d'adresse rend la position lue caduque. */
+export function modifierArretLu(a: ArretLu, patch: Partial<Omit<ArretLu, 'cle'>>): ArretLu {
+  const adresse = (['commune', 'cp', 'rue', 'numero'] as const).some(k => k in patch && patch[k] !== a[k])
+  const r = { ...a, ...patch }
+  if (adresse) { r.lat = null; r.lng = null; r.geo_precision = null }
+  if ('quantite' in patch) r.quantite = Math.max(1, Math.min(999, Math.round(Number(patch.quantite) || 1)))
+  return r
+}
+
+/** Aperçu → lignes `tournees_colis_arrets` (rang = ordre de la feuille, page après page). */
+export function lignesArrets(arrets: ArretLu[], tourneeId: string, companyId: string) {
+  return arrets.map((a, i) => ({
+    tournee_id: tourneeId, company_id: companyId, rang: i + 1,
+    commune: (a.commune ?? '').trim().toUpperCase(), cp: a.cp?.trim() || null,
+    rue: (a.rue ?? '').trim(), numero: a.numero?.trim() || null,
+    type: a.type, quantite: a.quantite, note: a.note?.trim() || null,
+    lat: a.lat, lng: a.lng, geo_precision: a.geo_precision,
+  }))
+}
+
+/** En-têtes des pages → un seul en-tête (premières valeurs lues ; colis / arrêts : la plus grande). */
+export function fusionnerEntetes(entetes: Array<EnteteFeuille | null | undefined>, pages: number): EnteteFeuille {
+  const out: EnteteFeuille = { pages }
+  for (const e of entetes) {
+    if (!e) continue
+    for (const k of ['date', 'vehicule', 'circuit', 'agence', 'tournee'] as const) {
+      if (out[k] == null && typeof e[k] === 'string' && e[k]) out[k] = e[k]
+    }
+    for (const k of ['nb_colis', 'nb_arrets'] as const) {
+      const v = e[k]
+      if (typeof v === 'number' && (out[k] == null || v > (out[k] as number))) out[k] = v
+    }
+  }
+  return out
+}

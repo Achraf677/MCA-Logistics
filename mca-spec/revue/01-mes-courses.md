@@ -136,7 +136,26 @@ Pas bon — reste
 - Idées PC : vue équipe (carte des chauffeurs, avancement par tournée), créneau horaire
   retrait / livraison, traitement des échecs dans Livraisons (revue de l'onglet Livraisons).
 
+### Ma tournée — lot TC1 « tournée de colis : socle » (17/10/2026, PR à tester)
+- Onglet « Ma tournée » (2e de la barre du bas). Pas de tournée : « Scanner ma feuille de
+  route » (aujourd'hui seulement) → une photo par page (appareil ou galerie, compressée
+  ~130 Ko) → lecture page par page avec progression (Edge `lire-feuille-route`) → aperçu :
+  chaque arrêt modifiable (n°, rue, commune, CP, colis, type), supprimer, ajouter ; « à
+  vérifier » si la somme des colis d'une ligne ≠ « Nb Colis » imprimé ; écart avec le total de
+  l'en-tête signalé ; localisation affichée (numéro / rue / aucune) → « Créer la tournée ».
+- Tournée : compteur collé en haut (arrêts et colis traités / total, livrés · en attente ·
+  en retour, collectes), « Prochain : … », arrêts groupés par commune dans l'ordre de la
+  feuille. Par arrêt : « Livré » / « Remis » / « Collecté » en un geste ; « … » = autres issues
+  selon le type (domicile : avisé, instance, refusé, accès, NPAI, adresse, endommagé · relais :
+  fermé, saturé, accès · collecte : rien, non faite, accès), colis remis partiel si > 1 colis,
+  note, effacer le statut. Supprimer la tournée (scan raté), scanner une autre feuille.
+- Écrit : `tournees_colis` (création, passe « en cours » au 1er geste), `tournees_colis_arrets`.
+- Hors lot : tri par route, carte, GPS, photos, clôture.
+
 ## 9. À tester après chaque PR
+- (TC1) Scanner une vraie feuille de 2 pages : arrêts dans l'ordre, « (3) » = 3 colis, RC et
+  [C] reconnus, lignes de biais marquées « à vérifier » ; Livré en un geste ; partiel ;
+  un autre salarié ne voit pas la tournée ; tournée clôturée non modifiable.
 - Téléphone, compte chauffeur : Démarrer → Charger (preuve) → Livrer (preuve).
 - Problème « Absent » → alerte rouge dans la cloche côté bureau → Livrer → alerte éteinte.
 - Heure prévue passée → rouge ; dans l'heure → orange.

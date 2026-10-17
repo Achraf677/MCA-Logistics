@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **14/10/2026** (Espace salarié S0 / S0-bis / S1 appliqués ; prochain : test S1 avec Lucas, puis U6).
+> Dernière mise à jour : **17/10/2026** (Tournée de colis TC1 codée, PR à tester ; espace salarié S0 → S1 appliqués ; prochain : test TC1 + S1 avec Lucas, puis U6).
 
 ---
 
@@ -39,6 +39,12 @@
   - facture Pennylane : 1 ligne, quantité = colis, PU = prix au colis ;
   - ni arrêt ni chauffeur : exclu de Mes courses, Tournées, Planning, Calendrier, journée du
     Dashboard (filtre `prestation.is.null,prestation.not.in.(messagerie,forfait)`).
+  - **Tournée de colis** (lot TC1, 17/10/2026) : la feuille de route Colissimo du matin
+    (tableau District | Rue | Nb Colis | Nb PGEO | N° | CRBT ; « (3) » = 3 colis au numéro,
+    « RC » = point relais, « [C] » = collecte) est photographiée page par page, lue par
+    l'Edge `lire-feuille-route`, puis traitée arrêt par arrêt dans Mes courses › Ma tournée.
+    Tables `tournees_colis` / `tournees_colis_arrets` : **ce ne sont PAS des deliveries**
+    (le relevé mensuel reste la seule ligne de facturation ; rien n'est relié à la paie).
 - **Prestations** (`deliveries.prestation`) : `express` · `messagerie` (relevé) · `dediee` ·
   `mise_a_dispo` (un lieu, début / fin) · `forfait` (aucun arrêt). `null` = ancienne course = express.
 - Tout écran doit servir tous les cas : ne jamais coder « 1 course = 1 colis = 1 arrêt » en dur.
@@ -187,6 +193,9 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   (liste, facturation, lettre de voiture, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie)
   · 04 Planning ✔ (lots P1-P4 : vue par chauffeur, affectation rapide, tournées en retard,
   calendrier enrichi, puis fondu dans le Planning en vue « Mois »).
+- Mes courses (salarié) : 5 onglets — Courses · **Ma tournée** (feuille de route de colis
+  scannée, TC1) · Ma journée · Dépenses · Moi. Tournées (bureau) : bloc « Tournées de colis du
+  jour » + « Scanner pour un salarié ».
 - Fiche livraison : prestation, client avec recherche, référence client (reprise sur la facture),
   urgent, arrêts complets (contact, téléphone, créneaux), trajet auto (IGN), marchandise
   (colis, poids, volume), consignes / note interne, Dupliquer, 3 onglets (Course · Preuves &
@@ -311,6 +320,17 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   domicile / relais, saisir une journée avec photo, la valider côté bureau.
   Piège : `id = any((select f()))` est refusé par Postgres (sous-requête) → `(select f()) @> array[id]` ;
   remplacer une policy = `alter policy` (pas de drop + create : trou d'accès et timeout MCP).
+- **Tournée de colis — TC1 « socle »** (demandé en urgence le 17/10/2026, branche
+  `feat/tournee-colis-socle`, PR à tester, PAS mergée) : migration
+  `20261017090000_tournees_colis` (**NON appliquée** : l'utilisateur fait le db push), Edge
+  `lire-feuille-route` (**à déployer**, verify_jwt true) ; `_shared/feuilleRoute.ts` (découpage
+  de la case N°, contrôle « Nb Colis », testé) et `_shared/geocodeArret.ts` (BAN : numéro, sinon
+  centre de rue, sinon rien ; fichier séparé = `geocode()` inchangé). Front : `shared/lib/
+  tourneesColis(.queries).ts`, `shared/ui/ScanFeuilleRoute.tsx`, `mescourses/MaTournee.tsx` +
+  `tourneeColis.logic.ts`, `tournees/TourneesColisDuJour.tsx`. Familles de statut (livré /
+  attente / retour) choisies par Claude : **à valider**. Lots suivants : tri par route, carte,
+  GPS, photos, clôture (et lien éventuel avec la journée de colis S1).
+  Banc de captures : Playwright + `page.route` sur une base simulée (aucun appel prod).
 - U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;
   pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
 - Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.

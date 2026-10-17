@@ -31,6 +31,7 @@ import type { OverviewTour } from './ToursOverviewMap'
 import type { Tour, TourDelivery, Assignment, VehiculeTournee, ChauffeurTournee } from './tournees.types'
 import { alertesAffectation } from '../../shared/lib/documentsAffectation'
 import { Field } from '../../shared/ui/Field'
+import { TourneesColisDuJour } from './TourneesColisDuJour'
 
 // Lazy-load : Leaflet hors bundle initial (chunk séparé).
 const ToursOverviewMap = lazy(() => import('./ToursOverviewMap'))
@@ -645,6 +646,9 @@ export function Tournees() {
 
         {/* ── Colonne tournées ────────────────────────────────────────────── */}
         <div className="flex flex-col gap-3 lg:overflow-y-auto lg:pr-1">
+          {/* Messagerie : feuilles de route scannées (hors deliveries, hors optimisation). */}
+          {companyId && <TourneesColisDuJour companyId={companyId} date={date} />}
+
           {/* Avertissement non réparties */}
           {unassignedCount > 0 && (
             <div className="flex items-start gap-2 px-3 py-2.5 rounded-[var(--r-md)]

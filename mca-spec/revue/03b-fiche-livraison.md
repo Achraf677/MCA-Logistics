@@ -150,6 +150,9 @@
   réglé, frais d'annulation, annulation par avoir.
 - Lot D — multi-arrêts + messagerie : N arrêts / colis, import fichier, LV de tournée
   (état récapitulatif), relevé mensuel.
+  → Socle « tournée de colis » fait en TC1 (17/10/2026) hors `deliveries` : feuille de route
+  scannée, arrêts et statuts terrain (voir revue 01 et 04a). Restent : LV de tournée, relevé
+  déduit, scan code-barres.
 - Lot E — conformité facture : pied carburant, références dans le libellé, pays client,
   CMR.
 
