@@ -1,4 +1,4 @@
-// Espace salarié (Mes courses › Ma journée, Dépenses, Moi) — PUR, testé.
+// Espace salarié (Mes courses › Ma tournée, Ma journée, Dépenses, Moi) — PUR, testé.
 // Les règles métier partagées avec le bureau vivent dans `shared/lib/journeesColis.ts` et
 // `shared/lib/depenses.ts` ; ici, seulement ce qui sert à l'écran du salarié.
 import { colisRetenus, nombreColis, remunerationCts, type JourneeColis, type SaisieJournee, type TotauxColis } from '../../shared/lib/journeesColis'
@@ -6,9 +6,9 @@ import { manquesDepense, montantSaisiEnCts, type CategorieDepense, type MoyenPai
 
 // ── Onglets ─────────────────────────────────────────────────────────────────
 
-export type OngletEspace = 'courses' | 'journee' | 'depenses' | 'moi'
+export type OngletEspace = 'courses' | 'tournee' | 'journee' | 'depenses' | 'moi'
 
-export const ONGLETS_ESPACE: OngletEspace[] = ['courses', 'journee', 'depenses', 'moi']
+export const ONGLETS_ESPACE: OngletEspace[] = ['courses', 'tournee', 'journee', 'depenses', 'moi']
 
 /** `?onglet=` → onglet connu ; tout le reste (absent, faux) → « courses ». */
 export function lireOnglet(v: string | null | undefined): OngletEspace {

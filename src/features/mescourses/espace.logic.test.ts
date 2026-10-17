@@ -21,6 +21,7 @@ describe('onglets', () => {
   it('lit un onglet connu, sinon courses', () => {
     expect(lireOnglet('journee')).toBe('journee')
     expect(lireOnglet('moi')).toBe('moi')
+    expect(lireOnglet('tournee')).toBe('tournee')
     expect(lireOnglet(null)).toBe('courses')
     expect(lireOnglet('ticket')).toBe('courses')
   })
