@@ -67,10 +67,16 @@ describe('lignesEnArrets', () => {
     expect(a.map(x => [x.numero, x.quantite, x.type])).toEqual([['5', 2, 'c'], ['13', 21, 'rc'], ['11', 1, 'col']]);
     expect(a.every(x => !x.a_verifier && x.motif === null)).toBe(true);
   });
-  it('écart Nb Colis ou Nb PGEO → toute la ligne à vérifier, avec le motif', () => {
-    const a = lignesEnArrets([ligne({ commune_bandeau: '67170 KRIEGSHEIM', numeros: '1, 3(4)', nb_colis: 4, nb_pgeo: 2 })]);
+  it('exposant mal lu : Nb Colis imprimé fait foi quand aucun numéro n’est perdu', () => {
+    const seul = lignesEnArrets([ligne({ commune_bandeau: '67170 KRIEGSHEIM', numeros: 'RC13(2)', nb_colis: 3, nb_pgeo: 1 })]);
+    expect(seul[0]).toMatchObject({ quantite: 3, type: 'rc', a_verifier: false, motif: null });
+    const deux = lignesEnArrets([ligne({ commune_bandeau: '67170 KRIEGSHEIM', numeros: '1, 3(4)', nb_colis: 4, nb_pgeo: 2 })]);
+    expect(deux.map(x => [x.numero, x.quantite, x.a_verifier])).toEqual([['1', 1, false], ['3', 3, false]]);
+  });
+  it('écart ambigu (plusieurs exposants ou numéros perdus) → ligne à vérifier, avec le motif', () => {
+    const a = lignesEnArrets([ligne({ commune_bandeau: '67170 KRIEGSHEIM', numeros: '1(2), 3(2)', nb_colis: 5, nb_pgeo: 2 })]);
     expect(a.every(x => x.a_verifier)).toBe(true);
-    expect(a[0].motif).toBe('5 colis lus, 4 annoncés');
+    expect(a[0].motif).toBe('4 colis lus, 5 annoncés');
   });
   it('numéros manquants (moins de colis ET moins de numéros) → ligne « n° illisible » ajoutée d’office', () => {
     const a = lignesEnArrets([ligne({ commune_bandeau: '67170 KRIEGSHEIM', rue: 'RUE A', numeros: '1, 3(2)', nb_colis: 4, nb_pgeo: 3 })]);
