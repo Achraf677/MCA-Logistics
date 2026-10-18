@@ -285,3 +285,35 @@ export function journeeDepuisArrets(arrets: ArretColis[]): ColisJournee {
 export function nonTraites(arrets: ArretColis[]): number {
   return arrets.filter(a => !a.statut).length
 }
+
+// ── Catégories (code couleur + avancement) ──────────────────────────────────
+
+export interface CategorieArret {
+  type: TypeArretColis
+  libelle: string
+  /** Variable CSS de la couleur de la catégorie. */
+  couleur: string
+  total: number
+  traites: number
+  colis: number
+}
+
+/** Classique = bleu · relais = violet · collecte = jaune ; seulement les catégories présentes. */
+export const COULEUR_CATEGORIE: Record<TypeArretColis, string> = {
+  c: 'var(--info)', rc: 'var(--accent-violet)', col: 'var(--warning)',
+}
+const LIBELLE_CATEGORIE: Record<TypeArretColis, string> = { c: 'Colis', rc: 'Relais', col: 'Collectes' }
+
+export function avancementParCategorie(arrets: Array<Pick<ArretColis, 'type' | 'statut' | 'quantite'>>): CategorieArret[] {
+  const out = (['c', 'rc', 'col'] as const).map(type => ({
+    type, libelle: LIBELLE_CATEGORIE[type], couleur: COULEUR_CATEGORIE[type], total: 0, traites: 0, colis: 0,
+  }))
+  for (const a of arrets) {
+    const c = out.find(x => x.type === a.type)
+    if (!c) continue
+    c.total++
+    c.colis += a.quantite
+    if (a.statut) c.traites++
+  }
+  return out.filter(c => c.total > 0)
+}

@@ -6,7 +6,7 @@ import { Badge } from '../../shared/ui/Badge'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { LIBELLE_STATUT_ARRET, LIBELLE_TYPE_ARRET, type ArretColis, type StatutArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
-import { numeroAffiche, modeOrdre } from '../../shared/lib/tourneesColisRoute'
+import { numeroAffiche, modeOrdre, COULEUR_CATEGORIE } from '../../shared/lib/tourneesColisRoute'
 import { majArret, ajouterPhotoArret, urlPhotoArret } from '../../shared/lib/tourneesColis.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { lienNavigation } from '../../shared/lib/navigation'
@@ -204,13 +204,15 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
 
   return (
     <>
-      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t border-[var(--border-strong)] bg-[var(--bg-elevated)]">
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t-4 bg-[var(--bg-elevated)]"
+        style={{ borderTopColor: COULEUR_CATEGORIE[arret.type] }}>
         <div className="mx-auto max-w-xl flex flex-col gap-2 p-3">
           <div className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
               <p className="text-lg font-bold leading-tight text-[var(--text)] truncate">{libelleAdresse(arret)}</p>
               <p className="text-sm text-[var(--text-muted)] truncate">
-                {arret.commune} · {arret.quantite} colis{arret.type !== 'c' ? ` · ${LIBELLE_TYPE_ARRET[arret.type]}` : ''}
+                {arret.commune} · {arret.quantite} colis
+                {arret.type !== 'c' && <strong style={{ color: COULEUR_CATEGORIE[arret.type] }}> · {LIBELLE_TYPE_ARRET[arret.type]}</strong>}
                 {arret.note ? ` · ${arret.note}` : ''}
               </p>
             </div>
@@ -262,7 +264,8 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
   const numero = numeroAffiche(arret, modeOrdre(tournee))
 
   return (
-    <li id={`arret-${arret.id}`} className={`flex items-stretch gap-2 rounded-[var(--r-lg)] border bg-[var(--bg-card)] ${
+    <li id={`arret-${arret.id}`} style={{ borderLeftColor: COULEUR_CATEGORIE[arret.type] }}
+      className={`flex items-stretch gap-2 rounded-[var(--r-lg)] border border-l-[6px] bg-[var(--bg-card)] ${
       glisse ? 'border-[var(--brand)] shadow-lg' : arret.statut ? 'border-[var(--border)] opacity-80' : 'border-[var(--border-strong)]'}`}>
       {poignee && !verrouillee ? (
         <button type="button" {...poignee} aria-label="Glisser pour changer l'ordre"
@@ -279,7 +282,7 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--text-muted)]">
           <span>{arret.quantite} colis</span>
           {arret.type !== 'c' && (
-            <span className="inline-flex items-center gap-1">
+            <span className="inline-flex items-center gap-1 font-semibold" style={{ color: COULEUR_CATEGORIE[arret.type] }}>
               {arret.type === 'rc' ? <Store size={14} /> : <PackagePlus size={14} />} {LIBELLE_TYPE_ARRET[arret.type]}
             </span>
           )}

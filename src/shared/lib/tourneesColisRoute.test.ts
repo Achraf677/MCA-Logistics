@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   arretsDansOrdre, prochainDansOrdre, sectionsListe, arretsAPlacer, deplacer, ordreManuel, libelleDuree, libelleDistance,
   bandeauOrdre, heurePassage, pointsCarte, couperTrace, doitEnvoyerPosition, ilYA, positionAncienne,
-  journeeDepuisArrets, nonTraites, modeOrdre, sansCalcul, idsOrdreHabituel,
+  journeeDepuisArrets, nonTraites, modeOrdre, sansCalcul, idsOrdreHabituel, avancementParCategorie,
 } from './tourneesColisRoute'
 import type { ArretColis, TrajetTournee } from './tourneesColis'
 
@@ -144,5 +144,15 @@ describe('clôture et journée déduite', () => {
   })
   it('non traités', () => {
     expect(nonTraites([a({}), a({ statut: 'livre' })])).toBe(1)
+  })
+})
+
+describe('avancement par catégorie', () => {
+  it('classique / relais / collecte : total, traités, colis ; catégories vides omises', () => {
+    const r = avancementParCategorie([
+      a({ type: 'c', quantite: 2, statut: 'livre' }), a({ type: 'c', quantite: 1 }),
+      a({ type: 'rc', quantite: 21, statut: 'rc_remis' }), a({ type: 'rc', quantite: 4 }),
+    ])
+    expect(r.map(c => [c.type, c.total, c.traites, c.colis])).toEqual([['c', 2, 1, 3], ['rc', 2, 1, 25]])
   })
 })

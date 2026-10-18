@@ -171,6 +171,9 @@ Pas bon — reste
   appui, appui sur la ligne = fiche. Plus d'heures estimées ni de textes d'aide ; en tête :
   arrêts, colis, kilomètres, « Recalculer » ; le reste (depuis ici, ordre habituel, partage de
   position) replié sous « Plus ».
+- Code couleur (18/10/2026) : classique = bleu, relais = violet, collecte = jaune (bandeau de
+  la ligne et de la barre du bas) ; en tête, une barre d'avancement par catégorie présente.
+  « Annuler » (8 s) après chaque geste, en gros bouton au-dessus de la barre du bas.
 - Lots 2 à 5 (18/10/2026, PR « suite ») :
   - Ordre : bandeau « Ordre de la feuille / par la route (km · durée · gain) / manuel » ;
     « Calculer l'itinéraire » (Edge `optimiser-tournee-colis`), recalcul (picto), « depuis ma

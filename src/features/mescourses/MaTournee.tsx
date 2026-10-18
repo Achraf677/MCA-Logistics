@@ -11,14 +11,14 @@ import { ScanFeuilleRoute } from '../../shared/ui/ScanFeuilleRoute'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
-import type { ArretColis, TourneeColis } from '../../shared/lib/tourneesColis'
+import { LIBELLE_STATUT_ARRET, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
 import {
   arretsAPlacer, bandeauOrdre, deplacer, doitEnvoyerPosition, grouperEnSuite, idsOrdreHabituel, libelleDistance, modeOrdre,
-  nonTraites, ordreManuel, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
+  nonTraites, avancementParCategorie, ordreManuel, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
 } from '../../shared/lib/tourneesColisRoute'
 import {
   listerTourneesColis, arretsDesTournees, supprimerTourneeColis, nomsClients, calculerItineraire,
-  ecrireOrdre, placerArret, chercherAdresse, photosArrets, cloturerTournee, preremplirJournee, envoyerPosition,
+  majArret, ecrireOrdre, placerArret, chercherAdresse, photosArrets, cloturerTournee, preremplirJournee, envoyerPosition,
   effacerPosition,
 } from '../../shared/lib/tourneesColis.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
@@ -117,9 +117,27 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
   const majTournee = (t: Partial<TourneeColis> & { id: string }) =>
     setTournees(prev => prev.map(x => (x.id === t.id ? { ...x, ...t } : x)))
 
+  const [annulation, setAnnulation] = useState<{ avant: ArretColis; libelle: string } | null>(null)
+  const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null)
   const surGeste = (maj: ArretColis) => {
+    const avant = arrets.find(a => a.id === maj.id)
+    if (avant && maj.statut && avant.statut !== maj.statut) {
+      setAnnulation({ avant, libelle: `${LIBELLE_STATUT_ARRET[maj.statut]} · ${libelleAdresse(maj)}` })
+      if (minuterie.current) clearTimeout(minuterie.current)
+      minuterie.current = setTimeout(() => setAnnulation(null), 8000)
+    }
     majArrets([maj])
     if (tournee?.statut === 'a_faire' && maj.statut) majTournee({ id: tournee.id, statut: 'en_cours' })
+  }
+
+  const annuler = async () => {
+    if (!annulation || !tournee) return
+    const { avant } = annulation
+    setAnnulation(null)
+    const patch = avant.statut ? { statut: avant.statut, colis_remis: avant.colis_remis } : { statut: null, colis_remis: null }
+    const { data, error } = await majArret(avant, patch, tournee)
+    if (error || !data) { toast(error?.message ?? 'Annulation impossible', 'error'); return }
+    majArrets([data])
   }
 
   const supprimer = async () => {
@@ -204,6 +222,18 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
         </>
       )}
 
+      {annulation && (
+        <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom)+12rem)] z-40 px-3">
+          <div className="mx-auto max-w-xl flex items-center gap-3 p-2 pl-4 rounded-[var(--r-lg)] border border-[var(--border-strong)] bg-[var(--bg-card)] shadow-lg">
+            <p className="flex-1 min-w-0 text-base font-semibold text-[var(--text)] truncate">{annulation.libelle}</p>
+            <button type="button" onClick={annuler}
+              className="min-h-14 px-5 inline-flex items-center gap-2 rounded-[var(--r-md)] bg-[var(--brand)] text-white text-base font-bold active:scale-[0.97]">
+              <Undo2 size={20} /> Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog open={aSupprimer} title="Supprimer cette tournée ?"
         message="Les arrêts et ce que tu y as noté seront effacés. À faire seulement si le scan est raté."
         confirmLabel="Supprimer" loading={suppression}
@@ -242,8 +272,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   const mode = modeOrdre(tournee)
   const c = useMemo(() => compteursTournee(arrets), [arrets])
   const lib = libelleCompteurs(c)
-  const total = c.arrets + c.collectes
-  const pct = total ? Math.round(((c.arretsTraites + c.collectesTraitees) / total) * 100) : 0
+  const categories = useMemo(() => avancementParCategorie(arrets), [arrets])
   const prochain = prochainDansOrdre(arrets, mode)
   const bandeau = bandeauOrdre(tournee)
   const aPlacer = useMemo(() => arretsAPlacer(arrets), [arrets])
@@ -391,9 +420,19 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
             <p className="text-2xl font-bold tabular-nums text-[var(--text)]">{lib.arrets} <span className="text-base font-medium text-[var(--text-muted)]">arrêts</span></p>
             <p className="text-2xl font-bold tabular-nums text-[var(--text)]">{lib.colis} <span className="text-base font-medium text-[var(--text-muted)]">colis</span></p>
           </div>
-          <div className="h-2 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden" aria-hidden>
-            <div className="h-full bg-[var(--success)] transition-[width]" style={{ width: `${pct}%` }} />
-          </div>
+          <ul className="flex flex-col gap-2">
+            {categories.map(cat => (
+              <li key={cat.type} className="flex flex-col gap-1">
+                <div className="flex items-baseline justify-between text-base">
+                  <span className="font-semibold" style={{ color: cat.couleur }}>{cat.libelle}</span>
+                  <span className="tabular-nums text-[var(--text)]">{cat.traites} / {cat.total}</span>
+                </div>
+                <div className="h-3 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden" aria-hidden>
+                  <div className="h-full transition-[width]" style={{ width: `${cat.total ? Math.round((cat.traites / cat.total) * 100) : 0}%`, background: cat.couleur }} />
+                </div>
+              </li>
+            ))}
+          </ul>
           <div className="grid grid-cols-2 gap-2" role="tablist" aria-label="Affichage">
             {([['liste', List, 'Liste'], ['carte', IconeCarte, 'Carte']] as const).map(([v, Ic, l]) => (
               <button key={v} type="button" role="tab" aria-selected={vue === v} onClick={() => changerVue(v)}

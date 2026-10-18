@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **18/10/2026** (tournée de colis : TC1 (PR #55) et lots 2-5 (PR #56) mergés et en prod ; départ Vendenheim + scan v2 (référentiel de l'outil d'origine) dans PR #58, migrations et Edge en prod, à tester).
+> Dernière mise à jour : **18/10/2026** (tournée de colis : TC1 (PR #55) et lots 2-5 (PR #56) mergés et en prod ; départ Vendenheim, scan v2 (référentiel de l'outil d'origine) et ergonomie une main mergés (PR #58), migrations et Edge en prod).
 
 ---
 
@@ -350,8 +350,16 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   validées le 18/10/2026 (outil des livreurs) : livré = livre, rc_remis, col_ok · attente =
   avise, instance · retour = refuse, npai, adresse, acces, endommage, nonpres, rc_ferme,
   rc_sature, col_nf · neutre = col_rien.
-  **Lots 2 à 5 mergés (PR #56)**. **PR #58 (branche `feat/tournee-colis-depart`, à tester,
-  PAS mergée)** : départ fixe (centre de tri de Vendenheim, migration
+  **Lots 2 à 5 mergés (PR #56)**. **PR #58 mergée le 18/10/2026** (ergonomie une main : barre
+  du prochain arrêt, gros boutons, annulation 8 s, code couleur classique bleu / relais violet /
+  collecte jaune, avancement par catégorie ; relais revérifiés sur localiser.laposte.fr le
+  18/10/2026 : Mommenheim 37 rte de Brumath, Geudertheim 52 rue du Gal de Gaulle + 1 rue de
+  l'Industrie, Kriegsheim 13 Grand'Rue, Bernolsheim 4C rue de Lisbonne (+ Super U, route de
+  Brumath, sans numéro : non ajouté ; 2A rue Principale vient de l'ancien outil, non retrouvé
+  sur La Poste), Brumath 141 av. de Strasbourg + 4A rue des Carrières, Mittelschaeffolsheim 1 ter
+  rue de Mittelhausen ; aucun relais Pickup trouvé pour Berstheim, Bilwisheim, Donnenheim,
+  Hochstett, Krautwiller, Wittersheim, Waltenheim-sur-Zorn ; Wingersheim = agence communale en
+  mairie) : départ fixe (centre de tri de Vendenheim, migration
   `20261018100000_companies_depart_colis`, optimiser-tournee-colis v3) + scan v2 (migration
   `20261018110000_referentiel_tournees_colis` appliquée et base chargée : 700 rues, 9 985
   numéros ; lire-feuille-route v3 déployée). Piège : `apply_migration` / `execute_sql` sur
