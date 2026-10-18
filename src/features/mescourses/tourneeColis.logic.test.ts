@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  statutsProposes, libelleAdresse, libelleCompteurs, lireColisRemis,
+  statutsProposes, issueRapide, libelleAdresse, libelleCompteurs, lireColisRemis,
   patchStatut, compteursTournee,
 } from './tourneeColis.logic'
 import type { ArretColis } from '../../shared/lib/tourneesColis'
@@ -41,5 +41,13 @@ describe('libellés', () => {
     expect(libelleAdresse({ numero: null, rue: 'RUE A' })).toBe('RUE A')
     const c = compteursTournee([a({ quantite: 2, statut: 'livre' }), a({ quantite: 3 })])
     expect(libelleCompteurs(c)).toEqual({ arrets: '1 / 2', colis: '2 / 5' })
+  })
+})
+
+describe('issue rapide (un appui après « fait »)', () => {
+  it('avisé · relais fermé · rien à collecter', () => {
+    expect(issueRapide('c')).toBe('avise')
+    expect(issueRapide('rc')).toBe('rc_ferme')
+    expect(issueRapide('col')).toBe('col_rien')
   })
 })

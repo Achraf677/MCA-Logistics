@@ -38,3 +38,8 @@ export function patchStatut(a: Pick<ArretColis, 'quantite'>, statut: StatutArret
   }
   return { statut, colis_remis: 0 }
 }
+
+/** L'issue la plus courante après « fait », proposée en un appui : avisé · relais fermé · rien à collecter. */
+export function issueRapide(type: TypeArretColis): StatutArretColis {
+  return type === 'rc' ? 'rc_ferme' : type === 'col' ? 'col_rien' : 'avise'
+}

@@ -1,19 +1,18 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
-  Check, MoreHorizontal, Store, PackagePlus, RotateCcw, MessageSquare, Navigation, Camera, GripVertical, Clock,
+  Check, Store, PackagePlus, MessageSquare, Navigation, Camera, GripVertical, Minus, Plus, X, RotateCcw,
 } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
-import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { LIBELLE_STATUT_ARRET, LIBELLE_TYPE_ARRET, type ArretColis, type StatutArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
-import { heurePassage, numeroAffiche, modeOrdre } from '../../shared/lib/tourneesColisRoute'
+import { numeroAffiche, modeOrdre } from '../../shared/lib/tourneesColisRoute'
 import { majArret, ajouterPhotoArret, urlPhotoArret } from '../../shared/lib/tourneesColis.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { lienNavigation } from '../../shared/lib/navigation'
 import { lireAppNavigation } from '../../shared/lib/prefChauffeur'
-import { statutsProposes, libelleAdresse, lireColisRemis, patchStatut, familleStatut } from './tourneeColis.logic'
-import { champCls, boutonSecondaireCls } from './EspaceCommun'
+import { statutsProposes, libelleAdresse, patchStatut, familleStatut, issueRapide } from './tourneeColis.logic'
+import { champCls } from './EspaceCommun'
 
 const COULEUR_FAMILLE = { livre: 'success', attente: 'warning', retour: 'danger', neutre: 'muted' } as const
 
@@ -30,61 +29,56 @@ export interface PoigneeProps {
   onPointerCancel: (e: ReactPointerEvent<HTMLButtonElement>) => void
 }
 
-/**
- * Un arrêt : « Livré » en un geste, le reste dans le panneau (autres issues, colis remis,
- * note, photo de preuve, Y aller). Même composant dans la liste, la carte et « Prochain arrêt ».
- */
-export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = [], onPhoto, enAvant, poignee, glisse }: {
-  arret: ArretColis
-  tournee: TourneeColis
-  verrouillee: boolean
-  onGeste: (a: ArretColis) => void
-  photos?: DocumentRow[]
-  onPhoto?: (arretId: string, doc: DocumentRow) => void
-  /** Carte « Prochain arrêt » : plus grand, Y aller en clair. */
-  enAvant?: boolean
-  /** Glisser-déposer (ordre manuel). */
-  poignee?: PoigneeProps
-  glisse?: boolean
-}) {
-  const { toast } = useToast()
-  const { companyId } = useProfile()
-  const [ouvert, setOuvert] = useState(false)
-  const [occupe, setOccupe] = useState(false)
-  const [remis, setRemis] = useState(String(arret.colis_remis ?? arret.quantite))
-  const [note, setNote] = useState(arret.note ?? '')
-  const photoRef = useRef<HTMLInputElement>(null)
-  const { fait, autres } = statutsProposes(arret.type)
-  const famille = familleStatut(arret.statut)
-  const mode = modeOrdre(tournee)
-  const numero = numeroAffiche(arret, mode)
-  // Heures du dernier calcul : fausses dès que l'ordre est changé à la main.
-  const heure = !arret.statut && mode === 'route' ? heurePassage(tournee, arret.eta_min) : null
-  const yAller = lienYAller(arret)
+/** Gros boutons, pensés pour le pouce : 4 rem de haut pour l'action principale. */
+const GROS = 'min-h-16 px-4 inline-flex items-center justify-center gap-2 rounded-[var(--r-lg)] text-lg font-bold disabled:opacity-40 active:scale-[0.98]'
+const MOYEN = 'min-h-14 px-3 inline-flex items-center justify-center gap-2 rounded-[var(--r-lg)] text-base font-semibold border disabled:opacity-40 active:scale-[0.98]'
 
-  const ecrire = async (patch: Parameters<typeof majArret>[1], fermer = true) => {
+const LIBELLE_FAIT: Record<ArretColis['type'], string> = { c: 'Livré', rc: 'Remis au relais', col: 'Collecté' }
+
+/** Écritures sur un arrêt (statut, note) : partagées par la ligne, la fiche et la barre du bas. */
+function useGestes(arret: ArretColis, tournee: TourneeColis, onGeste: (a: ArretColis) => void) {
+  const { toast } = useToast()
+  const [occupe, setOccupe] = useState(false)
+  const { fait } = statutsProposes(arret.type)
+
+  const ecrire = async (patch: Parameters<typeof majArret>[1]) => {
     setOccupe(true)
     const { data, error } = await majArret(arret, patch, tournee)
     setOccupe(false)
-    if (error || !data) { toast(error?.message ?? 'Enregistrement impossible', 'error'); return }
+    if (error || !data) { toast(error?.message ?? 'Enregistrement impossible', 'error'); return false }
     onGeste(data)
-    setRemis(String(data.colis_remis ?? data.quantite)); setNote(data.note ?? '')
-    if (fermer) setOuvert(false)
+    return true
   }
-
   const geste = (s: StatutArretColis | null, colis?: number | null) => ecrire(patchStatut(arret, s, colis))
+  return { occupe, fait, ecrire, geste }
+}
 
-  const livrerPartiel = () => {
-    const n = lireColisRemis(remis, arret.quantite)
-    if (n == null) { toast('Nombre de colis remis invalide', 'error'); return }
-    geste(fait, n)
-  }
+/**
+ * Fiche d'un arrêt (feuille qui monte du bas, à portée du pouce) : l'action principale en très
+ * gros, les autres issues en gros boutons, puis colis partiels, note, photo, Y aller.
+ */
+export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFermer }: {
+  arret: ArretColis
+  tournee: TourneeColis
+  onGeste: (a: ArretColis) => void
+  photos?: DocumentRow[]
+  onPhoto?: (arretId: string, doc: DocumentRow) => void
+  onFermer: () => void
+}) {
+  const { toast } = useToast()
+  const { companyId } = useProfile()
+  const { occupe, fait, ecrire, geste } = useGestes(arret, tournee, onGeste)
+  const { autres } = statutsProposes(arret.type)
+  const [remis, setRemis] = useState(arret.colis_remis ?? Math.max(0, arret.quantite - 1))
+  const [note, setNote] = useState(arret.note ?? '')
+  const photoRef = useRef<HTMLInputElement>(null)
+  const yAller = lienYAller(arret)
+
+  const faire = async (s: StatutArretColis | null, colis?: number | null) => { if (await geste(s, colis)) onFermer() }
 
   const prendrePhoto = async (f: File | undefined) => {
     if (!f || !companyId) return
-    setOccupe(true)
     const { data, error } = await ajouterPhotoArret(f, companyId, arret.id)
-    setOccupe(false)
     if (photoRef.current) photoRef.current.value = ''
     if (error || !data) { toast(error?.message ?? 'Photo non enregistrée', 'error'); return }
     onPhoto?.(arret.id, data)
@@ -98,140 +92,244 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
   }
 
   return (
-    <li id={`arret-${arret.id}`} className={`flex flex-col gap-2 p-3 rounded-[var(--r-lg)] border bg-[var(--bg-card)] ${
-      glisse ? 'border-[var(--brand)] shadow-lg' : enAvant ? 'border-[var(--brand)]' : arret.statut ? 'border-[var(--border)] opacity-80' : 'border-[var(--border-strong)]'}`}>
-      <div className="flex items-center gap-3">
-        {poignee && !verrouillee ? (
-          <button type="button" {...poignee} aria-label="Glisser pour changer l'ordre"
-            className="w-8 -ml-1 shrink-0 self-stretch inline-flex flex-col items-center justify-center text-[var(--text-muted)] touch-none cursor-grab">
-            <GripVertical size={18} />
-            <span className="text-xs font-semibold tabular-nums">{numero ?? '–'}</span>
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-modal="true" aria-label={libelleAdresse(arret)}>
+      <button type="button" aria-label="Fermer" onClick={onFermer} className="absolute inset-0 bg-black/60" />
+      <div className="relative max-h-[88vh] overflow-y-auto flex flex-col gap-3 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]
+        rounded-t-[var(--r-xl,1.25rem)] bg-[var(--bg-elevated)] border-t border-[var(--border-strong)]">
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xl font-bold text-[var(--text)] break-words">{libelleAdresse(arret)}</p>
+            <p className="text-base text-[var(--text-muted)]">{arret.commune} · {arret.quantite} colis{arret.type !== 'c' ? ` · ${LIBELLE_TYPE_ARRET[arret.type]}` : ''}</p>
+          </div>
+          <button type="button" onClick={onFermer} aria-label="Fermer"
+            className="size-12 shrink-0 inline-flex items-center justify-center rounded-full border border-[var(--border)] text-[var(--text)]">
+            <X size={22} />
           </button>
-        ) : (
-          <span className="w-7 shrink-0 text-xs font-semibold tabular-nums text-[var(--text-muted)]">{numero ?? '–'}</span>
-        )}
-        <div className="flex-1 min-w-0">
-          <p className={`${enAvant ? 'text-lg' : 'text-base'} font-semibold text-[var(--text)] break-words`}>{libelleAdresse(arret)}</p>
-          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)]">
-            {enAvant && <span>{arret.commune}</span>}
-            <span>{arret.quantite} colis</span>
-            {arret.type !== 'c' && (
-              <span className="inline-flex items-center gap-1">
-                {arret.type === 'rc' ? <Store size={13} /> : <PackagePlus size={13} />} {LIBELLE_TYPE_ARRET[arret.type]}
-              </span>
-            )}
-            {heure && <span className="inline-flex items-center gap-1"><Clock size={12} /> ~{heure}</span>}
-            {arret.statut && famille && (
-              <Badge color={COULEUR_FAMILLE[famille]}>
-                {LIBELLE_STATUT_ARRET[arret.statut]}
-                {famille === 'livre' && arret.colis_remis != null && arret.colis_remis < arret.quantite
-                  ? ` ${arret.colis_remis}/${arret.quantite}` : ''}
-              </Badge>
-            )}
-            {photos.length > 0 && <span className="inline-flex items-center gap-1"><Camera size={12} /> {photos.length}</span>}
-            {arret.note && <span className="inline-flex items-center gap-1"><MessageSquare size={12} /> {arret.note}</span>}
-          </p>
         </div>
-        {!verrouillee && !arret.statut && (
-          <button type="button" onClick={() => geste(fait)} disabled={occupe}
-            className="min-h-12 px-4 shrink-0 inline-flex items-center gap-1.5 rounded-[var(--r-md)] bg-[var(--success)] text-black text-sm font-semibold disabled:opacity-40">
-            <Check size={18} /> {arret.type === 'col' ? 'Collecté' : arret.type === 'rc' ? 'Remis' : 'Livré'}
-          </button>
-        )}
-        {!verrouillee && (
-          <BoutonIcone icone={MoreHorizontal} libelle={ouvert ? 'Fermer' : 'Autres issues'} actif={ouvert}
-            onClick={() => setOuvert(o => !o)} />
-        )}
-      </div>
 
-      {enAvant && yAller && !verrouillee && (
-        <a href={yAller} target="_blank" rel="noopener noreferrer" className={`${boutonSecondaireCls} w-full`}>
-          <Navigation size={16} /> Y aller
-        </a>
-      )}
+        <button type="button" disabled={occupe} onClick={() => faire(fait)}
+          className={`${GROS} bg-[var(--success)] text-black`}>
+          <Check size={24} /> {LIBELLE_FAIT[arret.type]}{arret.quantite > 1 ? ` (${arret.quantite} colis)` : ''}
+        </button>
 
-      {verrouillee && photos.length > 0 && (
-        <div className="flex flex-wrap gap-2">
-          {photos.map((p, i) => (
-            <button key={p.id} type="button" onClick={() => voirPhoto(p)}
-              className="min-h-10 px-3 rounded-[var(--r-md)] border border-[var(--border)] text-sm text-[var(--text)] underline">
-              Voir la photo {i + 1}
+        {arret.quantite > 1 && (
+          <div className="flex items-center gap-2 p-2 rounded-[var(--r-lg)] border border-[var(--border)]">
+            <button type="button" aria-label="Un colis de moins" disabled={remis <= 0}
+              onClick={() => setRemis(r => Math.max(0, r - 1))}
+              className="size-14 shrink-0 inline-flex items-center justify-center rounded-[var(--r-lg)] border border-[var(--border)] text-[var(--text)]">
+              <Minus size={22} />
+            </button>
+            <button type="button" disabled={occupe} onClick={() => faire(fait, remis)}
+              className={`${MOYEN} flex-1 border-[var(--success)] text-[var(--success)]`}>
+              Remis {remis} sur {arret.quantite}
+            </button>
+            <button type="button" aria-label="Un colis de plus" disabled={remis >= arret.quantite}
+              onClick={() => setRemis(r => Math.min(arret.quantite, r + 1))}
+              className="size-14 shrink-0 inline-flex items-center justify-center rounded-[var(--r-lg)] border border-[var(--border)] text-[var(--text)]">
+              <Plus size={22} />
+            </button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-2">
+          {autres.map(s => (
+            <button key={s} type="button" disabled={occupe} onClick={() => faire(s)} aria-pressed={arret.statut === s}
+              className={`${MOYEN} ${arret.statut === s ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-[var(--border)] text-[var(--text)]'}`}>
+              {LIBELLE_STATUT_ARRET[s]}
             </button>
           ))}
         </div>
-      )}
 
-      {ouvert && !verrouillee && (
-        <div className="flex flex-col gap-3 pt-2 border-t border-[var(--border)]">
+        <div className="flex gap-2">
+          <input value={note} onChange={e => setNote(e.target.value.slice(0, 300))}
+            placeholder="Note (code, étage, voisin…)" aria-label="Note" className={`${champCls} flex-1`} />
+          <button type="button" disabled={occupe || note.trim() === (arret.note ?? '')}
+            onClick={async () => { if (await ecrire({ note: note.trim() || null })) onFermer() }}
+            className={`${MOYEN} border-[var(--border)] text-[var(--text)]`}>
+            OK
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => photoRef.current?.click()} className={`${MOYEN} border-[var(--border)] text-[var(--text)]`}>
+            <Camera size={20} /> Photo{photos.length ? ` (${photos.length})` : ''}
+          </button>
+          {yAller ? (
+            <a href={yAller} target="_blank" rel="noopener noreferrer" className={`${MOYEN} border-[var(--border)] text-[var(--text)]`}>
+              <Navigation size={20} /> Y aller
+            </a>
+          ) : <span />}
+          <input ref={photoRef} type="file" accept="image/*" capture="environment" className="hidden"
+            onChange={e => prendrePhoto(e.target.files?.[0])} />
+        </div>
+
+        {photos.length > 0 && (
           <div className="flex flex-wrap gap-2">
-            {autres.map(s => (
-              <button key={s} type="button" onClick={() => geste(s)} disabled={occupe}
-                aria-pressed={arret.statut === s}
-                className={`min-h-11 px-3 rounded-[var(--r-md)] border text-sm font-medium disabled:opacity-40 ${
-                  arret.statut === s ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-[var(--border)] text-[var(--text)]'}`}>
-                {LIBELLE_STATUT_ARRET[s]}
+            {photos.map((p, i) => (
+              <button key={p.id} type="button" onClick={() => voirPhoto(p)}
+                className="min-h-11 px-3 rounded-[var(--r-md)] border border-[var(--border)] text-sm text-[var(--text)] underline">
+                Voir la photo {i + 1}
               </button>
             ))}
           </div>
+        )}
 
-          {arret.quantite > 1 && (
-            <div className="flex items-end gap-2">
-              <label className="flex flex-col gap-1 text-sm font-medium text-[var(--text)]">
-                Colis remis
-                <input type="text" inputMode="numeric" value={remis} aria-label="Colis remis"
-                  onChange={e => setRemis(e.target.value.replace(/[^\d]/g, '').slice(0, 3))}
-                  className={`${champCls} w-24 text-center`} />
-              </label>
-              <span className="pb-3 text-sm text-[var(--text-muted)]">/ {arret.quantite}</span>
-              <button type="button" onClick={livrerPartiel} disabled={occupe} className={`${boutonSecondaireCls} flex-1`}>
-                <Check size={16} /> {LIBELLE_STATUT_ARRET[fait]} (partiel)
-              </button>
+        {arret.statut && (
+          <button type="button" disabled={occupe} onClick={() => faire(null)}
+            className="min-h-12 inline-flex items-center justify-center gap-2 text-base text-[var(--text-muted)] underline">
+            <RotateCcw size={16} /> Annuler le statut
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Barre du bas : le PROCHAIN arrêt, toujours sous le pouce. Un appui pour « Livré »,
+ * un appui pour l'issue la plus courante (avisé / relais fermé / rien à collecter),
+ * « Autre » ouvre la fiche, « Y aller » lance la navigation.
+ */
+export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
+  arret: ArretColis
+  tournee: TourneeColis
+  onGeste: (a: ArretColis) => void
+  photos?: DocumentRow[]
+  onPhoto?: (arretId: string, doc: DocumentRow) => void
+}) {
+  const { occupe, fait, geste } = useGestes(arret, tournee, onGeste)
+  const [fiche, setFiche] = useState(false)
+  const rapide = issueRapide(arret.type)
+  const yAller = lienYAller(arret)
+
+  return (
+    <>
+      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t border-[var(--border-strong)] bg-[var(--bg-elevated)]">
+        <div className="mx-auto max-w-xl flex flex-col gap-2 p-3">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-lg font-bold leading-tight text-[var(--text)] truncate">{libelleAdresse(arret)}</p>
+              <p className="text-sm text-[var(--text-muted)] truncate">
+                {arret.commune} · {arret.quantite} colis{arret.type !== 'c' ? ` · ${LIBELLE_TYPE_ARRET[arret.type]}` : ''}
+                {arret.note ? ` · ${arret.note}` : ''}
+              </p>
             </div>
-          )}
-
-          <div className="flex items-end gap-2">
-            <label className="flex-1 flex flex-col gap-1 text-sm font-medium text-[var(--text)]">
-              Note
-              <input value={note} onChange={e => setNote(e.target.value.slice(0, 300))}
-                placeholder="Code, étage, voisin…" className={champCls} />
-            </label>
-            <button type="button" disabled={occupe || note.trim() === (arret.note ?? '')}
-              onClick={() => ecrire({ note: note.trim() || null }, false)} className={boutonSecondaireCls}>
-              Enregistrer
-            </button>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => photoRef.current?.click()} disabled={occupe} className={`${boutonSecondaireCls} flex-1`}>
-              <Camera size={16} /> Photo de preuve
-            </button>
-            {yAller && !enAvant && (
-              <a href={yAller} target="_blank" rel="noopener noreferrer" className={`${boutonSecondaireCls} flex-1`}>
-                <Navigation size={16} /> Y aller
+            {yAller && (
+              <a href={yAller} target="_blank" rel="noopener noreferrer"
+                className="min-h-12 px-4 shrink-0 inline-flex items-center gap-2 rounded-[var(--r-lg)] border border-[var(--border)] text-base font-semibold text-[var(--text)]">
+                <Navigation size={20} /> Y aller
               </a>
             )}
-            <input ref={photoRef} type="file" accept="image/*" capture="environment" className="hidden"
-              onChange={e => prendrePhoto(e.target.files?.[0])} />
           </div>
-          {photos.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {photos.map((p, i) => (
-                <button key={p.id} type="button" onClick={() => voirPhoto(p)}
-                  className="min-h-10 px-3 rounded-[var(--r-md)] border border-[var(--border)] text-sm text-[var(--text)] underline">
-                  Voir la photo {i + 1}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {arret.statut && (
-            <button type="button" onClick={() => geste(null)} disabled={occupe}
-              className="self-start min-h-10 inline-flex items-center gap-1.5 text-sm text-[var(--text-muted)] underline">
-              <RotateCcw size={14} /> Effacer le statut
+          <div className="flex gap-2">
+            <button type="button" disabled={occupe} onClick={() => geste(fait)} className={`${GROS} flex-[3] bg-[var(--success)] text-black`}>
+              <Check size={24} /> {LIBELLE_FAIT[arret.type]}
             </button>
-          )}
+            <button type="button" disabled={occupe} onClick={() => geste(rapide)}
+              className={`${GROS} flex-[2] border border-[var(--warning)] text-[var(--warning)] text-base`}>
+              {LIBELLE_STATUT_ARRET[rapide]}
+            </button>
+            <button type="button" onClick={() => setFiche(true)} aria-label="Autres choix"
+              className={`${MOYEN} min-h-16 border-[var(--border)] text-[var(--text)]`}>
+              Autre
+            </button>
+          </div>
         </div>
+      </div>
+      {fiche && <FicheArret arret={arret} tournee={tournee} onGeste={onGeste} photos={photos} onPhoto={onPhoto} onFermer={() => setFiche(false)} />}
+    </>
+  )
+}
+
+/**
+ * Une ligne de la liste (ou de la carte). Appuyer sur la ligne ouvre la fiche ; « Livré » reste
+ * à un appui. Les arrêts déjà traités montrent leur résultat.
+ */
+export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = [], onPhoto, poignee, glisse }: {
+  arret: ArretColis
+  tournee: TourneeColis
+  verrouillee: boolean
+  onGeste: (a: ArretColis) => void
+  photos?: DocumentRow[]
+  onPhoto?: (arretId: string, doc: DocumentRow) => void
+  /** Glisser-déposer (ordre manuel). */
+  poignee?: PoigneeProps
+  glisse?: boolean
+}) {
+  const [fiche, setFiche] = useState(false)
+  const { occupe, fait, geste } = useGestes(arret, tournee, onGeste)
+  const famille = familleStatut(arret.statut)
+  const numero = numeroAffiche(arret, modeOrdre(tournee))
+
+  return (
+    <li id={`arret-${arret.id}`} className={`flex items-stretch gap-2 rounded-[var(--r-lg)] border bg-[var(--bg-card)] ${
+      glisse ? 'border-[var(--brand)] shadow-lg' : arret.statut ? 'border-[var(--border)] opacity-80' : 'border-[var(--border-strong)]'}`}>
+      {poignee && !verrouillee ? (
+        <button type="button" {...poignee} aria-label="Glisser pour changer l'ordre"
+          className="w-10 shrink-0 inline-flex flex-col items-center justify-center text-[var(--text-muted)] touch-none cursor-grab">
+          <GripVertical size={18} />
+          <span className="text-xs font-semibold tabular-nums">{numero ?? '–'}</span>
+        </button>
+      ) : (
+        <span className="w-9 shrink-0 inline-flex items-center justify-center text-xs font-semibold tabular-nums text-[var(--text-muted)]">{numero ?? '–'}</span>
+      )}
+      <button type="button" onClick={() => setFiche(true)} disabled={verrouillee && photos.length === 0 && !arret.note}
+        className="flex-1 min-w-0 min-h-16 py-2 text-left">
+        <span className="block text-base font-semibold text-[var(--text)] break-words">{libelleAdresse(arret)}</span>
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--text-muted)]">
+          <span>{arret.quantite} colis</span>
+          {arret.type !== 'c' && (
+            <span className="inline-flex items-center gap-1">
+              {arret.type === 'rc' ? <Store size={14} /> : <PackagePlus size={14} />} {LIBELLE_TYPE_ARRET[arret.type]}
+            </span>
+          )}
+          {arret.statut && famille && (
+            <Badge color={COULEUR_FAMILLE[famille]}>
+              {LIBELLE_STATUT_ARRET[arret.statut]}
+              {famille === 'livre' && arret.colis_remis != null && arret.colis_remis < arret.quantite
+                ? ` ${arret.colis_remis}/${arret.quantite}` : ''}
+            </Badge>
+          )}
+          {photos.length > 0 && <span className="inline-flex items-center gap-1"><Camera size={13} /> {photos.length}</span>}
+          {arret.note && <span className="inline-flex items-center gap-1"><MessageSquare size={13} /> {arret.note}</span>}
+        </span>
+      </button>
+      {!verrouillee && !arret.statut && (
+        <button type="button" onClick={() => geste(fait)} disabled={occupe}
+          className="w-24 shrink-0 m-1.5 inline-flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] bg-[var(--success)] text-black text-sm font-bold disabled:opacity-40 active:scale-[0.97]">
+          <Check size={20} /> {arret.type === 'col' ? 'Collecté' : arret.type === 'rc' ? 'Remis' : 'Livré'}
+        </button>
+      )}
+      {fiche && !verrouillee && (
+        <FicheArret arret={arret} tournee={tournee} onGeste={onGeste} photos={photos} onPhoto={onPhoto} onFermer={() => setFiche(false)} />
+      )}
+      {fiche && verrouillee && (
+        <FichePhotos photos={photos} note={arret.note} onFermer={() => setFiche(false)} />
       )}
     </li>
+  )
+}
+
+/** Tournée terminée : seulement les photos et la note, rien à modifier. */
+function FichePhotos({ photos, note, onFermer }: { photos: DocumentRow[]; note: string | null; onFermer: () => void }) {
+  const { toast } = useToast()
+  const voir = async (doc: DocumentRow) => {
+    const url = await urlPhotoArret(doc)
+    if (url) window.open(url, '_blank', 'noopener')
+    else toast('Photo introuvable', 'error')
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end">
+      <button type="button" aria-label="Fermer" onClick={onFermer} className="absolute inset-0 bg-black/60" />
+      <div className="relative flex flex-col gap-3 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] rounded-t-[1.25rem] bg-[var(--bg-elevated)] border-t border-[var(--border-strong)]">
+        {note && <p className="text-base text-[var(--text)]">{note}</p>}
+        {photos.map((p, i) => (
+          <button key={p.id} type="button" onClick={() => voir(p)} className={`${MOYEN} border-[var(--border)] text-[var(--text)]`}>
+            Voir la photo {i + 1}
+          </button>
+        ))}
+        <button type="button" onClick={onFermer} className={`${MOYEN} border-[var(--border)] text-[var(--text)]`}>Fermer</button>
+      </div>
+    </div>
   )
 }

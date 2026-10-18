@@ -3,7 +3,6 @@ import {
   ChevronLeft, ChevronRight, ScanText, Trash2, ClipboardList, List, Map as IconeCarte, Route, LocateFixed,
   Undo2, RefreshCw, MapPinOff, Search, MapPin, Radio, Flag, ChevronDown, AlertTriangle, History,
 } from 'lucide-react'
-import { Badge } from '../../shared/ui/Badge'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { EmptyState } from '../../shared/ui/EmptyState'
@@ -12,9 +11,9 @@ import { ScanFeuilleRoute } from '../../shared/ui/ScanFeuilleRoute'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
-import { LIBELLE_STATUT_TOURNEE, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
+import type { ArretColis, TourneeColis } from '../../shared/lib/tourneesColis'
 import {
-  arretsAPlacer, bandeauOrdre, deplacer, distanceM, doitEnvoyerPosition, grouperEnSuite, idsOrdreHabituel, libelleDistance, modeOrdre,
+  arretsAPlacer, bandeauOrdre, deplacer, doitEnvoyerPosition, grouperEnSuite, idsOrdreHabituel, libelleDistance, modeOrdre,
   nonTraites, ordreManuel, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
 } from '../../shared/lib/tourneesColisRoute'
 import {
@@ -27,7 +26,7 @@ import type { EtatFiche, MaFiche } from './mescourses.types'
 import { decalerJour, borneAujourdhui } from './espace.logic'
 import { libelleDateCourte } from './mescourses.logic'
 import { compteursTournee, libelleAdresse, libelleCompteurs } from './tourneeColis.logic'
-import { ArretTournee } from './ArretTournee'
+import { ArretTournee, BarreProchain } from './ArretTournee'
 import { Carte, MessageErreur, GardeFiche, champCls, boutonPrimaireCls, boutonSecondaireCls } from './EspaceCommun'
 
 const CarteTournee = lazy(() => import('../../shared/ui/CarteTournee'))
@@ -237,6 +236,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   const [cloture, setCloture] = useState(false)
   const [clotureEnCours, setClotureEnCours] = useState(false)
   const [traitesOuverts, setTraitesOuverts] = useState(false)
+  const [plus, setPlus] = useState(false)
 
   const verrouillee = tournee.statut === 'cloturee'
   const mode = modeOrdre(tournee)
@@ -385,85 +385,81 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   return (
     <>
       {/* Compteur en tête, collé en haut pendant le défilement. */}
-      <div className="sticky top-0 z-[5] -mx-1 px-1 pt-1 pb-2 bg-[var(--bg)]">
+      <div>
         <Carte className="gap-2">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-[var(--text-muted)]">Arrêts</p>
-                <p className="text-xl font-semibold tabular-nums text-[var(--text)]">{lib.arrets}</p>
-              </div>
-              <div>
-                <p className="text-xs text-[var(--text-muted)]">Colis</p>
-                <p className="text-xl font-semibold tabular-nums text-[var(--text)]">{lib.colis}</p>
-              </div>
-            </div>
-            <Badge color={verrouillee ? 'muted' : tournee.statut === 'en_cours' ? 'info' : 'warning'}>
-              {LIBELLE_STATUT_TOURNEE[tournee.statut]}
-            </Badge>
+          <div className="flex items-baseline gap-4">
+            <p className="text-2xl font-bold tabular-nums text-[var(--text)]">{lib.arrets} <span className="text-base font-medium text-[var(--text-muted)]">arrêts</span></p>
+            <p className="text-2xl font-bold tabular-nums text-[var(--text)]">{lib.colis} <span className="text-base font-medium text-[var(--text-muted)]">colis</span></p>
           </div>
           <div className="h-2 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden" aria-hidden>
             <div className="h-full bg-[var(--success)] transition-[width]" style={{ width: `${pct}%` }} />
           </div>
-          <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--text-muted)]">
-            <span><strong className="text-[var(--success)]">{c.colisLivres}</strong> livrés</span>
-            <span><strong className="text-[var(--warning)]">{c.colisAttente}</strong> en attente</span>
-            <span><strong className="text-[var(--danger)]">{c.colisRetour}</strong> en retour</span>
-            {c.collectes > 0 && <span>{c.collectesTraitees} / {c.collectes} collectes</span>}
-          </p>
           <div className="grid grid-cols-2 gap-2" role="tablist" aria-label="Affichage">
             {([['liste', List, 'Liste'], ['carte', IconeCarte, 'Carte']] as const).map(([v, Ic, l]) => (
               <button key={v} type="button" role="tab" aria-selected={vue === v} onClick={() => changerVue(v)}
-                className={`min-h-11 inline-flex items-center justify-center gap-2 rounded-[var(--r-md)] border text-sm font-medium ${
+                className={`min-h-12 inline-flex items-center justify-center gap-2 rounded-[var(--r-md)] border text-base font-semibold ${
                   vue === v ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-[var(--border)] text-[var(--text)]'}`}>
-                <Ic size={16} /> {l}
+                <Ic size={18} /> {l}
               </button>
             ))}
           </div>
         </Carte>
       </div>
 
-      {/* Ordre de passage : une ligne, gestes en pictogramme (le 1er calcul en clair). */}
-      <Carte className="gap-2">
-        <div className="flex items-center gap-2">
-          <Route size={18} className="shrink-0 text-[var(--text-muted)]" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-[var(--text)] truncate">{bandeau.titre}</p>
-            {bandeau.detail && <p className="text-xs text-[var(--text-muted)] truncate">{bandeau.detail}</p>}
-          </div>
-          {!verrouillee && !sansCalcul(mode) && habituel.length > 0 && (
-            <BoutonIcone icone={History} libelle="Revenir à mon ordre habituel" disabled={calcul != null} onClick={revenirHabituel} />
+      {/* Itinéraire : les kilomètres et UN bouton ; le reste est replié sous « Plus ». */}
+      {!verrouillee && (
+        <Carte className="gap-2">
+          {sansCalcul(mode) ? (
+            <button type="button" disabled={calcul != null} onClick={() => calculer('tout')} className={`${boutonPrimaireCls} min-h-14 text-base`}>
+              <Route size={20} /> {calcul === 'tout' ? 'Calcul…' : "Calculer l'itinéraire"}
+            </button>
+          ) : (
+            <div className="flex items-center gap-3">
+              <p className="flex-1 flex items-center gap-2 text-2xl font-bold tabular-nums text-[var(--text)]">
+                <Route size={22} className="text-[var(--text-muted)]" />
+                {tournee.trajet ? libelleDistance(tournee.trajet.km_total * 1000) : '—'}
+              </p>
+              <button type="button" disabled={calcul != null} onClick={() => calculer('tout')} className={`${boutonSecondaireCls} min-h-12`}>
+                <RefreshCw size={16} /> {calcul ? 'Calcul…' : 'Recalculer'}
+              </button>
+            </div>
           )}
-          {!verrouillee && !sansCalcul(mode) && (
-            <>
-              {mode === 'manuel' && (tournee.trajet?.ordre_ids?.length ?? 0) > 0 && (
-                <BoutonIcone icone={Undo2} libelle="Revenir à l'ordre calculé" disabled={calcul != null} onClick={revenirCalcule} />
-              )}
-              {c.arretsTraites + c.collectesTraitees > 0 && (
-                <BoutonIcone icone={LocateFixed} libelle={calcul === 'restants' ? 'Calcul…' : 'Recalculer depuis ma position'}
-                  disabled={calcul != null} onClick={() => calculer('restants')} />
-              )}
-              <BoutonIcone icone={RefreshCw} libelle={calcul === 'tout' ? 'Calcul…' : "Recalculer l'itinéraire"}
-                disabled={calcul != null} onClick={() => calculer('tout')} />
-            </>
+          {horsOrdre > 0 && (
+            <p className="text-sm text-[var(--warning)]">
+              {horsOrdre} arrêt{horsOrdre > 1 ? 's' : ''} hors itinéraire : clique sur Recalculer.
+            </p>
           )}
-        </div>
-        {!verrouillee && sansCalcul(mode) && (
-          <button type="button" disabled={calcul != null} onClick={() => calculer('tout')} className={boutonSecondaireCls}>
-            <Route size={16} /> {calcul === 'tout' ? 'Calcul de l’itinéraire…' : "Calculer l'itinéraire"}
+          <button type="button" onClick={() => setPlus(o => !o)} aria-expanded={plus}
+            className="min-h-11 inline-flex items-center justify-between text-base font-medium text-[var(--text-muted)]">
+            Plus <ChevronDown size={18} className={plus ? 'rotate-180' : ''} />
           </button>
-        )}
-        {calcul && !sansCalcul(mode) && <p className="text-xs text-[var(--text-muted)]">Calcul en cours…</p>}
-        {bandeau.avertissement && (
-          <p className="flex items-start gap-1.5 text-xs text-[var(--warning)]"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {bandeau.avertissement}</p>
-        )}
-        {horsOrdre > 0 && !verrouillee && (
-          <p className="text-xs text-[var(--warning)]">
-            {horsOrdre} arrêt{horsOrdre > 1 ? 's' : ''} pas dans l'ordre calculé : recalcule pour {horsOrdre > 1 ? 'les' : "l'"}intégrer.
-          </p>
-        )}
-        {!verrouillee && estAujourdhui && <PartagePosition tournee={tournee} memberId={fiche.id} />}
-      </Carte>
+          {plus && (
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                {c.arretsTraites + c.collectesTraitees > 0 && !sansCalcul(mode) && (
+                  <button type="button" disabled={calcul != null} onClick={() => calculer('restants')} className={`${boutonSecondaireCls} min-h-12`}>
+                    <LocateFixed size={16} /> Depuis ici
+                  </button>
+                )}
+                {habituel.length > 0 && !sansCalcul(mode) && (
+                  <button type="button" disabled={calcul != null} onClick={revenirHabituel} className={`${boutonSecondaireCls} min-h-12`}>
+                    <History size={16} /> Ordre habituel
+                  </button>
+                )}
+                {mode === 'manuel' && (tournee.trajet?.ordre_ids?.length ?? 0) > 0 && (
+                  <button type="button" disabled={calcul != null} onClick={revenirCalcule} className={`${boutonSecondaireCls} min-h-12`}>
+                    <Undo2 size={16} /> Ordre calculé
+                  </button>
+                )}
+              </div>
+              {bandeau.avertissement && (
+                <p className="flex items-start gap-1.5 text-sm text-[var(--warning)]"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {bandeau.avertissement}</p>
+              )}
+              {estAujourdhui && <PartagePosition tournee={tournee} memberId={fiche.id} />}
+            </div>
+          )}
+        </Carte>
+      )}
 
       {!verrouillee && aPlacer.length > 0 && (
         <APlacer arrets={aPlacer} onSurCarte={a => { setAPlacerSur(a); changerVue('carte') }} onPlacer={placer} />
@@ -491,19 +487,9 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
               </ul>
             ) : null}
             onFermerPanneau={() => setPoint(null)} />
-          {prochain && !verrouillee && !point && (
-            <ul className="flex flex-col gap-2">
-              <ProchainArret arret={prochain} tournee={tournee} moi={moi} onGeste={onGeste} photos={photos.get(prochain.id)} onPhoto={surPhoto} />
-            </ul>
-          )}
         </Suspense>
       ) : (
         <>
-          {prochain && !verrouillee && (
-            <ul className="flex flex-col gap-2">
-              <ProchainArret arret={prochain} tournee={tournee} moi={moi} onGeste={onGeste} photos={photos.get(prochain.id)} onPhoto={surPhoto} />
-            </ul>
-          )}
           {groupes.map(g => (
             <section key={g.cle} className="flex flex-col gap-2">
               <h3 className="flex items-baseline gap-2 px-1 text-sm font-semibold text-[var(--text)]">
@@ -542,44 +528,32 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
       {verrouillee ? (
         <Carte className="gap-2">
           <p className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]"><Flag size={16} /> Tournée terminée</p>
-          <p className="text-xs text-[var(--text-muted)]">
-            {tournee.cloturee_le ? `Le ${new Date(tournee.cloturee_le).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}. ` : ''}
-            Plus rien n'est modifiable ; le bureau peut la rouvrir si besoin.
-          </p>
+          {tournee.cloturee_le && (
+            <p className="text-sm text-[var(--text-muted)]">
+              {new Date(tournee.cloturee_le).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+            </p>
+          )}
           {tournee.client_id && onOuvrirJournee && (
             <button type="button" onClick={onOuvrirJournee} className={boutonSecondaireCls}>Voir ma journée de colis</button>
           )}
         </Carte>
       ) : (
-        <button type="button" onClick={() => setCloture(true)} className={boutonPrimaireCls}>
-          <Flag size={18} /> Terminer ma tournée
+        <button type="button" onClick={() => setCloture(true)} className={`${boutonPrimaireCls} min-h-14 text-base`}>
+          <Flag size={20} /> Terminer ma tournée
         </button>
+      )}
+
+      {prochain && !verrouillee && !point && !aPlacerSur && (
+        <>
+          <div aria-hidden className="h-52" />
+          <BarreProchain key={prochain.id} arret={prochain} tournee={tournee} onGeste={onGeste}
+            photos={photos.get(prochain.id)} onPhoto={surPhoto} />
+        </>
       )}
 
       <ConfirmDialog open={cloture} title="Terminer ma tournée ?" message={messageCloture}
         confirmLabel="Terminer" loading={clotureEnCours}
         onConfirm={terminer} onCancel={() => setCloture(false)} />
-    </>
-  )
-}
-
-// ── Prochain arrêt ──────────────────────────────────────────────────────────
-
-function ProchainArret({ arret, tournee, moi, onGeste, photos, onPhoto }: {
-  arret: ArretColis
-  tournee: TourneeColis
-  moi: { lat: number; lng: number } | null
-  onGeste: (a: ArretColis) => void
-  photos?: DocumentRow[]
-  onPhoto: (id: string, d: DocumentRow) => void
-}) {
-  const loin = moi && arret.lat != null && arret.lng != null ? distanceM(moi, { lat: arret.lat, lng: arret.lng }) : null
-  return (
-    <>
-      <p className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">
-        Prochain arrêt{loin != null ? ` · à ${libelleDistance(loin)} (à vol d'oiseau)` : ''}
-      </p>
-      <ArretTournee arret={arret} tournee={tournee} verrouillee={false} onGeste={onGeste} photos={photos} onPhoto={onPhoto} enAvant />
     </>
   )
 }
@@ -691,13 +665,12 @@ function PartagePosition({ tournee, memberId }: { tournee: TourneeColis; memberI
     <div className="flex flex-col gap-0.5 pt-2 border-t border-[var(--border)]">
       <label className="flex items-center gap-3 min-h-11 cursor-pointer">
         <Radio size={18} className={actif ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'} />
-        <span className="flex-1 text-sm text-[var(--text)]">Partager ma position avec le bureau</span>
+        <span className="flex-1 text-base text-[var(--text)]">Partager ma position</span>
         <input type="checkbox" role="switch" checked={actif} onChange={basculer} className="w-6 h-6 accent-[var(--brand)]" />
       </label>
       {actif && (
-        <p className="text-xs text-[var(--text-muted)]">
-          {etat === 'refus' ? 'Position refusée par le téléphone : autorise la localisation pour ce site.'
-            : 'Le bureau voit ta dernière position. Garde le site ouvert ; coupé à la fin de la tournée.'}
+        <p className="text-sm text-[var(--text-muted)]">
+          {etat === 'refus' ? 'Localisation refusée : autorise-la dans le navigateur.' : 'Position partagée avec le bureau.'}
         </p>
       )}
     </div>

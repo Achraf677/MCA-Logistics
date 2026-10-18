@@ -163,6 +163,14 @@ Pas bon — reste
   placer) + « Créer la tournée » ; la liste modifiable est repliée sous « Voir / corriger ».
   Ma tournée : bandeau « Mon ordre habituel » ; picto « Revenir à mon ordre habituel » après
   un calcul. Un arrêt placé à la main enrichit le référentiel.
+- Ergonomie une main (18/10/2026, PR #58) : « Ma tournée » pensée pour aller très vite. Barre
+  fixe en bas = le prochain arrêt : adresse, « Y aller », gros « Livré » (ou « Remis au relais » /
+  « Collecté »), l'issue courante en un appui (Avisé · Relais fermé · Rien à collecter),
+  « Autre » ouvre une fiche qui monte du bas (autres issues en gros boutons, colis partiels
+  avec − / +, note, photo, annuler le statut). Chaque ligne de la liste : « Livré » en un
+  appui, appui sur la ligne = fiche. Plus d'heures estimées ni de textes d'aide ; en tête :
+  arrêts, colis, kilomètres, « Recalculer » ; le reste (depuis ici, ordre habituel, partage de
+  position) replié sous « Plus ».
 - Lots 2 à 5 (18/10/2026, PR « suite ») :
   - Ordre : bandeau « Ordre de la feuille / par la route (km · durée · gain) / manuel » ;
     « Calculer l'itinéraire » (Edge `optimiser-tournee-colis`), recalcul (picto), « depuis ma
