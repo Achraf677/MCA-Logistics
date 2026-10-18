@@ -10,6 +10,10 @@ export interface CompanyData {
   /** Coordonnées géocodées du dépôt (Photon). */
   depot_lat: number | null
   depot_lng: number | null
+  /** Départ des tournées de colis (centre de tri La Poste) : lu par l'Edge optimiser-tournee-colis. */
+  depart_colis_adresse: string | null
+  depart_colis_lat: number | null
+  depart_colis_lng: number | null
   capital_cts: number | null
   iban: string | null
   bic: string | null
@@ -22,7 +26,7 @@ export interface CompanyData {
 export async function getCompany(companyId: string) {
   return supabase
     .from('companies')
-    .select('id, name, siren, siret, tva_intra, address, depot_lat, depot_lng, capital_cts, iban, bic, transport_license_expiry, rc_pro_expiry, licence_transport')
+    .select('id, name, siren, siret, tva_intra, address, depot_lat, depot_lng, depart_colis_adresse, depart_colis_lat, depart_colis_lng, capital_cts, iban, bic, transport_license_expiry, rc_pro_expiry, licence_transport')
     .eq('id', companyId)
     .single()
 }

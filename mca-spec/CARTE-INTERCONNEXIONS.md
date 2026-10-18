@@ -143,7 +143,8 @@
   (RLS, aucune clé de service). ORS matrice (blocs ≤ 3 500) + itinéraires (≤ 50 points),
   repli vol d'oiseau × 1,3 ; solveur `_shared/tourneeRoute.ts` (exact ≤ 10 points, sinon
   plus proche voisin + 2-opt + Or-opt ; 150 points en ~12 ms). Lit `companies.depot_lat/lng`
-  (départ si rien d'autre), `_shared/geocode` (adresse du remettant).
+  et `companies.depart_colis_lat/lng` (départ des tournées de colis, Paramètres › Société,
+  prioritaire ; v3), `_shared/geocode` (adresse du remettant).
 - ai-extract-deliveries : copilote, parametres · assistant-chat : assistant ·
   alertes-briefing : alertes · brouillons-generate : brouillons
 - admin-users, admin-permissions : admins · drive-* : parametres
