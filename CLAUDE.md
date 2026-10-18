@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **18/10/2026** (lots 2-5 tournée de colis mergés (PR #56) ; départ Vendenheim + scan v2 (référentiel de l'outil d'origine) dans PR #58, migrations et Edge en prod, à tester).
+> Dernière mise à jour : **18/10/2026** (tournée de colis : TC1 (PR #55) et lots 2-5 (PR #56) mergés et en prod ; départ Vendenheim + scan v2 (référentiel de l'outil d'origine) dans PR #58, migrations et Edge en prod, à tester).
 
 ---
 
@@ -356,7 +356,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   `20261018110000_referentiel_tournees_colis` appliquée et base chargée : 700 rues, 9 985
   numéros ; lire-feuille-route v3 déployée). Piège : `apply_migration` / `execute_sql` sur
   un gros paquet de données = découper en blocs de ~15 Ko (coordonnées en écarts entiers).
-  Historique des lots 2 à 5 :
+  Lots 2 à 5 (PR #56, squash 9a212bf, 18/10/2026) :
   migration `20261018090000_tournees_colis_route` **appliquée le 18/10/2026** (ordre / eta /
   trajet / clôture, `positions_livreurs`, photos `arret_colis`) ; Edge
   `optimiser-tournee-colis` **v2** et `lire-feuille-route` v2 **déployées le 18/10/2026**.
