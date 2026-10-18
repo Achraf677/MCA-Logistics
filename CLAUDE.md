@@ -26,6 +26,9 @@
 - L'ancien essai abandonné = « ancien essai » / « résidus en base ». Pas « v1 ».
 - Utilisateur : président de la société, étudiant en comptabilité. Réponses **courtes**, en
   tirets, concrètes. Pas de blabla, pas de tableau dans les critiques.
+- **Règle de réponse (demandée le 18/10/2026, pour TOUTES les conversations)** : simple, que des
+  tirets, zéro phrase d'introduction ou de conclusion, mots de tous les jours (pas de jargon
+  technique sans l'expliquer). L'utilisateur ne lit pas les longs messages.
 
 ## 2. Métier (à garder en tête sur CHAQUE écran)
 - **Express** : course unitaire retrait → livraison, souvent dans la journée, parfois urgente
