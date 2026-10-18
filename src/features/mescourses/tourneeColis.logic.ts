@@ -8,39 +8,6 @@ import {
 export { compteursTournee, familleStatut }
 export type { CompteursTournee, FamilleStatut }
 
-export interface GroupeCommune {
-  /** Clé stable : commune + rang du premier arrêt (une commune peut revenir plus loin). */
-  cle: string
-  commune: string
-  cp: string | null
-  arrets: ArretColis[]
-  traites: number
-}
-
-/**
- * Arrêts groupés par commune, DANS L'ORDRE DE LA FEUILLE : une commune qui revient plus bas
- * forme un nouveau groupe (on ne réordonne rien dans ce lot ; le tri par route viendra).
- */
-export function grouperParCommune(arrets: ArretColis[]): GroupeCommune[] {
-  const tries = [...arrets].sort((a, b) => a.rang - b.rang)
-  const out: GroupeCommune[] = []
-  for (const a of tries) {
-    const dernier = out[out.length - 1]
-    if (dernier && dernier.commune === a.commune && dernier.cp === a.cp) {
-      dernier.arrets.push(a)
-      if (a.statut) dernier.traites++
-    } else {
-      out.push({ cle: `${a.commune}-${a.rang}`, commune: a.commune, cp: a.cp, arrets: [a], traites: a.statut ? 1 : 0 })
-    }
-  }
-  return out
-}
-
-/** Premier arrêt non traité (ordre de la feuille), pour y revenir d'un geste. */
-export function prochainArret(arrets: ArretColis[]): ArretColis | null {
-  return [...arrets].sort((a, b) => a.rang - b.rang).find(a => !a.statut) ?? null
-}
-
 /** Statuts proposés pour un arrêt : le geste « fait » d'abord, puis les autres issues. */
 export function statutsProposes(type: TypeArretColis): { fait: StatutArretColis; autres: StatutArretColis[] } {
   return { fait: STATUT_FAIT[type], autres: AUTRES_STATUTS[type] }

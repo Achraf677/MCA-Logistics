@@ -204,3 +204,16 @@ export function bornesMois(date: string): { du: string; au: string } {
   const mm = String(m).padStart(2, '0')
   return { du: `${a}-${mm}-01`, au: `${a}-${mm}-${String(fin).padStart(2, '0')}` }
 }
+
+/** Relevé mensuel d'un client : colis remis (domicile + relais) des journées VALIDÉES ; le reste est signalé. */
+export function colisPourReleve(journees: JourneeColis[]): {
+  colis: number; domicile: number; relais: number; validees: number; nonValidees: number
+} {
+  let domicile = 0; let relais = 0; let validees = 0; let nonValidees = 0
+  for (const j of journees) {
+    if (j.statut !== 'validee') { nonValidees++; continue }
+    const r = colisRetenus(j)
+    domicile += r.domicile; relais += r.relais; validees++
+  }
+  return { colis: domicile + relais, domicile, relais, validees, nonValidees }
+}

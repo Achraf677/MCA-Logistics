@@ -21,6 +21,7 @@ export interface EnteteFeuille {
   operateur?: string | null
   depart?: string | null
   remettant?: string | null
+  adresse_remettant?: string | null
   livreur?: string | null
   nb_colis?: number | null
   nb_pgeo?: number | null
@@ -45,8 +46,38 @@ export interface TourneeColis {
   created_by: string | null
   created_at: string
   updated_at: string
+  /** Ordre affiché : celui de la feuille (`rang`), calculé par la route, ou réglé à la main. */
+  ordre_mode?: OrdreMode | null
+  ordre_calcule_le?: string | null
+  /** Dernier calcul d'itinéraire (Edge `optimiser-tournee-colis`). */
+  trajet?: TrajetTournee | null
+  depart?: { lat: number; lng: number; source?: string } | null
+  arrivee?: { mode: 'depart' | 'aucune' } | null
+  cloturee_le?: string | null
+  cloturee_par?: string | null
   team_members?: { full_name: string } | null
   clients?: { name: string } | null
+}
+
+export type OrdreMode = 'feuille' | 'route' | 'manuel'
+
+export interface TrajetTournee {
+  /** Tracé encodé (précision 5) : départ → arrêts → retour. */
+  polyline: string
+  /** Ordre calculé sans les temps de route (service d'itinéraire indisponible). */
+  approximatif: boolean
+  /** Tracé en lignes droites (le tracé routier n'a pas pu être obtenu). */
+  trace_droit?: boolean
+  km_total: number
+  km_feuille: number
+  duree_min: number
+  mode: 'tout' | 'restants'
+  depart: { lat: number; lng: number }
+  depart_source?: string
+  arrivee: 'depart' | 'aucune'
+  calcule_a: string
+  /** Ordre calculé (ids des arrêts), pour revenir à l'ordre calculé après un ordre manuel. */
+  ordre_ids?: string[]
 }
 
 export interface ArretColis {
@@ -63,11 +94,15 @@ export interface ArretColis {
   colis_remis: number | null
   lat: number | null
   lng: number | null
-  geo_precision: 'numero' | 'rue' | null
+  geo_precision: 'numero' | 'rue' | 'manuel' | null
   statut: StatutArretColis | null
   statut_le: string | null
   statut_par: string | null
   note: string | null
+  /** Place dans l'ordre de passage (route ou manuel) ; null = pas placé. `rang` reste la feuille. */
+  ordre?: number | null
+  /** Minutes depuis le départ jusqu'à cet arrêt (dernier calcul). */
+  eta_min?: number | null
 }
 
 /** Arrêt lu sur la feuille (Edge `lire-feuille-route`), corrigé dans l'aperçu avant création. */
@@ -299,7 +334,7 @@ export function fusionnerEntetes(entetes: Array<EnteteFeuille | null | undefined
   const out: EnteteFeuille = { pages }
   for (const e of entetes) {
     if (!e) continue
-    for (const k of ['date', 'societe', 'vehicule', 'imei', 'circuit', 'operateur', 'depart', 'remettant', 'livreur'] as const) {
+    for (const k of ['date', 'societe', 'vehicule', 'imei', 'circuit', 'operateur', 'depart', 'remettant', 'adresse_remettant', 'livreur'] as const) {
       if (out[k] == null && typeof e[k] === 'string' && e[k]) out[k] = e[k]
     }
     for (const k of ['nb_colis', 'nb_pgeo'] as const) {

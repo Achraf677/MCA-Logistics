@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   nombreColis, manquesPourEnvoyer, colisRetenus, estCorrigee, totauxJournees, remunerationCts,
-  rapportParSalarie, rapportCsv, bornesMois, salariePeutModifier, type JourneeColis,
+  rapportParSalarie, rapportCsv, bornesMois, salariePeutModifier, colisPourReleve, type JourneeColis,
 } from './journeesColis'
 
 function j(p: Partial<JourneeColis>): JourneeColis {
@@ -71,5 +71,13 @@ describe('journée de colis', () => {
   it('bornes du mois', () => {
     expect(bornesMois('2026-02-14')).toEqual({ du: '2026-02-01', au: '2026-02-28' })
     expect(bornesMois('2026-10-31')).toEqual({ du: '2026-10-01', au: '2026-10-31' })
+  })
+})
+
+describe('colisPourReleve', () => {
+  it('validées seulement (nombres validés), les autres comptées à part', () => {
+    const v = (p: Partial<JourneeColis>) => j({ colis_domicile: 10, colis_relais: 5, colis_litige: 1, statut: 'validee', ...p })
+    expect(colisPourReleve([v({}), v({ domicile_valide: 8 }), v({ statut: 'envoyee' }), v({ statut: 'brouillon' })]))
+      .toEqual({ colis: 28, domicile: 18, relais: 10, validees: 2, nonValidees: 2 })
   })
 })

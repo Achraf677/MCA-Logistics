@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  grouperParCommune, prochainArret, statutsProposes, libelleAdresse, libelleCompteurs, lireColisRemis,
+  statutsProposes, libelleAdresse, libelleCompteurs, lireColisRemis,
   patchStatut, compteursTournee,
 } from './tourneeColis.logic'
 import type { ArretColis } from '../../shared/lib/tourneesColis'
@@ -13,25 +13,7 @@ function a(p: Partial<ArretColis>): ArretColis {
   }
 }
 
-describe('grouperParCommune', () => {
-  it('suit l’ordre de la feuille ; une commune qui revient = nouveau groupe', () => {
-    const g = grouperParCommune([
-      a({ id: '3', rang: 3, commune: 'OSTWALD' }),
-      a({ id: '1', rang: 1, commune: 'OSTWALD', statut: 'livre' }),
-      a({ id: '2', rang: 2, commune: 'ILLKIRCH', cp: '67400' }),
-    ])
-    expect(g.map(x => [x.commune, x.arrets.map(y => y.id), x.traites])).toEqual([
-      ['OSTWALD', ['1'], 1], ['ILLKIRCH', ['2'], 0], ['OSTWALD', ['3'], 0],
-    ])
-    expect(new Set(g.map(x => x.cle)).size).toBe(3)
-  })
-})
-
 describe('gestes', () => {
-  it('prochain arrêt non traité, dans l’ordre', () => {
-    expect(prochainArret([a({ id: '2', rang: 2 }), a({ id: '1', rang: 1, statut: 'livre' })])?.id).toBe('2')
-    expect(prochainArret([a({ statut: 'livre' })])).toBeNull()
-  })
   it('statuts proposés selon le type', () => {
     expect(statutsProposes('c').fait).toBe('livre')
     expect(statutsProposes('rc')).toEqual({ fait: 'rc_remis', autres: ['rc_ferme', 'rc_sature', 'acces'] })
