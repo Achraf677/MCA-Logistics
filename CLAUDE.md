@@ -356,7 +356,11 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   traçait par ORS, qui échouait : carte en lignes droites alors que l'ordre était juste). Front :
   `shared/lib/tourneesColisRoute.ts` (règles pures), `shared/ui/CarteTournee.tsx` (Leaflet,
   Plan IGN), `mescourses/MaTournee.tsx` + `ArretTournee.tsx`, `tournees/TourneesColisDuJour.tsx`,
-  `livraisons/ColisDesJournees.tsx`. À valider : temps par arrêt (2 min, `_shared/tourneeRoute#ARRET_S`),
+  `livraisons/ColisDesJournees.tsx`. Départ des tournées de colis : **centre de tri La Poste de
+  Vendenheim** (EcoParc Rhénan, décidé le 18/10/2026), réglé dans Paramètres › Société
+  (`companies.depart_colis_*`, migration `20261018100000_companies_depart_colis` appliquée, Edge
+  v3) ; repli : adresse du remettant, puis dépôt. À valider : temps par arrêt (2 min,
+  `_shared/tourneeRoute#ARRET_S`),
   partage de position (prévenir les salariés : information CNIL / affichage).
   Piège Leaflet : `keyboard={false}` sur la carte (sinon le toucher fait sauter la page et la
   pastille n'est plus sous le doigt) ; `isolate` sur le conteneur (sinon la carte passe sur
