@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **18/10/2026** (TC1 mergé (PR #55) ; lots 2-5 tournée de colis codés, migration appliquée, Edge en ligne, PR « feat/tournee-colis-suite » à tester).
+> Dernière mise à jour : **18/10/2026** (tournée de colis : TC1 (PR #55) et lots 2-5 (PR #56) mergés et en prod).
 
 ---
 
@@ -345,7 +345,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   validées le 18/10/2026 (outil des livreurs) : livré = livre, rc_remis, col_ok · attente =
   avise, instance · retour = refuse, npai, adresse, acces, endommage, nonpres, rc_ferme,
   rc_sature, col_nf · neutre = col_rien.
-  **Lots 2 à 5 codés (branche `feat/tournee-colis-suite`, PR à tester, PAS mergée)** :
+  **Lots 2 à 5 mergés (PR #56, squash 9a212bf, 18/10/2026)** :
   migration `20261018090000_tournees_colis_route` **appliquée le 18/10/2026** (ordre / eta /
   trajet / clôture, `positions_livreurs`, photos `arret_colis`) ; Edge
   `optimiser-tournee-colis` **v2** et `lire-feuille-route` v2 **déployées le 18/10/2026**.
