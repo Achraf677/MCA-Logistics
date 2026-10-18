@@ -2,7 +2,7 @@
 
 > À ouvrir AVANT de toucher une table, une colonne, un statut, une Edge ou une règle de calcul
 > (CLAUDE.md § 7). À mettre à jour à chaque fin de grosse session (CLAUDE.md § 10).
-> Relevée dans le code le 01/10/2026. En cas de doute, le code fait foi :
+> Relevée dans le code le 01/10/2026, mise à jour le 18/10/2026 (tournées de colis). En cas de doute, le code fait foi :
 > `grep -rln "from('<table>')" src supabase/functions`.
 
 ## 1. Tables → lecteurs / écrivains
@@ -51,8 +51,8 @@
   `pickup_order` (séquence unique retraits + livraisons, celle de Mes courses), `arrival_time`.
   Règles pures : `_shared/vroom.ts`. « Mon ordre » et les flèches de TourCard écrivent la même
   séquence (`tournees.logic#positionsDansLOrdre`) et effacent `arrival_time`.
-- **tournees_colis / tournees_colis_arrets** (lot TC1, 17/10/2026, migration
-  `20261017090000_tournees_colis`) : feuille de route de messagerie scannée et ses arrêts. Écrits
+- **tournees_colis / tournees_colis_arrets** (lot TC1, migration
+  `20261017090000_tournees_colis`, **en prod depuis le 18/10/2026**) : feuille de route de messagerie scannée et ses arrêts. Écrits
   par `shared/lib/tourneesColis.queries` depuis Mes courses › Ma tournée (salarié : SES tournées,
   non clôturées) et Tournées › bloc « Tournées de colis du jour » (bureau, droit
   `planning.tournees`). Trigger `tournees_colis_arrets_garde` : `statut_le` / `statut_par`,
@@ -110,7 +110,7 @@
 - pennylane-quote : devis · pennylane-clients-sync : clients · pennylane-sync,
   suggest-categorie-ia : charges · pennylane-payment-check, qonto-sync : tresorerie
 - lire-facture : carburant, entretiens · lire-releve : carburant
-- lire-feuille-route (TC1) : `shared/lib/tourneesColis.queries#lirePageFeuille`, appelée par
+- lire-feuille-route (TC1, **déployée le 18/10/2026, v1**) : `shared/lib/tourneesColis.queries#lirePageFeuille`, appelée par
   `shared/ui/ScanFeuilleRoute` (Mes courses › Ma tournée, Tournées). N'écrit rien ; importe
   `_shared/mistral`, `_shared/feuilleRoute`, `_shared/geocodeArret`, `_shared/auth`, `cors`, `http`.
 - ai-extract-deliveries : copilote, parametres · assistant-chat : assistant ·

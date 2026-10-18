@@ -192,7 +192,7 @@
 | **S4 — Relevé client + clôture** | Relevé mensuel généré depuis les journées validées ; clôture du mois | oui (`periodes_cloturees`, `releve_id`) | — |
 | **S5 — Ticket → Pennylane** | Voir § 6 (après vérification) | peut-être | nouvelle (`pennylane-ticket`) |
 
-Chaque lot : tests, PR, preview, « merge », puis migration / Edge sur ton accord (§ 9 de CLAUDE.md).
+Chaque lot : tests, PR, preview, « merge » ; migrations / Edge appliquées par Claude (§ 9 de CLAUDE.md).
 
 ---
 

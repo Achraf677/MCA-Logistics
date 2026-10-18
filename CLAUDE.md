@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **17/10/2026** (Tournée de colis TC1 codée, PR à tester ; espace salarié S0 → S1 appliqués ; prochain : test TC1 + S1 avec Lucas, puis U6).
+> Dernière mise à jour : **18/10/2026** (TC1 : tables créées + Edge `lire-feuille-route` en ligne, PR #55 à tester puis « merge » ; Claude autonome sur Supabase ; prochain : test TC1 + S1 avec Lucas, puis carte / ordre par la route).
 
 ---
 
@@ -176,7 +176,12 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   · relecture adversariale du diff · captures PC (1920 et 1366) + mobile (390) si UI.
 - **Ordre de mise en prod** : 1) migrations (additives) → 2) merge (Cloudflare déploie le front)
   → 3) Edge Functions touchées (MCP `deploy_edge_function`, fichiers `../_shared/*` inclus,
-  `verify_jwt` inchangé). Aucune migration ni Edge avant accord (« merge » ou demande explicite).
+  `verify_jwt` inchangé).
+- **Autonomie Supabase (décidée le 18/10/2026)** : Claude applique LUI-MÊME les migrations
+  additives et déploie LUI-MÊME les Edge Functions, sans demander l'accord, dès que les
+  vérifications sont vertes (tests, relecture, migration testée). Il le signale en une ligne
+  dans son rapport. Il demande seulement avant une action destructive (suppression de table,
+  de colonne ou de données) ou un changement de droits d'accès existants.
 - Jamais d'identifiant de modèle IA dans un commit / une PR. Confirmer les hash après merge.
 
 ## 10. Rituel de fin de grosse session (OBLIGATOIRE)
@@ -188,6 +193,11 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 4. Vérifier que ce qui est noté « fait » est **mergé ET déployé** (migrations, Edge).
 5. Proposer à l'utilisateur la mise à jour du skill `mca-site` si l'architecture a bougé.
 6. Commit dédié « Mémoire : … » poussé avec le reste.
+7. **Rapport de fin de session à l'utilisateur : le plus court et le plus simple possible.**
+   Que des tirets, mots de tous les jours, 3 rubriques maximum : ce qui est fait · ce que
+   l'utilisateur doit faire (s'il y a quelque chose) · ce qu'il doit décider. Pas de liste de
+   fichiers, pas de SQL, pas de détails techniques, pas de rappel de ce qui n'a pas changé.
+   Le détail technique va dans la PR et dans ce fichier, pas dans le message.
 
 ## 11. État actuel (01/10/2026)
 - 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis,
@@ -216,7 +226,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   site. Ordre : U1 droits des 5 synchros · U2 client Pennylane unique (pays, TVA, SIREN, local
   gagne) · U3 lignes du devis = lignes de facture · U4 devis converti suivi (choix d'archi à
   valider) · U5 dates Paris + paiements réels · U6 mentions légales (= lot E) · U7 charges ·
-  U8 ménage. Lot par lot, avec accord avant chaque migration / déploiement d'Edge.
+  U8 ménage. Lot par lot (migrations / Edge appliquées par Claude, voir § 9).
   - **U1 codé (PR #41)** : `exigerPermission` + société de l'appelant dans pennylane-clients-sync
     (tiers.clients/update), pennylane-sync (finance.charges/update), pennylane-payment-check et
     qonto-sync (finance.tresorerie/update), pennylane-file (finance.charges | flotte.carburant |
@@ -328,9 +338,9 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   Piège : `id = any((select f()))` est refusé par Postgres (sous-requête) → `(select f()) @> array[id]` ;
   remplacer une policy = `alter policy` (pas de drop + create : trou d'accès et timeout MCP).
 - **Tournée de colis — TC1 « socle »** (demandé en urgence le 17/10/2026, branche
-  `feat/tournee-colis-socle`, PR à tester, PAS mergée) : migration
-  `20261017090000_tournees_colis` (**NON appliquée** : l'utilisateur fait le db push), Edge
-  `lire-feuille-route` (**à déployer**, verify_jwt true) ; `_shared/feuilleRoute.ts` (découpage
+  `feat/tournee-colis-socle`, PR #55 à tester, PAS mergée) : migration
+  `20261017090000_tournees_colis` **appliquée le 18/10/2026** (2 tables, 8 policies, 2 triggers),
+  Edge `lire-feuille-route` **déployée le 18/10/2026 (v1, verify_jwt true ; sans session → 401)** ; `_shared/feuilleRoute.ts` (découpage
   de la case N°, contrôle « Nb Colis », testé) et `_shared/geocodeArret.ts` (BAN : numéro, sinon
   centre de rue, sinon rien ; fichier séparé = `geocode()` inchangé). Front : `shared/lib/
   tourneesColis(.queries).ts`, `shared/ui/ScanFeuilleRoute.tsx`, `mescourses/MaTournee.tsx` +
