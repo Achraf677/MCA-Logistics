@@ -118,6 +118,8 @@ export interface ArretALire {
   rue: string | null
   numero: string | null
   type: 'c' | 'rc' | 'col'
+  a_verifier?: boolean
+  motif?: string | null
 }
 
 export interface Enrichi {
@@ -133,6 +135,16 @@ export interface Enrichi {
   ref_rang: number | null
   /** Premier rang du village dans l'ordre habituel (pour ranger une rue inconnue). */
   ref_rang_commune: number | null
+  a_verifier?: boolean
+  motif?: string | null
+}
+
+const MOTIF_COMMUNE = 'commune absente (bandeau non lu)'
+
+/** Commune retrouvée par le secteur : le motif « bandeau non lu » n'a plus lieu d'être. */
+function sansMotifCommune(motif: string | null | undefined): string | null {
+  const reste = String(motif ?? '').split(' · ').filter(m => m && m !== MOTIF_COMMUNE)
+  return reste.length ? reste.join(' · ') : null
 }
 
 /**
@@ -147,6 +159,7 @@ export function appliquerReferentiel<T extends ArretALire>(arrets: T[], ref: Ref
     const r = commune ? trouverRue(ref, commune, a.rue) : null
     const pos = r ? localiserNumero(r, a.numero) : null
     const type = a.type === 'c' && r && estRelais(r, a.numero) ? 'rc' : a.type
+    const motif = commune && a.motif ? sansMotifCommune(a.motif) : (a.motif ?? null)
     return {
       ...a,
       commune: r?.commune ?? commune,
@@ -158,6 +171,8 @@ export function appliquerReferentiel<T extends ArretALire>(arrets: T[], ref: Ref
       rue_connue: !!r,
       ref_rang: r?.rang ?? null,
       ref_rang_commune: commune ? (ref.premierRang.get(cle(commune)) ?? null) : null,
+      motif,
+      a_verifier: a.a_verifier === undefined ? undefined : motif != null,
     }
   })
 }

@@ -68,6 +68,16 @@ describe('appliquer à une page lue', () => {
     expect(lus[2]).toMatchObject({ commune: 'Bernolsheim', type: 'rc', ref_rang: 60 });
     expect(lus[3]).toMatchObject({ commune: 'Bernolsheim', type: 'col', rue_connue: false, ref_rang: null, ref_rang_commune: 60 });
   });
+  it('commune retrouvée par le secteur : plus de « bandeau non lu » à vérifier', () => {
+    const [a] = appliquerReferentiel([
+      { commune: null, cp: null, secteur: '601 - GEUDERTHEIM EGLISE', rue: 'rue des pres', numero: '2', type: 'c' as const, a_verifier: true, motif: 'commune absente (bandeau non lu)' },
+    ], REF);
+    const [b] = appliquerReferentiel([
+      { commune: null, cp: null, secteur: 'inconnu', rue: 'x', numero: '1', type: 'c' as const, a_verifier: true, motif: 'commune absente (bandeau non lu) · 2 colis lus, 3 annoncés' },
+    ], REF);
+    expect(a).toMatchObject({ commune: 'Geudertheim', a_verifier: false, motif: null });
+    expect(b).toMatchObject({ a_verifier: true, motif: 'commune absente (bandeau non lu) · 2 colis lus, 3 annoncés' });
+  });
   it('sans référentiel : rien ne change', () => {
     const vide = indexer([]);
     const [a] = appliquerReferentiel([{ commune: 'OSTWALD', cp: '67540', secteur: null, rue: 'rue a', numero: '1', type: 'c' as const }], vide);
