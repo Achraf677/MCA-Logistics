@@ -10,7 +10,19 @@ import {
 // ── Ordre d'affichage ───────────────────────────────────────────────────────
 
 export function modeOrdre(t: Pick<TourneeColis, 'ordre_mode'> | null | undefined): OrdreMode {
-  return t?.ordre_mode === 'route' || t?.ordre_mode === 'manuel' ? t.ordre_mode : 'feuille'
+  const m = t?.ordre_mode
+  return m === 'route' || m === 'manuel' || m === 'habituel' ? m : 'feuille'
+}
+
+/** Pas encore d'itinéraire calculé : ordre de la feuille, ou ordre habituel du livreur. */
+export function sansCalcul(mode: OrdreMode): boolean {
+  return mode === 'feuille' || mode === 'habituel'
+}
+
+/** Ids des arrêts dans l'ordre habituel (référentiel) ; vide si la tournée n'en a pas. */
+export function idsOrdreHabituel(arrets: ArretColis[]): string[] {
+  return arrets.filter(a => a.rang_habituel != null)
+    .sort((a, b) => (a.rang_habituel ?? 0) - (b.rang_habituel ?? 0) || a.rang - b.rang).map(a => a.id)
 }
 
 /** Arrêts dans l'ordre affiché : la feuille (`rang`), ou l'ordre calculé / manuel (non placés à la fin). */
@@ -103,6 +115,7 @@ export interface Bandeau {
 export function bandeauOrdre(t: Pick<TourneeColis, 'ordre_mode' | 'trajet'>): Bandeau {
   const mode = modeOrdre(t)
   const tr = t.trajet
+  if (mode === 'habituel') return { titre: 'Mon ordre habituel', detail: 'villages et rues dans ton ordre de tous les jours', avertissement: null }
   if (mode === 'feuille' || !tr) return { titre: 'Ordre de la feuille', detail: null, avertissement: null }
   const detail = `${libelleDistance(tr.km_total * 1000)} · ${libelleDuree(tr.duree_min)}`
   const gain = tr.km_feuille - tr.km_total
@@ -271,4 +284,36 @@ export function journeeDepuisArrets(arrets: ArretColis[]): ColisJournee {
 /** Ce qu'il reste avant de clôturer : arrêts non traités (avertissement, jamais bloquant). */
 export function nonTraites(arrets: ArretColis[]): number {
   return arrets.filter(a => !a.statut).length
+}
+
+// ── Catégories (code couleur + avancement) ──────────────────────────────────
+
+export interface CategorieArret {
+  type: TypeArretColis
+  libelle: string
+  /** Variable CSS de la couleur de la catégorie. */
+  couleur: string
+  total: number
+  traites: number
+  colis: number
+}
+
+/** Classique = bleu · relais = violet · collecte = jaune ; seulement les catégories présentes. */
+export const COULEUR_CATEGORIE: Record<TypeArretColis, string> = {
+  c: 'var(--info)', rc: 'var(--accent-violet)', col: 'var(--warning)',
+}
+const LIBELLE_CATEGORIE: Record<TypeArretColis, string> = { c: 'Colis', rc: 'Relais', col: 'Collectes' }
+
+export function avancementParCategorie(arrets: Array<Pick<ArretColis, 'type' | 'statut' | 'quantite'>>): CategorieArret[] {
+  const out = (['c', 'rc', 'col'] as const).map(type => ({
+    type, libelle: LIBELLE_CATEGORIE[type], couleur: COULEUR_CATEGORIE[type], total: 0, traites: 0, colis: 0,
+  }))
+  for (const a of arrets) {
+    const c = out.find(x => x.type === a.type)
+    if (!c) continue
+    c.total++
+    c.colis += a.quantite
+    if (a.statut) c.traites++
+  }
+  return out.filter(c => c.total > 0)
 }

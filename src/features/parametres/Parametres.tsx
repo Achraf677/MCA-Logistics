@@ -23,6 +23,7 @@ type Volet = 'societe' | 'apparence' | 'finance' | 'flotte' | 'documents' | 'com
 const EMPTY: Omit<CompanyData, 'id'> = {
   name: '', siren: '', siret: '', tva_intra: '',
   address: '', depot_lat: null, depot_lng: null,
+  depart_colis_adresse: '', depart_colis_lat: null, depart_colis_lng: null,
   capital_cts: null, iban: '', bic: '',
   transport_license_expiry: null, rc_pro_expiry: null,
   licence_transport: '',
@@ -68,6 +69,9 @@ export function Parametres() {
           address:     data.address ?? '',
           depot_lat:   data.depot_lat,
           depot_lng:   data.depot_lng,
+          depart_colis_adresse: data.depart_colis_adresse ?? '',
+          depart_colis_lat:     data.depart_colis_lat,
+          depart_colis_lng:     data.depart_colis_lng,
           capital_cts: data.capital_cts,
           iban:        data.iban ?? '',
           bic:         data.bic ?? '',
@@ -106,6 +110,21 @@ export function Parametres() {
       }
     }
 
+    // Même filet pour le départ des tournées de colis.
+    let depart_colis_lat = form.depart_colis_lat
+    let depart_colis_lng = form.depart_colis_lng
+    const departColis = form.depart_colis_adresse?.trim() ?? ''
+    if (!departColis) { depart_colis_lat = null; depart_colis_lng = null }
+    else if (depart_colis_lat == null || depart_colis_lng == null) {
+      const { data } = await supabase.functions.invoke('geocode', { body: { address: departColis } })
+      if (data?.ok && typeof data.lat === 'number' && typeof data.lng === 'number') {
+        depart_colis_lat = data.lat
+        depart_colis_lng = data.lng
+      } else {
+        toast('Départ des tournées de colis non localisé — enregistré sans coordonnées', 'error')
+      }
+    }
+
     const { error } = await updateCompany(companyId, {
       name:      form.name || undefined,
       siren:     form.siren || null,
@@ -114,6 +133,9 @@ export function Parametres() {
       address:   form.address || null,
       depot_lat,
       depot_lng,
+      depart_colis_adresse: departColis || null,
+      depart_colis_lat,
+      depart_colis_lng,
       capital_cts: form.capital_cts,
       iban:      form.iban || null,
       bic:       form.bic || null,
@@ -126,8 +148,9 @@ export function Parametres() {
       toast('Paramètres enregistrés')
       setDirty(false)
       // Reflète les coords géocodées dans le formulaire local (badge 📍).
-      if (depot_lat !== form.depot_lat || depot_lng !== form.depot_lng) {
-        setForm(p => ({ ...p, depot_lat, depot_lng }))
+      if (depot_lat !== form.depot_lat || depot_lng !== form.depot_lng
+        || depart_colis_lat !== form.depart_colis_lat || depart_colis_lng !== form.depart_colis_lng) {
+        setForm(p => ({ ...p, depot_lat, depot_lng, depart_colis_lat, depart_colis_lng }))
       }
     }
     setSaving(false)
@@ -257,6 +280,25 @@ export function Parametres() {
                   📍 {form.depot_lat.toFixed(5)}, {form.depot_lng.toFixed(5)}
                 </p>
               )}
+            </Section>
+
+            <Section title="Tournées de colis">
+              <AddressAutocomplete
+                label="Départ des tournées (centre de tri)"
+                value={form.depart_colis_adresse ?? ''}
+                placeholder="La Poste, allée de l'Écoparc Rhénan, 67550 Vendenheim"
+                onChange={v => {
+                  setForm(p => ({ ...p, depart_colis_adresse: v, depart_colis_lat: null, depart_colis_lng: null }))
+                  setDirty(true)
+                }}
+                onSelect={s => {
+                  setForm(p => ({ ...p, depart_colis_adresse: s.address, depart_colis_lat: s.lat, depart_colis_lng: s.lng }))
+                  setDirty(true)
+                }}
+              />
+              <p className="text-xs text-[var(--text-muted)]">
+                Point de départ et de retour de l'itinéraire calculé dans Ma tournée. Vide : le dépôt.
+              </p>
             </Section>
 
             {/* Section Bancaire */}

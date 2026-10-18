@@ -1,9 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   ChevronLeft, ChevronRight, ScanText, Trash2, ClipboardList, List, Map as IconeCarte, Route, LocateFixed,
-  Undo2, RefreshCw, MapPinOff, Search, MapPin, Radio, Flag, ChevronDown, AlertTriangle,
+  Undo2, RefreshCw, MapPinOff, Search, MapPin, Radio, Flag, ChevronDown, AlertTriangle, History,
 } from 'lucide-react'
-import { Badge } from '../../shared/ui/Badge'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { EmptyState } from '../../shared/ui/EmptyState'
@@ -12,14 +11,14 @@ import { ScanFeuilleRoute } from '../../shared/ui/ScanFeuilleRoute'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
-import { LIBELLE_STATUT_TOURNEE, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
+import { LIBELLE_STATUT_ARRET, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
 import {
-  arretsAPlacer, bandeauOrdre, deplacer, distanceM, doitEnvoyerPosition, grouperEnSuite, libelleDistance, modeOrdre,
-  nonTraites, ordreManuel, prochainDansOrdre, sectionsListe, type PointCarte,
+  arretsAPlacer, bandeauOrdre, deplacer, doitEnvoyerPosition, grouperEnSuite, idsOrdreHabituel, libelleDistance, modeOrdre,
+  nonTraites, avancementParCategorie, ordreManuel, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
 } from '../../shared/lib/tourneesColisRoute'
 import {
   listerTourneesColis, arretsDesTournees, supprimerTourneeColis, nomsClients, calculerItineraire,
-  ecrireOrdre, placerArret, chercherAdresse, photosArrets, cloturerTournee, preremplirJournee, envoyerPosition,
+  majArret, ecrireOrdre, placerArret, chercherAdresse, photosArrets, cloturerTournee, preremplirJournee, envoyerPosition,
   effacerPosition,
 } from '../../shared/lib/tourneesColis.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
@@ -27,7 +26,7 @@ import type { EtatFiche, MaFiche } from './mescourses.types'
 import { decalerJour, borneAujourdhui } from './espace.logic'
 import { libelleDateCourte } from './mescourses.logic'
 import { compteursTournee, libelleAdresse, libelleCompteurs } from './tourneeColis.logic'
-import { ArretTournee } from './ArretTournee'
+import { ArretTournee, BarreProchain } from './ArretTournee'
 import { Carte, MessageErreur, GardeFiche, champCls, boutonPrimaireCls, boutonSecondaireCls } from './EspaceCommun'
 
 const CarteTournee = lazy(() => import('../../shared/ui/CarteTournee'))
@@ -118,9 +117,27 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
   const majTournee = (t: Partial<TourneeColis> & { id: string }) =>
     setTournees(prev => prev.map(x => (x.id === t.id ? { ...x, ...t } : x)))
 
+  const [annulation, setAnnulation] = useState<{ avant: ArretColis; libelle: string } | null>(null)
+  const minuterie = useRef<ReturnType<typeof setTimeout> | null>(null)
   const surGeste = (maj: ArretColis) => {
+    const avant = arrets.find(a => a.id === maj.id)
+    if (avant && maj.statut && avant.statut !== maj.statut) {
+      setAnnulation({ avant, libelle: `${LIBELLE_STATUT_ARRET[maj.statut]} · ${libelleAdresse(maj)}` })
+      if (minuterie.current) clearTimeout(minuterie.current)
+      minuterie.current = setTimeout(() => setAnnulation(null), 8000)
+    }
     majArrets([maj])
     if (tournee?.statut === 'a_faire' && maj.statut) majTournee({ id: tournee.id, statut: 'en_cours' })
+  }
+
+  const annuler = async () => {
+    if (!annulation || !tournee) return
+    const { avant } = annulation
+    setAnnulation(null)
+    const patch = avant.statut ? { statut: avant.statut, colis_remis: avant.colis_remis } : { statut: null, colis_remis: null }
+    const { data, error } = await majArret(avant, patch, tournee)
+    if (error || !data) { toast(error?.message ?? 'Annulation impossible', 'error'); return }
+    majArrets([data])
   }
 
   const supprimer = async () => {
@@ -205,6 +222,18 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
         </>
       )}
 
+      {annulation && (
+        <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom)+12rem)] z-40 px-3">
+          <div className="mx-auto max-w-xl flex items-center gap-3 p-2 pl-4 rounded-[var(--r-lg)] border border-[var(--border-strong)] bg-[var(--bg-card)] shadow-lg">
+            <p className="flex-1 min-w-0 text-base font-semibold text-[var(--text)] truncate">{annulation.libelle}</p>
+            <button type="button" onClick={annuler}
+              className="min-h-14 px-5 inline-flex items-center gap-2 rounded-[var(--r-md)] bg-[var(--brand)] text-white text-base font-bold active:scale-[0.97]">
+              <Undo2 size={20} /> Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
       <ConfirmDialog open={aSupprimer} title="Supprimer cette tournée ?"
         message="Les arrêts et ce que tu y as noté seront effacés. À faire seulement si le scan est raté."
         confirmLabel="Supprimer" loading={suppression}
@@ -237,20 +266,20 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   const [cloture, setCloture] = useState(false)
   const [clotureEnCours, setClotureEnCours] = useState(false)
   const [traitesOuverts, setTraitesOuverts] = useState(false)
+  const [plus, setPlus] = useState(false)
 
   const verrouillee = tournee.statut === 'cloturee'
   const mode = modeOrdre(tournee)
   const c = useMemo(() => compteursTournee(arrets), [arrets])
   const lib = libelleCompteurs(c)
-  const total = c.arrets + c.collectes
-  const pct = total ? Math.round(((c.arretsTraites + c.collectesTraitees) / total) * 100) : 0
+  const categories = useMemo(() => avancementParCategorie(arrets), [arrets])
   const prochain = prochainDansOrdre(arrets, mode)
   const bandeau = bandeauOrdre(tournee)
   const aPlacer = useMemo(() => arretsAPlacer(arrets), [arrets])
   const prochainId = prochain?.id ?? null
   const couches = useMemo(() => [{ id: tournee.id, couleur: null, arrets, mode, trajet: tournee.trajet ?? null, prochainId }],
     [tournee.id, tournee.trajet, arrets, mode, prochainId])
-  const horsOrdre = mode === 'feuille' ? 0 : arrets.filter(a => !a.statut && a.lat != null && a.ordre == null).length
+  const horsOrdre = sansCalcul(mode) ? 0 : arrets.filter(a => !a.statut && a.lat != null && a.ordre == null).length
 
   // Photos de preuve des arrêts de la tournée.
   const idsArrets = useMemo(() => arrets.map(a => a.id).join(','), [arrets])
@@ -293,12 +322,21 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     onRecharger()
   }
 
+  const habituel = useMemo(() => idsOrdreHabituel(arrets), [arrets])
+  const revenirHabituel = async () => {
+    setCalcul('ordre')
+    const { error } = await ecrireOrdre(tournee.id, ordreManuel(arrets, mode, habituel.filter(id => arrets.some(a => a.id === id && !a.statut))), arrets.map(a => a.id), 'habituel')
+    setCalcul(null)
+    if (error) toast(error.message, 'error')
+    onRecharger()
+  }
+
   const placer = async (a: ArretColis, pos: { lat: number; lng: number }) => {
     const { data, error } = await placerArret(a.id, pos)
     if (error || !data) { toast(error?.message ?? 'Placement impossible', 'error'); return }
     onArrets([data])
     setAPlacerSur(null)
-    toast(mode === 'feuille' ? 'Arrêt placé' : "Arrêt placé : recalcule l'itinéraire pour l'intégrer", 'success')
+    toast(sansCalcul(mode) ? 'Arrêt placé' : "Arrêt placé : recalcule l'itinéraire pour l'intégrer", 'success')
   }
 
   // ── Ordre manuel : glisser-déposer par la poignée ──
@@ -376,82 +414,91 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   return (
     <>
       {/* Compteur en tête, collé en haut pendant le défilement. */}
-      <div className="sticky top-0 z-[5] -mx-1 px-1 pt-1 pb-2 bg-[var(--bg)]">
+      <div>
         <Carte className="gap-2">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 grid grid-cols-2 gap-3">
-              <div>
-                <p className="text-xs text-[var(--text-muted)]">Arrêts</p>
-                <p className="text-xl font-semibold tabular-nums text-[var(--text)]">{lib.arrets}</p>
-              </div>
-              <div>
-                <p className="text-xs text-[var(--text-muted)]">Colis</p>
-                <p className="text-xl font-semibold tabular-nums text-[var(--text)]">{lib.colis}</p>
-              </div>
-            </div>
-            <Badge color={verrouillee ? 'muted' : tournee.statut === 'en_cours' ? 'info' : 'warning'}>
-              {LIBELLE_STATUT_TOURNEE[tournee.statut]}
-            </Badge>
+          <div className="flex items-baseline gap-4">
+            <p className="text-2xl font-bold tabular-nums text-[var(--text)]">{lib.arrets} <span className="text-base font-medium text-[var(--text-muted)]">arrêts</span></p>
+            <p className="text-2xl font-bold tabular-nums text-[var(--text)]">{lib.colis} <span className="text-base font-medium text-[var(--text-muted)]">colis</span></p>
           </div>
-          <div className="h-2 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden" aria-hidden>
-            <div className="h-full bg-[var(--success)] transition-[width]" style={{ width: `${pct}%` }} />
-          </div>
-          <p className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--text-muted)]">
-            <span><strong className="text-[var(--success)]">{c.colisLivres}</strong> livrés</span>
-            <span><strong className="text-[var(--warning)]">{c.colisAttente}</strong> en attente</span>
-            <span><strong className="text-[var(--danger)]">{c.colisRetour}</strong> en retour</span>
-            {c.collectes > 0 && <span>{c.collectesTraitees} / {c.collectes} collectes</span>}
-          </p>
+          <ul className="flex flex-col gap-2">
+            {categories.map(cat => (
+              <li key={cat.type} className="flex flex-col gap-1">
+                <div className="flex items-baseline justify-between text-base">
+                  <span className="font-semibold" style={{ color: cat.couleur }}>{cat.libelle}</span>
+                  <span className="tabular-nums text-[var(--text)]">{cat.traites} / {cat.total}</span>
+                </div>
+                <div className="h-3 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden" aria-hidden>
+                  <div className="h-full transition-[width]" style={{ width: `${cat.total ? Math.round((cat.traites / cat.total) * 100) : 0}%`, background: cat.couleur }} />
+                </div>
+              </li>
+            ))}
+          </ul>
           <div className="grid grid-cols-2 gap-2" role="tablist" aria-label="Affichage">
             {([['liste', List, 'Liste'], ['carte', IconeCarte, 'Carte']] as const).map(([v, Ic, l]) => (
               <button key={v} type="button" role="tab" aria-selected={vue === v} onClick={() => changerVue(v)}
-                className={`min-h-11 inline-flex items-center justify-center gap-2 rounded-[var(--r-md)] border text-sm font-medium ${
+                className={`min-h-12 inline-flex items-center justify-center gap-2 rounded-[var(--r-md)] border text-base font-semibold ${
                   vue === v ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-[var(--border)] text-[var(--text)]'}`}>
-                <Ic size={16} /> {l}
+                <Ic size={18} /> {l}
               </button>
             ))}
           </div>
         </Carte>
       </div>
 
-      {/* Ordre de passage : une ligne, gestes en pictogramme (le 1er calcul en clair). */}
-      <Carte className="gap-2">
-        <div className="flex items-center gap-2">
-          <Route size={18} className="shrink-0 text-[var(--text-muted)]" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-[var(--text)] truncate">{bandeau.titre}</p>
-            {bandeau.detail && <p className="text-xs text-[var(--text-muted)] truncate">{bandeau.detail}</p>}
-          </div>
-          {!verrouillee && mode !== 'feuille' && (
-            <>
-              {mode === 'manuel' && (tournee.trajet?.ordre_ids?.length ?? 0) > 0 && (
-                <BoutonIcone icone={Undo2} libelle="Revenir à l'ordre calculé" disabled={calcul != null} onClick={revenirCalcule} />
-              )}
-              {c.arretsTraites + c.collectesTraitees > 0 && (
-                <BoutonIcone icone={LocateFixed} libelle={calcul === 'restants' ? 'Calcul…' : 'Recalculer depuis ma position'}
-                  disabled={calcul != null} onClick={() => calculer('restants')} />
-              )}
-              <BoutonIcone icone={RefreshCw} libelle={calcul === 'tout' ? 'Calcul…' : "Recalculer l'itinéraire"}
-                disabled={calcul != null} onClick={() => calculer('tout')} />
-            </>
+      {/* Itinéraire : les kilomètres et UN bouton ; le reste est replié sous « Plus ». */}
+      {!verrouillee && (
+        <Carte className="gap-2">
+          {sansCalcul(mode) ? (
+            <button type="button" disabled={calcul != null} onClick={() => calculer('tout')} className={`${boutonPrimaireCls} min-h-14 text-base`}>
+              <Route size={20} /> {calcul === 'tout' ? 'Calcul…' : "Calculer l'itinéraire"}
+            </button>
+          ) : (
+            <div className="flex items-center gap-3">
+              <p className="flex-1 flex items-center gap-2 text-2xl font-bold tabular-nums text-[var(--text)]">
+                <Route size={22} className="text-[var(--text-muted)]" />
+                {tournee.trajet ? libelleDistance(tournee.trajet.km_total * 1000) : '—'}
+              </p>
+              <button type="button" disabled={calcul != null} onClick={() => calculer('tout')} className={`${boutonSecondaireCls} min-h-12`}>
+                <RefreshCw size={16} /> {calcul ? 'Calcul…' : 'Recalculer'}
+              </button>
+            </div>
           )}
-        </div>
-        {!verrouillee && mode === 'feuille' && (
-          <button type="button" disabled={calcul != null} onClick={() => calculer('tout')} className={boutonSecondaireCls}>
-            <Route size={16} /> {calcul === 'tout' ? 'Calcul de l’itinéraire…' : "Calculer l'itinéraire"}
+          {horsOrdre > 0 && (
+            <p className="text-sm text-[var(--warning)]">
+              {horsOrdre} arrêt{horsOrdre > 1 ? 's' : ''} hors itinéraire : clique sur Recalculer.
+            </p>
+          )}
+          <button type="button" onClick={() => setPlus(o => !o)} aria-expanded={plus}
+            className="min-h-11 inline-flex items-center justify-between text-base font-medium text-[var(--text-muted)]">
+            Plus <ChevronDown size={18} className={plus ? 'rotate-180' : ''} />
           </button>
-        )}
-        {calcul && mode !== 'feuille' && <p className="text-xs text-[var(--text-muted)]">Calcul en cours…</p>}
-        {bandeau.avertissement && (
-          <p className="flex items-start gap-1.5 text-xs text-[var(--warning)]"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {bandeau.avertissement}</p>
-        )}
-        {horsOrdre > 0 && !verrouillee && (
-          <p className="text-xs text-[var(--warning)]">
-            {horsOrdre} arrêt{horsOrdre > 1 ? 's' : ''} pas dans l'ordre calculé : recalcule pour {horsOrdre > 1 ? 'les' : "l'"}intégrer.
-          </p>
-        )}
-        {!verrouillee && estAujourdhui && <PartagePosition tournee={tournee} memberId={fiche.id} />}
-      </Carte>
+          {plus && (
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-2 gap-2">
+                {c.arretsTraites + c.collectesTraitees > 0 && !sansCalcul(mode) && (
+                  <button type="button" disabled={calcul != null} onClick={() => calculer('restants')} className={`${boutonSecondaireCls} min-h-12`}>
+                    <LocateFixed size={16} /> Depuis ici
+                  </button>
+                )}
+                {habituel.length > 0 && !sansCalcul(mode) && (
+                  <button type="button" disabled={calcul != null} onClick={revenirHabituel} className={`${boutonSecondaireCls} min-h-12`}>
+                    <History size={16} /> Ordre habituel
+                  </button>
+                )}
+                {mode === 'manuel' && (tournee.trajet?.ordre_ids?.length ?? 0) > 0 && (
+                  <button type="button" disabled={calcul != null} onClick={revenirCalcule} className={`${boutonSecondaireCls} min-h-12`}>
+                    <Undo2 size={16} /> Ordre calculé
+                  </button>
+                )}
+              </div>
+              {bandeau.avertissement && (
+                <p className="flex items-start gap-1.5 text-sm text-[var(--warning)]"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {bandeau.avertissement}</p>
+              )}
+              {estAujourdhui && <PartagePosition tournee={tournee} memberId={fiche.id} />}
+            </div>
+          )}
+        </Carte>
+      )}
 
       {!verrouillee && aPlacer.length > 0 && (
         <APlacer arrets={aPlacer} onSurCarte={a => { setAPlacerSur(a); changerVue('carte') }} onPlacer={placer} />
@@ -479,19 +526,9 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
               </ul>
             ) : null}
             onFermerPanneau={() => setPoint(null)} />
-          {prochain && !verrouillee && !point && (
-            <ul className="flex flex-col gap-2">
-              <ProchainArret arret={prochain} tournee={tournee} moi={moi} onGeste={onGeste} photos={photos.get(prochain.id)} onPhoto={surPhoto} />
-            </ul>
-          )}
         </Suspense>
       ) : (
         <>
-          {prochain && !verrouillee && (
-            <ul className="flex flex-col gap-2">
-              <ProchainArret arret={prochain} tournee={tournee} moi={moi} onGeste={onGeste} photos={photos.get(prochain.id)} onPhoto={surPhoto} />
-            </ul>
-          )}
           {groupes.map(g => (
             <section key={g.cle} className="flex flex-col gap-2">
               <h3 className="flex items-baseline gap-2 px-1 text-sm font-semibold text-[var(--text)]">
@@ -530,44 +567,32 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
       {verrouillee ? (
         <Carte className="gap-2">
           <p className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]"><Flag size={16} /> Tournée terminée</p>
-          <p className="text-xs text-[var(--text-muted)]">
-            {tournee.cloturee_le ? `Le ${new Date(tournee.cloturee_le).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}. ` : ''}
-            Plus rien n'est modifiable ; le bureau peut la rouvrir si besoin.
-          </p>
+          {tournee.cloturee_le && (
+            <p className="text-sm text-[var(--text-muted)]">
+              {new Date(tournee.cloturee_le).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
+            </p>
+          )}
           {tournee.client_id && onOuvrirJournee && (
             <button type="button" onClick={onOuvrirJournee} className={boutonSecondaireCls}>Voir ma journée de colis</button>
           )}
         </Carte>
       ) : (
-        <button type="button" onClick={() => setCloture(true)} className={boutonPrimaireCls}>
-          <Flag size={18} /> Terminer ma tournée
+        <button type="button" onClick={() => setCloture(true)} className={`${boutonPrimaireCls} min-h-14 text-base`}>
+          <Flag size={20} /> Terminer ma tournée
         </button>
+      )}
+
+      {prochain && !verrouillee && !point && !aPlacerSur && (
+        <>
+          <div aria-hidden className="h-52" />
+          <BarreProchain key={prochain.id} arret={prochain} tournee={tournee} onGeste={onGeste}
+            photos={photos.get(prochain.id)} onPhoto={surPhoto} />
+        </>
       )}
 
       <ConfirmDialog open={cloture} title="Terminer ma tournée ?" message={messageCloture}
         confirmLabel="Terminer" loading={clotureEnCours}
         onConfirm={terminer} onCancel={() => setCloture(false)} />
-    </>
-  )
-}
-
-// ── Prochain arrêt ──────────────────────────────────────────────────────────
-
-function ProchainArret({ arret, tournee, moi, onGeste, photos, onPhoto }: {
-  arret: ArretColis
-  tournee: TourneeColis
-  moi: { lat: number; lng: number } | null
-  onGeste: (a: ArretColis) => void
-  photos?: DocumentRow[]
-  onPhoto: (id: string, d: DocumentRow) => void
-}) {
-  const loin = moi && arret.lat != null && arret.lng != null ? distanceM(moi, { lat: arret.lat, lng: arret.lng }) : null
-  return (
-    <>
-      <p className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--brand)]">
-        Prochain arrêt{loin != null ? ` · à ${libelleDistance(loin)} (à vol d'oiseau)` : ''}
-      </p>
-      <ArretTournee arret={arret} tournee={tournee} verrouillee={false} onGeste={onGeste} photos={photos} onPhoto={onPhoto} enAvant />
     </>
   )
 }
@@ -679,13 +704,12 @@ function PartagePosition({ tournee, memberId }: { tournee: TourneeColis; memberI
     <div className="flex flex-col gap-0.5 pt-2 border-t border-[var(--border)]">
       <label className="flex items-center gap-3 min-h-11 cursor-pointer">
         <Radio size={18} className={actif ? 'text-[var(--success)]' : 'text-[var(--text-muted)]'} />
-        <span className="flex-1 text-sm text-[var(--text)]">Partager ma position avec le bureau</span>
+        <span className="flex-1 text-base text-[var(--text)]">Partager ma position</span>
         <input type="checkbox" role="switch" checked={actif} onChange={basculer} className="w-6 h-6 accent-[var(--brand)]" />
       </label>
       {actif && (
-        <p className="text-xs text-[var(--text-muted)]">
-          {etat === 'refus' ? 'Position refusée par le téléphone : autorise la localisation pour ce site.'
-            : 'Le bureau voit ta dernière position. Garde le site ouvert ; coupé à la fin de la tournée.'}
+        <p className="text-sm text-[var(--text-muted)]">
+          {etat === 'refus' ? 'Localisation refusée : autorise-la dans le navigateur.' : 'Position partagée avec le bureau.'}
         </p>
       )}
     </div>

@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **18/10/2026** (tournée de colis : TC1 (PR #55) et lots 2-5 (PR #56) mergés et en prod).
+> Dernière mise à jour : **18/10/2026** (tournée de colis : TC1 (PR #55) et lots 2-5 (PR #56) mergés et en prod ; départ Vendenheim, scan v2 (référentiel de l'outil d'origine) et ergonomie une main mergés (PR #58), migrations et Edge en prod).
 
 ---
 
@@ -54,6 +54,11 @@
     (le relevé mensuel reste la seule ligne de facturation). Chaîne de comptage (lot 5) :
     tournée clôturée → journée de colis préremplie en brouillon (le salarié envoie, le
     bureau valide) → relevé du mois propose les colis des journées VALIDÉES.
+    **Scan v2 (18/10/2026)** : table `referentiel_rues` = base de l'outil de tournée d'origine
+    (villages du secteur, noms officiels des rues, position de chaque numéro, ordre habituel,
+    relais) ; la lecture s'en sert pour que le salarié n'ait RIEN à corriger. La tournée naît
+    dans l'ordre habituel (`ordre_mode = 'habituel'`). Départ des tournées = centre de tri
+    La Poste de Vendenheim (`companies.depart_colis_*`, Paramètres).
 - **Prestations** (`deliveries.prestation`) : `express` · `messagerie` (relevé) · `dediee` ·
   `mise_a_dispo` (un lieu, début / fin) · `forfait` (aucun arrêt). `null` = ancienne course = express.
 - Tout écran doit servir tous les cas : ne jamais coder « 1 course = 1 colis = 1 arrêt » en dur.
@@ -345,7 +350,21 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   validées le 18/10/2026 (outil des livreurs) : livré = livre, rc_remis, col_ok · attente =
   avise, instance · retour = refuse, npai, adresse, acces, endommage, nonpres, rc_ferme,
   rc_sature, col_nf · neutre = col_rien.
-  **Lots 2 à 5 mergés (PR #56, squash 9a212bf, 18/10/2026)** :
+  **Lots 2 à 5 mergés (PR #56)**. **PR #58 mergée le 18/10/2026** (ergonomie une main : barre
+  du prochain arrêt, gros boutons, annulation 8 s, code couleur classique bleu / relais violet /
+  collecte jaune, avancement par catégorie ; relais revérifiés sur localiser.laposte.fr le
+  18/10/2026 : Mommenheim 37 rte de Brumath, Geudertheim 52 rue du Gal de Gaulle + 1 rue de
+  l'Industrie, Kriegsheim 13 Grand'Rue, Bernolsheim 4C rue de Lisbonne (+ Super U, route de
+  Brumath, sans numéro : non ajouté ; 2A rue Principale vient de l'ancien outil, non retrouvé
+  sur La Poste), Brumath 141 av. de Strasbourg + 4A rue des Carrières, Mittelschaeffolsheim 1 ter
+  rue de Mittelhausen ; aucun relais Pickup trouvé pour Berstheim, Bilwisheim, Donnenheim,
+  Hochstett, Krautwiller, Wittersheim, Waltenheim-sur-Zorn ; Wingersheim = agence communale en
+  mairie) : départ fixe (centre de tri de Vendenheim, migration
+  `20261018100000_companies_depart_colis`, optimiser-tournee-colis v3) + scan v2 (migration
+  `20261018110000_referentiel_tournees_colis` appliquée et base chargée : 700 rues, 9 985
+  numéros ; lire-feuille-route v3 déployée). Piège : `apply_migration` / `execute_sql` sur
+  un gros paquet de données = découper en blocs de ~15 Ko (coordonnées en écarts entiers).
+  Lots 2 à 5 (PR #56, squash 9a212bf, 18/10/2026) :
   migration `20261018090000_tournees_colis_route` **appliquée le 18/10/2026** (ordre / eta /
   trajet / clôture, `positions_livreurs`, photos `arret_colis`) ; Edge
   `optimiser-tournee-colis` **v2** et `lire-feuille-route` v2 **déployées le 18/10/2026**.
@@ -356,7 +375,11 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   traçait par ORS, qui échouait : carte en lignes droites alors que l'ordre était juste). Front :
   `shared/lib/tourneesColisRoute.ts` (règles pures), `shared/ui/CarteTournee.tsx` (Leaflet,
   Plan IGN), `mescourses/MaTournee.tsx` + `ArretTournee.tsx`, `tournees/TourneesColisDuJour.tsx`,
-  `livraisons/ColisDesJournees.tsx`. À valider : temps par arrêt (2 min, `_shared/tourneeRoute#ARRET_S`),
+  `livraisons/ColisDesJournees.tsx`. Départ des tournées de colis : **centre de tri La Poste de
+  Vendenheim** (EcoParc Rhénan, décidé le 18/10/2026), réglé dans Paramètres › Société
+  (`companies.depart_colis_*`, migration `20261018100000_companies_depart_colis` appliquée, Edge
+  v3) ; repli : adresse du remettant, puis dépôt. À valider : temps par arrêt (2 min,
+  `_shared/tourneeRoute#ARRET_S`),
   partage de position (prévenir les salariés : information CNIL / affichage).
   Piège Leaflet : `keyboard={false}` sur la carte (sinon le toucher fait sauter la page et la
   pastille n'est plus sous le doigt) ; `isolate` sur le conteneur (sinon la carte passe sur

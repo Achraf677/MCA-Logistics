@@ -206,6 +206,24 @@ export function controlerLigne(l: Pick<LigneFeuille, 'nb_colis' | 'nb_pgeo' | 'n
 }
 
 /**
+ * Les petits chiffres en exposant « 5(2) » se lisent mal sur une photo, alors que les colonnes
+ * Nb Colis / Nb PGEO sont imprimées en gros. Quand le nombre de numéros lus égale Nb PGEO (donc
+ * aucun numéro n'est perdu) et que seule la somme des colis diffère, on s'appuie sur Nb Colis :
+ * un seul numéro = tous les colis de la ligne ; sinon le seul numéro dont l'exposant a été lu
+ * absorbe l'écart. Sinon (ambigu) on ne touche à rien : la ligne reste « à vérifier ».
+ */
+export function corrigerQuantites(l: Pick<LigneFeuille, 'nb_colis' | 'nb_pgeo'>, numeros: NumeroLu[]): void {
+  if (l.nb_colis == null || numeros.some(n => n.illisible)) return
+  if (l.nb_pgeo != null && numeros.length !== l.nb_pgeo) return
+  const somme = numeros.reduce((s, n) => s + (n.quantite ?? 1), 0)
+  const ecart = l.nb_colis - somme
+  if (ecart === 0) return
+  if (numeros.length === 1) { numeros[0].quantite = Math.max(1, l.nb_colis); return }
+  const lus = numeros.filter(n => n.quantite != null)
+  if (lus.length === 1 && (lus[0].quantite as number) + ecart >= 1) lus[0].quantite = (lus[0].quantite as number) + ecart
+}
+
+/**
  * Lignes du tableau (dans l'ordre de la feuille) → arrêts, un par numéro.
  * - commune / CP : ceux du dernier bandeau, reportés vers le bas jusqu'au suivant ;
  * - chaque numéro vaut « (n) » colis, sinon 1 ; case vide = la rue entière (Nb Colis) ;
@@ -224,7 +242,14 @@ export function lignesEnArrets(lignes: LigneFeuille[]): ArretFeuille[] {
     if (!l.rue && !l.numeros) continue
     const numeros = decouperNumeros(l.numeros)
     const vide = !(l.numeros ?? '').trim()
-    const motifs = controlerLigne(l, numeros)
+    if (!vide) corrigerQuantites(l, numeros)
+    // Moins de numéros ET moins de colis que la feuille n'en annonce : des numéros n'ont pas été
+    // lus. On ajoute d'office une ligne « n° illisible » avec les colis manquants (le livreur
+    // regarde l'étiquette sur place) au lieu de bloquer la ligne entière.
+    const somme = numeros.reduce((s, n) => s + (n.quantite ?? 1), 0)
+    const manque = !vide && l.nb_colis != null && l.nb_pgeo != null && somme < l.nb_colis && numeros.length < l.nb_pgeo
+      ? l.nb_colis - somme : 0
+    const motifs = manque ? numeros.some(n => n.illisible) ? ['chiffre illisible'] : [] : controlerLigne(l, numeros)
     if (!l.rue) motifs.push('rue illisible')
     if (!commune) motifs.push('commune absente (bandeau non lu)')
     const motif = motifs.length ? motifs.join(' · ') : null
@@ -236,6 +261,13 @@ export function lignesEnArrets(lignes: LigneFeuille[]): ArretFeuille[] {
         a_verifier: motif != null, motif,
       })
     })
+    if (manque) {
+      arrets.push({
+        commune, cp, secteur: l.secteur, rue: l.rue, numero: null, quantite: manque, type: 'c',
+        note: 'N° illisible sur la feuille : regarde l’étiquette', a_verifier: true,
+        motif: `${pluriel(manque, 'colis')} sans numéro lisible (${l.nb_colis} colis / ${l.nb_pgeo} PGEO annoncés)`,
+      })
+    }
   }
   return arrets
 }

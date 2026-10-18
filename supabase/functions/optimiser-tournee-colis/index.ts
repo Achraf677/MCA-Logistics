@@ -6,9 +6,9 @@
 // Entrée : { tournee_id, mode: 'tout' | 'restants', depart?: { lat, lng }, arrivee?: 'depart' | 'aucune' }
 //   - 'tout' : tous les arrêts localisés ; 'restants' : seulement les arrêts pas encore traités
 //     (les traités gardent leur place, devant) — typiquement « Recalculer depuis ma position ».
-//   - départ : celui fourni (position du livreur) ; sinon celui déjà enregistré sur la tournée ;
-//     sinon l'adresse du remettant lue sur la feuille (géocodée UNE fois puis gardée) ; sinon le
-//     dépôt de la société (Paramètres). Arrivée par défaut : retour au départ.
+//   - départ : celui fourni (position du livreur) ; sinon le départ des tournées de colis réglé
+//     dans Paramètres (centre de tri) ; sinon l'adresse du remettant lue sur la feuille ; sinon
+//     le dépôt de la société. Arrivée par défaut : retour au départ.
 // Sortie : { ok, approximatif, message?, km_total, duree_min, km_feuille, places, a_placer }
 //
 // Calcul : `_shared/tourneeRoute.ts` (pur, testé). Temps de conduite : matrice ORS
@@ -161,20 +161,23 @@ Deno.serve(async (req: Request) => {
   const arrets = (lus ?? []) as Arret[]
 
   // ── Départ / arrivée ──
+  // Ordre : position fournie (recalcul en route) > départ des tournées de colis réglé dans
+  // Paramètres (centre de tri) > adresse du remettant lue sur la feuille > dépôt de la société.
+  // Recalculé à chaque fois (un réglage changé s'applique tout de suite) ; noté sur la tournée.
   let depart: Point | null = null
   let departSource = 'position'
-  let departStocke: (Point & { source: string }) | null = pointValide(t.depart) ? t.depart as Point & { source: string } : null
   if (pointValide(body.depart)) depart = { lat: body.depart.lat, lng: body.depart.lng }
-  else if (departStocke) { depart = departStocke; departSource = departStocke.source ?? 'enregistre' }
   else {
+    const { data: soc } = await db.from('companies')
+      .select('depot_lat, depot_lng, depart_colis_lat, depart_colis_lng').eq('id', t.company_id).maybeSingle()
     const adresse = typeof t.entete?.adresse_remettant === 'string' ? t.entete.adresse_remettant.trim() : ''
-    const g = adresse ? await geocode(adresse).catch(() => null) : null
-    if (g) { depart = g; departSource = 'remettant'; departStocke = { ...g, source: 'remettant' } }
-    else {
-      const { data: soc } = await db.from('companies').select('depot_lat, depot_lng').eq('id', t.company_id).maybeSingle()
-      if (soc && Number.isFinite(soc.depot_lat) && Number.isFinite(soc.depot_lng)) {
+    if (soc && Number.isFinite(soc.depart_colis_lat) && Number.isFinite(soc.depart_colis_lng)) {
+      depart = { lat: soc.depart_colis_lat, lng: soc.depart_colis_lng }; departSource = 'reglage'
+    } else {
+      const g = adresse ? await geocode(adresse).catch(() => null) : null
+      if (g) { depart = g; departSource = 'remettant' }
+      else if (soc && Number.isFinite(soc.depot_lat) && Number.isFinite(soc.depot_lng)) {
         depart = { lat: soc.depot_lat, lng: soc.depot_lng }; departSource = 'depot'
-        departStocke = { ...depart, source: 'depot' }
       }
     }
   }
@@ -237,7 +240,7 @@ Deno.serve(async (req: Request) => {
   const { data: maj, error: eM } = await db.from('tournees_colis').update({
     trajet, ordre_mode: 'route', ordre_calcule_le: new Date().toISOString(),
     arrivee: { mode: arriveeMode },
-    ...(departStocke && !pointValide(t.depart) ? { depart: departStocke } : {}),
+    ...(depart && departSource !== 'position' ? { depart: { ...depart, source: departSource } } : {}),
   }).eq('id', tourneeId).select('id')
   if (eM) return jsonResponse({ ok: false, error: eM.message }, 400)
   if (!maj?.length) return jsonResponse({ ok: false, error: 'Tu ne peux pas modifier cette tournée.' }, 403)

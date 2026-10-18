@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Camera, ImagePlus, Trash2, ScanText, Loader2, Check, AlertTriangle, MapPin, Plus, RotateCcw, X,
+  Camera, ImagePlus, Trash2, ScanText, Loader2, Check, AlertTriangle, MapPin, Plus, RotateCcw, X, ListChecks, ChevronDown,
 } from 'lucide-react'
 import { Badge } from './Badge'
 import { BoutonIcone } from './BoutonIcone'
 import { useToast } from './useToast'
 import {
-  LIBELLE_TYPE_ARRET, arretVide, fusionnerEntetes, manquesApercu, modifierArretLu, ordonnerParPage, pagesEnDouble,
+  LIBELLE_TYPE_ARRET, arretVide, fusionnerEntetes, manquesApercu, modifierArretLu, ordonnerParPage, ordreHabituel, pagesEnDouble,
   pagesManquantes, retirerPhoto, totauxApercu, type ArretLu, type EnteteFeuille, type PageLue, type TypeArretColis,
 } from '../lib/tourneesColis'
 import { compresserPage, creerTourneeColis, lirePageFeuille } from '../lib/tourneesColis.queries'
@@ -34,8 +34,9 @@ let clePage = 0
 
 /**
  * Scanner une feuille de route de messagerie : une photo par page (appareil ou galerie),
- * lecture page par page (Edge `lire-feuille-route`), aperçu des arrêts lus à corriger
- * (modifier, supprimer, ajouter), puis création de la tournée. Rien n'est écrit avant
+ * lecture page par page (Edge `lire-feuille-route`, qui applique le référentiel : villages,
+ * rues officielles, positions, relais, ordre habituel), résumé, puis création de la tournée.
+ * La correction des arrêts reste possible (repliée) mais n'est jamais exigée. Rien n'est écrit avant
  * « Créer la tournée ». Partagé : le salarié scanne pour lui (Mes courses), le bureau pour
  * un salarié choisi (Tournées).
  */
@@ -61,6 +62,9 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
   // Un seul client de messagerie : c'est lui (les noms peuvent arriver après le montage).
   const clientId = clients.length === 1 ? clients[0].id : clientChoisi
   const [seulementAVerifier, setSeulementAVerifier] = useState(false)
+  const [details, setDetails] = useState(false)
+  // Dernière commune lue par page : une page qui commence sans bandeau reprend celle d'avant.
+  const communesParPage = useRef<Record<number, string | null>>({})
   const [creation, setCreation] = useState(false)
   const camRef = useRef<HTMLInputElement>(null)
   const galRef = useRef<HTMLInputElement>(null)
@@ -87,6 +91,12 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     URL.revokeObjectURL(pages[i].apercu)
     setPages(prev => prev.filter(x => x.cle !== cle))
     setArrets(prev => retirerPhoto(prev, i + 1))
+    const c: Record<number, string | null> = {}
+    for (const [k, v] of Object.entries(communesParPage.current)) {
+      const n = Number(k)
+      if (n < i + 1) c[n] = v; else if (n > i + 1) c[n - 1] = v
+    }
+    communesParPage.current = c
     setEntetes(prev => {
       const out: Record<number, EnteteFeuille | null> = {}
       for (const [k, v] of Object.entries(prev)) {
@@ -102,9 +112,10 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     const p = liste[index]
     const numero = index + 1
     setPages(prev => prev.map(x => (x.cle === p.cle ? { ...x, etat: 'lecture', erreur: undefined } : x)))
+    const precedente = communesParPage.current[numero - 1] ?? null
     let res: Awaited<ReturnType<typeof lirePageFeuille>>
     try {
-      res = await lirePageFeuille(await compresserPage(p.file), numero)
+      res = await lirePageFeuille(await compresserPage(p.file), numero, precedente)
     } catch (e) {
       res = { arrets: [], entete: null, pageLue: null, error: e as Error }
     }
@@ -112,6 +123,7 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
       setPages(prev => prev.map(x => (x.cle === p.cle ? { ...x, etat: 'erreur', erreur: res.error!.message } : x)))
       return false
     }
+    communesParPage.current[numero] = [...res.arrets].reverse().find(a => a.commune)?.commune ?? precedente
     setPages(prev => prev.map(x => (x.cle === p.cle ? { ...x, etat: 'ok', nb: res.arrets.length, pageLue: res.pageLue } : x)))
     setEntetes(prev => ({ ...prev, [numero]: res.entete }))
     setArrets(prev => [...prev.filter(a => a.page !== numero), ...res.arrets])
@@ -156,6 +168,7 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
   const enDouble = pagesEnDouble(lues)
   const totalFeuille = Math.max(0, ...lues.map(p => p?.total ?? 0))
   const affiches = seulementAVerifier ? ordonnes.filter(a => a.a_verifier) : ordonnes
+  const habituel = useMemo(() => ordreHabituel(ordonnes) != null, [ordonnes])
 
   const creer = async () => {
     if (manques.length) return
@@ -263,8 +276,33 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
       <div className="flex flex-col gap-1 p-3 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)]">
         <p className="text-base font-semibold text-[var(--text)]">
           {totaux.arrets} arrêt{totaux.arrets > 1 ? 's' : ''} · {totaux.colis} colis
-          {totaux.collectes > 0 && ` · ${totaux.collectes} collecte${totaux.collectes > 1 ? 's' : ''}`}
         </p>
+        <p className="text-sm text-[var(--text)]">
+          {[
+            totaux.relais > 0 && `${totaux.relais} relais`,
+            totaux.collectes > 0 && `${totaux.collectes} collecte${totaux.collectes > 1 ? 's' : ''}`,
+            totaux.villages > 0 && `${totaux.villages} village${totaux.villages > 1 ? 's' : ''}`,
+          ].filter(Boolean).join(' · ')}
+        </p>
+        <ul className="flex flex-col gap-0.5 py-1 text-sm">
+          {totaux.connus > 0 && (
+            <li className="flex items-start gap-1.5 text-[var(--success)]">
+              <Check size={15} className="shrink-0 mt-0.5" />
+              {totaux.connus === arrets.length ? 'Toutes les adresses reconnues' : `${totaux.connus} adresses sur ${arrets.length} reconnues`}
+            </li>
+          )}
+          {habituel && (
+            <li className="flex items-start gap-1.5 text-[var(--success)]">
+              <Check size={15} className="shrink-0 mt-0.5" /> Rangée dans ton ordre habituel
+            </li>
+          )}
+          {totaux.aPlacer > 0 && (
+            <li className="flex items-start gap-1.5 text-[var(--text-muted)]">
+              <MapPin size={15} className="shrink-0 mt-0.5" />
+              {totaux.aPlacer} adresse{totaux.aPlacer > 1 ? 's' : ''} à placer sur la carte pendant la tournée
+            </li>
+          )}
+        </ul>
         <p className="text-xs text-[var(--text-muted)]">
           {pages.length} page{pages.length > 1 ? 's' : ''} lue{pages.length > 1 ? 's' : ''}
           {totalFeuille > 0 && ` sur ${totalFeuille}`}
@@ -322,24 +360,38 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
         </label>
       )}
 
-      {totaux.aVerifier > 0 && (
-        <button type="button" onClick={() => setSeulementAVerifier(v => !v)} aria-pressed={seulementAVerifier}
-          className={`min-h-10 px-3 inline-flex items-center gap-2 self-start rounded-[var(--r-md)] border text-sm font-medium ${
-            seulementAVerifier ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--border)] text-[var(--text)]'}`}>
-          <AlertTriangle size={15} /> {totaux.aVerifier} à vérifier {seulementAVerifier ? '(afficher tout)' : ''}
-        </button>
-      )}
-
-      <ol className="flex flex-col gap-2">
-        {affiches.map(a => (
-          <LigneApercu key={a.cle} a={a} rang={ordonnes.indexOf(a) + 1}
-            onModifier={patch => modifier(a.cle, patch)} onSupprimer={() => supprimer(a.cle)} />
-        ))}
-      </ol>
-
-      <button type="button" onClick={ajouter} className={`${btnSecondaire} self-start`}>
-        <Plus size={16} /> Ajouter un arrêt
+      {/* Rien à faire d'habitude : les arrêts se corrigent seulement si on le veut. */}
+      <button type="button" onClick={() => setDetails(v => !v)} aria-expanded={details}
+        className={`${btnSecondaire} justify-between`}>
+        <span className="inline-flex items-center gap-2">
+          <ListChecks size={16} /> Voir / corriger les arrêts
+          {totaux.aVerifier > 0 && <Badge color="warning">{totaux.aVerifier} à vérifier</Badge>}
+        </span>
+        <ChevronDown size={16} className={details ? 'rotate-180' : ''} />
       </button>
+
+      {details && (
+        <>
+          {totaux.aVerifier > 0 && (
+            <button type="button" onClick={() => setSeulementAVerifier(v => !v)} aria-pressed={seulementAVerifier}
+              className={`min-h-10 px-3 inline-flex items-center gap-2 self-start rounded-[var(--r-md)] border text-sm font-medium ${
+                seulementAVerifier ? 'border-[var(--warning)] text-[var(--warning)]' : 'border-[var(--border)] text-[var(--text)]'}`}>
+              <AlertTriangle size={15} /> {seulementAVerifier ? 'Afficher tout' : `Seulement les ${totaux.aVerifier} à vérifier`}
+            </button>
+          )}
+
+          <ol className="flex flex-col gap-2">
+            {affiches.map(a => (
+              <LigneApercu key={a.cle} a={a} rang={ordonnes.indexOf(a) + 1}
+                onModifier={patch => modifier(a.cle, patch)} onSupprimer={() => supprimer(a.cle)} />
+            ))}
+          </ol>
+
+          <button type="button" onClick={ajouter} className={`${btnSecondaire} self-start`}>
+            <Plus size={16} /> Ajouter un arrêt
+          </button>
+        </>
+      )}
 
       {/* Barre d'actions fixe en bas de la zone (le bouton reste sous le pouce). */}
       <div className={`sticky ${basCollant} -mx-1 px-1 pt-2 pb-1 bg-[var(--bg-elevated)] flex flex-col gap-2 border-t border-[var(--border)]`}>
@@ -362,8 +414,8 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
 
 const LIBELLE_GEO: Record<'numero' | 'rue' | 'aucune', { texte: string; cls: string }> = {
   numero: { texte: 'Numéro localisé', cls: 'text-[var(--success)]' },
-  rue: { texte: 'Rue localisée (numéro introuvable)', cls: 'text-[var(--warning)]' },
-  aucune: { texte: 'Non localisé', cls: 'text-[var(--text-muted)]' },
+  rue: { texte: 'Numéro voisin ou milieu de rue', cls: 'text-[var(--text-muted)]' },
+  aucune: { texte: 'À placer sur la carte', cls: 'text-[var(--text-muted)]' },
 }
 
 function LigneApercu({ a, rang, onModifier, onSupprimer }: {

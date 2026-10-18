@@ -153,6 +153,27 @@ Pas bon — reste
   fermé, saturé, accès · collecte : rien, non faite, accès), colis remis partiel si > 1 colis,
   note, effacer le statut. Supprimer la tournée (scan raté), scanner une autre feuille.
 - Écrit : `tournees_colis` (création, passe « en cours » au 1er geste), `tournees_colis_arrets`.
+- Scan v2 (18/10/2026, PR #58) : référentiel de l'outil d'origine (`referentiel_rues`) :
+  commune retrouvée par le secteur (page sans bandeau : commune de la page d'avant), nom
+  officiel de la rue, position du numéro (sinon voisin du même côté, sinon milieu de rue),
+  relais connus, ordre habituel (villages puis rues du fichier). Numéros illisibles : ligne
+  ajoutée d'office avec les colis manquants. Rien ne bloque la création (commune / rue
+  illisibles → « Commune inconnue » / « Rue illisible »). Aperçu = résumé (arrêts, colis,
+  relais, collectes, villages, adresses reconnues, « Rangée dans ton ordre habituel », à
+  placer) + « Créer la tournée » ; la liste modifiable est repliée sous « Voir / corriger ».
+  Ma tournée : bandeau « Mon ordre habituel » ; picto « Revenir à mon ordre habituel » après
+  un calcul. Un arrêt placé à la main enrichit le référentiel.
+- Ergonomie une main (18/10/2026, PR #58) : « Ma tournée » pensée pour aller très vite. Barre
+  fixe en bas = le prochain arrêt : adresse, « Y aller », gros « Livré » (ou « Remis au relais » /
+  « Collecté »), l'issue courante en un appui (Avisé · Relais fermé · Rien à collecter),
+  « Autre » ouvre une fiche qui monte du bas (autres issues en gros boutons, colis partiels
+  avec − / +, note, photo, annuler le statut). Chaque ligne de la liste : « Livré » en un
+  appui, appui sur la ligne = fiche. Plus d'heures estimées ni de textes d'aide ; en tête :
+  arrêts, colis, kilomètres, « Recalculer » ; le reste (depuis ici, ordre habituel, partage de
+  position) replié sous « Plus ».
+- Code couleur (18/10/2026) : classique = bleu, relais = violet, collecte = jaune (bandeau de
+  la ligne et de la barre du bas) ; en tête, une barre d'avancement par catégorie présente.
+  « Annuler » (8 s) après chaque geste, en gros bouton au-dessus de la barre du bas.
 - Lots 2 à 5 (18/10/2026, PR « suite ») :
   - Ordre : bandeau « Ordre de la feuille / par la route (km · durée · gain) / manuel » ;
     « Calculer l'itinéraire » (Edge `optimiser-tournee-colis`), recalcul (picto), « depuis ma
@@ -176,6 +197,10 @@ Pas bon — reste
   - Restent : guidage vocal intégré, historique des positions (volontairement absent).
 
 ## 9. À tester après chaque PR
+- (Scan v2) Scanner une vraie feuille : villages trouvés par le secteur, noms de rue
+  officiels, relais reconnus sans « RC », numéros manquants ajoutés (« regarde l'étiquette »),
+  tournée créée dans l'ordre habituel sans rien corriger ; placer un arrêt à la main puis
+  rescanner : le numéro est trouvé tout seul.
 - (Lots 2-5) Calculer l'itinéraire sur une vraie feuille : km / durée crédibles, carte
   lisible ; glisser un arrêt ; Revenir à l'ordre calculé ; placer un arrêt sans adresse ;
   Y aller ouvre la bonne appli ; partager la position et la voir côté bureau ; photo ;
