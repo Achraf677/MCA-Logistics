@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **18/10/2026** (TC1 : tables créées + Edge `lire-feuille-route` en ligne, PR #55 à tester puis « merge » ; Claude autonome sur Supabase ; prochain : test TC1 + S1 avec Lucas, puis carte / ordre par la route).
+> Dernière mise à jour : **18/10/2026** (TC1 mergé (PR #55) ; lots 2-5 tournée de colis codés, migration appliquée, Edge en ligne, PR « feat/tournee-colis-suite » à tester).
 
 ---
 
@@ -51,7 +51,9 @@
     Keffendorf → Ohlungen 67590) — est photographiée page par page, lue par
     l'Edge `lire-feuille-route`, puis traitée arrêt par arrêt dans Mes courses › Ma tournée.
     Tables `tournees_colis` / `tournees_colis_arrets` : **ce ne sont PAS des deliveries**
-    (le relevé mensuel reste la seule ligne de facturation ; rien n'est relié à la paie).
+    (le relevé mensuel reste la seule ligne de facturation). Chaîne de comptage (lot 5) :
+    tournée clôturée → journée de colis préremplie en brouillon (le salarié envoie, le
+    bureau valide) → relevé du mois propose les colis des journées VALIDÉES.
 - **Prestations** (`deliveries.prestation`) : `express` · `messagerie` (relevé) · `dediee` ·
   `mise_a_dispo` (un lieu, début / fin) · `forfait` (aucun arrêt). `null` = ancienne course = express.
 - Tout écran doit servir tous les cas : ne jamais coder « 1 course = 1 colis = 1 arrêt » en dur.
@@ -210,9 +212,10 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   (liste, facturation, lettre de voiture, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie)
   · 04 Planning ✔ (lots P1-P4 : vue par chauffeur, affectation rapide, tournées en retard,
   calendrier enrichi, puis fondu dans le Planning en vue « Mois »).
-- Mes courses (salarié) : 5 onglets — Courses · **Ma tournée** (feuille de route de colis
-  scannée, TC1) · Ma journée · Dépenses · Moi. Tournées (bureau) : bloc « Tournées de colis du
-  jour » + « Scanner pour un salarié ».
+- Mes courses (salarié) : 5 onglets — Courses · **Ma tournée** (feuille de route scannée,
+  ordre par la route, carte, Y aller, partage de position, photo de preuve, Terminer) · Ma
+  journée · Dépenses · Moi. Tournées (bureau) : bloc « Tournées de colis du jour » (Carte du
+  jour avec positions, calcul, rouvrir) + « Scanner pour un salarié ».
 - Fiche livraison : prestation, client avec recherche, référence client (reprise sur la facture),
   urgent, arrêts complets (contact, téléphone, créneaux), trajet auto (IGN), marchandise
   (colis, poids, volume), consignes / note interne, Dupliquer, 3 onglets (Course · Preuves &
@@ -337,18 +340,22 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   domicile / relais, saisir une journée avec photo, la valider côté bureau.
   Piège : `id = any((select f()))` est refusé par Postgres (sous-requête) → `(select f()) @> array[id]` ;
   remplacer une policy = `alter policy` (pas de drop + create : trou d'accès et timeout MCP).
-- **Tournée de colis — TC1 « socle »** (demandé en urgence le 17/10/2026, branche
-  `feat/tournee-colis-socle`, PR #55 à tester, PAS mergée) : migration
-  `20261017090000_tournees_colis` **appliquée le 18/10/2026** (2 tables, 8 policies, 2 triggers),
-  Edge `lire-feuille-route` **déployée le 18/10/2026 (v1, verify_jwt true ; sans session → 401)** ; `_shared/feuilleRoute.ts` (découpage
-  de la case N°, contrôle « Nb Colis », testé) et `_shared/geocodeArret.ts` (BAN : numéro, sinon
-  centre de rue, sinon rien ; fichier séparé = `geocode()` inchangé). Front : `shared/lib/
-  tourneesColis(.queries).ts`, `shared/ui/ScanFeuilleRoute.tsx`, `mescourses/MaTournee.tsx` +
-  `tourneeColis.logic.ts`, `tournees/TourneesColisDuJour.tsx`. Familles de statut
-  **validées le 18/10/2026** (outil des livreurs) : livré = livre, rc_remis, col_ok · attente =
+- **Tournée de colis** : TC1 « socle » **mergé (PR #55, 18/10/2026)**, migration
+  `20261017090000_tournees_colis` + Edge `lire-feuille-route` en prod. Familles de statut
+  validées le 18/10/2026 (outil des livreurs) : livré = livre, rc_remis, col_ok · attente =
   avise, instance · retour = refuse, npai, adresse, acces, endommage, nonpres, rc_ferme,
-  rc_sature, col_nf · neutre = col_rien (traité, 0 colis). Lots suivants : tri par route, carte,
-  GPS, photos, clôture (et lien éventuel avec la journée de colis S1).
+  rc_sature, col_nf · neutre = col_rien.
+  **Lots 2 à 5 codés (branche `feat/tournee-colis-suite`, PR à tester, PAS mergée)** :
+  migration `20261018090000_tournees_colis_route` **appliquée le 18/10/2026** (ordre / eta /
+  trajet / clôture, `positions_livreurs`, photos `arret_colis`) ; Edge
+  `optimiser-tournee-colis` v1 et `lire-feuille-route` v2 **déployées le 18/10/2026**. Front :
+  `shared/lib/tourneesColisRoute.ts` (règles pures), `shared/ui/CarteTournee.tsx` (Leaflet,
+  Plan IGN), `mescourses/MaTournee.tsx` + `ArretTournee.tsx`, `tournees/TourneesColisDuJour.tsx`,
+  `livraisons/ColisDesJournees.tsx`. À valider : temps par arrêt (2 min, `_shared/tourneeRoute#ARRET_S`),
+  partage de position (prévenir les salariés : information CNIL / affichage).
+  Piège Leaflet : `keyboard={false}` sur la carte (sinon le toucher fait sauter la page et la
+  pastille n'est plus sous le doigt) ; `isolate` sur le conteneur (sinon la carte passe sur
+  l'en-tête collant).
   Banc de captures : Playwright + `page.route` sur une base simulée (aucun appel prod).
 - U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;
   pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
