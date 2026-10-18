@@ -331,8 +331,10 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   de la case N°, contrôle « Nb Colis », testé) et `_shared/geocodeArret.ts` (BAN : numéro, sinon
   centre de rue, sinon rien ; fichier séparé = `geocode()` inchangé). Front : `shared/lib/
   tourneesColis(.queries).ts`, `shared/ui/ScanFeuilleRoute.tsx`, `mescourses/MaTournee.tsx` +
-  `tourneeColis.logic.ts`, `tournees/TourneesColisDuJour.tsx`. Familles de statut (livré /
-  attente / retour) choisies par Claude : **à valider**. Lots suivants : tri par route, carte,
+  `tourneeColis.logic.ts`, `tournees/TourneesColisDuJour.tsx`. Familles de statut
+  **validées le 18/10/2026** (outil des livreurs) : livré = livre, rc_remis, col_ok · attente =
+  avise, instance · retour = refuse, npai, adresse, acces, endommage, nonpres, rc_ferme,
+  rc_sature, col_nf · neutre = col_rien (traité, 0 colis). Lots suivants : tri par route, carte,
   GPS, photos, clôture (et lien éventuel avec la journée de colis S1).
   Banc de captures : Playwright + `page.route` sur une base simulée (aucun appel prod).
 - U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;

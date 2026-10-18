@@ -126,26 +126,28 @@ export const AUTRES_STATUTS: Record<TypeArretColis, StatutArretColis[]> = {
 // ── Familles ────────────────────────────────────────────────────────────────
 
 /**
- * - livré : le colis a quitté le véhicule chez son destinataire / au relais, ou la collecte
- *   est faite (y compris « rien à collecter ») ;
- * - attente : le colis reste dans le circuit (avis de passage, instance, relais fermé ou
- *   saturé, accès impossible, non présenté, collecte non faite) ;
- * - retour : le colis repart à l'expéditeur (refusé, NPAI, adresse incomplète, endommagé).
+ * Familles alignées sur l'outil des livreurs (décision du 18/10/2026) :
+ * - livré : le colis est remis (domicile, relais) ou la collecte est faite ;
+ * - attente : le colis reste disponible pour le destinataire (avis de passage, instance) ;
+ * - retour : le colis revient au dépôt ce jour (refus, NPAI, adresse incomplète, accès
+ *   impossible, endommagé, non présenté, relais fermé ou saturé, collecte non faite) ;
+ * - neutre : arrêt traité sans colis, ni livré ni retour (« rien à collecter »).
  */
-export type FamilleStatut = 'livre' | 'attente' | 'retour'
+export type FamilleStatut = 'livre' | 'attente' | 'retour' | 'neutre'
 
 const FAMILLE: Record<StatutArretColis, FamilleStatut> = {
-  livre: 'livre', rc_remis: 'livre', col_ok: 'livre', col_rien: 'livre',
-  avise: 'attente', instance: 'attente', acces: 'attente', nonpres: 'attente',
-  rc_ferme: 'attente', rc_sature: 'attente', col_nf: 'attente',
-  refuse: 'retour', npai: 'retour', adresse: 'retour', endommage: 'retour',
+  livre: 'livre', rc_remis: 'livre', col_ok: 'livre',
+  avise: 'attente', instance: 'attente',
+  refuse: 'retour', npai: 'retour', adresse: 'retour', acces: 'retour', endommage: 'retour',
+  nonpres: 'retour', rc_ferme: 'retour', rc_sature: 'retour', col_nf: 'retour',
+  col_rien: 'neutre',
 }
 
 export function familleStatut(s: StatutArretColis | null | undefined): FamilleStatut | null {
   return s ? FAMILLE[s] ?? null : null
 }
 
-/** Colis réellement remis à un arrêt (partiel possible) ; 0 si non livré. */
+/** Colis réellement remis à un arrêt (partiel possible) ; 0 si non livré (neutre compris). */
 export function colisRemis(a: Pick<ArretColis, 'statut' | 'quantite' | 'colis_remis'>): number {
   if (familleStatut(a.statut) !== 'livre') return 0
   return Math.min(a.quantite, Math.max(0, a.colis_remis ?? a.quantite))
@@ -169,7 +171,8 @@ export interface CompteursTournee {
 
 /**
  * Un arrêt est traité dès qu'il a un statut. Ses colis comptent « traités » ; « livrés » =
- * colis remis (partiel compris), le reste d'un livré partiel compte en attente. Les
+ * colis remis (partiel compris), le reste d'un livré partiel compte en attente. Un arrêt
+ * « neutre » est traité mais compte 0 colis (ni livré, ni attente, ni retour). Les
  * collectes sont comptées à part : elles n'apportent aucun colis à livrer.
  */
 export function compteursTournee(arrets: Array<Pick<ArretColis, 'type' | 'statut' | 'quantite' | 'colis_remis'>>): CompteursTournee {
@@ -188,6 +191,7 @@ export function compteursTournee(arrets: Array<Pick<ArretColis, 'type' | 'statut
     const f = familleStatut(a.statut)
     if (!f) continue
     c.arretsTraites++
+    if (f === 'neutre') continue
     c.colisTraites += a.quantite
     if (f === 'livre') {
       const r = colisRemis(a)

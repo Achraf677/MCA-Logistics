@@ -24,6 +24,17 @@ describe('familles', () => {
     expect(familleStatut('avise')).toBe('attente')
     expect(familleStatut('npai')).toBe('retour')
   })
+  it('familles de l’outil des livreurs (18/10/2026)', () => {
+    const attendu: Record<string, StatutArretColis[]> = {
+      livre: ['livre', 'rc_remis', 'col_ok'],
+      attente: ['avise', 'instance'],
+      retour: ['refuse', 'npai', 'adresse', 'acces', 'endommage', 'nonpres', 'rc_ferme', 'rc_sature', 'col_nf'],
+      neutre: ['col_rien'],
+    }
+    for (const [famille, statuts] of Object.entries(attendu)) {
+      for (const s of statuts) expect(familleStatut(s)).toBe(famille)
+    }
+  })
   it('les statuts proposés par type sont cohérents (le « fait » est livré)', () => {
     for (const t of ['c', 'rc', 'col'] as const) {
       expect(familleStatut(STATUT_FAIT[t])).toBe('livre')
@@ -33,6 +44,9 @@ describe('familles', () => {
 })
 
 describe('colisRemis', () => {
+  it('neutre (rien à collecter) = 0 colis remis', () => {
+    expect(colisRemis({ statut: 'col_rien', quantite: 2, colis_remis: 2 })).toBe(0)
+  })
   it('livré sans précision = tout ; partiel borné ; non livré = 0', () => {
     expect(colisRemis({ statut: 'livre', quantite: 3, colis_remis: null })).toBe(3)
     expect(colisRemis({ statut: 'livre', quantite: 3, colis_remis: 2 })).toBe(2)
@@ -57,6 +71,20 @@ describe('compteursTournee', () => {
       colisRetour: 2, collectes: 2, collectesTraitees: 1,
     })
     expect(avancementPct(c)).toBe(71)
+  })
+  it('accès impossible, relais fermé, non présenté = retour ; neutre traité sans colis', () => {
+    const c = compteursTournee([
+      a({ quantite: 2, statut: 'acces' }),
+      a({ type: 'rc', quantite: 3, statut: 'rc_ferme' }),
+      a({ quantite: 1, statut: 'nonpres' }),
+      a({ quantite: 4, statut: 'instance' }),
+      a({ quantite: 1, statut: 'col_rien' }),
+      a({ type: 'col', quantite: 1, statut: 'col_rien' }),
+    ])
+    expect(c).toMatchObject({
+      arrets: 5, arretsTraites: 5, colis: 11, colisTraites: 10, colisLivres: 0, colisAttente: 4,
+      colisRetour: 6, collectes: 1, collectesTraitees: 1,
+    })
   })
   it('tournée vide → 0 %', () => {
     expect(avancementPct(compteursTournee([]))).toBe(0)

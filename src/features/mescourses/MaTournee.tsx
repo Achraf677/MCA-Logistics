@@ -30,7 +30,7 @@ import { Carte, MessageErreur, GardeFiche, champCls, boutonPrimaireCls, boutonSe
 
 const aujourdhui = () => toLocalISO(new Date())
 
-const COULEUR_FAMILLE = { livre: 'success', attente: 'warning', retour: 'danger' } as const
+const COULEUR_FAMILLE = { livre: 'success', attente: 'warning', retour: 'danger', neutre: 'muted' } as const
 
 /**
  * Ma tournée (messagerie) : le salarié scanne sa feuille de route du matin (une photo par

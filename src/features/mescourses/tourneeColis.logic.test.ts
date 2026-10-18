@@ -42,6 +42,8 @@ describe('gestes', () => {
     expect(patchStatut({ quantite: 3 }, 'livre', 5)).toEqual({ statut: 'livre', colis_remis: 3 })
     expect(patchStatut({ quantite: 3 }, 'avise')).toEqual({ statut: 'avise', colis_remis: 0 })
     expect(patchStatut({ quantite: 3 }, null)).toEqual({ statut: null, colis_remis: null })
+    expect(patchStatut({ quantite: 2 }, 'col_rien', 2)).toEqual({ statut: 'col_rien', colis_remis: 0 })
+    expect(patchStatut({ quantite: 2 }, 'acces')).toEqual({ statut: 'acces', colis_remis: 0 })
   })
   it('saisie colis remis', () => {
     expect(lireColisRemis('2', 3)).toBe(2)
