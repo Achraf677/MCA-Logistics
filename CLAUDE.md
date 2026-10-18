@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **18/10/2026** (TC1 mergé (PR #55) ; lots 2-5 tournée de colis codés, migration appliquée, Edge en ligne, PR « feat/tournee-colis-suite » à tester).
+> Dernière mise à jour : **18/10/2026** (lots 2-5 tournée de colis mergés (PR #56) ; départ Vendenheim + scan v2 (référentiel de l'outil d'origine) dans PR #58, migrations et Edge en prod, à tester).
 
 ---
 
@@ -54,6 +54,11 @@
     (le relevé mensuel reste la seule ligne de facturation). Chaîne de comptage (lot 5) :
     tournée clôturée → journée de colis préremplie en brouillon (le salarié envoie, le
     bureau valide) → relevé du mois propose les colis des journées VALIDÉES.
+    **Scan v2 (18/10/2026)** : table `referentiel_rues` = base de l'outil de tournée d'origine
+    (villages du secteur, noms officiels des rues, position de chaque numéro, ordre habituel,
+    relais) ; la lecture s'en sert pour que le salarié n'ait RIEN à corriger. La tournée naît
+    dans l'ordre habituel (`ordre_mode = 'habituel'`). Départ des tournées = centre de tri
+    La Poste de Vendenheim (`companies.depart_colis_*`, Paramètres).
 - **Prestations** (`deliveries.prestation`) : `express` · `messagerie` (relevé) · `dediee` ·
   `mise_a_dispo` (un lieu, début / fin) · `forfait` (aucun arrêt). `null` = ancienne course = express.
 - Tout écran doit servir tous les cas : ne jamais coder « 1 course = 1 colis = 1 arrêt » en dur.
@@ -345,7 +350,13 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   validées le 18/10/2026 (outil des livreurs) : livré = livre, rc_remis, col_ok · attente =
   avise, instance · retour = refuse, npai, adresse, acces, endommage, nonpres, rc_ferme,
   rc_sature, col_nf · neutre = col_rien.
-  **Lots 2 à 5 codés (branche `feat/tournee-colis-suite`, PR à tester, PAS mergée)** :
+  **Lots 2 à 5 mergés (PR #56)**. **PR #58 (branche `feat/tournee-colis-depart`, à tester,
+  PAS mergée)** : départ fixe (centre de tri de Vendenheim, migration
+  `20261018100000_companies_depart_colis`, optimiser-tournee-colis v3) + scan v2 (migration
+  `20261018110000_referentiel_tournees_colis` appliquée et base chargée : 700 rues, 9 985
+  numéros ; lire-feuille-route v3 déployée). Piège : `apply_migration` / `execute_sql` sur
+  un gros paquet de données = découper en blocs de ~15 Ko (coordonnées en écarts entiers).
+  Historique des lots 2 à 5 :
   migration `20261018090000_tournees_colis_route` **appliquée le 18/10/2026** (ordre / eta /
   trajet / clôture, `positions_livreurs`, photos `arret_colis`) ; Edge
   `optimiser-tournee-colis` **v2** et `lire-feuille-route` v2 **déployées le 18/10/2026**.

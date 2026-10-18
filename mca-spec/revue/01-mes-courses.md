@@ -153,6 +153,16 @@ Pas bon — reste
   fermé, saturé, accès · collecte : rien, non faite, accès), colis remis partiel si > 1 colis,
   note, effacer le statut. Supprimer la tournée (scan raté), scanner une autre feuille.
 - Écrit : `tournees_colis` (création, passe « en cours » au 1er geste), `tournees_colis_arrets`.
+- Scan v2 (18/10/2026, PR #58) : référentiel de l'outil d'origine (`referentiel_rues`) :
+  commune retrouvée par le secteur (page sans bandeau : commune de la page d'avant), nom
+  officiel de la rue, position du numéro (sinon voisin du même côté, sinon milieu de rue),
+  relais connus, ordre habituel (villages puis rues du fichier). Numéros illisibles : ligne
+  ajoutée d'office avec les colis manquants. Rien ne bloque la création (commune / rue
+  illisibles → « Commune inconnue » / « Rue illisible »). Aperçu = résumé (arrêts, colis,
+  relais, collectes, villages, adresses reconnues, « Rangée dans ton ordre habituel », à
+  placer) + « Créer la tournée » ; la liste modifiable est repliée sous « Voir / corriger ».
+  Ma tournée : bandeau « Mon ordre habituel » ; picto « Revenir à mon ordre habituel » après
+  un calcul. Un arrêt placé à la main enrichit le référentiel.
 - Lots 2 à 5 (18/10/2026, PR « suite ») :
   - Ordre : bandeau « Ordre de la feuille / par la route (km · durée · gain) / manuel » ;
     « Calculer l'itinéraire » (Edge `optimiser-tournee-colis`), recalcul (picto), « depuis ma
@@ -176,6 +186,10 @@ Pas bon — reste
   - Restent : guidage vocal intégré, historique des positions (volontairement absent).
 
 ## 9. À tester après chaque PR
+- (Scan v2) Scanner une vraie feuille : villages trouvés par le secteur, noms de rue
+  officiels, relais reconnus sans « RC », numéros manquants ajoutés (« regarde l'étiquette »),
+  tournée créée dans l'ordre habituel sans rien corriger ; placer un arrêt à la main puis
+  rescanner : le numéro est trouvé tout seul.
 - (Lots 2-5) Calculer l'itinéraire sur une vraie feuille : km / durée crédibles, carte
   lisible ; glisser un arrêt ; Revenir à l'ordre calculé ; placer un arrêt sans adresse ;
   Y aller ouvre la bonne appli ; partager la position et la voir côté bureau ; photo ;

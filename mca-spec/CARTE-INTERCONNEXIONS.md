@@ -70,6 +70,14 @@
     crée / met à jour la `journees_colis` du jour en BROUILLON (domicile / relais = colis
     remis, litige = non remis + raisons ; collectes exclues ; jamais une journée envoyée ou
     validée). Règle pure : `tourneesColisRoute#journeeDepuisArrets`.
+  - Scan v2 (migration `20261018110000_referentiel_tournees_colis`, appliquée le 18/10/2026) :
+    `ordre_mode = 'habituel'` (tournée créée dans l'ordre habituel), arrêt `rang_habituel`.
+- **referentiel_rues** (scan v2, 18/10/2026) : base reprise de l'outil de tournée d'origine
+  (21 villages, 700 rues, 9 985 numéros positionnés, 627 rues avec ordre habituel, 4 relais).
+  Lue par l'Edge `lire-feuille-route` (service, filtrée par société) ; règles pures
+  `_shared/referentiel.ts`. Écrite : par la fonction `apprendre_position_arret` (security
+  definer, appelée par `tourneesColis.queries#placerArret` : un arrêt placé à la main apprend
+  son numéro), sinon président / `planning.tournees`. RLS : lecture société.
 - **positions_livreurs** (lot 3) : dernière position du livreur (une ligne par fiche, pas
   d'historique), écrite par Ma tournée si le salarié active « Partager ma position » (toutes
   les ~30 s, effacée à l'arrêt du partage et à la clôture) ; lue par Tournées › « Carte du
@@ -136,6 +144,9 @@
   `shared/ui/ScanFeuilleRoute` (Mes courses › Ma tournée, Tournées). N'écrit rien ; importe
   `_shared/mistral`, `_shared/feuilleRoute`, `_shared/geocodeArret`, `_shared/auth`, `cors`, `http`.
   v2 (18/10/2026) : lit aussi `adresse_remettant` dans l'en-tête (départ par défaut).
+  v3 (18/10/2026) : lit `referentiel_rues` (+ `_shared/referentiel`) ; reçoit
+  `commune_precedente` ; renvoie `rue_connue`, `ref_rang`, `ref_rang_commune` ; ajoute
+  d'office les numéros manquants (`_shared/feuilleRoute#lignesEnArrets`).
 - optimiser-tournee-colis (lots 2-5, **déployée le 18/10/2026, v2**, verify_jwt ; tracé par
   l'itinéraire IGN `data.geopf.fr/navigation/itineraire`, ORS en secours) :
   `tourneesColis.queries#calculerItineraire`, appelée par Ma tournée (calcul, recalcul depuis
