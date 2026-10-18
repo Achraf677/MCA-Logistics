@@ -68,9 +68,14 @@ describe('lignesEnArrets', () => {
     expect(a.every(x => !x.a_verifier && x.motif === null)).toBe(true);
   });
   it('écart Nb Colis ou Nb PGEO → toute la ligne à vérifier, avec le motif', () => {
-    const a = lignesEnArrets([ligne({ commune_bandeau: '67170 KRIEGSHEIM', numeros: '1, 3(2)', nb_colis: 4, nb_pgeo: 3 })]);
+    const a = lignesEnArrets([ligne({ commune_bandeau: '67170 KRIEGSHEIM', numeros: '1, 3(4)', nb_colis: 4, nb_pgeo: 2 })]);
     expect(a.every(x => x.a_verifier)).toBe(true);
-    expect(a[0].motif).toBe('3 colis lus, 4 annoncés · 2 numéros lus, 3 PGEO');
+    expect(a[0].motif).toBe('5 colis lus, 4 annoncés');
+  });
+  it('numéros manquants (moins de colis ET moins de numéros) → ligne « n° illisible » ajoutée d’office', () => {
+    const a = lignesEnArrets([ligne({ commune_bandeau: '67170 KRIEGSHEIM', rue: 'RUE A', numeros: '1, 3(2)', nb_colis: 4, nb_pgeo: 3 })]);
+    expect(a.map(x => [x.numero, x.quantite, x.a_verifier])).toEqual([['1', 1, false], ['3', 2, false], [null, 1, true]]);
+    expect(a[2].motif).toBe('1 colis sans numéro lisible (4 colis / 3 PGEO annoncés)');
   });
   it('case vide = la rue entière avec ses colis ; CRBT sur le premier arrêt', () => {
     const a = lignesEnArrets([

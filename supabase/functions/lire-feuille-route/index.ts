@@ -10,17 +10,22 @@
 //     colis), « RC13(21) » (relais), « [C]11 » (collecte : numéro dans un carré noir), « ? » ;
 //   - « x/y » en bas à droite (n° de page) ; en-tête « Feuille de route » sur la 1re page.
 //
-// Entrée : { image: "data:image/jpeg;base64,…" } (une page, compressée côté front ~130 Ko).
+// Entrée : { image: "data:image/jpeg;base64,…", commune_precedente?: "Kriegsheim" } (une page,
+//          compressée côté front ~130 Ko ; commune de la fin de la page d'avant).
 // Sortie : { ok: true, entete: {…} | null, page: { numero, total } | null,
 //            arrets: [{ commune, cp, secteur, rue, numero, quantite, type, note, a_verifier,
-//                       motif, lat, lng, geo_precision }] }
+//                       motif, lat, lng, geo_precision, rue_connue, ref_rang, ref_rang_commune }] }
 //
 // Garanties (comme `lire-facture`) :
 //   - rien d'inventé : la vision recopie, case illisible = null, chiffre illisible = « ? » ;
 //     le découpage de la case N° (un arrêt par numéro), le report de la commune et
 //     l'auto-contrôle Nb Colis / Nb PGEO sont faits en code, testés ;
-//   - géocodage BAN : numéro, sinon centre de la rue, sinon rien ; communes déléguées par alias
-//     (`_shared/geocodeArret.ts`), filtre par CP du bandeau.
+//   - référentiel de la société (`referentiel_rues`, `_shared/referentiel.ts`, repris de l'outil
+//     de tournée d'origine) : commune retrouvée par le secteur, nom officiel de la rue, position
+//     du numéro (ou du voisin), relais connus, ordre habituel ; numéros manquants ajoutés
+//     d'office (« n° illisible : regarde l'étiquette ») ;
+//   - géocodage BAN pour le reste : numéro, sinon centre de la rue, sinon rien ; communes
+//     déléguées par alias (`_shared/geocodeArret.ts`), filtre par CP du bandeau.
 // Accès (verify_jwt = true) : compte actif relié à une fiche Équipe (le salarié scanne pour
 //   lui-même), président, ou droit `planning.tournees : update` (le bureau scanne pour un
 //   salarié).
@@ -31,6 +36,7 @@ import { generateJsonFromImage } from '../_shared/mistral.ts'
 import { ExternalApiError } from '../_shared/http.ts'
 import { lignesEnArrets, nettoyerLecture, type ArretFeuille } from '../_shared/feuilleRoute.ts'
 import { geocoderArret, type PointArret } from '../_shared/geocodeArret.ts'
+import { appliquerReferentiel, indexer, type RueRef } from '../_shared/referentiel.ts'
 
 /** ~2 Mo de base64 : une page compressée en pèse ~180 Ko ; au-delà, refus net. */
 const TAILLE_MAX = 2_000_000
@@ -72,6 +78,20 @@ Réponds UNIQUEMENT en JSON :
  "page": "<x/y>" | null,
  "lignes": [{"commune_bandeau": <texte|null>, "secteur": <texte|null>, "rue": <texte|null>, "nb_colis": <entier|null>, "nb_pgeo": <entier|null>, "numeros": <texte>, "crbt": <texte|null>}]}`
 
+/** Référentiel de la société (rues, numéros, ordre habituel, relais), par paquets de 1 000. */
+// deno-lint-ignore no-explicit-any
+async function chargerReferentiel(service: any, companyId: string): Promise<RueRef[]> {
+  const out: RueRef[] = []
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await service.from('referentiel_rues')
+      .select('commune, commune_cle, rue, rue_cle, rue_souple, rang, numeros, centre, relais')
+      .eq('company_id', companyId).order('id').range(de, de + 999)
+    if (error) { console.warn('lire-feuille-route: référentiel', error.message); return out }
+    out.push(...((data ?? []) as RueRef[]))
+    if (!data || data.length < 1000) return out
+  }
+}
+
 /** Géocode les arrêts (même adresse = un seul appel), quelques-uns à la fois. */
 async function geocoderTous(arrets: ArretFeuille[]): Promise<Array<PointArret | null>> {
   const cache = new Map<string, Promise<PointArret | null>>()
@@ -99,7 +119,7 @@ Deno.serve(async (req: Request) => {
   const svcKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (!apiKey || !url || !svcKey) return jsonResponse({ ok: false, error: 'server misconfiguration' }, 500)
 
-  let body: { image?: unknown }
+  let body: { image?: unknown; commune_precedente?: unknown }
   try { body = await req.json() }
   catch { return jsonResponse({ ok: false, error: 'invalid JSON body' }, 400) }
   const image = typeof body.image === 'string' ? body.image : ''
@@ -113,6 +133,7 @@ Deno.serve(async (req: Request) => {
   // Accès : président / droit Tournées, sinon un compte relié à une fiche Équipe.
   const service = createClient(url, svcKey, { auth: { persistSession: false } })
   const acces = await exigerPermission(req, service, 'planning.tournees', 'update')
+  let companyId = acces.ok ? acces.companyId : ''
   if (!acces.ok) {
     if (acces.response.status !== 403) return acces.response
     const jwt = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '').trim()
@@ -126,6 +147,7 @@ Deno.serve(async (req: Request) => {
           .eq('company_id', profil.company_id).limit(1).maybeSingle()
       : { data: null }
     if (!fiche) return jsonResponse({ ok: false, error: 'Compte non relié à une fiche Équipe : préviens le bureau.' }, 403)
+    companyId = String(profil?.company_id ?? '')
   }
 
   let brut: unknown
@@ -145,10 +167,19 @@ Deno.serve(async (req: Request) => {
   }
 
   const lecture = nettoyerLecture(brut)
-  const arrets = lignesEnArrets(lecture.lignes)
-  const points = await geocoderTous(arrets)
+  // Référentiel : commune par le secteur, rue officielle, position, relais connus, ordre habituel.
+  const ref = indexer(companyId ? await chargerReferentiel(service, companyId) : [])
+  const precedente = typeof body.commune_precedente === 'string' ? body.commune_precedente : null
+  const arrets = appliquerReferentiel(lignesEnArrets(lecture.lignes), ref, precedente)
+  // Seuls les arrêts que le référentiel ne place pas partent au géocodage BAN.
+  const aGeocoder = arrets.filter(a => a.lat == null)
+  const trouves = await geocoderTous(aGeocoder)
+  const parArret = new Map(aGeocoder.map((a, i) => [a, trouves[i]]))
+  const points = arrets.map(a => (a.lat != null && a.lng != null
+    ? { lat: a.lat, lng: a.lng, precision: a.geo_precision ?? 'rue' } as PointArret
+    : parArret.get(a) ?? null))
   console.log('lire-feuille-route: page lue', lecture.page ? `${lecture.page.numero}/${lecture.page.total}` : '?/?', lecture.lignes.length, 'lignes,', arrets.length, 'arrêts,',
-    points.filter(Boolean).length, 'localisés')
+    points.filter(Boolean).length, 'localisés,', arrets.filter(a => a.rue_connue).length, 'rues du référentiel')
 
   return jsonResponse({
     ok: true,

@@ -59,7 +59,7 @@ export interface TourneeColis {
   clients?: { name: string } | null
 }
 
-export type OrdreMode = 'feuille' | 'route' | 'manuel'
+export type OrdreMode = 'feuille' | 'habituel' | 'route' | 'manuel'
 
 export interface TrajetTournee {
   /** Tracé encodé (précision 5) : départ → arrêts → retour. */
@@ -103,6 +103,8 @@ export interface ArretColis {
   ordre?: number | null
   /** Minutes depuis le départ jusqu'à cet arrêt (dernier calcul). */
   eta_min?: number | null
+  /** Place dans l'ordre habituel du livreur (référentiel), posée à la création. */
+  rang_habituel?: number | null
 }
 
 /** Arrêt lu sur la feuille (Edge `lire-feuille-route`), corrigé dans l'aperçu avant création. */
@@ -126,6 +128,12 @@ export interface ArretLu {
   geo_precision: 'numero' | 'rue' | null
   /** Page de la feuille (1, 2…). */
   page: number
+  /** Rue reconnue dans le référentiel des tournées (nom officiel, position, ordre habituel). */
+  rue_connue?: boolean
+  /** Rang de la rue dans l'ordre habituel (fichier) ; null = inconnu. */
+  ref_rang?: number | null
+  /** Premier rang du village dans l'ordre habituel (rue inconnue : rangée en tête de village). */
+  ref_rang_commune?: number | null
 }
 
 // ── Libellés ────────────────────────────────────────────────────────────────
@@ -283,30 +291,65 @@ export function arretsDepuisLecture(brut: unknown, page: number): ArretLu[] {
       quantite: Number.isInteger(q) && q >= 1 ? Math.min(q, 999) : 1, type, note: txt(a.note),
       a_verifier: a.a_verifier === true || !!txt(a.motif), motif: txt(a.motif), lat: num(a.lat), lng: num(a.lng),
       geo_precision: prec, page,
+      rue_connue: a.rue_connue === true, ref_rang: num(a.ref_rang), ref_rang_commune: num(a.ref_rang_commune),
     }
   })
 }
 
-/** Ce qui bloque la création (seul le strict minimum : commune et rue de chaque arrêt). */
+/**
+ * Ce qui bloque la création : rien, sauf une feuille sans arrêt. Un arrêt sans commune ou sans
+ * rue lisible est créé quand même (« Commune inconnue », « Rue illisible ») et signalé : le
+ * livreur regarde l'étiquette sur place, il n'a rien à corriger au scan.
+ */
 export function manquesApercu(arrets: ArretLu[]): string[] {
-  if (arrets.length === 0) return ['Aucun arrêt']
-  const m: string[] = []
-  const sansCommune = arrets.filter(a => !a.commune?.trim()).length
-  const sansRue = arrets.filter(a => !a.rue?.trim()).length
-  if (sansCommune) m.push(`${sansCommune} arrêt${sansCommune > 1 ? 's' : ''} sans commune`)
-  if (sansRue) m.push(`${sansRue} arrêt${sansRue > 1 ? 's' : ''} sans rue`)
-  return m
+  return arrets.length === 0 ? ['Aucun arrêt'] : []
+}
+
+/**
+ * Ordre habituel du livreur (référentiel « fichier ») : renvoie, pour chaque arrêt dans l'ordre
+ * de la feuille, sa place (1, 2…) ; null si aucune rue n'est connue. Comme l'outil d'origine :
+ * villages dans l'ordre du fichier, rues dans l'ordre du fichier ; une rue inconnue se range
+ * juste après la précédente du même village (en tête de village sinon), un village inconnu à la fin.
+ */
+export function ordreHabituel(arrets: Array<Pick<ArretLu, 'commune' | 'ref_rang' | 'ref_rang_commune'>>): number[] | null {
+  if (!arrets.some(a => a.ref_rang != null)) return null
+  const dernier = new Map<string, number>()
+  const cles = arrets.map((a, i) => {
+    const c = (a.commune ?? '').trim().toLowerCase()
+    let idx = a.ref_rang ?? null
+    if (idx == null) idx = (dernier.get(c) ?? a.ref_rang_commune ?? 1e6) + 0.5
+    else dernier.set(c, idx)
+    return { i, village: a.ref_rang_commune ?? 1e6, idx }
+  })
+  const tries = [...cles].sort((x, y) => x.village - y.village || x.idx - y.idx || x.i - y.i)
+  const place = new Array<number>(arrets.length)
+  tries.forEach((k, n) => { place[k.i] = n + 1 })
+  return place
 }
 
 /** Totaux de l'aperçu, pour les comparer à l'en-tête de la feuille. */
-export function totauxApercu(arrets: ArretLu[]): { arrets: number; colis: number; collectes: number; aVerifier: number } {
-  let colis = 0; let collectes = 0; let aVerifier = 0; let n = 0
+export function totauxApercu(arrets: ArretLu[]): {
+  arrets: number; colis: number; collectes: number; aVerifier: number
+  /** Relais (comptés dans les arrêts). */
+  relais: number
+  villages: number
+  /** Arrêts dont la rue est connue du référentiel. */
+  connus: number
+  /** Arrêts sans position : à placer sur la carte pendant la tournée. */
+  aPlacer: number
+} {
+  let colis = 0; let collectes = 0; let aVerifier = 0; let n = 0; let relais = 0; let connus = 0; let aPlacer = 0
+  const villages = new Set<string>()
   for (const a of arrets) {
     if (a.a_verifier) aVerifier++
+    if (a.rue_connue) connus++
+    if (a.lat == null || a.lng == null) aPlacer++
+    if (a.commune?.trim()) villages.add(a.commune.trim().toLowerCase())
     if (a.type === 'col') { collectes++; continue }
+    if (a.type === 'rc') relais++
     n++; colis += a.quantite
   }
-  return { arrets: n, colis, collectes, aVerifier }
+  return { arrets: n, colis, collectes, aVerifier, relais, villages: villages.size, connus, aPlacer }
 }
 
 /** Un changement d'adresse rend la position lue caduque. */
@@ -320,12 +363,15 @@ export function modifierArretLu(a: ArretLu, patch: Partial<Omit<ArretLu, 'cle'>>
 
 /** Aperçu → lignes `tournees_colis_arrets` (rang = ordre de la feuille, page après page). */
 export function lignesArrets(arrets: ArretLu[], tourneeId: string, companyId: string) {
+  const habituel = ordreHabituel(arrets)
   return arrets.map((a, i) => ({
     tournee_id: tourneeId, company_id: companyId, rang: i + 1,
-    commune: (a.commune ?? '').trim().toUpperCase(), cp: a.cp?.trim() || null,
-    rue: (a.rue ?? '').trim(), numero: a.numero?.trim() || null,
+    // Commune et rue telles que lues ou officielles (référentiel) ; illisibles : créées quand même.
+    commune: (a.commune ?? '').trim() || 'Commune inconnue', cp: a.cp?.trim() || null,
+    rue: (a.rue ?? '').trim() || 'Rue illisible', numero: a.numero?.trim() || null,
     type: a.type, quantite: a.quantite, note: a.note?.trim() || null,
     lat: a.lat, lng: a.lng, geo_precision: a.geo_precision,
+    rang_habituel: habituel ? habituel[i] : null, ordre: habituel ? habituel[i] : null,
   }))
 }
 

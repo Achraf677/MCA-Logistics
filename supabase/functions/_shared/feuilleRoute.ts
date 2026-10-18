@@ -224,7 +224,13 @@ export function lignesEnArrets(lignes: LigneFeuille[]): ArretFeuille[] {
     if (!l.rue && !l.numeros) continue
     const numeros = decouperNumeros(l.numeros)
     const vide = !(l.numeros ?? '').trim()
-    const motifs = controlerLigne(l, numeros)
+    // Moins de numéros ET moins de colis que la feuille n'en annonce : des numéros n'ont pas été
+    // lus. On ajoute d'office une ligne « n° illisible » avec les colis manquants (le livreur
+    // regarde l'étiquette sur place) au lieu de bloquer la ligne entière.
+    const somme = numeros.reduce((s, n) => s + (n.quantite ?? 1), 0)
+    const manque = !vide && l.nb_colis != null && l.nb_pgeo != null && somme < l.nb_colis && numeros.length < l.nb_pgeo
+      ? l.nb_colis - somme : 0
+    const motifs = manque ? numeros.some(n => n.illisible) ? ['chiffre illisible'] : [] : controlerLigne(l, numeros)
     if (!l.rue) motifs.push('rue illisible')
     if (!commune) motifs.push('commune absente (bandeau non lu)')
     const motif = motifs.length ? motifs.join(' · ') : null
@@ -236,6 +242,13 @@ export function lignesEnArrets(lignes: LigneFeuille[]): ArretFeuille[] {
         a_verifier: motif != null, motif,
       })
     })
+    if (manque) {
+      arrets.push({
+        commune, cp, secteur: l.secteur, rue: l.rue, numero: null, quantite: manque, type: 'c',
+        note: 'N° illisible sur la feuille : regarde l’étiquette', a_verifier: true,
+        motif: `${pluriel(manque, 'colis')} sans numéro lisible (${l.nb_colis} colis / ${l.nb_pgeo} PGEO annoncés)`,
+      })
+    }
   }
   return arrets
 }

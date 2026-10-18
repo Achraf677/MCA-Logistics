@@ -10,7 +10,19 @@ import {
 // ── Ordre d'affichage ───────────────────────────────────────────────────────
 
 export function modeOrdre(t: Pick<TourneeColis, 'ordre_mode'> | null | undefined): OrdreMode {
-  return t?.ordre_mode === 'route' || t?.ordre_mode === 'manuel' ? t.ordre_mode : 'feuille'
+  const m = t?.ordre_mode
+  return m === 'route' || m === 'manuel' || m === 'habituel' ? m : 'feuille'
+}
+
+/** Pas encore d'itinéraire calculé : ordre de la feuille, ou ordre habituel du livreur. */
+export function sansCalcul(mode: OrdreMode): boolean {
+  return mode === 'feuille' || mode === 'habituel'
+}
+
+/** Ids des arrêts dans l'ordre habituel (référentiel) ; vide si la tournée n'en a pas. */
+export function idsOrdreHabituel(arrets: ArretColis[]): string[] {
+  return arrets.filter(a => a.rang_habituel != null)
+    .sort((a, b) => (a.rang_habituel ?? 0) - (b.rang_habituel ?? 0) || a.rang - b.rang).map(a => a.id)
 }
 
 /** Arrêts dans l'ordre affiché : la feuille (`rang`), ou l'ordre calculé / manuel (non placés à la fin). */
@@ -103,6 +115,7 @@ export interface Bandeau {
 export function bandeauOrdre(t: Pick<TourneeColis, 'ordre_mode' | 'trajet'>): Bandeau {
   const mode = modeOrdre(t)
   const tr = t.trajet
+  if (mode === 'habituel') return { titre: 'Mon ordre habituel', detail: 'villages et rues dans ton ordre de tous les jours', avertissement: null }
   if (mode === 'feuille' || !tr) return { titre: 'Ordre de la feuille', detail: null, avertissement: null }
   const detail = `${libelleDistance(tr.km_total * 1000)} · ${libelleDuree(tr.duree_min)}`
   const gain = tr.km_feuille - tr.km_total

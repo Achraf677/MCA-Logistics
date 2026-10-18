@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   familleStatut, colisRemis, compteursTournee, avancementPct, statutApresGeste, arretsDepuisLecture,
-  manquesApercu, totauxApercu, modifierArretLu, lignesArrets, fusionnerEntetes, arretVide,
+  manquesApercu, ordreHabituel, totauxApercu, modifierArretLu, lignesArrets, fusionnerEntetes, arretVide,
   pageDepuisLecture, pagesManquantes, pagesEnDouble, ordonnerParPage, retirerPhoto,
   STATUT_FAIT, AUTRES_STATUTS, type ArretColis, type StatutArretColis,
 } from './tourneesColis'
@@ -110,15 +110,27 @@ describe('aperçu', () => {
     expect(r[1]).toMatchObject({ commune: null, type: 'c', quantite: 1, geo_precision: null, lat: null })
     expect(arretsDepuisLecture('non', 1)).toEqual([])
   })
-  it('manques : commune et rue seulement', () => {
+  it('manques : rien ne bloque sauf une feuille vide (commune / rue illisibles créées quand même)', () => {
     expect(manquesApercu([])).toEqual(['Aucun arrêt'])
     const v = arretVide(1)
-    expect(manquesApercu([v, { ...v, commune: 'X', rue: 'Y' }])).toEqual(['1 arrêt sans commune', '1 arrêt sans rue'])
+    expect(manquesApercu([v, { ...v, commune: 'X', rue: 'Y' }])).toEqual([])
+    expect(lignesArrets([v], 't', 'c')[0]).toMatchObject({ commune: 'Commune inconnue', rue: 'Rue illisible' })
+  })
+  it('ordre habituel : villages puis rues du fichier ; rue inconnue après la précédente ; village inconnu à la fin', () => {
+    const a = (commune: string, ref_rang: number | null, ref_rang_commune: number | null) => ({ commune, ref_rang, ref_rang_commune })
+    expect(ordreHabituel([a('X', null, null)])).toBeNull()
+    // Feuille : Geudertheim (rangs 5, ?, 2), Kriegsheim (rang 30), village inconnu, Bietlenheim (rang 0).
+    expect(ordreHabituel([
+      a('Geudertheim', 5, 2), a('Geudertheim', null, 2), a('Geudertheim', 2, 2),
+      a('Kriegsheim', 30, 30), a('Ailleurs', null, null), a('Bietlenheim', 0, 0),
+    ])).toEqual([3, 4, 2, 5, 6, 1])
   })
   it('totaux : colis hors collectes, à vérifier', () => {
     const v = arretVide(1)
     expect(totauxApercu([{ ...v, quantite: 3 }, { ...v, type: 'col', quantite: 2, a_verifier: true }]))
-      .toEqual({ arrets: 1, colis: 3, collectes: 1, aVerifier: 1 })
+      .toEqual({ arrets: 1, colis: 3, collectes: 1, aVerifier: 1, relais: 0, villages: 0, connus: 0, aPlacer: 2 })
+    expect(totauxApercu([{ ...v, commune: 'A', type: 'rc', rue_connue: true, lat: 1, lng: 2 }, { ...v, commune: 'a' }]))
+      .toMatchObject({ arrets: 2, relais: 1, villages: 1, connus: 1, aPlacer: 1 })
   })
   it('changer l’adresse efface la position ; quantité bornée', () => {
     const v = { ...arretVide(1), rue: 'RUE A', lat: 1, lng: 2, geo_precision: 'numero' as const }
@@ -126,10 +138,12 @@ describe('aperçu', () => {
     expect(modifierArretLu(v, { numero: '4' })).toMatchObject({ lat: null, lng: null, geo_precision: null })
     expect(modifierArretLu(v, { quantite: 0 }).quantite).toBe(1)
   })
-  it('lignes à écrire : rang = ordre, commune en majuscules, vides → null', () => {
-    const v = { ...arretVide(1), commune: 'ostwald', rue: ' Rue A ', numero: ' ', note: '' }
-    expect(lignesArrets([v, v], 't', 'c').map(l => [l.rang, l.commune, l.rue, l.numero, l.note]))
-      .toEqual([[1, 'OSTWALD', 'Rue A', null, null], [2, 'OSTWALD', 'Rue A', null, null]])
+  it('lignes à écrire : rang = ordre de la feuille, vides → null, ordre habituel posé', () => {
+    const v = { ...arretVide(1), commune: 'Ostwald', rue: ' Rue A ', numero: ' ', note: '' }
+    expect(lignesArrets([v, v], 't', 'c').map(l => [l.rang, l.commune, l.rue, l.numero, l.note, l.ordre]))
+      .toEqual([[1, 'Ostwald', 'Rue A', null, null, null], [2, 'Ostwald', 'Rue A', null, null, null]])
+    const l = lignesArrets([{ ...v, ref_rang: 9, ref_rang_commune: 1 }, { ...v, ref_rang: 1, ref_rang_commune: 1 }], 't', 'c')
+    expect(l.map(x => [x.rang, x.ordre, x.rang_habituel])).toEqual([[1, 2, 2], [2, 1, 1]])
   })
   it('en-têtes fusionnés : premières valeurs, plus grand total', () => {
     expect(fusionnerEntetes([{ date: '17/10', nb_colis: 60 }, null, { date: 'x', vehicule: 'V1', nb_colis: 118, nb_pgeo: 90 }], 3))

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   arretsDansOrdre, prochainDansOrdre, sectionsListe, arretsAPlacer, deplacer, ordreManuel, libelleDuree, libelleDistance,
   bandeauOrdre, heurePassage, pointsCarte, couperTrace, doitEnvoyerPosition, ilYA, positionAncienne,
-  journeeDepuisArrets, nonTraites, modeOrdre,
+  journeeDepuisArrets, nonTraites, modeOrdre, sansCalcul, idsOrdreHabituel,
 } from './tourneesColisRoute'
 import type { ArretColis, TrajetTournee } from './tourneesColis'
 
@@ -45,9 +45,15 @@ describe('ordre affiché', () => {
     expect(deplacer(['a', 'b', 'c'], 2, 0)).toEqual(['c', 'a', 'b'])
     expect(ordreManuel(liste, 'route', ['3', '1', '2'])).toEqual(['4', '3', '1', '2'])
   })
+  it('ordre habituel : par rang habituel, arrêts sans rang exclus', () => {
+    expect(idsOrdreHabituel([a({ id: '1', rang_habituel: 2 }), a({ id: '2', rang_habituel: 1 }), a({ id: '3' })])).toEqual(['2', '1'])
+    expect(arretsDansOrdre([a({ id: '1', ordre: 2 }), a({ id: '2', ordre: 1 })], 'habituel').map(x => x.id)).toEqual(['2', '1'])
+  })
   it('mode inconnu = feuille', () => {
     expect(modeOrdre({ ordre_mode: null })).toBe('feuille')
     expect(modeOrdre({ ordre_mode: 'manuel' })).toBe('manuel')
+    expect(modeOrdre({ ordre_mode: 'habituel' })).toBe('habituel')
+    expect(sansCalcul('habituel') && sansCalcul('feuille') && !sansCalcul('route')).toBe(true)
   })
 })
 
@@ -62,6 +68,7 @@ describe('libellés', () => {
   })
   it('bandeau', () => {
     expect(bandeauOrdre({ ordre_mode: 'feuille', trajet: null }).titre).toBe('Ordre de la feuille')
+    expect(bandeauOrdre({ ordre_mode: 'habituel', trajet: null }).titre).toBe('Mon ordre habituel')
     const b = bandeauOrdre({ ordre_mode: 'route', trajet: trajet() })
     expect(b).toEqual({ titre: 'Ordre par la route', detail: '52 km · 3 h 40 · 18 km de moins que la feuille', avertissement: null })
     expect(bandeauOrdre({ ordre_mode: 'route', trajet: trajet({ approximatif: true }) }).avertissement).toMatch(/approximatif/)

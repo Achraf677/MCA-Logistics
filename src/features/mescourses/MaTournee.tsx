@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   ChevronLeft, ChevronRight, ScanText, Trash2, ClipboardList, List, Map as IconeCarte, Route, LocateFixed,
-  Undo2, RefreshCw, MapPinOff, Search, MapPin, Radio, Flag, ChevronDown, AlertTriangle,
+  Undo2, RefreshCw, MapPinOff, Search, MapPin, Radio, Flag, ChevronDown, AlertTriangle, History,
 } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
@@ -14,8 +14,8 @@ import { useProfile } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
 import { LIBELLE_STATUT_TOURNEE, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
 import {
-  arretsAPlacer, bandeauOrdre, deplacer, distanceM, doitEnvoyerPosition, grouperEnSuite, libelleDistance, modeOrdre,
-  nonTraites, ordreManuel, prochainDansOrdre, sectionsListe, type PointCarte,
+  arretsAPlacer, bandeauOrdre, deplacer, distanceM, doitEnvoyerPosition, grouperEnSuite, idsOrdreHabituel, libelleDistance, modeOrdre,
+  nonTraites, ordreManuel, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
 } from '../../shared/lib/tourneesColisRoute'
 import {
   listerTourneesColis, arretsDesTournees, supprimerTourneeColis, nomsClients, calculerItineraire,
@@ -250,7 +250,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   const prochainId = prochain?.id ?? null
   const couches = useMemo(() => [{ id: tournee.id, couleur: null, arrets, mode, trajet: tournee.trajet ?? null, prochainId }],
     [tournee.id, tournee.trajet, arrets, mode, prochainId])
-  const horsOrdre = mode === 'feuille' ? 0 : arrets.filter(a => !a.statut && a.lat != null && a.ordre == null).length
+  const horsOrdre = sansCalcul(mode) ? 0 : arrets.filter(a => !a.statut && a.lat != null && a.ordre == null).length
 
   // Photos de preuve des arrêts de la tournée.
   const idsArrets = useMemo(() => arrets.map(a => a.id).join(','), [arrets])
@@ -293,12 +293,21 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     onRecharger()
   }
 
+  const habituel = useMemo(() => idsOrdreHabituel(arrets), [arrets])
+  const revenirHabituel = async () => {
+    setCalcul('ordre')
+    const { error } = await ecrireOrdre(tournee.id, ordreManuel(arrets, mode, habituel.filter(id => arrets.some(a => a.id === id && !a.statut))), arrets.map(a => a.id), 'habituel')
+    setCalcul(null)
+    if (error) toast(error.message, 'error')
+    onRecharger()
+  }
+
   const placer = async (a: ArretColis, pos: { lat: number; lng: number }) => {
     const { data, error } = await placerArret(a.id, pos)
     if (error || !data) { toast(error?.message ?? 'Placement impossible', 'error'); return }
     onArrets([data])
     setAPlacerSur(null)
-    toast(mode === 'feuille' ? 'Arrêt placé' : "Arrêt placé : recalcule l'itinéraire pour l'intégrer", 'success')
+    toast(sansCalcul(mode) ? 'Arrêt placé' : "Arrêt placé : recalcule l'itinéraire pour l'intégrer", 'success')
   }
 
   // ── Ordre manuel : glisser-déposer par la poignée ──
@@ -422,7 +431,10 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
             <p className="text-sm font-semibold text-[var(--text)] truncate">{bandeau.titre}</p>
             {bandeau.detail && <p className="text-xs text-[var(--text-muted)] truncate">{bandeau.detail}</p>}
           </div>
-          {!verrouillee && mode !== 'feuille' && (
+          {!verrouillee && !sansCalcul(mode) && habituel.length > 0 && (
+            <BoutonIcone icone={History} libelle="Revenir à mon ordre habituel" disabled={calcul != null} onClick={revenirHabituel} />
+          )}
+          {!verrouillee && !sansCalcul(mode) && (
             <>
               {mode === 'manuel' && (tournee.trajet?.ordre_ids?.length ?? 0) > 0 && (
                 <BoutonIcone icone={Undo2} libelle="Revenir à l'ordre calculé" disabled={calcul != null} onClick={revenirCalcule} />
@@ -436,12 +448,12 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
             </>
           )}
         </div>
-        {!verrouillee && mode === 'feuille' && (
+        {!verrouillee && sansCalcul(mode) && (
           <button type="button" disabled={calcul != null} onClick={() => calculer('tout')} className={boutonSecondaireCls}>
             <Route size={16} /> {calcul === 'tout' ? 'Calcul de l’itinéraire…' : "Calculer l'itinéraire"}
           </button>
         )}
-        {calcul && mode !== 'feuille' && <p className="text-xs text-[var(--text-muted)]">Calcul en cours…</p>}
+        {calcul && !sansCalcul(mode) && <p className="text-xs text-[var(--text-muted)]">Calcul en cours…</p>}
         {bandeau.avertissement && (
           <p className="flex items-start gap-1.5 text-xs text-[var(--warning)]"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {bandeau.avertissement}</p>
         )}

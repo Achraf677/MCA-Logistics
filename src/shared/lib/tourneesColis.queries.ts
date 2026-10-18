@@ -10,12 +10,12 @@ import type { DocumentRow } from './documents.types'
 import { enregistrerJournee } from './journeesColis.queries'
 import { journeeDepuisArrets } from './tourneesColisRoute'
 import {
-  arretsDepuisLecture, lignesArrets, pageDepuisLecture, statutApresGeste, type PageLue,
+  arretsDepuisLecture, lignesArrets, ordreHabituel, pageDepuisLecture, statutApresGeste, type PageLue,
   type ArretColis, type ArretLu, type EnteteFeuille, type StatutArretColis, type StatutTourneeColis, type TourneeColis,
 } from './tourneesColis'
 
 const COLS_TOURNEE = '*, team_members!member_id(full_name), clients!client_id(name)'
-const COLS_ARRET = 'id, tournee_id, company_id, rang, commune, cp, rue, numero, type, quantite, colis_remis, lat, lng, geo_precision, statut, statut_le, statut_par, note, ordre, eta_min'
+const COLS_ARRET = 'id, tournee_id, company_id, rang, commune, cp, rue, numero, type, quantite, colis_remis, lat, lng, geo_precision, statut, statut_le, statut_par, note, ordre, eta_min, rang_habituel'
 
 const REFUS = "Enregistrement refusé : la tournée est peut-être clôturée, ou ton compte n'a pas ce droit."
 
@@ -83,9 +83,11 @@ export async function compresserPage(file: File): Promise<string> {
 }
 
 /** Lit UNE page (Edge `lire-feuille-route`). Rien n'est écrit en base. */
-export async function lirePageFeuille(dataUrl: string, page: number):
+export async function lirePageFeuille(dataUrl: string, page: number, communePrecedente: string | null = null):
   Promise<{ arrets: ArretLu[]; entete: EnteteFeuille | null; pageLue: PageLue | null; error: Error | null }> {
-  const { data, error } = await supabase.functions.invoke('lire-feuille-route', { body: { image: dataUrl } })
+  const { data, error } = await supabase.functions.invoke('lire-feuille-route', {
+    body: { image: dataUrl, ...(communePrecedente ? { commune_precedente: communePrecedente } : {}) },
+  })
   const echec = await lireErreurEdge(data, error)
   if (echec) return { arrets: [], entete: null, pageLue: null, error: new Error(echec.message) }
   const d = (data ?? {}) as { arrets?: unknown; entete?: EnteteFeuille | null; page?: unknown }
@@ -111,6 +113,8 @@ export async function creerTourneeColis(p: {
 }): Promise<{ id: string | null; error: Error | null }> {
   const { data, error } = await supabase.from('tournees_colis').insert({
     company_id: p.companyId, member_id: p.memberId, date: p.date, client_id: p.clientId, entete: p.entete,
+    // Rues connues du référentiel : la tournée naît dans l'ordre habituel du livreur.
+    ordre_mode: ordreHabituel(p.arrets) ? 'habituel' : 'feuille',
   }).select('id').single()
   if (error || !data) return { id: null, error: erreurClaire(error) ?? new Error(REFUS) }
   const id = (data as { id: string }).id
@@ -184,17 +188,21 @@ export async function chercherAdresse(adresse: string): Promise<{ lat: number; l
   return { lat: d.lat!, lng: d.lng! }
 }
 
-/** Place un arrêt à la main (carte ou adresse) : `geo_precision = 'manuel'`. */
+/**
+ * Place un arrêt à la main (carte ou adresse) : `geo_precision = 'manuel'`. La position est
+ * apprise par le référentiel (rue connue) : la prochaine feuille trouvera ce numéro toute seule.
+ */
 export async function placerArret(arretId: string, pos: { lat: number; lng: number }) {
   const { data, error } = await supabase.from('tournees_colis_arrets')
     .update({ lat: pos.lat, lng: pos.lng, geo_precision: 'manuel' }).eq('id', arretId).select(COLS_ARRET)
   if (error) return { data: null, error: erreurClaire(error) }
   const l = (data ?? [])[0] as unknown as ArretColis | undefined
+  if (l) await supabase.rpc('apprendre_position_arret', { p_arret: arretId }).then(() => undefined, () => undefined)
   return l ? { data: l, error: null } : { data: null, error: new Error(REFUS) }
 }
 
 /** Écrit un ordre (ids dans l'ordre) puis le mode de la tournée. Les absents perdent leur place. */
-export async function ecrireOrdre(tourneeId: string, ids: string[], tous: string[], mode: 'manuel' | 'route') {
+export async function ecrireOrdre(tourneeId: string, ids: string[], tous: string[], mode: 'manuel' | 'route' | 'habituel') {
   const place = new Map(ids.map((id, i) => [id, i + 1]))
   const ecritures = tous.map(id => ({ id, ordre: place.get(id) ?? null }))
   for (let i = 0; i < ecritures.length; i += 10) {
