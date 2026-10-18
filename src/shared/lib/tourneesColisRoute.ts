@@ -109,7 +109,8 @@ export function bandeauOrdre(t: Pick<TourneeColis, 'ordre_mode' | 'trajet'>): Ba
   return {
     titre: mode === 'manuel' ? 'Ordre manuel' : 'Ordre par la route',
     detail: mode === 'manuel' ? `calcul : ${detail}` : `${detail}${gain >= 1 ? ` · ${libelleDistance(gain * 1000)} de moins que la feuille` : ''}`,
-    avertissement: tr.approximatif ? "Ordre approximatif : service d'itinéraire indisponible" : null,
+    avertissement: tr.approximatif ? "Ordre approximatif : service d'itinéraire indisponible"
+      : tr.trace_droit ? 'Ordre calculé sur les routes ; une partie du tracé est dessinée en ligne droite.' : null,
   }
 }
 

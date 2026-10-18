@@ -348,7 +348,12 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   **Lots 2 à 5 codés (branche `feat/tournee-colis-suite`, PR à tester, PAS mergée)** :
   migration `20261018090000_tournees_colis_route` **appliquée le 18/10/2026** (ordre / eta /
   trajet / clôture, `positions_livreurs`, photos `arret_colis`) ; Edge
-  `optimiser-tournee-colis` v1 et `lire-feuille-route` v2 **déployées le 18/10/2026**. Front :
+  `optimiser-tournee-colis` **v2** et `lire-feuille-route` v2 **déployées le 18/10/2026**.
+  Calcul : ORDRE sur les temps de route réels (matrice ORS, vérifié sur une vraie tournée de
+  106 arrêts : 106 km contre 151 km dans l'ordre de la feuille) + recherche locale itérée
+  (~0,8 s) ; TRACÉ par l'itinéraire IGN (sans clé, 15 étapes max par appel → tronçons de
+  17 points), ORS en secours, ligne droite seulement pour un tronçon qui échoue (la v1
+  traçait par ORS, qui échouait : carte en lignes droites alors que l'ordre était juste). Front :
   `shared/lib/tourneesColisRoute.ts` (règles pures), `shared/ui/CarteTournee.tsx` (Leaflet,
   Plan IGN), `mescourses/MaTournee.tsx` + `ArretTournee.tsx`, `tournees/TourneesColisDuJour.tsx`,
   `livraisons/ColisDesJournees.tsx`. À valider : temps par arrêt (2 min, `_shared/tourneeRoute#ARRET_S`),

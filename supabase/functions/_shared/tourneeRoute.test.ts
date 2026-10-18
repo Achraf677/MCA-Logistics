@@ -96,10 +96,22 @@ describe('solveur', () => {
     const tour = coutParcours(c, 0, [...pts.keys()].slice(1), 0);
     expect(coutParcours(c, 0, resoudre(c, 0, melange, 0), 0)).toBeLessThan(tour * 1.05);
   });
+  it('les perturbations ne dégradent jamais et améliorent souvent', () => {
+    let mieux = 0
+    for (let g = 1; g <= 8; g++) {
+      const { c } = grille(80, g)
+      const n = Array.from({ length: 79 }, (_, i) => i + 1)
+      const sans = coutParcours(c, 0, resoudre(c, 0, n, 0, { perturbations: 0 }), 0)
+      const avec = coutParcours(c, 0, resoudre(c, 0, n, 0, { perturbations: 200 }), 0)
+      expect(avec).toBeLessThanOrEqual(sans + 1e-9)
+      if (avec < sans - 1e-9) mieux++
+    }
+    expect(mieux).toBeGreaterThanOrEqual(4)
+  });
   it('déterministe : même entrée, même ordre', () => {
     const { c } = grille(40, 3);
     const n = Array.from({ length: 39 }, (_, i) => i + 1);
-    expect(resoudre(c, 0, n, 0)).toEqual(resoudre(c, 0, n, 0));
+    expect(resoudre(c, 0, n, 0, { limiteMs: 60_000 })).toEqual(resoudre(c, 0, n, 0, { limiteMs: 60_000 }));
   });
   it('matrice asymétrique (sens unique) respectée', () => {
     // 0 → 1 → 2 → 0 bon marché ; le sens inverse coûte très cher.
@@ -108,12 +120,12 @@ describe('solveur', () => {
     const inverse = [[0, 50, 1], [1, 0, 50], [50, 1, 0]];
     expect(resoudre(inverse, 0, [1, 2], 0)).toEqual([2, 1]);
   });
-  it('150 points en moins de 3 s, au moins aussi bon que le plus proche voisin', () => {
+  it('150 points en moins de 1 s, au moins aussi bon que le plus proche voisin', () => {
     const { c } = grille(151, 7);
     const n = Array.from({ length: 150 }, (_, i) => i + 1);
     const t0 = Date.now();
-    const ordre = resoudre(c, 0, n, 0, { limiteMs: 3000 });
-    expect(Date.now() - t0).toBeLessThan(3500);
+    const ordre = resoudre(c, 0, n, 0, { limiteMs: 800 });
+    expect(Date.now() - t0).toBeLessThan(1000);
     expect(new Set(ordre).size).toBe(150);
     // Ordre de la feuille (1, 2, 3…) = pire cas typique : le calcul doit faire nettement mieux.
     expect(coutParcours(c, 0, ordre, 0)).toBeLessThan(coutParcours(c, 0, n, 0) * 0.5);

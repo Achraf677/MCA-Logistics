@@ -136,7 +136,8 @@
   `shared/ui/ScanFeuilleRoute` (Mes courses › Ma tournée, Tournées). N'écrit rien ; importe
   `_shared/mistral`, `_shared/feuilleRoute`, `_shared/geocodeArret`, `_shared/auth`, `cors`, `http`.
   v2 (18/10/2026) : lit aussi `adresse_remettant` dans l'en-tête (départ par défaut).
-- optimiser-tournee-colis (lots 2-5, **déployée le 18/10/2026, v1**, verify_jwt) :
+- optimiser-tournee-colis (lots 2-5, **déployée le 18/10/2026, v2**, verify_jwt ; tracé par
+  l'itinéraire IGN `data.geopf.fr/navigation/itineraire`, ORS en secours) :
   `tourneesColis.queries#calculerItineraire`, appelée par Ma tournée (calcul, recalcul depuis
   ma position) et Tournées › bloc tournées de colis. Tourne avec la session de l'appelant
   (RLS, aucune clé de service). ORS matrice (blocs ≤ 3 500) + itinéraires (≤ 50 points),

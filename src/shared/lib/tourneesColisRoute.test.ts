@@ -66,6 +66,7 @@ describe('libellés', () => {
     expect(b).toEqual({ titre: 'Ordre par la route', detail: '52 km · 3 h 40 · 18 km de moins que la feuille', avertissement: null })
     expect(bandeauOrdre({ ordre_mode: 'route', trajet: trajet({ approximatif: true }) }).avertissement).toMatch(/approximatif/)
     expect(bandeauOrdre({ ordre_mode: 'manuel', trajet: trajet() }).titre).toBe('Ordre manuel')
+    expect(bandeauOrdre({ ordre_mode: 'route', trajet: trajet({ trace_droit: true }) }).avertissement).toMatch(/ligne droite/)
   })
   it('heure de passage : départ de la feuille, sinon heure du calcul', () => {
     const t = { date: '2026-10-18', entete: { depart: '08:15' }, trajet: trajet() }

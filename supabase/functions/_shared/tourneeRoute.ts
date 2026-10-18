@@ -8,7 +8,11 @@
 //    stabilité (2-opt et déplacement de segments de 1 à 3 nœuds, « Or-opt »). Matrice
 //    asymétrique gérée (sens uniques) : chaque gain est calculé avec les vrais sens.
 //    Déterministe : même entrée = même ordre (parcours dans un ordre fixe, premier gain pris).
-// 3. Découpage des appels ORS : blocs de matrice ≤ 3 500 éléments, itinéraires ≤ 50 points.
+//    Puis « perturbations » (recherche locale itérée) : on casse l'ordre en 4 morceaux qu'on
+//    remet dans un autre ordre (« double pont »), on réoptimise, on garde si c'est plus court.
+//    Sort des minimums locaux que 2-opt seul ne quitte pas. Hasard à graine fixe : déterministe.
+// 3. Découpage des appels : matrice ORS en blocs ≤ 3 500 éléments ; tracé IGN ≤ 17 points
+//    (départ + 15 étapes + arrivée), tracé ORS ≤ 50 points.
 
 export interface ArretAPlacer {
   id: string
@@ -36,6 +40,8 @@ export interface Point {
 /** Limites ORS (openrouteservice.org/restrictions, relevées le 18/10/2026). */
 export const MATRICE_MAX_ELEMENTS = 3500
 export const ITINERAIRE_MAX_POINTS = 50
+/** Itinéraire IGN (Géoplateforme) : 15 étapes intermédiaires au plus (vérifié le 18/10/2026). */
+export const IGN_MAX_POINTS = 17
 /** Repli sans ORS : la route fait en moyenne 1,3 fois la ligne droite. */
 export const FACTEUR_ROUTE = 1.3
 /** Vitesse moyenne de repli en tournée de distribution (villages, bourgs). */
@@ -250,8 +256,33 @@ function exact(c: number[][], depart: number, noeuds: number[], arrivee: number 
 export interface OptionsSolveur {
   /** Garde-fou de temps (ms) ; l'ordre reste valide s'il est atteint. */
   limiteMs?: number
-  /** Garde-fou de passes. */
-  maxPasses?: number
+  /** Nombre de perturbations (recherche locale itérée) après la première optimisation. */
+  perturbations?: number
+}
+
+/** Hasard reproductible (même graine = mêmes tirages). */
+function hasard(graine: number): () => number {
+  let x = graine >>> 0 || 1
+  return () => { x = (Math.imul(x, 1664525) + 1013904223) >>> 0; return x / 4294967296 }
+}
+
+/** 2-opt + Or-opt jusqu'à stabilité (ou limite de temps). Modifie `ordre`. */
+function rechercheLocale(c: number[][], depart: number, ordre: number[], arrivee: number | null, limite: number) {
+  while (Date.now() < limite) {
+    if (passe2Opt(c, depart, ordre, arrivee)) continue
+    if (passeOrOpt(c, depart, ordre, arrivee)) continue
+    return
+  }
+}
+
+/** « Double pont » : A B C D → A C B D (coupes tirées au hasard). */
+function doublePont(ordre: number[], rnd: () => number): number[] {
+  const n = ordre.length
+  const coupes = [1 + Math.floor(rnd() * (n - 3)), 0, 0]
+  coupes[1] = coupes[0] + 1 + Math.floor(rnd() * (n - coupes[0] - 2))
+  coupes[2] = coupes[1] + 1 + Math.floor(rnd() * (n - coupes[1] - 1))
+  const [i, j, k] = coupes
+  return [...ordre.slice(0, i), ...ordre.slice(j, k), ...ordre.slice(i, j), ...ordre.slice(k)]
 }
 
 /**
@@ -262,14 +293,19 @@ export function resoudre(c: number[][], depart: number, noeuds: number[], arrive
   if (noeuds.length <= 1) return [...noeuds]
   if (noeuds.length <= EXACT_MAX) return exact(c, depart, noeuds, arrivee)
   const limite = Date.now() + (opts.limiteMs ?? 3000)
-  const maxPasses = opts.maxPasses ?? 100_000
-  const ordre = plusProcheVoisin(c, depart, noeuds)
-  for (let passe = 0; passe < maxPasses && Date.now() < limite; passe++) {
-    if (passe2Opt(c, depart, ordre, arrivee)) continue
-    if (passeOrOpt(c, depart, ordre, arrivee)) continue
-    break
+  let meilleur = plusProcheVoisin(c, depart, noeuds)
+  rechercheLocale(c, depart, meilleur, arrivee, limite)
+  if (noeuds.length < 8) return meilleur
+  let cout = coutParcours(c, depart, meilleur, arrivee)
+  const rnd = hasard(noeuds.length * 7919 + depart)
+  const essais = opts.perturbations ?? 300
+  for (let e = 0; e < essais && Date.now() < limite; e++) {
+    const essai = doublePont(meilleur, rnd)
+    rechercheLocale(c, depart, essai, arrivee, limite)
+    const ce = coutParcours(c, depart, essai, arrivee)
+    if (ce + EPS < cout) { meilleur = essai; cout = ce }
   }
-  return ordre
+  return meilleur
 }
 
 // ── Heures de passage ───────────────────────────────────────────────────────

@@ -12,7 +12,8 @@
 // Sortie : { ok, approximatif, message?, km_total, duree_min, km_feuille, places, a_placer }
 //
 // Calcul : `_shared/tourneeRoute.ts` (pur, testé). Temps de conduite : matrice ORS
-// `driving-car` en blocs ≤ 3 500 éléments ; tracé : itinéraires ORS en tronçons ≤ 50 points.
+// `driving-car` en blocs ≤ 3 500 éléments ; tracé : itinéraire IGN (Géoplateforme, sans clé)
+// par tronçons de 17 points, ORS en secours, ligne droite pour un tronçon qui échoue.
 // ORS indisponible → ligne droite × 1,3 à 35 km/h, `approximatif = true`, jamais bloquant.
 //
 // Accès (verify_jwt = true) : la requête tourne avec la session de l'appelant, donc la RLS de
@@ -20,10 +21,10 @@
 // `planning.tournees : update`). Aucune clé de service ici.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
-import { fetchJson } from '../_shared/http.ts'
+import { ExternalApiError, fetchJson } from '../_shared/http.ts'
 import { geocode } from '../_shared/geocode.ts'
 import {
-  ARRET_S, blocsMatrice, completerMatrices, decoderPolyligne, distanceParcours, encoderPolyligne,
+  ARRET_S, IGN_MAX_POINTS, blocsMatrice, completerMatrices, decoderPolyligne, distanceParcours, encoderPolyligne,
   matricesVolOiseau, passages, regrouperNoeuds, resoudre, troncons, type Matrices, type Point,
 } from '../_shared/tourneeRoute.ts'
 
@@ -72,23 +73,58 @@ async function matriceOrs(cle: string, pts: Point[]): Promise<{ m: Matrices; app
   return { m: completerMatrices({ durees, distances }, pts), appels: blocs.length }
 }
 
-/** Tracé routier du parcours (tronçons ≤ 50 points). null si ORS échoue : la carte relie les points. */
-async function traceOrs(cle: string, pts: Point[]): Promise<{ polyline: string; appels: number } | null> {
-  const parts = troncons(pts)
-  const tout: Array<[number, number]> = []
-  for (const [k, part] of parts.entries()) {
+const IGN = 'https://data.geopf.fr/navigation/itineraire'
+
+/** Un tronçon (≤ 17 points) par l'itinéraire IGN (BD TOPO, sans clé). null si échec. */
+async function tronconIgn(part: Point[]): Promise<Array<[number, number]> | null> {
+  const p = (q: Point) => `${q.lng.toFixed(6)},${q.lat.toFixed(6)}`
+  const params = new URLSearchParams({
+    resource: 'bdtopo-osrm', profile: 'car', optimization: 'fastest', geometryFormat: 'polyline', getSteps: 'false',
+    start: p(part[0]), end: p(part[part.length - 1]),
+  })
+  if (part.length > 2) params.set('intermediates', part.slice(1, -1).map(p).join('|'))
+  try {
+    const r = await fetchJson<{ geometry?: string }>(`${IGN}?${params.toString()}`, { timeoutMs: 15_000 })
+    return r?.geometry ? decoderPolyligne(r.geometry) : null
+  } catch (e) {
+    console.warn('optimiser-tournee-colis: tracé IGN', (e as Error)?.message, e instanceof ExternalApiError ? JSON.stringify(e.responseBody).slice(0, 300) : '')
+    return null
+  }
+}
+
+/** Le même tronçon par ORS (secours). null si échec. */
+async function tronconOrs(cle: string, part: Point[]): Promise<Array<[number, number]> | null> {
+  if (!cle) return null
+  try {
     const r = await fetchJson<{ routes?: Array<{ geometry?: string }> }>(`${ORS}/directions/driving-car`, {
-      method: 'POST',
-      headers: { Authorization: cle },
-      body: { coordinates: part.map(p => [p.lng, p.lat]), instructions: false, radiuses: part.map(() => -1) },
-      timeoutMs: 20_000,
-    }).catch(() => null)
+      method: 'POST', headers: { Authorization: cle },
+      body: { coordinates: part.map(q => [q.lng, q.lat]), instructions: false },
+      timeoutMs: 15_000,
+    })
     const geo = r?.routes?.[0]?.geometry
-    if (!geo) return null
-    const seg = decoderPolyligne(geo)
+    return geo ? decoderPolyligne(geo) : null
+  } catch (e) {
+    console.warn('optimiser-tournee-colis: tracé ORS', (e as Error)?.message, e instanceof ExternalApiError ? JSON.stringify(e.responseBody).slice(0, 300) : '')
+    return null
+  }
+}
+
+/**
+ * Tracé routier du parcours, tronçon par tronçon (IGN, sinon ORS, sinon ligne droite pour ce
+ * tronçon seulement). Renvoie la polyligne et le nombre de tronçons restés en ligne droite.
+ */
+async function tracer(cle: string, pts: Point[]): Promise<{ polyline: string; droits: number; appels: number }> {
+  const parts = troncons(pts, IGN_MAX_POINTS)
+  const tout: Array<[number, number]> = []
+  let droits = 0; let appels = 0
+  for (const [k, part] of parts.entries()) {
+    appels++
+    let seg = await tronconIgn(part)
+    if (!seg) { appels++; seg = await tronconOrs(cle, part) }
+    if (!seg) { droits++; seg = part.map(q => [q.lat, q.lng] as [number, number]) }
     tout.push(...(k === 0 ? seg : seg.slice(1)))
   }
-  return { polyline: encoderPolyligne(tout), appels: parts.length }
+  return { polyline: encoderPolyligne(tout), droits, appels }
 }
 
 Deno.serve(async (req: Request) => {
@@ -171,7 +207,8 @@ Deno.serve(async (req: Request) => {
     m = matricesVolOiseau(pts); approximatif = true
   }
 
-  const ordre = resoudre(m.durees, 0, idx, arrivee, { limiteMs: 1500 })
+  // ~0,8 s de calcul au plus (les fonctions Supabase coupent vers 2 s de calcul).
+  const ordre = resoudre(m.durees, 0, idx, arrivee, { limiteMs: 800 })
   const pass = passages(m, 0, ordre)
   const kmTotal = distanceParcours(m, 0, ordre, arrivee) / 1000
   const kmFeuille = distanceParcours(m, 0, idx, arrivee) / 1000
@@ -180,13 +217,13 @@ Deno.serve(async (req: Request) => {
 
   // Tracé : départ → nœuds → (retour).
   const parcours = [pts[0], ...ordre.map(i => pts[i]), ...(arrivee != null ? [pts[0]] : [])]
-  const trace = !approximatif && cleOrs ? await traceOrs(cleOrs, parcours) : null
-  if (trace) appels += trace.appels
-  const polyline = trace?.polyline ?? encoderPolyligne(parcours.map(p => [p.lat, p.lng]))
+  const trace = await tracer(cleOrs, parcours)
+  appels += trace.appels
+  const polyline = trace.polyline
 
   const trajet = {
     // approximatif = ORDRE calculé sans les temps de route ; trace_droit = tracé en lignes droites.
-    polyline, approximatif, trace_droit: !trace,
+    polyline, approximatif, trace_droit: trace.droits > 0,
     km_total: Math.round(kmTotal * 10) / 10, km_feuille: Math.round(kmFeuille * 10) / 10,
     duree_min: Math.round(dureeS / 60), mode, depart: pts[0], depart_source: depart ? departSource : 'premier_arret',
     arrivee: arriveeMode, calcule_a: new Date().toISOString(),
@@ -229,7 +266,7 @@ Deno.serve(async (req: Request) => {
 
   console.log('optimiser-tournee-colis:', JSON.stringify({
     tournee: tourneeId, mode, noeuds: noeuds.length, arrets: aOrdonner.length, a_placer: aPlacer,
-    appels_ors: appels, approximatif: trajet.approximatif, km: trajet.km_total, km_feuille: trajet.km_feuille,
+    appels_externes: appels, troncons_droits: trace.droits, approximatif: trajet.approximatif, km: trajet.km_total, km_feuille: trajet.km_feuille,
     gain_km: Math.round((kmFeuille - kmTotal) * 10) / 10, duree_ms: Date.now() - t0, depart: trajet.depart_source,
   }))
 
