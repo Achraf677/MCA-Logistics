@@ -56,6 +56,8 @@ export interface EnteteFeuille {
   operateur?: string
   depart?: string
   remettant?: string
+  /** Adresse du site remettant (agence, plateforme) si imprimée : départ par défaut de l'itinéraire. */
+  adresse_remettant?: string
   livreur?: string
   nb_colis?: number
   nb_pgeo?: number
@@ -88,7 +90,7 @@ function entier(v: unknown, max = 999): number | null {
   return n
 }
 
-const CLES_TEXTE = ['date', 'societe', 'vehicule', 'imei', 'circuit', 'operateur', 'depart', 'remettant', 'livreur'] as const
+const CLES_TEXTE = ['date', 'societe', 'vehicule', 'imei', 'circuit', 'operateur', 'depart', 'remettant', 'adresse_remettant', 'livreur'] as const
 const CLES_NOMBRE = ['nb_colis', 'nb_pgeo'] as const
 
 /** « 2/3 », « 2 / 3 », « page 2/3 » → { numero: 2, total: 3 } ; incohérent → null. */

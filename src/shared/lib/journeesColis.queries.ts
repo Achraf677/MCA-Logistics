@@ -152,3 +152,10 @@ export async function retirerPhoto(doc: DocumentRow) {
   const { error } = await deleteDocument(doc)
   return { error: error ? erreurClaire(error) : null }
 }
+
+/** Journées d'un client sur une période (relevé mensuel de messagerie, bureau). */
+export async function journeesDuClient(clientId: string, du: string, au: string) {
+  const { data, error } = await supabase.from('journees_colis').select(COLS)
+    .eq('client_id', clientId).gte('date', du).lte('date', au)
+  return { data: (data ?? []) as unknown as JourneeColis[], error: erreurClaire(error) }
+}

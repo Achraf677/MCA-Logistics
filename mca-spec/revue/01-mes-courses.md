@@ -153,9 +153,33 @@ Pas bon — reste
   fermé, saturé, accès · collecte : rien, non faite, accès), colis remis partiel si > 1 colis,
   note, effacer le statut. Supprimer la tournée (scan raté), scanner une autre feuille.
 - Écrit : `tournees_colis` (création, passe « en cours » au 1er geste), `tournees_colis_arrets`.
-- Hors lot : tri par route, carte, GPS, photos, clôture.
+- Lots 2 à 5 (18/10/2026, PR « suite ») :
+  - Ordre : bandeau « Ordre de la feuille / par la route (km · durée · gain) / manuel » ;
+    « Calculer l'itinéraire » (Edge `optimiser-tournee-colis`), recalcul (picto), « depuis ma
+    position » (après le 1er arrêt traité), glisser-déposer par la poignée = ordre manuel,
+    « Revenir à l'ordre calculé ». Heure de passage estimée (~08:42) en ordre par la route.
+  - Liste : « Prochain arrêt » en tête (Y aller, distance à vol d'oiseau si GPS), à-faire
+    groupés par commune dans l'ordre, « Traités » repliés en bas.
+  - Carte (Liste / Carte retenu sur le téléphone) : Plan IGN, pastilles numérotées par état,
+    picto relais / collecte, « ×n », prochain plus gros, tracé fait estompé, départ marqué,
+    « Ma position » (reste sur le téléphone), recentrer, voir tout ; toucher une pastille =
+    mêmes gestes que la liste.
+  - Arrêts sans adresse trouvée : « Placer » sur la carte ou par l'adresse (BAN).
+  - Y aller : application choisie dans Moi (Google Maps, Waze, Plans).
+  - Partager ma position avec le bureau (interrupteur, coupé à la fin de la tournée).
+  - Photo de preuve par arrêt (« … » › Photo de preuve), voir les photos.
+  - « Terminer ma tournée » : résumé, avertit des arrêts non traités (comptés en litige),
+    clôture, préremplit la journée de colis en brouillon.
+  - Bureau (Tournées) : « Carte du jour » (couleur par salarié, avancement, km, filtre,
+    camion = dernière position « il y a 2 min »), calculer l'itinéraire, rouvrir une tournée
+    clôturée. Livraisons › relevé de messagerie : « Journées validées : N colis » + Reprendre.
+  - Restent : guidage vocal intégré, historique des positions (volontairement absent).
 
 ## 9. À tester après chaque PR
+- (Lots 2-5) Calculer l'itinéraire sur une vraie feuille : km / durée crédibles, carte
+  lisible ; glisser un arrêt ; Revenir à l'ordre calculé ; placer un arrêt sans adresse ;
+  Y aller ouvre la bonne appli ; partager la position et la voir côté bureau ; photo ;
+  Terminer → Ma journée préremplie ; bureau : Rouvrir ; relevé du mois → Reprendre.
 - (TC1) Scanner une vraie feuille de 2 pages : arrêts dans l'ordre, « (3) » = 3 colis, RC et
   [C] reconnus, lignes de biais marquées « à vérifier » ; Livré en un geste ; partiel ;
   un autre salarié ne voit pas la tournée ; tournée clôturée non modifiable.

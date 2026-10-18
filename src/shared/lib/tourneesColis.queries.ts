@@ -5,13 +5,17 @@
 import imageCompression from 'browser-image-compression'
 import { supabase } from '../../app/providers'
 import { lireErreurEdge } from './erreurEdge'
+import { uploadDocument, getDownloadUrl } from './documents.queries'
+import type { DocumentRow } from './documents.types'
+import { enregistrerJournee } from './journeesColis.queries'
+import { journeeDepuisArrets } from './tourneesColisRoute'
 import {
   arretsDepuisLecture, lignesArrets, pageDepuisLecture, statutApresGeste, type PageLue,
   type ArretColis, type ArretLu, type EnteteFeuille, type StatutArretColis, type StatutTourneeColis, type TourneeColis,
 } from './tourneesColis'
 
 const COLS_TOURNEE = '*, team_members!member_id(full_name), clients!client_id(name)'
-const COLS_ARRET = 'id, tournee_id, company_id, rang, commune, cp, rue, numero, type, quantite, colis_remis, lat, lng, geo_precision, statut, statut_le, statut_par, note'
+const COLS_ARRET = 'id, tournee_id, company_id, rang, commune, cp, rue, numero, type, quantite, colis_remis, lat, lng, geo_precision, statut, statut_le, statut_par, note, ordre, eta_min'
 
 const REFUS = "Enregistrement refusé : la tournée est peut-être clôturée, ou ton compte n'a pas ce droit."
 
@@ -144,4 +148,176 @@ export async function supprimerTourneeColis(id: string): Promise<{ error: Error 
   if (error) return { error: erreurClaire(error) }
   if (!data || data.length === 0) return { error: new Error(REFUS) }
   return { error: null }
+}
+
+// ── Ordre de passage et carte (lot 2) ───────────────────────────────────────
+
+export interface ResultatItineraire {
+  approximatif: boolean
+  message?: string
+  km_total: number
+  duree_min: number
+  km_feuille: number
+  places: number
+  a_placer: number
+}
+
+/** Calcule l'ordre par la route (Edge `optimiser-tournee-colis`) : tout, ou les restants depuis une position. */
+export async function calculerItineraire(p: {
+  tourneeId: string
+  mode: 'tout' | 'restants'
+  depart?: { lat: number; lng: number } | null
+}): Promise<{ data: ResultatItineraire | null; error: Error | null }> {
+  const { data, error } = await supabase.functions.invoke('optimiser-tournee-colis', {
+    body: { tournee_id: p.tourneeId, mode: p.mode, ...(p.depart ? { depart: p.depart } : {}) },
+  })
+  const echec = await lireErreurEdge(data, error)
+  if (echec) return { data: null, error: new Error(echec.message) }
+  return { data: data as ResultatItineraire, error: null }
+}
+
+/** Adresse tapée → position (BAN, via l'Edge `geocode`). */
+export async function chercherAdresse(adresse: string): Promise<{ lat: number; lng: number } | null> {
+  const { data, error } = await supabase.functions.invoke('geocode', { body: { address: adresse } })
+  const d = data as { ok?: boolean; lat?: number; lng?: number } | null
+  if (error || !d?.ok || !Number.isFinite(d.lat) || !Number.isFinite(d.lng)) return null
+  return { lat: d.lat!, lng: d.lng! }
+}
+
+/** Place un arrêt à la main (carte ou adresse) : `geo_precision = 'manuel'`. */
+export async function placerArret(arretId: string, pos: { lat: number; lng: number }) {
+  const { data, error } = await supabase.from('tournees_colis_arrets')
+    .update({ lat: pos.lat, lng: pos.lng, geo_precision: 'manuel' }).eq('id', arretId).select(COLS_ARRET)
+  if (error) return { data: null, error: erreurClaire(error) }
+  const l = (data ?? [])[0] as unknown as ArretColis | undefined
+  return l ? { data: l, error: null } : { data: null, error: new Error(REFUS) }
+}
+
+/** Écrit un ordre (ids dans l'ordre) puis le mode de la tournée. Les absents perdent leur place. */
+export async function ecrireOrdre(tourneeId: string, ids: string[], tous: string[], mode: 'manuel' | 'route') {
+  const place = new Map(ids.map((id, i) => [id, i + 1]))
+  const ecritures = tous.map(id => ({ id, ordre: place.get(id) ?? null }))
+  for (let i = 0; i < ecritures.length; i += 10) {
+    const lot = await Promise.all(ecritures.slice(i, i + 10).map(e =>
+      supabase.from('tournees_colis_arrets').update({ ordre: e.ordre }).eq('id', e.id).select('id')))
+    const ko = lot.find(r => r.error || !r.data?.length)
+    if (ko) return { error: erreurClaire(ko.error) ?? new Error(REFUS) }
+  }
+  const { data, error } = await supabase.from('tournees_colis').update({ ordre_mode: mode }).eq('id', tourneeId).select('id')
+  if (error) return { error: erreurClaire(error) }
+  return { error: data?.length ? null : new Error(REFUS) }
+}
+
+// ── Suivi en direct (lot 3) ─────────────────────────────────────────────────
+
+export interface PositionLivreur {
+  member_id: string
+  tournee_id: string | null
+  lat: number
+  lng: number
+  precision_m: number | null
+  maj_le: string
+}
+
+/** Le livreur envoie SA dernière position (une ligne par livreur, pas d'historique). */
+export async function envoyerPosition(p: {
+  companyId: string; memberId: string; tourneeId: string; lat: number; lng: number; precision: number | null
+}) {
+  const { error } = await supabase.from('positions_livreurs').upsert({
+    member_id: p.memberId, company_id: p.companyId, tournee_id: p.tourneeId, lat: p.lat, lng: p.lng,
+    precision_m: p.precision == null ? null : Math.round(p.precision), maj_le: new Date().toISOString(),
+  }, { onConflict: 'member_id' })
+  return { error: erreurClaire(error) }
+}
+
+/** Arrêt du partage : la position est effacée (le bureau ne voit plus rien). */
+export async function effacerPosition(memberId: string) {
+  const { error } = await supabase.from('positions_livreurs').delete().eq('member_id', memberId)
+  return { error: erreurClaire(error) }
+}
+
+/** Positions partagées (bureau). */
+export async function positionsLivreurs() {
+  const { data, error } = await supabase.from('positions_livreurs')
+    .select('member_id, tournee_id, lat, lng, precision_m, maj_le')
+  return { data: (data ?? []) as PositionLivreur[], error: erreurClaire(error) }
+}
+
+// ── Preuves et clôture (lot 4) ──────────────────────────────────────────────
+
+/** Photos de preuve des arrêts (documents `entity_type = 'arret_colis'`). */
+export async function photosArrets(ids: string[]) {
+  if (ids.length === 0) return { data: [] as DocumentRow[], error: null }
+  const { data, error } = await supabase.from('documents').select('*')
+    .eq('entity_type', 'arret_colis').in('entity_id', ids).order('created_at', { ascending: true })
+  return { data: (data ?? []) as DocumentRow[], error: erreurClaire(error) }
+}
+
+export async function ajouterPhotoArret(file: File, companyId: string, arretId: string) {
+  const { data, error } = await uploadDocument(file, companyId, {
+    entity_type: 'arret_colis', entity_id: arretId, category: 'POD',
+  })
+  return { data, error: error ? erreurClaire(error) : null }
+}
+
+export function urlPhotoArret(doc: DocumentRow) {
+  return getDownloadUrl(doc)
+}
+
+/**
+ * Clôture par le livreur (ou le bureau). La base horodate ; plus rien n'est modifiable ensuite.
+ * Le partage de position s'arrête avec elle (la ligne du livreur est effacée, s'il en a une).
+ */
+export async function cloturerTournee(id: string) {
+  const { data, error } = await supabase.from('tournees_colis').update({ statut: 'cloturee' }).eq('id', id).select(COLS_TOURNEE)
+  if (error) return { data: null, error: erreurClaire(error) }
+  const t = (data ?? [])[0] as unknown as TourneeColis | undefined
+  if (t) await supabase.from('positions_livreurs').delete().eq('member_id', t.member_id).eq('tournee_id', id)
+  return t ? { data: t, error: null } : { data: null, error: new Error(REFUS) }
+}
+
+/** Réouverture par le bureau (droit Tournées). */
+export async function rouvrirTournee(id: string) {
+  const { data, error } = await supabase.from('tournees_colis').update({ statut: 'en_cours' }).eq('id', id).select('id')
+  if (error) return { error: erreurClaire(error) }
+  return { error: data?.length ? null : new Error(REFUS) }
+}
+
+// ── Journée de colis déduite (lot 5) ────────────────────────────────────────
+
+export type ResultatJournee = 'creee' | 'mise_a_jour' | 'deja_envoyee' | 'deja_saisie' | 'sans_client'
+
+/** Note posée par le préremplissage : une journée qui la porte encore n'a pas été retouchée. */
+const NOTE_AUTO = 'Compté depuis'
+
+/**
+ * Après une clôture : la journée de colis (même salarié, jour, client) est préremplie en
+ * BROUILLON depuis toutes ses tournées clôturées du jour. Le salarié vérifie, ajoute la photo du
+ * compteur et envoie (Ma journée). Jamais touchée : une journée envoyée ou validée, ni une
+ * journée saisie ou corrigée à la main (brouillon sans la note automatique, refusée).
+ */
+export async function preremplirJournee(p: { companyId: string; memberId: string; date: string; clientId: string | null }):
+  Promise<{ etat: ResultatJournee; error: Error | null }> {
+  if (!p.clientId) return { etat: 'sans_client', error: null }
+  const { data: ts, error: eT } = await supabase.from('tournees_colis').select('id')
+    .eq('member_id', p.memberId).eq('date', p.date).eq('client_id', p.clientId).eq('statut', 'cloturee')
+  if (eT) return { etat: 'sans_client', error: erreurClaire(eT) }
+  const ids = (ts ?? []).map((t: { id: string }) => t.id)
+  const { data: arrets, error: eA } = await arretsDesTournees(ids)
+  if (eA) return { etat: 'sans_client', error: eA }
+  const colis = journeeDepuisArrets(arrets)
+
+  const { data: j, error: eJ } = await supabase.from('journees_colis').select('id, statut, note')
+    .eq('member_id', p.memberId).eq('date', p.date).eq('client_id', p.clientId).maybeSingle()
+  if (eJ) return { etat: 'sans_client', error: erreurClaire(eJ) }
+  const existante = j as { id: string; statut: string; note: string | null } | null
+  if (existante && (existante.statut === 'envoyee' || existante.statut === 'validee')) return { etat: 'deja_envoyee', error: null }
+  if (existante && (existante.statut !== 'brouillon' || !(existante.note ?? '').startsWith(NOTE_AUTO))) return { etat: 'deja_saisie', error: null }
+
+  const { error } = await enregistrerJournee({
+    id: existante?.id ?? null, companyId: p.companyId, memberId: p.memberId, date: p.date, clientId: p.clientId,
+    champs: { ...colis, note: `${NOTE_AUTO} ${ids.length > 1 ? `${ids.length} tournées` : 'la tournée'} de colis.` },
+    statut: 'brouillon',
+  })
+  return { etat: existante ? 'mise_a_jour' : 'creee', error }
 }

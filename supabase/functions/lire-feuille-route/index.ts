@@ -64,11 +64,11 @@ AUTO-CONTRÔLE, ligne par ligne, avant de répondre : la somme des colis de la c
 
 PAGE : "page" = le « x/y » imprimé en bas à droite (ex. "2/3"), null s'il n'est pas visible.
 
-EN-TÊTE : seulement si le cadre « Feuille de route » (logo Colissimo) est sur la photo, sinon "entete": null. Champs : date (JJ/MM/AAAA), societe, vehicule, imei, circuit, operateur, depart (HH:MM), remettant, nb_colis (entier), nb_pgeo (entier), livreur. Absent = null.
+EN-TÊTE : seulement si le cadre « Feuille de route » (logo Colissimo) est sur la photo, sinon "entete": null. Champs : date (JJ/MM/AAAA), societe, vehicule, imei, circuit, operateur, depart (HH:MM), remettant (nom du site qui remet les colis), adresse_remettant (adresse postale de ce site si elle est imprimée, sinon null), nb_colis (entier), nb_pgeo (entier), livreur. Absent = null.
 Ignore les totaux et tout ce qui est hors du tableau et de l'en-tête.
 
 Réponds UNIQUEMENT en JSON :
-{"entete": {"date": …, "societe": …, "vehicule": …, "imei": …, "circuit": …, "operateur": …, "depart": …, "remettant": …, "nb_colis": …, "nb_pgeo": …, "livreur": …} | null,
+{"entete": {"date": …, "societe": …, "vehicule": …, "imei": …, "circuit": …, "operateur": …, "depart": …, "remettant": …, "adresse_remettant": …, "nb_colis": …, "nb_pgeo": …, "livreur": …} | null,
  "page": "<x/y>" | null,
  "lignes": [{"commune_bandeau": <texte|null>, "secteur": <texte|null>, "rue": <texte|null>, "nb_colis": <entier|null>, "nb_pgeo": <entier|null>, "numeros": <texte>, "crbt": <texte|null>}]}`
 

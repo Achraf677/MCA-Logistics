@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ScanText, Trash2, ClipboardList } from 'lucide-react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { ScanText, Trash2, ClipboardList, Map as IconeCarte, Route, RotateCcw, Radio } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
@@ -8,13 +8,20 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { Field } from '../../shared/ui/Field'
 import { ScanFeuilleRoute } from '../../shared/ui/ScanFeuilleRoute'
 import { useToast } from '../../shared/ui/useToast'
+import { Skeleton } from '../../shared/ui/Skeleton'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import {
   LIBELLE_STATUT_TOURNEE, avancementPct, compteursTournee, type ArretColis, type TourneeColis,
 } from '../../shared/lib/tourneesColis'
+import { toLocalISO } from '../../shared/lib/dates'
 import {
   arretsDesTournees, listerTourneesColis, membresPourTournee, nomsClients, supprimerTourneeColis,
+  calculerItineraire, rouvrirTournee, positionsLivreurs, type PositionLivreur,
 } from '../../shared/lib/tourneesColis.queries'
+import { ilYA, libelleDistance, modeOrdre, positionAncienne, prochainDansOrdre } from '../../shared/lib/tourneesColisRoute'
+import { colorForIndex } from './tours.palette'
+
+const CarteTournee = lazy(() => import('../../shared/ui/CarteTournee'))
 
 type Membre = { id: string; full_name: string; clients_messagerie: string[] }
 
@@ -38,6 +45,12 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
   const [noms, setNoms] = useState<Map<string, string>>(new Map())
   const [aSupprimer, setASupprimer] = useState<TourneeColis | null>(null)
   const [suppression, setSuppression] = useState(false)
+  const [carte, setCarte] = useState(false)
+  const [masques, setMasques] = useState<Set<string>>(new Set())
+  const [positions, setPositions] = useState<PositionLivreur[]>([])
+  const [calcul, setCalcul] = useState<string | null>(null)
+  const [aRouvrir, setARouvrir] = useState<TourneeColis | null>(null)
+  const [maintenant, setMaintenant] = useState(() => Date.now())
 
   const recharger = useCallback(async () => {
     const t = await listerTourneesColis({ du: date, au: date })
@@ -51,6 +64,18 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
 
   useEffect(() => { recharger() }, [recharger])
 
+  // Suivi en direct : positions partagées par les livreurs, relues toutes les 30 s (et
+  // l'avancement des tournées avec), seulement pour aujourd'hui.
+  const estAujourdhui = date === toLocalISO(new Date())
+  useEffect(() => {
+    if (!estAujourdhui) return
+    let annule = false
+    const lire = () => positionsLivreurs().then(({ data }) => { if (!annule) { setPositions(data); setMaintenant(Date.now()) } })
+    lire()
+    const id = window.setInterval(() => { lire(); if (carte) recharger() }, 30_000)
+    return () => { annule = true; window.clearInterval(id) }
+  }, [estAujourdhui, carte, recharger])
+
   // Salariés et noms de leurs clients : seulement quand on ouvre le scanner.
   useEffect(() => {
     if (!scanOuvert || membres.length) return
@@ -60,10 +85,55 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
     })
   }, [scanOuvert, membres.length])
 
+  // Une couleur par salarié (ordre alphabétique : stable d'un rechargement à l'autre).
+  const couleurs = useMemo(() => {
+    const noms = [...new Map(tournees.map(t => [t.member_id, t.team_members?.full_name ?? ''])).entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], 'fr'))
+    return new Map(noms.map(([id], i) => [id, colorForIndex(i)]))
+  }, [tournees])
+
   const lignes = useMemo(() => tournees.map(t => {
-    const c = compteursTournee(arrets.filter(a => a.tournee_id === t.id))
-    return { t, c, pct: avancementPct(c) }
-  }), [tournees, arrets])
+    const siens = arrets.filter(a => a.tournee_id === t.id)
+    const c = compteursTournee(siens)
+    // Position de CETTE tournée, de moins de 3 h (une ligne oubliée ne traîne pas sur la carte).
+    const pos = estAujourdhui ? positions.find(p => p.member_id === t.member_id && p.tournee_id === t.id
+      && maintenant - new Date(p.maj_le).getTime() < 3 * 3_600_000) : undefined
+    return { t, c, pct: avancementPct(c), arrets: siens, couleur: couleurs.get(t.member_id) ?? '#2563eb', pos }
+  }), [tournees, arrets, couleurs, positions, estAujourdhui, maintenant])
+
+  const visibles = lignes.filter(l => !masques.has(l.t.member_id))
+  const couches = useMemo(() => visibles.map(l => {
+    const mode = modeOrdre(l.t)
+    return { id: l.t.id, couleur: l.couleur, arrets: l.arrets, mode, trajet: l.t.trajet ?? null, prochainId: prochainDansOrdre(l.arrets, mode)?.id ?? null }
+  }), [visibles])
+  const positionsCarte = visibles.filter(l => l.pos).map(l => ({
+    id: l.t.member_id, lat: l.pos!.lat, lng: l.pos!.lng, couleur: l.couleur, ancien: positionAncienne(l.pos!.maj_le, maintenant),
+    libelle: `${(l.t.team_members?.full_name ?? 'Salarié').split(' ')[0]} · ${ilYA(l.pos!.maj_le, maintenant)}`,
+  }))
+
+  const calculer = async (t: TourneeColis) => {
+    setCalcul(t.id)
+    const { data, error } = await calculerItineraire({ tourneeId: t.id, mode: 'tout' })
+    setCalcul(null)
+    if (error || !data) { toast(error?.message ?? 'Calcul impossible', 'error'); return }
+    toast(data.message ?? `Itinéraire calculé : ${libelleDistance(data.km_total * 1000)}`, 'success')
+    recharger()
+  }
+
+  const rouvrir = async () => {
+    if (!aRouvrir) return
+    const { error } = await rouvrirTournee(aRouvrir.id)
+    setARouvrir(null)
+    if (error) { toast(error.message, 'error'); return }
+    toast('Tournée rouverte : le salarié peut de nouveau la modifier', 'success')
+    recharger()
+  }
+
+  const basculerMasque = (id: string) => setMasques(prev => {
+    const n = new Set(prev)
+    if (n.has(id)) n.delete(id); else n.add(id)
+    return n
+  })
 
   const membre = membres.find(m => m.id === membreId) ?? null
   const clientsMembre = useMemo(
@@ -92,21 +162,51 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
         <span className="flex-1 text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">
           Tournées de colis du jour
         </span>
+        {lignes.length > 0 && (
+          <Button size="compact" variant={carte ? 'primary' : 'secondary'} onClick={() => setCarte(v => !v)}>
+            <IconeCarte size={14} /> Carte du jour
+          </Button>
+        )}
         {peutScanner && !erreur && (
           <Button size="compact" onClick={() => setScanOuvert(true)}>
             <ScanText size={14} /> Scanner pour un salarié
           </Button>
         )}
       </div>
-      <div className="p-3">
+      <div className="p-3 flex flex-col gap-3">
+        {carte && lignes.length > 0 && (
+          <>
+            <div className="flex flex-wrap gap-2" aria-label="Salariés affichés">
+              {lignes.filter((l, i, tab) => tab.findIndex(x => x.t.member_id === l.t.member_id) === i).map(l => {
+                const siennes = lignes.filter(x => x.t.member_id === l.t.member_id)
+                const km = siennes.reduce((s, x) => s + (x.t.trajet?.km_total ?? 0), 0)
+                const pct = Math.round(siennes.reduce((s, x) => s + x.pct, 0) / siennes.length)
+                const masque = masques.has(l.t.member_id)
+                return (
+                  <button key={l.t.member_id} type="button" aria-pressed={!masque} onClick={() => basculerMasque(l.t.member_id)}
+                    className={`min-h-10 px-3 inline-flex items-center gap-2 rounded-[var(--r-md)] border text-xs ${
+                      masque ? 'border-[var(--border)] opacity-50' : 'border-[var(--border-strong)]'}`}>
+                    <span className="w-3 h-3 rounded-full shrink-0" style={{ background: l.couleur }} />
+                    <strong className="text-[var(--text)]">{l.t.team_members?.full_name ?? 'Salarié'}</strong>
+                    <span className="text-[var(--text-muted)] tabular-nums">{pct} %{km ? ` · ${libelleDistance(km * 1000)}` : ''}</span>
+                  </button>
+                )
+              })}
+            </div>
+            <Suspense fallback={<Skeleton className="h-[26rem]" />}>
+              <CarteTournee couches={couches} positions={positionsCarte} hauteur="h-[26rem]" />
+            </Suspense>
+          </>
+        )}
         {erreur ? (
           <p className="text-sm text-[var(--text-muted)]">{erreur}</p>
         ) : lignes.length === 0 ? (
           <p className="text-sm text-[var(--text-muted)]">Aucune feuille de route scannée ce jour.</p>
         ) : (
           <ul className="flex flex-col divide-y divide-[var(--border)]">
-            {lignes.map(({ t, c, pct }) => (
+            {lignes.map(({ t, c, pct, couleur, pos }) => (
               <li key={t.id} className="flex items-center gap-3 py-2">
+                {carte && <span className="w-3 h-3 rounded-full shrink-0" style={{ background: couleur }} aria-hidden />}
                 <div className="flex-1 min-w-0 flex flex-col gap-1">
                   <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                     <strong className="text-[var(--text)]">{t.team_members?.full_name ?? 'Salarié'}</strong>
@@ -125,8 +225,21 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
                     {c.colisAttente > 0 && <span className="text-[var(--warning)]">{c.colisAttente} en attente</span>}
                     {c.colisRetour > 0 && <span className="text-[var(--danger)]">{c.colisRetour} en retour</span>}
                     {c.collectes > 0 && <span>Collectes {c.collectesTraitees} / {c.collectes}</span>}
+                    {t.trajet && <span>{libelleDistance(t.trajet.km_total * 1000)}{modeOrdre(t) === 'manuel' ? ' · ordre manuel' : ''}</span>}
+                    {pos && (
+                      <span className={`inline-flex items-center gap-1 ${positionAncienne(pos.maj_le, maintenant) ? '' : 'text-[var(--success)]'}`}>
+                        <Radio size={11} /> position {ilYA(pos.maj_le, maintenant)}
+                      </span>
+                    )}
                   </span>
                 </div>
+                {peutScanner && t.statut !== 'cloturee' && (
+                  <BoutonIcone icone={Route} taille="sm" libelle={calcul === t.id ? 'Calcul…' : "Calculer l'itinéraire"}
+                    disabled={calcul != null} onClick={() => calculer(t)} />
+                )}
+                {peutScanner && t.statut === 'cloturee' && (
+                  <BoutonIcone icone={RotateCcw} taille="sm" libelle="Rouvrir la tournée" onClick={() => setARouvrir(t)} />
+                )}
                 {peutSupprimer && t.statut !== 'cloturee' && (
                   <BoutonIcone icone={Trash2} taille="sm" libelle="Supprimer cette tournée de colis"
                     onClick={() => setASupprimer(t)} />
@@ -158,6 +271,10 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
       <ConfirmDialog open={aSupprimer != null} title="Supprimer cette tournée de colis ?"
         message={`Feuille de ${aSupprimer?.team_members?.full_name ?? 'ce salarié'} : les arrêts et leurs statuts seront effacés.`}
         loading={suppression} onConfirm={supprimer} onCancel={() => setASupprimer(null)} />
+
+      <ConfirmDialog open={aRouvrir != null} title="Rouvrir cette tournée ?"
+        message={`Feuille de ${aRouvrir?.team_members?.full_name ?? 'ce salarié'} : il pourra de nouveau changer les statuts. Sa journée de colis n'est pas modifiée.`}
+        confirmLabel="Rouvrir" onConfirm={rouvrir} onCancel={() => setARouvrir(null)} />
     </div>
   )
 }

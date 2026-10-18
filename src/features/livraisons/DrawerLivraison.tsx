@@ -4,6 +4,7 @@ import { Trash2, Loader2, Camera, Plus, Mail, Copy, RefreshCw, Zap, AlertTriangl
 import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { LettreVoitureTab } from './LettreVoitureTab'
 import { ApercuFacture } from './ApercuFacture'
+import { ColisDesJournees } from './ColisDesJournees'
 import { uploadDocument, listDocuments, getDownloadUrl } from '../../shared/lib/documents.queries'
 // Regle unique « sans justificatif » — la meme que l'alerte de la cloche.
 import { isLivraisonSansJustif } from '../../shared/lib/livraisonsSansJustif'
@@ -1109,6 +1110,10 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                         placeholder="1,00" min={0} step={0.01} disabled={ro} />
                     </Field>
                   </div>
+                  {form.client_id && !ro && (
+                    <ColisDesJournees clientId={form.client_id} date={form.date} valeur={nbColis}
+                      onReprendre={n => set('nb_colis', String(n))} />
+                  )}
                   <div className="flex items-baseline justify-between gap-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] px-3 py-2">
                     <span className="text-sm text-[var(--text-muted)]">
                       {resumeMessagerie(nbColis, prixColisCts) ?? 'Colis × prix au colis'}

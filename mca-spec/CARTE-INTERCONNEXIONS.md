@@ -56,8 +56,30 @@
   par `shared/lib/tourneesColis.queries` depuis Mes courses › Ma tournée (salarié : SES tournées,
   non clôturées) et Tournées › bloc « Tournées de colis du jour » (bureau, droit
   `planning.tournees`). Trigger `tournees_colis_arrets_garde` : `statut_le` / `statut_par`,
-  société = celle de la tournée. **Lus par personne d'autre** : pas des deliveries, ni
-  facturation, ni paie, ni dashboard, ni alertes (à relier dans un lot suivant si besoin).
+  société = celle de la tournée. Pas des deliveries, ni facturation, ni paie, ni dashboard, ni
+  alertes.
+  - Lots 2 à 5 (migration `20261018090000_tournees_colis_route`, appliquée le 18/10/2026) :
+    tournée `depart`, `arrivee`, `ordre_mode` (feuille / route / manuel), `ordre_calcule_le`,
+    `trajet` (tracé, km, durée, `ordre_ids`), `cloturee_le` / `cloturee_par` (trigger
+    `tournees_colis_touch`) ; arrêt `ordre`, `eta_min`, `geo_precision = 'manuel'` (placé à la
+    main). `rang` = ordre de la feuille, jamais modifié. Le salarié peut passer SA tournée en
+    `cloturee` ; seul le bureau la rouvre.
+  - Écrits aussi par l'Edge `optimiser-tournee-colis` (session de l'appelant : ordre, eta,
+    trajet, mode, départ).
+  - **Lus par la journée de colis** : à la clôture, `tourneesColis.queries#preremplirJournee`
+    crée / met à jour la `journees_colis` du jour en BROUILLON (domicile / relais = colis
+    remis, litige = non remis + raisons ; collectes exclues ; jamais une journée envoyée ou
+    validée). Règle pure : `tourneesColisRoute#journeeDepuisArrets`.
+- **positions_livreurs** (lot 3) : dernière position du livreur (une ligne par fiche, pas
+  d'historique), écrite par Ma tournée si le salarié active « Partager ma position » (toutes
+  les ~30 s, effacée à l'arrêt du partage et à la clôture) ; lue par Tournées › « Carte du
+  jour » (bureau, `planning.tournees : view`). Le salarié ne voit que la sienne.
+- **documents `entity_type = 'arret_colis'`** (lot 4) : photo de preuve d'un arrêt (catégorie
+  POD), déposée par le livreur sur SA tournée non clôturée ; lue dans Ma tournée.
+- **journees_colis → relevé de messagerie** (lot 5) : Livraisons › fiche relevé lit les
+  journées du client du mois (`journeesColis.queries#journeesDuClient`,
+  `journeesColis#colisPourReleve` : validées seulement) et propose le nombre de colis
+  (« Reprendre ») ; les non validées sont signalées, jamais comptées.
 - **work_hours** : heures (écrit tout), equipe ; tournees (lot P3 : après « Terminer la
   tournée », propose d'insérer la ligne du chauffeur — date, début, fin — si aucune ligne
   n'existe déjà pour ce chauffeur ce jour-là).
@@ -113,6 +135,15 @@
 - lire-feuille-route (TC1, **déployée le 18/10/2026, v1**) : `shared/lib/tourneesColis.queries#lirePageFeuille`, appelée par
   `shared/ui/ScanFeuilleRoute` (Mes courses › Ma tournée, Tournées). N'écrit rien ; importe
   `_shared/mistral`, `_shared/feuilleRoute`, `_shared/geocodeArret`, `_shared/auth`, `cors`, `http`.
+  v2 (18/10/2026) : lit aussi `adresse_remettant` dans l'en-tête (départ par défaut).
+- optimiser-tournee-colis (lots 2-5, **déployée le 18/10/2026, v2**, verify_jwt ; tracé par
+  l'itinéraire IGN `data.geopf.fr/navigation/itineraire`, ORS en secours) :
+  `tourneesColis.queries#calculerItineraire`, appelée par Ma tournée (calcul, recalcul depuis
+  ma position) et Tournées › bloc tournées de colis. Tourne avec la session de l'appelant
+  (RLS, aucune clé de service). ORS matrice (blocs ≤ 3 500) + itinéraires (≤ 50 points),
+  repli vol d'oiseau × 1,3 ; solveur `_shared/tourneeRoute.ts` (exact ≤ 10 points, sinon
+  plus proche voisin + 2-opt + Or-opt ; 150 points en ~12 ms). Lit `companies.depot_lat/lng`
+  (départ si rien d'autre), `_shared/geocode` (adresse du remettant).
 - ai-extract-deliveries : copilote, parametres · assistant-chat : assistant ·
   alertes-briefing : alertes · brouillons-generate : brouillons
 - admin-users, admin-permissions : admins · drive-* : parametres

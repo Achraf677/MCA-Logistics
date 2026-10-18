@@ -91,7 +91,7 @@ export function MesCourses() {
     <Shell pageTitle={TITRES[onglet]}>
       <div className="mx-auto w-full max-w-[40rem]">
         {onglet === 'courses' && <OngletCourses />}
-        {onglet === 'tournee' && <MaTournee fiche={fiche} />}
+        {onglet === 'tournee' && <MaTournee fiche={fiche} onOuvrirJournee={() => changerOnglet('journee')} />}
         {onglet === 'journee' && <MaJournee fiche={fiche} />}
         {onglet === 'depenses' && <MesDepenses />}
         {onglet === 'moi' && <Moi fiche={fiche} />}
