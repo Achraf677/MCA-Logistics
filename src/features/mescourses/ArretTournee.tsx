@@ -150,6 +150,17 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
         </a>
       )}
 
+      {verrouillee && photos.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {photos.map((p, i) => (
+            <button key={p.id} type="button" onClick={() => voirPhoto(p)}
+              className="min-h-10 px-3 rounded-[var(--r-md)] border border-[var(--border)] text-sm text-[var(--text)] underline">
+              Voir la photo {i + 1}
+            </button>
+          ))}
+        </div>
+      )}
+
       {ouvert && !verrouillee && (
         <div className="flex flex-col gap-3 pt-2 border-t border-[var(--border)]">
           <div className="flex flex-wrap gap-2">

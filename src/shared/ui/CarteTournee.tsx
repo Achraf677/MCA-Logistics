@@ -38,10 +38,12 @@ const cacheIcones = new Map<string, L.DivIcon>()
 function icone(p: PointCarte, couleur: string | null): L.DivIcon {
   const fond = p.horsOrdre ? '#9ca3af' : couleur && p.etat === 'a_faire' ? couleur : COULEUR_ETAT[p.etat]
   const taille = p.prochain ? 2.75 : 2
-  const cle = `${p.numero}|${p.etat}|${p.horsOrdre}|${p.prochain}|${p.type}|${p.arrets.length}|${fond}`
+  // Taille en px à partir de la racine réelle (14 px grand écran, 11 px petit PC).
+  const racine = parseFloat(getComputedStyle(document.documentElement).fontSize) || 14
+  const cle = `${p.numero}|${p.etat}|${p.horsOrdre}|${p.prochain}|${p.type}|${p.arrets.length}|${fond}|${racine}`
   let ic = cacheIcones.get(cle)
   if (!ic) {
-    const px = taille * 14
+    const px = taille * racine
     const traite = p.etat !== 'a_faire'
     const html = `<div style="position:relative;width:${taille}rem;height:${taille}rem;border-radius:50%;background:${fond};
       color:${p.etat === 'livre' || p.etat === 'attente' ? '#111' : '#fff'};display:flex;align-items:center;justify-content:center;
@@ -163,7 +165,8 @@ function CarteTournee({ couches, hauteur = 'h-[60vh] min-h-[22rem]', maPosition,
 
   const calques = useMemo(() => couches.map(c => {
     const points = pointsCarte(c.arrets, c.mode, c.prochainId)
-    const ligne = c.trajet?.polyline ? (polyline.decode(c.trajet.polyline) as Array<[number, number]>) : []
+    // Ordre manuel : le tracé calculé ne suit plus les numéros, on ne le montre pas.
+    const ligne = c.mode === 'route' && c.trajet?.polyline ? (polyline.decode(c.trajet.polyline) as Array<[number, number]>) : []
     const prochain = c.arrets.find(a => a.id === c.prochainId)
     const toutFait = c.arrets.length > 0 && c.arrets.every(a => !!a.statut)
     const trace = couperTrace(ligne, prochain?.lat != null && prochain.lng != null ? { lat: prochain.lat, lng: prochain.lng } : null, toutFait)

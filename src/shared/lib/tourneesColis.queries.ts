@@ -264,11 +264,15 @@ export function urlPhotoArret(doc: DocumentRow) {
   return getDownloadUrl(doc)
 }
 
-/** Clôture par le livreur (ou le bureau). La base horodate ; plus rien n'est modifiable ensuite. */
+/**
+ * Clôture par le livreur (ou le bureau). La base horodate ; plus rien n'est modifiable ensuite.
+ * Le partage de position s'arrête avec elle (la ligne du livreur est effacée, s'il en a une).
+ */
 export async function cloturerTournee(id: string) {
   const { data, error } = await supabase.from('tournees_colis').update({ statut: 'cloturee' }).eq('id', id).select(COLS_TOURNEE)
   if (error) return { data: null, error: erreurClaire(error) }
   const t = (data ?? [])[0] as unknown as TourneeColis | undefined
+  if (t) await supabase.from('positions_livreurs').delete().eq('member_id', t.member_id).eq('tournee_id', id)
   return t ? { data: t, error: null } : { data: null, error: new Error(REFUS) }
 }
 
@@ -281,12 +285,16 @@ export async function rouvrirTournee(id: string) {
 
 // ── Journée de colis déduite (lot 5) ────────────────────────────────────────
 
-export type ResultatJournee = 'creee' | 'mise_a_jour' | 'deja_envoyee' | 'sans_client'
+export type ResultatJournee = 'creee' | 'mise_a_jour' | 'deja_envoyee' | 'deja_saisie' | 'sans_client'
+
+/** Note posée par le préremplissage : une journée qui la porte encore n'a pas été retouchée. */
+const NOTE_AUTO = 'Compté depuis'
 
 /**
  * Après une clôture : la journée de colis (même salarié, jour, client) est préremplie en
  * BROUILLON depuis toutes ses tournées clôturées du jour. Le salarié vérifie, ajoute la photo du
- * compteur et envoie (Ma journée). Une journée déjà envoyée ou validée n'est jamais touchée.
+ * compteur et envoie (Ma journée). Jamais touchée : une journée envoyée ou validée, ni une
+ * journée saisie ou corrigée à la main (brouillon sans la note automatique, refusée).
  */
 export async function preremplirJournee(p: { companyId: string; memberId: string; date: string; clientId: string | null }):
   Promise<{ etat: ResultatJournee; error: Error | null }> {
@@ -304,10 +312,11 @@ export async function preremplirJournee(p: { companyId: string; memberId: string
   if (eJ) return { etat: 'sans_client', error: erreurClaire(eJ) }
   const existante = j as { id: string; statut: string; note: string | null } | null
   if (existante && (existante.statut === 'envoyee' || existante.statut === 'validee')) return { etat: 'deja_envoyee', error: null }
+  if (existante && (existante.statut !== 'brouillon' || !(existante.note ?? '').startsWith(NOTE_AUTO))) return { etat: 'deja_saisie', error: null }
 
   const { error } = await enregistrerJournee({
     id: existante?.id ?? null, companyId: p.companyId, memberId: p.memberId, date: p.date, clientId: p.clientId,
-    champs: { ...colis, note: existante?.note ?? `Compté depuis ${ids.length > 1 ? `${ids.length} tournées` : 'la tournée'} de colis.` },
+    champs: { ...colis, note: `${NOTE_AUTO} ${ids.length > 1 ? `${ids.length} tournées` : 'la tournée'} de colis.` },
     statut: 'brouillon',
   })
   return { etat: existante ? 'mise_a_jour' : 'creee', error }

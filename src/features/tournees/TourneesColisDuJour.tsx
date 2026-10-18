@@ -95,9 +95,11 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
   const lignes = useMemo(() => tournees.map(t => {
     const siens = arrets.filter(a => a.tournee_id === t.id)
     const c = compteursTournee(siens)
-    const pos = estAujourdhui ? positions.find(p => p.member_id === t.member_id && (p.tournee_id === t.id || p.tournee_id == null)) : undefined
+    // Position de CETTE tournée, de moins de 3 h (une ligne oubliée ne traîne pas sur la carte).
+    const pos = estAujourdhui ? positions.find(p => p.member_id === t.member_id && p.tournee_id === t.id
+      && maintenant - new Date(p.maj_le).getTime() < 3 * 3_600_000) : undefined
     return { t, c, pct: avancementPct(c), arrets: siens, couleur: couleurs.get(t.member_id) ?? '#2563eb', pos }
-  }), [tournees, arrets, couleurs, positions, estAujourdhui])
+  }), [tournees, arrets, couleurs, positions, estAujourdhui, maintenant])
 
   const visibles = lignes.filter(l => !masques.has(l.t.member_id))
   const couches = useMemo(() => visibles.map(l => {
