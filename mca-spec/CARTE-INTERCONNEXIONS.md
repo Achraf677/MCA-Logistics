@@ -2,7 +2,7 @@
 
 > À ouvrir AVANT de toucher une table, une colonne, un statut, une Edge ou une règle de calcul
 > (CLAUDE.md § 7). À mettre à jour à chaque fin de grosse session (CLAUDE.md § 10).
-> Relevée dans le code le 01/10/2026. En cas de doute, le code fait foi :
+> Relevée dans le code le 01/10/2026, mise à jour le 18/10/2026 (tournées de colis). En cas de doute, le code fait foi :
 > `grep -rln "from('<table>')" src supabase/functions`.
 
 ## 1. Tables → lecteurs / écrivains
@@ -51,6 +51,13 @@
   `pickup_order` (séquence unique retraits + livraisons, celle de Mes courses), `arrival_time`.
   Règles pures : `_shared/vroom.ts`. « Mon ordre » et les flèches de TourCard écrivent la même
   séquence (`tournees.logic#positionsDansLOrdre`) et effacent `arrival_time`.
+- **tournees_colis / tournees_colis_arrets** (lot TC1, migration
+  `20261017090000_tournees_colis`, **en prod depuis le 18/10/2026**) : feuille de route de messagerie scannée et ses arrêts. Écrits
+  par `shared/lib/tourneesColis.queries` depuis Mes courses › Ma tournée (salarié : SES tournées,
+  non clôturées) et Tournées › bloc « Tournées de colis du jour » (bureau, droit
+  `planning.tournees`). Trigger `tournees_colis_arrets_garde` : `statut_le` / `statut_par`,
+  société = celle de la tournée. **Lus par personne d'autre** : pas des deliveries, ni
+  facturation, ni paie, ni dashboard, ni alertes (à relier dans un lot suivant si besoin).
 - **work_hours** : heures (écrit tout), equipe ; tournees (lot P3 : après « Terminer la
   tournée », propose d'insérer la ligne du chauffeur — date, début, fin — si aucune ligne
   n'existe déjà pour ce chauffeur ce jour-là).
@@ -103,6 +110,9 @@
 - pennylane-quote : devis · pennylane-clients-sync : clients · pennylane-sync,
   suggest-categorie-ia : charges · pennylane-payment-check, qonto-sync : tresorerie
 - lire-facture : carburant, entretiens · lire-releve : carburant
+- lire-feuille-route (TC1, **déployée le 18/10/2026, v1**) : `shared/lib/tourneesColis.queries#lirePageFeuille`, appelée par
+  `shared/ui/ScanFeuilleRoute` (Mes courses › Ma tournée, Tournées). N'écrit rien ; importe
+  `_shared/mistral`, `_shared/feuilleRoute`, `_shared/geocodeArret`, `_shared/auth`, `cors`, `http`.
 - ai-extract-deliveries : copilote, parametres · assistant-chat : assistant ·
   alertes-briefing : alertes · brouillons-generate : brouillons
 - admin-users, admin-permissions : admins · drive-* : parametres
@@ -148,5 +158,7 @@
 - `team_members.profile_id` : écrit par l'Edge `admin-users` (create / invite avec
   `team_member_id`, `link_member`), depuis Équipe › fiche › « Accès au site ». Lu par les
   policies `deliveries_select_own` / `tours_select_own` et par Mes courses.
+- Tournées de colis (TC1) : policies propres (salarié = `member_id = ma_fiche_equipe()` ;
+  bureau = `planning.tournees` view / update / delete ou président).
 - Toute NOUVELLE table lisible par la société doit recevoir sa policy « pas pour le salarié »
   (ou « les siennes ») dans la même migration.

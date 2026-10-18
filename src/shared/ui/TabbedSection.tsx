@@ -1,4 +1,5 @@
-import { useSearchParams } from 'react-router-dom'
+import { Navigate, useSearchParams } from 'react-router-dom'
+import { useProfile } from '../../app/providers'
 import { createContext, useContext, useState, Suspense, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { usePermissions } from '../permissions/usePermissions'
@@ -20,6 +21,7 @@ export function TabActions({ children }: { children: ReactNode }) {
 export function TabbedSection({ tabs, headerRight }: { tabs: SubTab[]; headerRight?: ReactNode }) {
   const [params, setParams] = useSearchParams()
   const { ready, isPresident, can } = usePermissions()
+  const { profile } = useProfile()
   const [actionsSlot, setActionsSlot] = useState<HTMLDivElement | null>(null)
 
   const visibleTabs = (ready && !isPresident)
@@ -36,6 +38,9 @@ export function TabbedSection({ tabs, headerRight }: { tabs: SubTab[]; headerRig
   }
 
   if (visibleTabs.length === 0) {
+    // Un salarié n'a rien à faire dans les sections du bureau (lien gardé, retour arrière,
+    // changement de compte dans le même onglet) : il revient à son espace.
+    if (profile?.role === 'chauffeur') return <Navigate to="/mes-courses" replace />
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-2">
         <p className="text-[var(--fs-sm)] font-medium text-[var(--text-muted)]">Accès non autorisé</p>

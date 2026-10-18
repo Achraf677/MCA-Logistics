@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **14/10/2026** (Espace salarié S0 / S0-bis / S1 appliqués ; prochain : test S1 avec Lucas, puis U6).
+> Dernière mise à jour : **18/10/2026** (TC1 : tables créées + Edge `lire-feuille-route` en ligne, PR #55 à tester puis « merge » ; Claude autonome sur Supabase ; prochain : test TC1 + S1 avec Lucas, puis carte / ordre par la route).
 
 ---
 
@@ -26,6 +26,9 @@
 - L'ancien essai abandonné = « ancien essai » / « résidus en base ». Pas « v1 ».
 - Utilisateur : président de la société, étudiant en comptabilité. Réponses **courtes**, en
   tirets, concrètes. Pas de blabla, pas de tableau dans les critiques.
+- **Règle de réponse (demandée le 18/10/2026, pour TOUTES les conversations)** : simple, que des
+  tirets, zéro phrase d'introduction ou de conclusion, mots de tous les jours (pas de jargon
+  technique sans l'expliquer). L'utilisateur ne lit pas les longs messages.
 
 ## 2. Métier (à garder en tête sur CHAQUE écran)
 - **Express** : course unitaire retrait → livraison, souvent dans la journée, parfois urgente
@@ -39,6 +42,16 @@
   - facture Pennylane : 1 ligne, quantité = colis, PU = prix au colis ;
   - ni arrêt ni chauffeur : exclu de Mes courses, Tournées, Planning, Calendrier, journée du
     Dashboard (filtre `prestation.is.null,prestation.not.in.(messagerie,forfait)`).
+  - **Tournée de colis** (lot TC1, 17/10/2026) : la feuille de route Colissimo du matin
+    — bandeau « 67170 KRIEGSHEIM » = commune des lignes suivantes ; District = SECTEUR, pas
+    commune ; colonnes Rue | Nb Colis | Nb PGEO | N° | CRBT/taxes ; « 5(2) » = 2 colis (exposant),
+    « RC13(21) » = relais, « [C]11 » = collecte (carré noir), « ? » illisible ; contrôle par
+    ligne colis = Nb Colis et numéros = Nb PGEO ; « x/y » en bas à droite ; communes déléguées
+    par alias BAN (Mittelhausen / Hohatzenheim / Gingsheim → Wingersheim les Quatre Bans 67170,
+    Keffendorf → Ohlungen 67590) — est photographiée page par page, lue par
+    l'Edge `lire-feuille-route`, puis traitée arrêt par arrêt dans Mes courses › Ma tournée.
+    Tables `tournees_colis` / `tournees_colis_arrets` : **ce ne sont PAS des deliveries**
+    (le relevé mensuel reste la seule ligne de facturation ; rien n'est relié à la paie).
 - **Prestations** (`deliveries.prestation`) : `express` · `messagerie` (relevé) · `dediee` ·
   `mise_a_dispo` (un lieu, début / fin) · `forfait` (aucun arrêt). `null` = ancienne course = express.
 - Tout écran doit servir tous les cas : ne jamais coder « 1 course = 1 colis = 1 arrêt » en dur.
@@ -163,7 +176,12 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   · relecture adversariale du diff · captures PC (1920 et 1366) + mobile (390) si UI.
 - **Ordre de mise en prod** : 1) migrations (additives) → 2) merge (Cloudflare déploie le front)
   → 3) Edge Functions touchées (MCP `deploy_edge_function`, fichiers `../_shared/*` inclus,
-  `verify_jwt` inchangé). Aucune migration ni Edge avant accord (« merge » ou demande explicite).
+  `verify_jwt` inchangé).
+- **Autonomie Supabase (décidée le 18/10/2026)** : Claude applique LUI-MÊME les migrations
+  additives et déploie LUI-MÊME les Edge Functions, sans demander l'accord, dès que les
+  vérifications sont vertes (tests, relecture, migration testée). Il le signale en une ligne
+  dans son rapport. Il demande seulement avant une action destructive (suppression de table,
+  de colonne ou de données) ou un changement de droits d'accès existants.
 - Jamais d'identifiant de modèle IA dans un commit / une PR. Confirmer les hash après merge.
 
 ## 10. Rituel de fin de grosse session (OBLIGATOIRE)
@@ -175,6 +193,11 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 4. Vérifier que ce qui est noté « fait » est **mergé ET déployé** (migrations, Edge).
 5. Proposer à l'utilisateur la mise à jour du skill `mca-site` si l'architecture a bougé.
 6. Commit dédié « Mémoire : … » poussé avec le reste.
+7. **Rapport de fin de session à l'utilisateur : le plus court et le plus simple possible.**
+   Que des tirets, mots de tous les jours, 3 rubriques maximum : ce qui est fait · ce que
+   l'utilisateur doit faire (s'il y a quelque chose) · ce qu'il doit décider. Pas de liste de
+   fichiers, pas de SQL, pas de détails techniques, pas de rappel de ce qui n'a pas changé.
+   Le détail technique va dans la PR et dans ce fichier, pas dans le message.
 
 ## 11. État actuel (01/10/2026)
 - 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis,
@@ -187,6 +210,9 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   (liste, facturation, lettre de voiture, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie)
   · 04 Planning ✔ (lots P1-P4 : vue par chauffeur, affectation rapide, tournées en retard,
   calendrier enrichi, puis fondu dans le Planning en vue « Mois »).
+- Mes courses (salarié) : 5 onglets — Courses · **Ma tournée** (feuille de route de colis
+  scannée, TC1) · Ma journée · Dépenses · Moi. Tournées (bureau) : bloc « Tournées de colis du
+  jour » + « Scanner pour un salarié ».
 - Fiche livraison : prestation, client avec recherche, référence client (reprise sur la facture),
   urgent, arrêts complets (contact, téléphone, créneaux), trajet auto (IGN), marchandise
   (colis, poids, volume), consignes / note interne, Dupliquer, 3 onglets (Course · Preuves &
@@ -200,7 +226,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   site. Ordre : U1 droits des 5 synchros · U2 client Pennylane unique (pays, TVA, SIREN, local
   gagne) · U3 lignes du devis = lignes de facture · U4 devis converti suivi (choix d'archi à
   valider) · U5 dates Paris + paiements réels · U6 mentions légales (= lot E) · U7 charges ·
-  U8 ménage. Lot par lot, avec accord avant chaque migration / déploiement d'Edge.
+  U8 ménage. Lot par lot (migrations / Edge appliquées par Claude, voir § 9).
   - **U1 codé (PR #41)** : `exigerPermission` + société de l'appelant dans pennylane-clients-sync
     (tiers.clients/update), pennylane-sync (finance.charges/update), pennylane-payment-check et
     qonto-sync (finance.tresorerie/update), pennylane-file (finance.charges | flotte.carburant |
@@ -311,6 +337,19 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   domicile / relais, saisir une journée avec photo, la valider côté bureau.
   Piège : `id = any((select f()))` est refusé par Postgres (sous-requête) → `(select f()) @> array[id]` ;
   remplacer une policy = `alter policy` (pas de drop + create : trou d'accès et timeout MCP).
+- **Tournée de colis — TC1 « socle »** (demandé en urgence le 17/10/2026, branche
+  `feat/tournee-colis-socle`, PR #55 à tester, PAS mergée) : migration
+  `20261017090000_tournees_colis` **appliquée le 18/10/2026** (2 tables, 8 policies, 2 triggers),
+  Edge `lire-feuille-route` **déployée le 18/10/2026 (v1, verify_jwt true ; sans session → 401)** ; `_shared/feuilleRoute.ts` (découpage
+  de la case N°, contrôle « Nb Colis », testé) et `_shared/geocodeArret.ts` (BAN : numéro, sinon
+  centre de rue, sinon rien ; fichier séparé = `geocode()` inchangé). Front : `shared/lib/
+  tourneesColis(.queries).ts`, `shared/ui/ScanFeuilleRoute.tsx`, `mescourses/MaTournee.tsx` +
+  `tourneeColis.logic.ts`, `tournees/TourneesColisDuJour.tsx`. Familles de statut
+  **validées le 18/10/2026** (outil des livreurs) : livré = livre, rc_remis, col_ok · attente =
+  avise, instance · retour = refuse, npai, adresse, acces, endommage, nonpres, rc_ferme,
+  rc_sature, col_nf · neutre = col_rien (traité, 0 colis). Lots suivants : tri par route, carte,
+  GPS, photos, clôture (et lien éventuel avec la journée de colis S1).
+  Banc de captures : Playwright + `page.route` sur une base simulée (aucun appel prod).
 - U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;
   pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
 - Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.

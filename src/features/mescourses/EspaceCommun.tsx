@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Minus, Plus, User, AlertTriangle } from 'lucide-react'
+import { useProfile } from '../../app/providers'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import type { EtatFiche, MaFiche } from './mescourses.types'
@@ -90,13 +92,26 @@ export function GardeFiche({ fiche, children }: { fiche: EtatFiche; children: (f
     return <div className="flex flex-col gap-3">{[0, 1].map(i => <Skeleton key={i} className="h-32" />)}</div>
   }
   if (fiche.erreur) return <MessageErreur>Impossible de lire ta fiche : {fiche.erreur}</MessageErreur>
-  if (!fiche.data) {
-    return (
-      <EmptyState icon={<User size={28} />} title="Compte pas encore relié"
-        description="Ton compte n'est pas encore relié à ta fiche Équipe : préviens le bureau." />
-    )
-  }
+  if (!fiche.data) return <CompteNonRelie />
   return <>{children(fiche.data)}</>
+}
+
+/**
+ * Compte sans fiche Équipe. Le salarié prévient le bureau ; un compte du bureau (président,
+ * DG…) peut se relier lui-même : Équipe › sa fiche › Accès au site › « C'est mon compte ».
+ */
+function CompteNonRelie() {
+  const { profile } = useProfile()
+  const navigate = useNavigate()
+  const bureau = !!profile && profile.role !== 'chauffeur'
+  return bureau ? (
+    <EmptyState icon={<User size={28} />} title="Ce compte n'a pas de fiche Équipe"
+      description={`Le compte ${profile?.email ?? 'connecté'} n'est relié à aucune fiche. Ouvre ta fiche dans Équipe, onglet « Accès au site », puis « C'est mon compte ». Ou reconnecte-toi avec le compte déjà relié.`}
+      action={{ label: 'Ouvrir Équipe', onClick: () => navigate('/equipe-hub?tab=membres') }} />
+  ) : (
+    <EmptyState icon={<User size={28} />} title="Compte pas encore relié"
+      description="Ton compte n'est pas encore relié à ta fiche Équipe : préviens le bureau." />
+  )
 }
 
 /** Remonte en haut de l'écran : le défilement vit dans le <main> du Shell, pas la fenêtre. */
