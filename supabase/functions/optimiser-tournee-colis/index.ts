@@ -28,7 +28,9 @@ import {
   matriceCouts, passages, regrouperNoeuds, resoudre, troncons, type Matrices, type Point,
 } from '../_shared/tourneeRoute.ts'
 
-const ORS = 'https://api.openrouteservice.org/v2'
+// Adresse officielle depuis le 28/04/2026 (l'ancienne api.openrouteservice.org n'a plus que 10 % du quota
+// depuis le 27/08/2026 et ferme début 11/2026). Même clé.
+const ORS = 'https://api.heigit.org/openrouteservice/v2'
 const MESSAGE_APPROX = "Ordre approximatif : service d'itinéraire indisponible"
 const PARALLELE_ECRITURES = 10
 
