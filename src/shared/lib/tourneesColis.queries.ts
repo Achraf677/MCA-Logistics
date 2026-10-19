@@ -168,7 +168,7 @@ export interface ResultatItineraire {
 /** Calcule l'ordre par la route (Edge `optimiser-tournee-colis`) : tout, ou les restants depuis une position. */
 export async function calculerItineraire(p: {
   tourneeId: string
-  mode: 'tout' | 'restants'
+  mode: 'tout' | 'restants' | 'suivre'
   depart?: { lat: number; lng: number } | null
 }): Promise<{ data: ResultatItineraire | null; error: Error | null }> {
   const { data, error } = await supabase.functions.invoke('optimiser-tournee-colis', {

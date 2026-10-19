@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   regrouperNoeuds, blocsMatrice, troncons, resoudre, coutParcours, passages, matricesVolOiseau,
-  completerMatrices, matriceCouts, polirParFenetres, penaliserChangementsVillage, encoderPolyligne, decoderPolyligne, distanceM, type ArretAPlacer,
+  completerMatrices, matriceCouts, noeudsDansOrdre, passagesDepuisEtapes, polirParFenetres, penaliserChangementsVillage, encoderPolyligne, decoderPolyligne, distanceM, type ArretAPlacer,
 } from './tourneeRoute.ts';
 
 const arret = (id: string, lat: number | null, lng: number | null, numero: string | null = null, rang = 1): ArretAPlacer =>
@@ -209,5 +209,26 @@ describe('village par village', () => {
   it('regrouperNoeuds garde le village du nœud', () => {
     const n = regrouperNoeuds([{ id: 'a', lat: 48.7, lng: 7.7, numero: '1', rang: 0, commune: 'Brumath' }])
     expect(n[0].commune).toBe('Brumath')
+  })
+})
+
+describe('noeudsDansOrdre / passagesDepuisEtapes (ordre changé à la main)', () => {
+  const n = (id: string, rang: number) => ({ cle: id, lat: 0, lng: 0, arrets: [id], rang, commune: null })
+  it('suit l’ordre enregistré, les arrêts sans ordre à la fin par rang', () => {
+    const noeuds = [n('a', 1), n('b', 2), n('c', 3), n('d', 4)]
+    const ordre = new Map<string, number | null>([['a', 3], ['b', 1], ['c', 2], ['d', null]])
+    expect(noeudsDansOrdre(noeuds, ordre).map(x => x.arrets[0])).toEqual(['b', 'c', 'a', 'd'])
+  })
+  it('tournée inversée : l’ordre enregistré inversé donne les nœuds inversés', () => {
+    const noeuds = [n('a', 1), n('b', 2), n('c', 3)]
+    const inverse = new Map<string, number | null>([['a', 3], ['b', 2], ['c', 1]])
+    expect(noeudsDansOrdre(noeuds, inverse).map(x => x.arrets[0])).toEqual(['c', 'b', 'a'])
+  })
+  it('heures de passage : conduite cumulée + temps d’arrêt aux nœuds précédents', () => {
+    const p = passagesDepuisEtapes([{ distance: 1000, duration: 120 }, { distance: 500, duration: 60 }], 60)
+    expect(p).toEqual([
+      { noeud: 1, etaMin: 2, distanceM: 1000 },
+      { noeud: 2, etaMin: 4, distanceM: 1500 },
+    ])
   })
 })
