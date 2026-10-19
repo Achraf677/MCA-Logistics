@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   regrouperNoeuds, blocsMatrice, troncons, resoudre, coutParcours, passages, matricesVolOiseau,
-  completerMatrices, matriceCouts, polirParFenetres, encoderPolyligne, decoderPolyligne, distanceM, type ArretAPlacer,
+  completerMatrices, matriceCouts, polirParFenetres, penaliserChangementsVillage, encoderPolyligne, decoderPolyligne, distanceM, type ArretAPlacer,
 } from './tourneeRoute.ts';
 
 const arret = (id: string, lat: number | null, lng: number | null, numero: string | null = null, rang = 1): ArretAPlacer =>
@@ -185,3 +185,29 @@ describe('polissage par fenêtres (quartier visité dans le mauvais ordre)', () 
     expect(new Set(ordre).size).toBe(29);
   });
 });
+
+describe('village par village', () => {
+  it('pénalise seulement un passage entre deux villages connus (accents et casse ignorés)', () => {
+    const c = [[0, 1, 1], [1, 0, 1], [1, 1, 0]]
+    const p = penaliserChangementsVillage(c, [null, 'Mommenheim', 'MOMMENHEIM'], 100)
+    expect(p).toEqual(c)
+    const q = penaliserChangementsVillage(c, [null, 'Geudertheim', 'Krautwiller'], 100)
+    expect(q[1][2]).toBe(101); expect(q[2][1]).toBe(101); expect(q[0][1]).toBe(1)
+  })
+  it('chaque village en un seul bloc, même quand le plus court les mélangerait', () => {
+    // Deux villages entrelacés sur une ligne : A aux positions paires, B aux impaires.
+    const n = 21
+    const pos = Array.from({ length: n }, (_, i) => i)
+    const c = pos.map(a => pos.map(b => Math.abs(a - b) * 100))
+    const communes = [null, ...Array.from({ length: n - 1 }, (_, i) => ((i + 1) % 2 ? 'A' : 'B'))]
+    const idx = Array.from({ length: n - 1 }, (_, i) => i + 1)
+    const ordre = resoudre(penaliserChangementsVillage(c, communes), 0, idx, 0, { limiteMs: 2000 })
+    const blocs = ordre.map(i => communes[i]).filter((v, k, a) => k === 0 || v !== a[k - 1])
+    expect(blocs.length).toBe(2)
+    expect(new Set(ordre).size).toBe(n - 1)
+  })
+  it('regrouperNoeuds garde le village du nœud', () => {
+    const n = regrouperNoeuds([{ id: 'a', lat: 48.7, lng: 7.7, numero: '1', rang: 0, commune: 'Brumath' }])
+    expect(n[0].commune).toBe('Brumath')
+  })
+})
