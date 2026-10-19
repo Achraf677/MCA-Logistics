@@ -73,6 +73,20 @@ async function matriceOrs(cle: string, pts: Point[]): Promise<{ m: Matrices; app
   return { m: completerMatrices({ durees, distances }, pts), appels: blocs.length }
 }
 
+/**
+ * Secours si ORS refuse (quota du jour dépassé…) : matrice OSRM (routes OpenStreetMap), un seul
+ * appel jusqu'à 100 points. Service public sans garantie : utilisé en second choix seulement.
+ */
+const OSRM = 'https://router.project-osrm.org/table/v1/driving'
+async function matriceOsrm(pts: Point[]): Promise<Matrices> {
+  if (pts.length > 100) throw new Error('OSRM : plus de 100 points')
+  const coords = pts.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';')
+  const r = await fetchJson<{ code?: string; durations?: (number | null)[][]; distances?: (number | null)[][] }>(
+    `${OSRM}/${coords}?annotations=duration,distance`, { timeoutMs: 20_000 })
+  if (r?.code !== 'Ok' || !r.durations || !r.distances) throw new Error('matrice OSRM incomplète')
+  return completerMatrices({ durees: r.durations, distances: r.distances }, pts)
+}
+
 const IGN = 'https://data.geopf.fr/navigation/itineraire'
 
 /** Un tronçon (≤ 17 points) par l'itinéraire IGN (BD TOPO, sans clé). null si échec. */
@@ -209,7 +223,13 @@ Deno.serve(async (req: Request) => {
   } catch (e) {
     erreurOrs = `${(e as Error)?.message ?? 'erreur'} ${e instanceof ExternalApiError ? JSON.stringify(e.responseBody).slice(0, 200) : ''}`.trim()
     console.warn('optimiser-tournee-colis: matrice ORS indisponible', erreurOrs)
-    m = matricesVolOiseau(pts); approximatif = true
+    try {
+      m = await matriceOsrm(pts); appels++
+    } catch (e2) {
+      erreurOrs += ` | OSRM : ${(e2 as Error)?.message ?? 'erreur'}`
+      console.warn('optimiser-tournee-colis: matrice OSRM indisponible', (e2 as Error)?.message)
+      m = matricesVolOiseau(pts); approximatif = true
+    }
   }
 
   // ~0,8 s de calcul au plus (les fonctions Supabase coupent vers 2 s de calcul).
