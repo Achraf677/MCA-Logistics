@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  arretsDansOrdre, prochainDansOrdre, sectionsListe, arretsAPlacer, deplacer, ordreManuel, libelleDuree, libelleDistance,
+  arretsDansOrdre, prochainDansOrdre, sectionsListe, arretsAPlacer, deplacer, ordreInverse, ordreManuel, libelleDuree, libelleDistance,
   bandeauOrdre, heurePassage, pointsCarte, couperTrace, doitEnvoyerPosition, ilYA, positionAncienne,
   journeeDepuisArrets, nonTraites, modeOrdre, sansCalcul, idsOrdreHabituel, avancementParCategorie,
 } from './tourneesColisRoute'
@@ -154,5 +154,27 @@ describe('avancement par catégorie', () => {
       a({ type: 'rc', quantite: 21, statut: 'rc_remis' }), a({ type: 'rc', quantite: 4 }),
     ])
     expect(r.map(c => [c.type, c.total, c.traites, c.colis])).toEqual([['c', 2, 1, 3], ['rc', 2, 1, 25]])
+  })
+})
+
+describe('ordreInverse (commencer par la fin)', () => {
+  const mk = (id: string, ordre: number | null, statut: string | null = null) =>
+    ({ id, rang: Number(id), ordre, statut } as unknown as Parameters<typeof ordreInverse>[0][number])
+  it('inverse les arrêts à faire de l’ordre affiché, les traités restent devant', () => {
+    const liste = [mk('1', 1, 'livre'), mk('2', 2), mk('3', 3), mk('4', 4)]
+    expect(ordreInverse(liste, 'route')).toEqual(['4', '3', '2'])
+    // Le prochain arrêt, une fois l'ordre réécrit, est l'ancien dernier.
+    const ids = ordreInverse(liste, 'route')
+    const reecrit = ordreManuel(liste, 'route', ids)
+    const place = new Map(reecrit.map((id, i) => [id, i + 1]))
+    const apres = liste.map(a => ({ ...a, ordre: place.get(a.id) ?? null }))
+    expect(prochainDansOrdre(apres, 'manuel')?.id).toBe('4')
+  })
+  it('inversé deux fois = ordre d’origine', () => {
+    const liste = [mk('1', 1), mk('2', 2), mk('3', 3)]
+    const une = ordreInverse(liste, 'route')
+    const place = new Map(ordreManuel(liste, 'route', une).map((id, i) => [id, i + 1]))
+    const apres = liste.map(a => ({ ...a, ordre: place.get(a.id) ?? null }))
+    expect(ordreInverse(apres, 'manuel')).toEqual(['1', '2', '3'])
   })
 })

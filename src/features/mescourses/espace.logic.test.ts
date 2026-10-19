@@ -19,7 +19,7 @@ function j(p: Partial<JourneeColis>): JourneeColis {
 
 describe('onglets', () => {
   it('lit un onglet connu, sinon courses', () => {
-    expect(lireOnglet('journee')).toBe('journee')
+    expect(lireOnglet('journee')).toBe('courses') // « Ma journée » supprimé le 19/10/2026
     expect(lireOnglet('moi')).toBe('moi')
     expect(lireOnglet('tournee')).toBe('tournee')
     expect(lireOnglet(null)).toBe('courses')
@@ -129,7 +129,7 @@ describe('dépenses', () => {
       .toEqual({ montant: '5,00', categorie: 'peage', moyen: 'personnel', date: '2026-10-11', note: 'A35' })
   })
   it('manques : date future refusée', () => {
-    const f = { montant: '12', categorie: 'repas' as const, moyen: 'carte_societe' as const, date: '2026-10-13', note: '' }
+    const f = { montant: '12', categorie: '' as const, moyen: 'carte_societe' as const, date: '2026-10-13', note: 'Repas midi' }
     expect(manquesDepenseSalarie(f, true, '2026-10-12')).toEqual(['La date ne peut pas être dans le futur'])
     expect(manquesDepenseSalarie({ ...f, date: '2026-10-12' }, false, '2026-10-12')).toEqual(['Photo du justificatif'])
   })

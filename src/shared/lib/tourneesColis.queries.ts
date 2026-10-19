@@ -7,7 +7,6 @@ import { supabase } from '../../app/providers'
 import { lireErreurEdge } from './erreurEdge'
 import { uploadDocument, getDownloadUrl } from './documents.queries'
 import type { DocumentRow } from './documents.types'
-import { enregistrerJournee } from './journeesColis.queries'
 import { journeeDepuisArrets } from './tourneesColisRoute'
 import {
   arretsDepuisLecture, lignesArrets, ordreHabituel, pageDepuisLecture, statutApresGeste, type PageLue,
@@ -97,6 +96,154 @@ export async function lirePageFeuille(dataUrl: string, page: number, communePrec
   }
 }
 
+// ── Lecture en arrière-plan (scan côté serveur) ──────────────────────────────
+
+export type StatutScan = 'brouillon' | 'en_cours' | 'pret' | 'erreur' | 'termine' | 'annule'
+
+export interface ScanPage {
+  numero: number
+  etat: 'attente' | 'lecture' | 'ok' | 'erreur'
+  erreur: string | null
+  nb: number | null
+}
+
+export interface ScanSuivi {
+  id: string
+  statut: StatutScan
+  erreur: string | null
+  date: string
+  member_id: string
+  client_id: string | null
+  battement: string
+  pages: ScanPage[]
+}
+
+const COLS_SCAN = 'id, statut, erreur, date, member_id, client_id, battement'
+
+/** Au-delà de cette durée sans signe de vie, la lecture est considérée coupée : on la relance. */
+export const SCAN_COUPE_APRES_MS = 90_000
+
+async function pagesDuScan(scanId: string): Promise<ScanPage[]> {
+  const { data } = await supabase.from('scans_feuille_route_pages')
+    .select('numero, etat, erreur, nb').eq('scan_id', scanId).order('numero')
+  return (data ?? []) as unknown as ScanPage[]
+}
+
+/** Scan « brouillon » : créé dès la première photo, les photos partent au fur et à mesure (avant même « Lire »). */
+export async function creerScan(p: { companyId: string; memberId: string; date: string; clientId: string | null }):
+  Promise<{ id: string | null; error: Error | null }> {
+  const { data, error } = await supabase.from('scans_feuille_route').insert({
+    company_id: p.companyId, member_id: p.memberId, date: p.date, client_id: p.clientId,
+  }).select('id').single()
+  if (error || !data) return { id: null, error: erreurClaire(error) ?? new Error(REFUS) }
+  return { id: (data as { id: string }).id, error: null }
+}
+
+/** Envoie UNE photo (déjà compressée) au serveur : page `numero` du scan. */
+export async function envoyerPhotoScan(p: { scanId: string; companyId: string; numero: number; image: string }) {
+  const { error } = await supabase.from('scans_feuille_route_pages').insert({
+    scan_id: p.scanId, company_id: p.companyId, numero: p.numero, image: p.image,
+  })
+  return { error: erreurClaire(error) }
+}
+
+/** Retire une photo envoyée ; les suivantes remontent d'un numéro (les numéros restent 1, 2, 3…). */
+export async function retirerPhotoScan(scanId: string, numero: number) {
+  const { error } = await supabase.from('scans_feuille_route_pages').delete().eq('scan_id', scanId).eq('numero', numero)
+  if (error) return { error: erreurClaire(error) }
+  const { data } = await supabase.from('scans_feuille_route_pages').select('numero').eq('scan_id', scanId).gt('numero', numero).order('numero')
+  for (const r of (data ?? []) as Array<{ numero: number }>) {
+    const { error: e2 } = await supabase.from('scans_feuille_route_pages').update({ numero: r.numero - 1 }).eq('scan_id', scanId).eq('numero', r.numero)
+    if (e2) return { error: erreurClaire(e2) }
+  }
+  return { error: null }
+}
+
+/**
+ * Lance la lecture sur le serveur. Requête minuscule envoyée avec `keepalive` : elle part même si
+ * l'on ferme la page ou quitte le site à l'instant du clic. Les photos, elles, sont déjà sur le serveur.
+ */
+export async function lancerLecture(scanId: string, pages?: number[]): Promise<{ error: Error | null }> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { error: new Error('Session expirée : reconnecte-toi.') }
+  try {
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scanner-feuille-route`, {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+      },
+      body: JSON.stringify({ scan_id: scanId, ...(pages ? { pages } : {}) }),
+    })
+    if (!res.ok && res.status !== 202) {
+      const d = await res.json().catch(() => null) as { error?: string } | null
+      return { error: new Error(d?.error ?? 'Lancement de la lecture impossible : réessaie.') }
+    }
+    return { error: null }
+  } catch {
+    // `keepalive` refusé par ce navigateur : appel ordinaire (la page doit alors rester ouverte une seconde).
+    const r = await relancerScan(scanId, pages)
+    return r.error ? { error: new Error('Pas de connexion : réessaie.') } : { error: null }
+  }
+}
+
+/** (Re)lance la lecture côté serveur : pages pas lues, ou seulement `pages` (bouton « Relire »). */
+export async function relancerScan(scanId: string, pages?: number[]): Promise<{ error: Error | null }> {
+  const { data, error } = await supabase.functions.invoke('scanner-feuille-route', {
+    body: { scan_id: scanId, ...(pages ? { pages } : {}) },
+  })
+  const echec = await lireErreurEdge(data, error)
+  return { error: echec ? new Error(echec.message) : null }
+}
+
+/** Avancement d'un scan (léger : sans les photos ni les arrêts lus). */
+export async function suivreScan(scanId: string): Promise<{ data: ScanSuivi | null; error: Error | null }> {
+  const { data, error } = await supabase.from('scans_feuille_route').select(COLS_SCAN).eq('id', scanId).maybeSingle()
+  if (error) return { data: null, error: erreurClaire(error) }
+  if (!data) return { data: null, error: null }
+  return { data: { ...(data as unknown as Omit<ScanSuivi, 'pages'>), pages: await pagesDuScan(scanId) }, error: null }
+}
+
+/** Le scan d'un salarié encore ouvert (en cours, prêt ou en erreur), le plus récent. */
+export async function trouverScan(memberId: string): Promise<ScanSuivi | null> {
+  const { data } = await supabase.from('scans_feuille_route').select(COLS_SCAN)
+    .eq('member_id', memberId).in('statut', ['brouillon', 'en_cours', 'pret', 'erreur'])
+    .order('created_at', { ascending: false }).limit(1)
+  const s = (data ?? [])[0] as unknown as Omit<ScanSuivi, 'pages'> | undefined
+  return s ? { ...s, pages: await pagesDuScan(s.id) } : null
+}
+
+/** Résultat de la lecture (arrêts, en-tête, « x/y ») des pages demandées (toutes si omis). */
+export async function resultatScan(scanId: string, numeros?: number[]) {
+  let q = supabase.from('scans_feuille_route_pages')
+    .select('numero, etat, erreur, nb, page_lue, entete, arrets').eq('scan_id', scanId).order('numero')
+  if (numeros) q = q.in('numero', numeros)
+  const { data, error } = await q
+  if (error) return { data: [], error: erreurClaire(error) }
+  const lignes = (data ?? []) as unknown as Array<ScanPage & { page_lue: unknown; entete: EnteteFeuille | null; arrets: unknown }>
+  return {
+    data: lignes.map(l => ({
+      numero: l.numero, etat: l.etat, erreur: l.erreur, nb: l.nb,
+      pageLue: pageDepuisLecture(l.page_lue), entete: l.entete ?? null, arrets: arretsDepuisLecture(l.arrets, l.numero),
+    })),
+    error: null,
+  }
+}
+
+/** Tournée créée : le scan est fini, les photos sont effacées. */
+export async function terminerScan(scanId: string, tourneeId: string) {
+  await supabase.from('scans_feuille_route').update({ statut: 'termine', tournee_id: tourneeId }).eq('id', scanId)
+  await supabase.from('scans_feuille_route_pages').delete().eq('scan_id', scanId)
+}
+
+/** Scan abandonné : la lecture s'arrête (côté serveur) et les photos sont effacées. */
+export async function abandonnerScan(scanId: string) {
+  await supabase.from('scans_feuille_route').update({ statut: 'annule' }).eq('id', scanId)
+  await supabase.from('scans_feuille_route_pages').delete().eq('scan_id', scanId)
+}
+
 // ── Écriture ────────────────────────────────────────────────────────────────
 
 /**
@@ -169,7 +316,7 @@ export interface ResultatItineraire {
 /** Calcule l'ordre par la route (Edge `optimiser-tournee-colis`) : tout, ou les restants depuis une position. */
 export async function calculerItineraire(p: {
   tourneeId: string
-  mode: 'tout' | 'restants'
+  mode: 'tout' | 'restants' | 'suivre'
   depart?: { lat: number; lng: number } | null
 }): Promise<{ data: ResultatItineraire | null; error: Error | null }> {
   const { data, error } = await supabase.functions.invoke('optimiser-tournee-colis', {
@@ -293,41 +440,30 @@ export async function rouvrirTournee(id: string) {
 
 // ── Journée de colis déduite (lot 5) ────────────────────────────────────────
 
-export type ResultatJournee = 'creee' | 'mise_a_jour' | 'deja_envoyee' | 'deja_saisie' | 'sans_client'
-
-/** Note posée par le préremplissage : une journée qui la porte encore n'a pas été retouchée. */
-const NOTE_AUTO = 'Compté depuis'
-
 /**
- * Après une clôture : la journée de colis (même salarié, jour, client) est préremplie en
- * BROUILLON depuis toutes ses tournées clôturées du jour. Le salarié vérifie, ajoute la photo du
- * compteur et envoie (Ma journée). Jamais touchée : une journée envoyée ou validée, ni une
- * journée saisie ou corrigée à la main (brouillon sans la note automatique, refusée).
+ * Colis d'un client sur une période, comptés DIRECTEMENT depuis les tournées TERMINÉES (plus de
+ * « journée de colis » : décision du 19/10/2026). Alimente le relevé mensuel de messagerie.
+ * Les tournées pas encore terminées sont signalées, jamais comptées.
  */
-export async function preremplirJournee(p: { companyId: string; memberId: string; date: string; clientId: string | null }):
-  Promise<{ etat: ResultatJournee; error: Error | null }> {
-  if (!p.clientId) return { etat: 'sans_client', error: null }
-  const { data: ts, error: eT } = await supabase.from('tournees_colis').select('id')
-    .eq('member_id', p.memberId).eq('date', p.date).eq('client_id', p.clientId).eq('statut', 'cloturee')
-  if (eT) return { etat: 'sans_client', error: erreurClaire(eT) }
-  const ids = (ts ?? []).map((t: { id: string }) => t.id)
-  const { data: arrets, error: eA } = await arretsDesTournees(ids)
-  if (eA) return { etat: 'sans_client', error: eA }
-  const colis = journeeDepuisArrets(arrets)
-
-  const { data: j, error: eJ } = await supabase.from('journees_colis').select('id, statut, note')
-    .eq('member_id', p.memberId).eq('date', p.date).eq('client_id', p.clientId).maybeSingle()
-  if (eJ) return { etat: 'sans_client', error: erreurClaire(eJ) }
-  const existante = j as { id: string; statut: string; note: string | null } | null
-  if (existante && (existante.statut === 'envoyee' || existante.statut === 'validee')) return { etat: 'deja_envoyee', error: null }
-  if (existante && (existante.statut !== 'brouillon' || !(existante.note ?? '').startsWith(NOTE_AUTO))) return { etat: 'deja_saisie', error: null }
-
-  const { error } = await enregistrerJournee({
-    id: existante?.id ?? null, companyId: p.companyId, memberId: p.memberId, date: p.date, clientId: p.clientId,
-    champs: { ...colis, note: `${NOTE_AUTO} ${ids.length > 1 ? `${ids.length} tournées` : 'la tournée'} de colis.` },
-    statut: 'brouillon',
-  })
-  return { etat: existante ? 'mise_a_jour' : 'creee', error }
+export async function colisDesTourneesClient(clientId: string, du: string, au: string): Promise<{
+  data: { colis: number; domicile: number; relais: number; litige: number; terminees: number; enCours: number } | null
+  error: Error | null
+}> {
+  const { data: ts, error } = await supabase.from('tournees_colis').select('id, statut')
+    .eq('client_id', clientId).gte('date', du).lte('date', au)
+  if (error) return { data: null, error: erreurClaire(error) }
+  const lignes = (ts ?? []) as Array<{ id: string; statut: string }>
+  const finies = lignes.filter(t => t.statut === 'cloturee').map(t => t.id)
+  const { data: arrets, error: eA } = await arretsDesTournees(finies)
+  if (eA) return { data: null, error: eA }
+  const j = journeeDepuisArrets(arrets)
+  return {
+    data: {
+      colis: j.colis_domicile + j.colis_relais, domicile: j.colis_domicile, relais: j.colis_relais, litige: j.colis_litige,
+      terminees: finies.length, enCours: lignes.length - finies.length,
+    },
+    error: null,
+  }
 }
 
 /** Horaires du jour des points La Poste de la zone (Edge `horaires-relais-poste`), gardés par jour en mémoire. */

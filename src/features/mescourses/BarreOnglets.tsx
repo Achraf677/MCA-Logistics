@@ -1,10 +1,9 @@
-import { Route, ClipboardList, PackageCheck, Receipt, User, type LucideIcon } from 'lucide-react'
+import { Home, ClipboardList, Receipt, User, type LucideIcon } from 'lucide-react'
 import type { OngletEspace } from './espace.logic'
 
 const ONGLETS: Array<{ cle: OngletEspace; libelle: string; icone: LucideIcon }> = [
-  { cle: 'courses', libelle: 'Courses', icone: Route },
+  { cle: 'courses', libelle: 'Aujourd’hui', icone: Home },
   { cle: 'tournee', libelle: 'Ma tournée', icone: ClipboardList },
-  { cle: 'journee', libelle: 'Ma journée', icone: PackageCheck },
   { cle: 'depenses', libelle: 'Dépenses', icone: Receipt },
   { cle: 'moi', libelle: 'Moi', icone: User },
 ]
@@ -26,7 +25,7 @@ export function BarreOnglets({ actif, onChange, pastilles = {} }: {
       <nav aria-label="Espace salarié"
         className="fixed z-[15] inset-x-0 bottom-0 border-t border-[var(--border)] bg-[var(--bg-card)]
           pb-[env(safe-area-inset-bottom)]">
-        <div className="mx-auto max-w-[40rem] grid grid-cols-5">
+        <div className="mx-auto max-w-[40rem] grid grid-cols-4">
           {ONGLETS.map(o => {
             const Icone = o.icone
             const on = o.cle === actif

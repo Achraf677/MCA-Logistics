@@ -45,6 +45,8 @@ export interface SaisieDepense {
   categorie: CategorieDepense | ''
   moyen: MoyenPaiement | ''
   date: string
+  /** Obligatoire : dit au bureau à quoi sert la dépense (la catégorie, c'est lui qui la choisit). */
+  note: string
   aUnFichier: boolean
 }
 
@@ -56,7 +58,7 @@ export function manquesDepense(s: SaisieDepense): string[] {
   if (Number.isNaN(cts)) m.push('Montant invalide (ex. 12,50)')
   else if (s.moyen === 'personnel' && cts == null) m.push('Montant (note de frais)')
   if (!s.moyen) m.push('Payé avec quoi ?')
-  if (!s.categorie) m.push('Catégorie')
+  if (!s.note.trim()) m.push('Note')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s.date)) m.push('Date de la dépense')
   return m
 }

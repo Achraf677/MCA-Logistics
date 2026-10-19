@@ -6,9 +6,9 @@ import { manquesDepense, montantSaisiEnCts, type CategorieDepense, type MoyenPai
 
 // ── Onglets ─────────────────────────────────────────────────────────────────
 
-export type OngletEspace = 'courses' | 'tournee' | 'journee' | 'depenses' | 'moi'
+export type OngletEspace = 'courses' | 'tournee' | 'depenses' | 'moi'
 
-export const ONGLETS_ESPACE: OngletEspace[] = ['courses', 'tournee', 'journee', 'depenses', 'moi']
+export const ONGLETS_ESPACE: OngletEspace[] = ['courses', 'tournee', 'depenses', 'moi']
 
 /** `?onglet=` → onglet connu ; tout le reste (absent, faux) → « courses ». */
 export function lireOnglet(v: string | null | undefined): OngletEspace {
@@ -225,7 +225,7 @@ export function formulaireDepenseDepuis(
 }
 
 export function saisieDepense(f: FormulaireDepense, aUnFichier: boolean): SaisieDepense {
-  return { montant: f.montant, categorie: f.categorie, moyen: f.moyen, date: f.date, aUnFichier }
+  return { montant: f.montant, categorie: f.categorie, moyen: f.moyen, date: f.date, note: f.note, aUnFichier }
 }
 
 /** Manques d'une dépense, plus : pas de date dans le futur. */

@@ -389,6 +389,31 @@ export function passages(m: Matrices, depart: number, ordre: number[], arretS = 
   return out
 }
 
+/** Nœuds dans l'ordre DÉJÀ enregistré sur les arrêts (plus petit `ordre` du nœud ; sans ordre : à la fin, par rang). */
+export function noeudsDansOrdre(noeuds: Noeud[], ordreParArret: Map<string, number | null>): Noeud[] {
+  const cle = (n: Noeud) => Math.min(...n.arrets.map(id => ordreParArret.get(id) ?? Infinity))
+  return [...noeuds].sort((a, b) => {
+    const x = cle(a); const y = cle(b)
+    if (x !== y) return x === Infinity ? 1 : y === Infinity ? -1 : x - y
+    return a.rang - b.rang
+  })
+}
+
+/**
+ * Heures de passage quand on connaît déjà les tronçons du parcours : `etapes[i]` = trajet qui
+ * arrive au nœud i (départ → 1er nœud, puis nœud à nœud). `noeud` = i + 1 (comme `passages`).
+ */
+export function passagesDepuisEtapes(etapes: Array<{ distance: number; duration: number }>, arretS = ARRET_S): Passage[] {
+  const out: Passage[] = []
+  let t = 0; let d = 0
+  etapes.forEach((e, i) => {
+    t += e.duration + (i > 0 ? arretS : 0)
+    d += e.distance
+    out.push({ noeud: i + 1, etaMin: Math.round(t / 60), distanceM: Math.round(d) })
+  })
+  return out
+}
+
 /** Distance totale (m) d'un parcours, retour compris. */
 export function distanceParcours(m: Matrices, depart: number, ordre: number[], arrivee: number | null): number {
   return coutParcours(m.distances, depart, ordre, arrivee)

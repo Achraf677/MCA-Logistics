@@ -16,8 +16,9 @@ import { toLocalISO } from '../../shared/lib/dates'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useSearchParams } from 'react-router-dom'
 import { BarreOnglets } from './BarreOnglets'
-import { MaJournee } from './MaJournee'
+import { Aujourdhui } from './Aujourdhui'
 import { MaTournee } from './MaTournee'
+import { useScanOuvert } from './useScanOuvert'
 import { MesDepenses } from './MesDepenses'
 import { Moi } from './Moi'
 import { lireOnglet, type OngletEspace } from './espace.logic'
@@ -54,12 +55,13 @@ import {
 import type { CourseChauffeur, DocumentCourse, EtatFiche, TourneeChauffeur } from './mescourses.types'
 
 const TITRES: Record<OngletEspace, string> = {
-  courses: 'Mes courses', tournee: 'Ma tournée', journee: 'Ma journée', depenses: 'Mes dépenses', moi: 'Moi',
+  courses: 'Aujourd’hui', tournee: 'Ma tournée', depenses: 'Mes dépenses', moi: 'Moi',
 }
 
 /**
- * Espace salarié — « Mes courses » et ses 5 onglets (navigation en bas) :
- * Courses (l'écran terrain) · Ma tournée (feuille de route de colis scannée) · Ma journée (colis de messagerie) · Dépenses · Moi.
+ * Espace salarié — « Mes courses » et ses 4 onglets (navigation en bas) :
+ * Aujourd'hui (récap du jour + courses express s'il y en a) · Ma tournée (feuille de route de colis scannée) · Dépenses · Moi.
+ * « Ma journée » supprimé le 19/10/2026 (pas encore au point).
  * L'onglet vit dans l'URL (`?onglet=`) : un retour arrière, un lien ou un
  * rechargement retombent au même endroit.
  */
@@ -76,7 +78,7 @@ export function MesCourses() {
     remonterEnHaut()
   }
 
-  // Fiche Équipe du compte (Ma journée, Moi) : lue une fois pour les onglets.
+  // Fiche Équipe du compte (Ma tournée, Moi) : lue une fois pour les onglets.
   const [fiche, setFiche] = useState<EtatFiche>({ chargee: false, data: null, erreur: null })
   useEffect(() => {
     if (!profile) return
@@ -87,16 +89,17 @@ export function MesCourses() {
     return () => { annule = true }
   }, [profile])
 
+  const scanOuvert = useScanOuvert(fiche.data?.id ?? null)
+
   return (
     <Shell pageTitle={TITRES[onglet]}>
       <div className="mx-auto w-full max-w-[40rem]">
-        {onglet === 'courses' && <OngletCourses />}
-        {onglet === 'tournee' && <MaTournee fiche={fiche} onOuvrirJournee={() => changerOnglet('journee')} />}
-        {onglet === 'journee' && <MaJournee fiche={fiche} />}
+        {onglet === 'courses' && <Aujourdhui fiche={fiche} scan={scanOuvert} onOuvrirTournee={() => changerOnglet('tournee')} express={<OngletCourses />} />}
+        {onglet === 'tournee' && <MaTournee fiche={fiche} />}
         {onglet === 'depenses' && <MesDepenses />}
         {onglet === 'moi' && <Moi fiche={fiche} />}
       </div>
-      <BarreOnglets actif={onglet} onChange={changerOnglet} />
+      <BarreOnglets actif={onglet} onChange={changerOnglet} pastilles={{ tournee: !!scanOuvert && scanOuvert.statut !== 'en_cours' }} />
     </Shell>
   )
 }

@@ -79,6 +79,11 @@ export function deplacer<T>(liste: T[], de: number, vers: number): T[] {
   return out
 }
 
+/** « Commencer par la fin » : les arrêts pas encore traités, dans l'ordre inverse de l'ordre affiché. */
+export function ordreInverse(arrets: ArretColis[], mode: OrdreMode): string[] {
+  return arretsDansOrdre(arrets, mode).filter(a => !a.statut).map(a => a.id).reverse()
+}
+
 /** Ordre manuel complet à écrire : les traités gardent leur place (devant), puis les à-faire dans l'ordre choisi. */
 export function ordreManuel(arrets: ArretColis[], mode: OrdreMode, aFaireIds: string[]): string[] {
   const traites = arretsDansOrdre(arrets, mode).filter(a => !!a.statut).map(a => a.id)

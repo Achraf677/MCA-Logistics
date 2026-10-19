@@ -10,11 +10,13 @@ describe('dépenses', () => {
     expect(montantSaisiEnCts('abc')).toBeNaN()
   })
   it('manques', () => {
-    expect(manquesDepense({ montant: '', categorie: '', moyen: '', date: '', aUnFichier: false }))
-      .toEqual(['Photo du justificatif', 'Payé avec quoi ?', 'Catégorie', 'Date de la dépense'])
-    expect(manquesDepense({ montant: '', categorie: 'repas', moyen: 'personnel', date: '2026-10-12', aUnFichier: true }))
+    expect(manquesDepense({ montant: '', categorie: '', moyen: '', date: '', note: '', aUnFichier: false }))
+      .toEqual(['Photo du justificatif', 'Payé avec quoi ?', 'Note', 'Date de la dépense'])
+    expect(manquesDepense({ montant: '', categorie: '', moyen: 'personnel', date: '2026-10-12', note: 'Plein', aUnFichier: true }))
       .toEqual(['Montant (note de frais)'])
-    expect(manquesDepense({ montant: '', categorie: 'peage', moyen: 'carte_societe', date: '2026-10-12', aUnFichier: true })).toEqual([])
+    // La catégorie n'est plus demandée au salarié ; la note l'est.
+    expect(manquesDepense({ montant: '', categorie: '', moyen: 'carte_societe', date: '2026-10-12', note: 'Péage A35', aUnFichier: true })).toEqual([])
+    expect(manquesDepense({ montant: '', categorie: '', moyen: 'carte_societe', date: '2026-10-12', note: '   ', aUnFichier: true })).toEqual(['Note'])
   })
   it('total à rembourser', () => {
     expect(totalARembourser([

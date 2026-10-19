@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   Check, Store, PackagePlus, MessageSquare, Navigation, Camera, GripVertical, Minus, Plus, X, RotateCcw,
 } from 'lucide-react'
@@ -52,6 +52,33 @@ function useGestes(arret: ArretColis, tournee: TourneeColis, onGeste: (a: ArretC
   }
   const geste = (s: StatutArretColis | null, colis?: number | null) => ecrire(patchStatut(arret, s, colis))
   return { occupe, fait, ecrire, geste }
+}
+
+/** Délai de la double validation : « Livré » / « Remis » ne s'enregistre qu'après 3 s, annulable. */
+const DELAI_VALIDATION_MS = 3000
+
+/**
+ * Double validation d'un « Livré » / « Remis » : on appuie, un compte à rebours de 3 s démarre avec un
+ * gros bouton « Annuler » ; passé ce délai, le geste est enregistré. Un appui par erreur ne coûte rien
+ * et rien ne bouge dans la liste avant la fin du délai.
+ */
+function useValidation(geste: (s: StatutArretColis | null) => Promise<boolean>) {
+  const [fin, setFin] = useState<number | null>(null)
+  const [reste, setReste] = useState(DELAI_VALIDATION_MS)
+  const cible = useRef<StatutArretColis | null>(null)
+  const dernier = useRef(geste)
+  useEffect(() => { dernier.current = geste })
+  useEffect(() => {
+    if (fin == null) return
+    const t = setInterval(() => {
+      const r = fin - Date.now()
+      if (r <= 0) { clearInterval(t); setFin(null); dernier.current(cible.current) } else setReste(r)
+    }, 100)
+    return () => clearInterval(t)
+  }, [fin])
+  const demander = (s: StatutArretColis | null) => { cible.current = s; setReste(DELAI_VALIDATION_MS); setFin(Date.now() + DELAI_VALIDATION_MS) }
+  const annuler = () => setFin(null)
+  return { enAttente: fin != null, reste, demander, annuler }
 }
 
 /**
@@ -200,6 +227,7 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
   onPhoto?: (arretId: string, doc: DocumentRow) => void
 }) {
   const { occupe, fait, geste } = useGestes(arret, tournee, onGeste)
+  const validation = useValidation(geste)
   const [fiche, setFiche] = useState(false)
   const rapide = issueRapide(arret.type)
   const yAller = lienYAller(arret)
@@ -226,19 +254,34 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
               </a>
             )}
           </div>
-          <div className="flex gap-2">
-            <button type="button" disabled={occupe} onClick={() => geste(fait)} className={`${GROS} flex-[3] bg-[var(--success)] text-black`}>
-              <Check size={24} /> {LIBELLE_FAIT[arret.type]}
-            </button>
-            <button type="button" disabled={occupe} onClick={() => geste(rapide)}
-              className={`${GROS} flex-[2] border border-[var(--warning)] text-[var(--warning)] text-base`}>
-              {LIBELLE_STATUT_ARRET[rapide]}
-            </button>
-            <button type="button" onClick={() => setFiche(true)} aria-label="Autres choix"
-              className={`${MOYEN} min-h-16 border-[var(--border)] text-[var(--text)]`}>
-              Autre
-            </button>
-          </div>
+          {validation.enAttente ? (
+            <div className="flex gap-2">
+              <div className={`${GROS} flex-[3] relative overflow-hidden bg-[var(--success)] text-black`} role="status" aria-live="polite">
+                <span className="absolute inset-y-0 left-0 bg-black/20" style={{ width: `${Math.round((1 - validation.reste / DELAI_VALIDATION_MS) * 100)}%` }} aria-hidden />
+                <span className="relative inline-flex items-center gap-2">
+                  <Check size={24} /> {LIBELLE_FAIT[arret.type]} dans {Math.ceil(validation.reste / 1000)} s
+                </span>
+              </div>
+              <button type="button" onClick={validation.annuler}
+                className={`${GROS} flex-[2] border-2 border-[var(--danger)] text-[var(--danger)]`}>
+                <X size={22} /> Annuler
+              </button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button type="button" disabled={occupe} onClick={() => validation.demander(fait)} className={`${GROS} flex-[3] bg-[var(--success)] text-black`}>
+                <Check size={24} /> {LIBELLE_FAIT[arret.type]}
+              </button>
+              <button type="button" disabled={occupe} onClick={() => geste(rapide)}
+                className={`${GROS} flex-[2] border border-[var(--warning)] text-[var(--warning)] text-base`}>
+                {LIBELLE_STATUT_ARRET[rapide]}
+              </button>
+              <button type="button" onClick={() => setFiche(true)} aria-label="Autres choix"
+                className={`${MOYEN} min-h-16 border-[var(--border)] text-[var(--text)]`}>
+                Autre
+              </button>
+            </div>
+          )}
         </div>
       </div>
       {fiche && <FicheArret arret={arret} tournee={tournee} onGeste={onGeste} photos={photos} onPhoto={onPhoto} onFermer={() => setFiche(false)} />}
@@ -263,6 +306,7 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
 }) {
   const [fiche, setFiche] = useState(false)
   const { occupe, fait, geste } = useGestes(arret, tournee, onGeste)
+  const validation = useValidation(geste)
   const famille = familleStatut(arret.statut)
   const numero = numeroAffiche(arret, modeOrdre(tournee))
 
@@ -300,12 +344,17 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
           {arret.note && <span className="inline-flex items-center gap-1"><MessageSquare size={13} /> {arret.note}</span>}
         </span>
       </button>
-      {!verrouillee && !arret.statut && (
-        <button type="button" onClick={() => geste(fait)} disabled={occupe}
+      {!verrouillee && !arret.statut && (validation.enAttente ? (
+        <button type="button" onClick={validation.annuler}
+          className="w-24 shrink-0 m-1.5 inline-flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] border-2 border-[var(--danger)] text-[var(--danger)] text-sm font-bold active:scale-[0.97]">
+          <X size={20} /> Annuler {Math.ceil(validation.reste / 1000)}
+        </button>
+      ) : (
+        <button type="button" onClick={() => validation.demander(fait)} disabled={occupe}
           className="w-24 shrink-0 m-1.5 inline-flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] bg-[var(--success)] text-black text-sm font-bold disabled:opacity-40 active:scale-[0.97]">
           <Check size={20} /> {arret.type === 'col' ? 'Collecté' : arret.type === 'rc' ? 'Remis' : 'Livré'}
         </button>
-      )}
+      ))}
       {fiche && !verrouillee && (
         <FicheArret arret={arret} tournee={tournee} onGeste={onGeste} photos={photos} onPhoto={onPhoto} onFermer={() => setFiche(false)} />
       )}
