@@ -200,13 +200,15 @@ Deno.serve(async (req: Request) => {
 
   let m: Matrices
   let approximatif = false
+  let erreurOrs: string | null = null
   let appels = 0
   try {
     if (!cleOrs) throw new Error('ORS_API_KEY absente')
     const r = await matriceOrs(cleOrs, pts)
     m = r.m; appels += r.appels
   } catch (e) {
-    console.warn('optimiser-tournee-colis: matrice ORS indisponible', (e as Error)?.message)
+    erreurOrs = `${(e as Error)?.message ?? 'erreur'} ${e instanceof ExternalApiError ? JSON.stringify(e.responseBody).slice(0, 200) : ''}`.trim()
+    console.warn('optimiser-tournee-colis: matrice ORS indisponible', erreurOrs)
     m = matricesVolOiseau(pts); approximatif = true
   }
 
@@ -227,7 +229,7 @@ Deno.serve(async (req: Request) => {
 
   const trajet = {
     // approximatif = ORDRE calculé sans les temps de route ; trace_droit = tracé en lignes droites.
-    polyline, approximatif, trace_droit: trace.droits > 0,
+    polyline, approximatif, erreur_ors: erreurOrs, trace_droit: trace.droits > 0,
     km_total: Math.round(kmTotal * 10) / 10, km_feuille: Math.round(kmFeuille * 10) / 10,
     duree_min: Math.round(dureeS / 60), mode, depart: pts[0], depart_source: depart ? departSource : 'premier_arret',
     arrivee: arriveeMode, calcule_a: new Date().toISOString(),
