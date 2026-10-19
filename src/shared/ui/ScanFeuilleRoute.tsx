@@ -301,7 +301,6 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     const fraction = debut ? Math.min(0.9, (maintenant - debut) / 22_000) : 0
     const pct = total ? Math.min(100, Math.round(((faites + fraction) / total) * 100)) : 0
     const trouves = pagesScan.reduce((n, p) => n + (p.nb ?? 0), 0)
-    const reste = Math.max(0, Math.round((total - faites - fraction) * 20))
     const echec = suivi?.statut === 'erreur'
     return (
       <div className="flex flex-col gap-4 py-4" aria-live="polite">
@@ -354,17 +353,6 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
             )
           })}
         </ul>
-
-        {!echec && (
-          <p className="flex items-start gap-2 p-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text-muted)]">
-            <Check size={16} className="shrink-0 mt-0.5 text-[var(--success)]" />
-            <span>
-              Tu peux changer d'onglet ou quitter le site : la lecture continue sur le serveur.
-              Tu retrouveras ta feuille dans <strong className="text-[var(--text)]">Ma tournée</strong>.
-              {reste > 0 && total > 0 && <> Encore environ {reste < 60 ? `${reste} s` : `${Math.ceil(reste / 60)} min`}.</>}
-            </span>
-          </p>
-        )}
 
         <div className="flex gap-2">
           <button type="button" onClick={annulerTout} className={`${btnSecondaire} flex-1`}>Annuler la lecture</button>
