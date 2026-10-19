@@ -96,6 +96,124 @@ export async function lirePageFeuille(dataUrl: string, page: number, communePrec
   }
 }
 
+// ── Lecture en arrière-plan (scan côté serveur) ──────────────────────────────
+
+export type StatutScan = 'en_cours' | 'pret' | 'erreur' | 'termine' | 'annule'
+
+export interface ScanPage {
+  numero: number
+  etat: 'attente' | 'lecture' | 'ok' | 'erreur'
+  erreur: string | null
+  nb: number | null
+}
+
+export interface ScanSuivi {
+  id: string
+  statut: StatutScan
+  erreur: string | null
+  date: string
+  member_id: string
+  client_id: string | null
+  battement: string
+  pages: ScanPage[]
+}
+
+const COLS_SCAN = 'id, statut, erreur, date, member_id, client_id, battement'
+
+/** Au-delà de cette durée sans signe de vie, la lecture est considérée coupée : on la relance. */
+export const SCAN_COUPE_APRES_MS = 90_000
+
+async function pagesDuScan(scanId: string): Promise<ScanPage[]> {
+  const { data } = await supabase.from('scans_feuille_route_pages')
+    .select('numero, etat, erreur, nb').eq('scan_id', scanId).order('numero')
+  return (data ?? []) as unknown as ScanPage[]
+}
+
+/**
+ * Envoie les photos (déjà compressées) puis lance la lecture sur le SERVEUR : on peut ensuite
+ * changer d'onglet ou quitter le site, la lecture continue. `scanId` = ajouter des pages à un scan existant.
+ */
+export async function lancerScan(p: {
+  companyId: string; memberId: string; date: string; clientId: string | null; images: string[]; scanId?: string | null
+}): Promise<{ id: string | null; error: Error | null }> {
+  let id = p.scanId ?? null
+  let debut = 0
+  if (id) {
+    const { data } = await supabase.from('scans_feuille_route_pages').select('numero').eq('scan_id', id)
+    debut = Math.max(0, ...((data ?? []) as Array<{ numero: number }>).map(x => x.numero))
+    await supabase.from('scans_feuille_route').update({ client_id: p.clientId }).eq('id', id)
+  } else {
+    const { data, error } = await supabase.from('scans_feuille_route').insert({
+      company_id: p.companyId, member_id: p.memberId, date: p.date, client_id: p.clientId,
+    }).select('id').single()
+    if (error || !data) return { id: null, error: erreurClaire(error) ?? new Error(REFUS) }
+    id = (data as { id: string }).id
+  }
+  for (const [i, image] of p.images.entries()) {
+    const { error } = await supabase.from('scans_feuille_route_pages').insert({
+      scan_id: id, company_id: p.companyId, numero: debut + i + 1, image,
+    })
+    if (error) return { id: null, error: erreurClaire(error) }
+  }
+  const { error } = await relancerScan(id)
+  return { id, error }
+}
+
+/** (Re)lance la lecture côté serveur : pages pas lues, ou seulement `pages` (bouton « Relire »). */
+export async function relancerScan(scanId: string, pages?: number[]): Promise<{ error: Error | null }> {
+  const { data, error } = await supabase.functions.invoke('scanner-feuille-route', {
+    body: { scan_id: scanId, ...(pages ? { pages } : {}) },
+  })
+  const echec = await lireErreurEdge(data, error)
+  return { error: echec ? new Error(echec.message) : null }
+}
+
+/** Avancement d'un scan (léger : sans les photos ni les arrêts lus). */
+export async function suivreScan(scanId: string): Promise<{ data: ScanSuivi | null; error: Error | null }> {
+  const { data, error } = await supabase.from('scans_feuille_route').select(COLS_SCAN).eq('id', scanId).maybeSingle()
+  if (error) return { data: null, error: erreurClaire(error) }
+  if (!data) return { data: null, error: null }
+  return { data: { ...(data as unknown as Omit<ScanSuivi, 'pages'>), pages: await pagesDuScan(scanId) }, error: null }
+}
+
+/** Le scan d'un salarié encore ouvert (en cours, prêt ou en erreur), le plus récent. */
+export async function trouverScan(memberId: string): Promise<ScanSuivi | null> {
+  const { data } = await supabase.from('scans_feuille_route').select(COLS_SCAN)
+    .eq('member_id', memberId).in('statut', ['en_cours', 'pret', 'erreur'])
+    .order('created_at', { ascending: false }).limit(1)
+  const s = (data ?? [])[0] as unknown as Omit<ScanSuivi, 'pages'> | undefined
+  return s ? { ...s, pages: await pagesDuScan(s.id) } : null
+}
+
+/** Résultat de la lecture (arrêts, en-tête, « x/y ») des pages demandées (toutes si omis). */
+export async function resultatScan(scanId: string, numeros?: number[]) {
+  let q = supabase.from('scans_feuille_route_pages')
+    .select('numero, etat, erreur, nb, page_lue, entete, arrets').eq('scan_id', scanId).order('numero')
+  if (numeros) q = q.in('numero', numeros)
+  const { data, error } = await q
+  if (error) return { data: [], error: erreurClaire(error) }
+  const lignes = (data ?? []) as unknown as Array<ScanPage & { page_lue: unknown; entete: EnteteFeuille | null; arrets: unknown }>
+  return {
+    data: lignes.map(l => ({
+      numero: l.numero, etat: l.etat, erreur: l.erreur, nb: l.nb,
+      pageLue: pageDepuisLecture(l.page_lue), entete: l.entete ?? null, arrets: arretsDepuisLecture(l.arrets, l.numero),
+    })),
+    error: null,
+  }
+}
+
+/** Tournée créée : le scan est fini, les photos sont effacées. */
+export async function terminerScan(scanId: string, tourneeId: string) {
+  await supabase.from('scans_feuille_route').update({ statut: 'termine', tournee_id: tourneeId }).eq('id', scanId)
+  await supabase.from('scans_feuille_route_pages').delete().eq('scan_id', scanId)
+}
+
+/** Scan abandonné : la lecture s'arrête (côté serveur) et les photos sont effacées. */
+export async function abandonnerScan(scanId: string) {
+  await supabase.from('scans_feuille_route').update({ statut: 'annule' }).eq('id', scanId)
+  await supabase.from('scans_feuille_route_pages').delete().eq('scan_id', scanId)
+}
+
 // ── Écriture ────────────────────────────────────────────────────────────────
 
 /**

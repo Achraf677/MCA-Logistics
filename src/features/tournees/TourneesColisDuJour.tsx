@@ -16,7 +16,7 @@ import {
 import { toLocalISO } from '../../shared/lib/dates'
 import {
   arretsDesTournees, listerTourneesColis, membresPourTournee, nomsClients, supprimerTourneeColis,
-  calculerItineraire, rouvrirTournee, positionsLivreurs, type PositionLivreur,
+  calculerItineraire, rouvrirTournee, positionsLivreurs, trouverScan, type PositionLivreur,
 } from '../../shared/lib/tourneesColis.queries'
 import { ilYA, libelleDistance, modeOrdre, positionAncienne, prochainDansOrdre } from '../../shared/lib/tourneesColisRoute'
 import { colorForIndex } from './tours.palette'
@@ -42,6 +42,8 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
   const [scanOuvert, setScanOuvert] = useState(false)
   const [membres, setMembres] = useState<Membre[]>([])
   const [membreId, setMembreId] = useState('')
+  // Scan déjà envoyé pour ce salarié (undefined = recherche en cours) : on le retrouve au lieu d'en refaire un.
+  const [scanMembre, setScanMembre] = useState<string | null | undefined>(undefined)
   const [noms, setNoms] = useState<Map<string, string>>(new Map())
   const [aSupprimer, setASupprimer] = useState<TourneeColis | null>(null)
   const [suppression, setSuppression] = useState(false)
@@ -136,6 +138,12 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
   })
 
   const membre = membres.find(m => m.id === membreId) ?? null
+  useEffect(() => {
+    if (!membreId) return
+    let annule = false
+    trouverScan(membreId).then(s => { if (!annule) setScanMembre(s?.id ?? null) })
+    return () => { annule = true }
+  }, [membreId])
   const clientsMembre = useMemo(
     () => (membre?.clients_messagerie ?? []).map(id => ({ id, name: noms.get(id) ?? 'Client' })),
     [membre, noms],
@@ -254,14 +262,14 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
         title="Scanner une feuille de route" width="max-w-[48rem]">
         <div className="flex flex-col gap-4">
           <Field label="Salarié">
-            <select value={membreId} onChange={e => setMembreId(e.target.value)} className="field">
+            <select value={membreId} onChange={e => { setScanMembre(undefined); setMembreId(e.target.value) }} className="field">
               <option value="">Choisir…</option>
               {membres.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
             </select>
           </Field>
-          {membre && (
-            <ScanFeuilleRoute key={membre.id} companyId={companyId} memberId={membre.id} nomSalarie={membre.full_name}
-              date={date} clients={clientsMembre}
+          {membre && scanMembre !== undefined && (
+            <ScanFeuilleRoute key={`${membre.id}-${scanMembre ?? ''}`} companyId={companyId} memberId={membre.id} nomSalarie={membre.full_name}
+              date={date} clients={clientsMembre} reprendre={scanMembre}
               onAnnuler={() => { setScanOuvert(false); setMembreId('') }}
               onCree={() => { setScanOuvert(false); setMembreId(''); recharger() }} />
           )}

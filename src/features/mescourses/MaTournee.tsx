@@ -18,7 +18,7 @@ import {
 } from '../../shared/lib/tourneesColisRoute'
 import {
   listerTourneesColis, arretsDesTournees, supprimerTourneeColis, nomsClients, calculerItineraire,
-  majArret, ecrireOrdre, placerArret, chercherAdresse, photosArrets, cloturerTournee, envoyerPosition,
+  majArret, ecrireOrdre, trouverScan, placerArret, chercherAdresse, photosArrets, cloturerTournee, envoyerPosition,
   effacerPosition,
 } from '../../shared/lib/tourneesColis.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
@@ -75,6 +75,7 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
   const [scan, setScan] = useState(false)
+  const [reprendreScan, setReprendreScan] = useState<string | null>(null)
   const [clients, setClients] = useState<Array<{ id: string; name: string }>>([])
   const [aSupprimer, setASupprimer] = useState(false)
   const [suppression, setSuppression] = useState(false)
@@ -96,6 +97,12 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
   }, [date, fiche.id])
 
   useEffect(() => { setChargement(true); setScan(false); recharger() }, [recharger])
+  // Une feuille envoyée avant (lecture en cours ou prête) : on la retrouve, même après avoir quitté l'onglet ou le site.
+  useEffect(() => {
+    let annule = false
+    trouverScan(fiche.id).then(s => { if (!annule && s) { setReprendreScan(s.id); setScan(true) } })
+    return () => { annule = true }
+  }, [fiche.id])
 
   useEffect(() => {
     let annule = false
@@ -174,10 +181,10 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
       {scan && companyId ? (
         <Carte>
           <h2 className="text-base font-semibold text-[var(--text)]">Scanner ma feuille de route</h2>
-          <ScanFeuilleRoute companyId={companyId} memberId={fiche.id} date={date} clients={clients}
+          <ScanFeuilleRoute key={reprendreScan ?? 'nouveau'} companyId={companyId} memberId={fiche.id} date={date} clients={clients} reprendre={reprendreScan}
             basCollant="bottom-[calc(4rem+env(safe-area-inset-bottom))]"
-            onAnnuler={() => setScan(false)}
-            onCree={id => { setScan(false); setChargement(true); recharger(id) }} />
+            onAnnuler={() => { setScan(false); setReprendreScan(null) }}
+            onCree={id => { setScan(false); setReprendreScan(null); setChargement(true); recharger(id) }} />
         </Carte>
       ) : chargement ? (
         <Skeleton className="h-64" />

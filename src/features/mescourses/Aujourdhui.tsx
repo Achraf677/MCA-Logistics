@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Flag, Route as RouteIcon } from 'lucide-react'
+import { Flag, Loader2, Route as RouteIcon, ScanText } from 'lucide-react'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { avancementParCategorie, type CategorieArret } from '../../shared/lib/tourneesColisRoute'
 import { compteursTournee, type CompteursTournee } from '../../shared/lib/tourneesColis'
-import { listerTourneesColis, arretsDesTournees } from '../../shared/lib/tourneesColis.queries'
+import { listerTourneesColis, arretsDesTournees, type ScanSuivi } from '../../shared/lib/tourneesColis.queries'
 import { jourParis } from '../../shared/lib/relaisPoste'
 import { getMesCourses } from './mescourses.queries'
 import type { EtatFiche, MaFiche } from './mescourses.types'
@@ -16,7 +16,7 @@ interface Recap { c: CompteursTournee; categories: CategorieArret[]; tournees: n
  * arrêts faits, kilomètres prévus), lu depuis mes tournées du jour. Les éventuelles courses express
  * du jour s'affichent dessous (`express`), seulement s'il y en a.
  */
-export function Aujourdhui({ fiche, onOuvrirTournee, express }: { fiche: EtatFiche; onOuvrirTournee: () => void; express: ReactNode }) {
+export function Aujourdhui({ fiche, scan, onOuvrirTournee, express }: { fiche: EtatFiche; scan: ScanSuivi | null; onOuvrirTournee: () => void; express: ReactNode }) {
   const [aExpress, setAExpress] = useState(false)
   useEffect(() => {
     const j = jourParis()
@@ -24,6 +24,7 @@ export function Aujourdhui({ fiche, onOuvrirTournee, express }: { fiche: EtatFic
   }, [])
   return (
     <div className="flex flex-col gap-4">
+      {scan && <CarteScan scan={scan} onOuvrir={onOuvrirTournee} />}
       <GardeFiche fiche={fiche}>{f => <RecapJour fiche={f} onOuvrirTournee={onOuvrirTournee} />}</GardeFiche>
       {aExpress && express}
     </div>
@@ -123,5 +124,33 @@ function Chiffre({ n, libelle, couleur }: { n: number; libelle: string; couleur:
       <span className="block text-2xl font-bold tabular-nums" style={{ color: couleur }}>{n}</span>
       <span className="block text-xs text-[var(--text-muted)]">{libelle}</span>
     </div>
+  )
+}
+
+/** Lecture de la feuille de route (faite sur le serveur) : avancement, ou « prête à vérifier ». */
+function CarteScan({ scan, onOuvrir }: { scan: ScanSuivi; onOuvrir: () => void }) {
+  const total = scan.pages.length
+  const faites = scan.pages.filter(p => p.etat === 'ok' || p.etat === 'erreur').length
+  const enCours = scan.statut === 'en_cours'
+  const pct = total ? Math.round((faites / total) * 100) : 0
+  return (
+    <Carte>
+      <div className="flex items-center gap-3">
+        {enCours ? <Loader2 size={22} className="animate-spin text-[var(--brand)] shrink-0" /> : <ScanText size={22} className="text-[var(--brand)] shrink-0" />}
+        <p className="flex-1 min-w-0 text-base font-semibold text-[var(--text)]">
+          {enCours ? `Lecture de ta feuille : ${faites} / ${total} page${total > 1 ? 's' : ''}`
+            : scan.statut === 'pret' ? 'Ta feuille est lue : vérifie et crée ta tournée'
+            : 'Lecture de ta feuille impossible'}
+        </p>
+      </div>
+      {enCours && (
+        <div className="h-3 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden">
+          <div className="h-full bg-[var(--brand)] transition-[width] duration-500" style={{ width: `${Math.max(pct, 6)}%` }} />
+        </div>
+      )}
+      <button className={`${boutonPrimaireCls} w-full`} onClick={onOuvrir}>
+        <RouteIcon size={18} /> {enCours ? 'Voir la lecture' : scan.statut === 'pret' ? 'Voir mes arrêts' : 'Réessayer'}
+      </button>
+    </Carte>
   )
 }

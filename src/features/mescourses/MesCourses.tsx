@@ -18,6 +18,7 @@ import { useSearchParams } from 'react-router-dom'
 import { BarreOnglets } from './BarreOnglets'
 import { Aujourdhui } from './Aujourdhui'
 import { MaTournee } from './MaTournee'
+import { useScanOuvert } from './useScanOuvert'
 import { MesDepenses } from './MesDepenses'
 import { Moi } from './Moi'
 import { lireOnglet, type OngletEspace } from './espace.logic'
@@ -88,15 +89,17 @@ export function MesCourses() {
     return () => { annule = true }
   }, [profile])
 
+  const scanOuvert = useScanOuvert(fiche.data?.id ?? null)
+
   return (
     <Shell pageTitle={TITRES[onglet]}>
       <div className="mx-auto w-full max-w-[40rem]">
-        {onglet === 'courses' && <Aujourdhui fiche={fiche} onOuvrirTournee={() => changerOnglet('tournee')} express={<OngletCourses />} />}
+        {onglet === 'courses' && <Aujourdhui fiche={fiche} scan={scanOuvert} onOuvrirTournee={() => changerOnglet('tournee')} express={<OngletCourses />} />}
         {onglet === 'tournee' && <MaTournee fiche={fiche} />}
         {onglet === 'depenses' && <MesDepenses />}
         {onglet === 'moi' && <Moi fiche={fiche} />}
       </div>
-      <BarreOnglets actif={onglet} onChange={changerOnglet} />
+      <BarreOnglets actif={onglet} onChange={changerOnglet} pastilles={{ tournee: scanOuvert?.statut === 'pret' || scanOuvert?.statut === 'erreur' }} />
     </Shell>
   )
 }

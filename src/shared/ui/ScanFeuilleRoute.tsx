@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Camera, ImagePlus, Trash2, ScanText, Loader2, Check, AlertTriangle, MapPin, Plus, RotateCcw, X, ListChecks, ChevronDown,
 } from 'lucide-react'
@@ -7,19 +7,18 @@ import { BoutonIcone } from './BoutonIcone'
 import { useToast } from './useToast'
 import {
   LIBELLE_TYPE_ARRET, arretVide, fusionnerEntetes, manquesApercu, modifierArretLu, ordonnerParPage, ordreHabituel, pagesEnDouble,
-  pagesManquantes, retirerPhoto, totauxApercu, type ArretLu, type EnteteFeuille, type PageLue, type TypeArretColis,
+  pagesManquantes, totauxApercu, type ArretLu, type EnteteFeuille, type PageLue, type TypeArretColis,
 } from '../lib/tourneesColis'
-import { calculerItineraire, compresserPage, creerTourneeColis, lirePageFeuille } from '../lib/tourneesColis.queries'
+import {
+  SCAN_COUPE_APRES_MS, abandonnerScan, calculerItineraire, compresserPage, creerTourneeColis, lancerScan, relancerScan,
+  resultatScan, suivreScan, terminerScan, type ScanPage, type ScanSuivi,
+} from '../lib/tourneesColis.queries'
 
-interface Page {
+/** Photo choisie sur ce téléphone, pas encore envoyée. */
+interface Photo {
   cle: string
   file: File
   apercu: string
-  etat: 'attente' | 'lecture' | 'ok' | 'erreur'
-  erreur?: string
-  nb?: number
-  /** « x/y » lu en bas à droite de la page, s'il était visible. */
-  pageLue?: PageLue | null
 }
 
 const champ = `min-w-0 min-h-10 px-2.5 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
@@ -40,7 +39,7 @@ let clePage = 0
  * « Créer la tournée ». Partagé : le salarié scanne pour lui (Mes courses), le bureau pour
  * un salarié choisi (Tournées).
  */
-export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, clients, onCree, onAnnuler, basCollant = 'bottom-0' }: {
+export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, clients, reprendre = null, onCree, onAnnuler, basCollant = 'bottom-0' }: {
   companyId: string
   memberId: string
   /** Affiché quand le bureau scanne pour quelqu'un d'autre. */
@@ -48,26 +47,38 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
   date: string
   /** Clients de messagerie du salarié ; un seul = choisi d'office. */
   clients: Array<{ id: string; name: string }>
+  /** Scan déjà envoyé (lecture en cours ou prête) à retrouver : on reprend là où il en est. */
+  reprendre?: string | null
   onCree: (tourneeId: string) => void
   onAnnuler: () => void
   /** Position de la barre d'actions collée en bas (au-dessus d'une barre d'onglets fixe). */
   basCollant?: string
 }) {
   const { toast } = useToast()
-  const [etape, setEtape] = useState<'photos' | 'lecture' | 'apercu'>('photos')
-  const [pages, setPages] = useState<Page[]>([])
+  const [etape, setEtape] = useState<'photos' | 'lecture' | 'apercu'>(reprendre ? 'lecture' : 'photos')
+  // Photos pas encore envoyées (les pages déjà envoyées vivent côté serveur : `pagesScan`).
+  const [pages, setPages] = useState<Photo[]>([])
+  const [scanId, setScanId] = useState<string | null>(reprendre)
+  const [suivi, setSuivi] = useState<ScanSuivi | null>(null)
+  const [pagesScan, setPagesScan] = useState<ScanPage[]>([])
+  const [pageLues, setPageLues] = useState<Record<number, PageLue | null>>({})
   const [arrets, setArrets] = useState<ArretLu[]>([])
   const [entetes, setEntetes] = useState<Record<number, EnteteFeuille | null>>({})
   const [clientChoisi, setClientId] = useState<string>('')
   // Un seul client de messagerie : c'est lui (les noms peuvent arriver après le montage).
-  const clientId = clients.length === 1 ? clients[0].id : clientChoisi
+  const clientId = clients.length === 1 ? clients[0].id : (clientChoisi || suivi?.client_id || '')
   const [seulementAVerifier, setSeulementAVerifier] = useState(false)
   const [details, setDetails] = useState(false)
-  // Dernière commune lue par page : une page qui commence sans bandeau reprend celle d'avant.
-  const communesParPage = useRef<Record<number, string | null>>({})
   const [creation, setCreation] = useState(false)
+  const [envoi, setEnvoi] = useState(false)
   const camRef = useRef<HTMLInputElement>(null)
   const galRef = useRef<HTMLInputElement>(null)
+  /** Pages à recharger quand la lecture finit (null = toutes, au retour sur un scan). */
+  const aRecharger = useRef<number[] | null>(reprendre ? null : [])
+  const dernierLancement = useRef(0)
+  /** Quand chaque page est passée « en lecture » (sert à animer la barre entre deux pages). */
+  const [debutLecture, setDebutLecture] = useState<Record<number, number>>({})
+  const [maintenant, setMaintenant] = useState(() => Date.now())
 
   // Les aperçus d'image sont des URL locales : on les libère en partant.
   const pagesRef = useRef(pages)
@@ -80,90 +91,129 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     if (fichiers.length === 0) return
     setPages(prev => [...prev, ...fichiers.map(file => {
       clePage += 1
-      return { cle: `p${clePage}`, file, apercu: URL.createObjectURL(file), etat: 'attente' as const }
+      return { cle: `p${clePage}`, file, apercu: URL.createObjectURL(file) }
     })])
   }
 
-  /** Retire une photo ; ses arrêts déjà lus partent avec elle (les photos suivantes remontent). */
+  /** Retire une photo pas encore envoyée. */
   const retirerPage = (cle: string) => {
-    const i = pages.findIndex(x => x.cle === cle)
-    if (i < 0) return
-    URL.revokeObjectURL(pages[i].apercu)
+    const p = pages.find(x => x.cle === cle)
+    if (!p) return
+    URL.revokeObjectURL(p.apercu)
     setPages(prev => prev.filter(x => x.cle !== cle))
-    setArrets(prev => retirerPhoto(prev, i + 1))
-    const c: Record<number, string | null> = {}
-    for (const [k, v] of Object.entries(communesParPage.current)) {
-      const n = Number(k)
-      if (n < i + 1) c[n] = v; else if (n > i + 1) c[n - 1] = v
+  }
+
+  /** Ramène les arrêts lus par le serveur (toutes les pages, ou seulement celles qui viennent d'être relues). */
+  const chargerResultats = useCallback(async (id: string) => {
+    const numeros = aRecharger.current
+    const { data, error } = await resultatScan(id, numeros ?? undefined)
+    if (error) { toast(error.message, 'error'); return }
+    aRecharger.current = []
+    for (const r of data) {
+      if (r.etat !== 'ok') continue
+      setArrets(prev => [...prev.filter(a => a.page !== r.numero), ...r.arrets])
+      setEntetes(prev => ({ ...prev, [r.numero]: r.entete }))
+      setPageLues(prev => ({ ...prev, [r.numero]: r.pageLue }))
     }
-    communesParPage.current = c
-    setEntetes(prev => {
-      const out: Record<number, EnteteFeuille | null> = {}
-      for (const [k, v] of Object.entries(prev)) {
-        const n = Number(k)
-        if (n < i + 1) out[n] = v; else if (n > i + 1) out[n - 1] = v
+    setEtape('apercu')
+  }, [toast])
+
+  // Suivi du scan : la lecture tourne sur le serveur, on lit son avancement toutes les 2 s. Si elle a été
+  // coupée (plus de signe de vie), on la relance. Tant que la page est ouverte seulement : fermer le site
+  // n'arrête rien, on retrouve le scan au retour.
+  useEffect(() => {
+    if (!scanId || etape !== 'lecture') return
+    let annule = false
+    const tick = async () => {
+      const { data } = await suivreScan(scanId)
+      if (annule) return
+      if (!data) { setScanId(null); setEtape('photos'); return }
+      setSuivi(data)
+      setPagesScan(data.pages)
+      setDebutLecture(prev => {
+        const out: Record<number, number> = {}
+        for (const p of data.pages) if (p.etat === 'lecture') out[p.numero] = prev[p.numero] ?? Date.now()
+        return out
+      })
+      if (data.statut === 'en_cours') {
+        const silence = Date.now() - new Date(data.battement).getTime()
+        if (silence > SCAN_COUPE_APRES_MS && Date.now() - dernierLancement.current > 60_000) {
+          dernierLancement.current = Date.now()
+          relancerScan(scanId)
+        }
+      } else if (data.statut === 'pret') {
+        await chargerResultats(scanId)
       }
-      return out
-    })
-  }
-
-  /** Lit une page (index 0-based) et range ses arrêts à sa place (ordre des pages). */
-  const lireUne = async (index: number, liste: Page[]) => {
-    const p = liste[index]
-    const numero = index + 1
-    setPages(prev => prev.map(x => (x.cle === p.cle ? { ...x, etat: 'lecture', erreur: undefined } : x)))
-    const precedente = communesParPage.current[numero - 1] ?? null
-    let res: Awaited<ReturnType<typeof lirePageFeuille>>
-    try {
-      res = await lirePageFeuille(await compresserPage(p.file), numero, precedente)
-    } catch (e) {
-      res = { arrets: [], entete: null, pageLue: null, error: e as Error }
     }
-    if (res.error) {
-      setPages(prev => prev.map(x => (x.cle === p.cle ? { ...x, etat: 'erreur', erreur: res.error!.message } : x)))
-      return false
-    }
-    communesParPage.current[numero] = [...res.arrets].reverse().find(a => a.commune)?.commune ?? precedente
-    setPages(prev => prev.map(x => (x.cle === p.cle ? { ...x, etat: 'ok', nb: res.arrets.length, pageLue: res.pageLue } : x)))
-    setEntetes(prev => ({ ...prev, [numero]: res.entete }))
-    setArrets(prev => [...prev.filter(a => a.page !== numero), ...res.arrets])
-    return true
-  }
+    tick()
+    const t = setInterval(tick, 2000)
+    return () => { annule = true; clearInterval(t) }
+  }, [scanId, etape, chargerResultats])
 
-  /** Lit les pages pas encore lues : une page ajoutée après coup ne fait pas perdre les corrections. */
+  // Horloge pour animer la barre entre deux relevés du serveur.
+  useEffect(() => {
+    if (etape !== 'lecture') return
+    const t = setInterval(() => setMaintenant(Date.now()), 400)
+    return () => clearInterval(t)
+  }, [etape])
+
+  /** Envoie les photos au serveur et lance la lecture : on peut ensuite quitter la page. */
   const toutLire = async () => {
-    const liste = pages
-    setEtape('lecture')
-    let ok = liste.filter(p => p.etat === 'ok').length
-    for (let i = 0; i < liste.length; i++) if (liste[i].etat !== 'ok' && await lireUne(i, liste)) ok++
-    if (ok === 0) {
-      toast('Aucune page lue : reprends les photos à plat, bien éclairées.', 'error')
-      setEtape('photos')
-    } else setEtape('apercu')
+    setEnvoi(true)
+    try {
+      const images = await Promise.all(pages.map(p => compresserPage(p.file)))
+      const debut = pagesScan.reduce((m, p) => Math.max(m, p.numero), 0)
+      const { id, error } = await lancerScan({
+        companyId, memberId, date, clientId: clientId || null, images, scanId,
+      })
+      if (error || !id) { toast(error?.message ?? 'Envoi impossible', 'error'); return }
+      aRecharger.current = [...(aRecharger.current ?? []), ...images.map((_, i) => debut + i + 1)]
+      pages.forEach(p => URL.revokeObjectURL(p.apercu))
+      setPages([])
+      setScanId(id)
+      setEtape('lecture')
+    } finally {
+      setEnvoi(false)
+    }
   }
 
-  const relire = async (cle: string) => {
-    const i = pages.findIndex(p => p.cle === cle)
-    if (i >= 0) await lireUne(i, pages)
+  const relire = async (numero: number) => {
+    if (!scanId) return
+    aRecharger.current = [...(aRecharger.current ?? []), numero]
+    setPagesScan(prev => prev.map(p => (p.numero === numero ? { ...p, etat: 'attente', erreur: null } : p)))
+    setEtape('lecture')
+    const { error } = await relancerScan(scanId, [numero])
+    if (error) toast(error.message, 'error')
+  }
+
+  const reessayer = async () => {
+    if (!scanId) return
+    const { error } = await relancerScan(scanId)
+    if (error) toast(error.message, 'error')
+  }
+
+  const annulerTout = async () => {
+    if (scanId) await abandonnerScan(scanId)
+    onAnnuler()
   }
 
   const modifier = (cle: string, patch: Partial<Omit<ArretLu, 'cle'>>) =>
     setArrets(prev => prev.map(a => (a.cle === cle ? modifierArretLu(a, patch) : a)))
   const supprimer = (cle: string) => setArrets(prev => prev.filter(a => a.cle !== cle))
+  const lueParPage = useMemo(() => pagesScan.map(p => pageLues[p.numero] ?? null), [pagesScan, pageLues])
   const ajouter = () => setArrets(prev => {
-    const dernier = ordonnerParPage(prev, pages.map(p => p.pageLue)).at(-1)
+    const dernier = ordonnerParPage(prev, lueParPage).at(-1)
     return [...prev, arretVide(dernier?.page ?? 1, dernier)]
   })
 
   // Ordre de la feuille (« x/y » lus), qui sera aussi le rang enregistré.
-  const ordonnes = useMemo(() => ordonnerParPage(arrets, pages.map(p => p.pageLue)), [arrets, pages])
+  const ordonnes = useMemo(() => ordonnerParPage(arrets, lueParPage), [arrets, lueParPage])
   const totaux = useMemo(() => totauxApercu(arrets), [arrets])
-  const entete = useMemo(() => fusionnerEntetes(Object.values(entetes), pages.length), [entetes, pages.length])
+  const entete = useMemo(() => fusionnerEntetes(Object.values(entetes), pagesScan.length), [entetes, pagesScan.length])
   const manques = manquesApercu(arrets)
-  const enLecture = pages.find(p => p.etat === 'lecture')
-  const traitees = pages.filter(p => p.etat === 'ok' || p.etat === 'erreur').length
-  const enErreur = pages.filter(p => p.etat === 'erreur')
-  const lues = pages.filter(p => p.etat === 'ok').map(p => p.pageLue)
+  const enLecture = pagesScan.find(p => p.etat === 'lecture')
+  const enErreur = pagesScan.filter(p => p.etat === 'erreur')
+  const lues = pagesScan.filter(p => p.etat === 'ok').map(p => pageLues[p.numero] ?? null)
   const manquantes = pagesManquantes(lues)
   const enDouble = pagesEnDouble(lues)
   const totalFeuille = Math.max(0, ...lues.map(p => p?.total ?? 0))
@@ -174,9 +224,10 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     if (manques.length) return
     setCreation(true)
     const { id, error } = await creerTourneeColis({
-      companyId, memberId, date, clientId: clientId || null, entete, arrets: ordonnes,
+      companyId, memberId, date: suivi?.date ?? date, clientId: clientId || null, entete, arrets: ordonnes,
     })
     if (error || !id) { setCreation(false); toast(error?.message ?? 'Création impossible', 'error'); return }
+    if (scanId) await terminerScan(scanId, id)
     // Ordre par les routes calculé tout de suite : la tournée s'ouvre déjà optimisée. Si le service
     // de routes refuse (limite du jour…), la tournée reste créée, dans l'ordre habituel.
     const calcul = await calculerItineraire({ tourneeId: id, mode: 'tout' })
@@ -186,7 +237,7 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     onCree(id)
   }
 
-  const aLire = pages.filter(p => p.etat !== 'ok').length
+  const aLire = pages.length
 
   // ── Étape 1 : photos ──────────────────────────────────────────────────────
   if (etape === 'photos') {
@@ -219,53 +270,106 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
                   className="absolute right-1 top-1 w-8 h-8 inline-flex items-center justify-center rounded-full bg-black/70 text-white">
                   <X size={16} />
                 </button>
-                {p.etat === 'erreur' && (
-                  <span className="absolute inset-x-0 bottom-0 p-1 bg-[var(--danger)] text-white text-xs leading-tight">
-                    {p.erreur}
-                  </span>
-                )}
               </li>
             ))}
           </ol>
         )}
 
+        {pagesScan.length > 0 && (
+          <p className="text-sm text-[var(--text-muted)]">{pagesScan.length} page{pagesScan.length > 1 ? 's' : ''} déjà envoyée{pagesScan.length > 1 ? 's' : ''}.</p>
+        )}
         <div className="flex gap-2">
-          <button type="button" onClick={onAnnuler} className={`${btnSecondaire} flex-1`}>Annuler</button>
+          {scanId && pagesScan.some(p => p.etat === 'ok')
+            ? <button type="button" onClick={() => setEtape('apercu')} className={`${btnSecondaire} flex-1`}>Retour</button>
+            : <button type="button" onClick={annulerTout} className={`${btnSecondaire} flex-1`}>Annuler</button>}
           <button type="button" onClick={aLire === 0 ? () => setEtape('apercu') : toutLire}
-            disabled={pages.length === 0} className={`${btnPrimaire} flex-[2]`}>
-            <ScanText size={18} />
-            {aLire === 0 ? 'Voir les arrêts lus' : `Lire ${aLire > 1 ? `les ${aLire} pages` : 'la page'}`}
+            disabled={(pages.length === 0 && !pagesScan.some(p => p.etat === 'ok')) || envoi} className={`${btnPrimaire} flex-[2]`}>
+            {envoi ? <Loader2 size={18} className="animate-spin" /> : <ScanText size={18} />}
+            {envoi ? 'Envoi…' : aLire === 0 ? 'Voir les arrêts lus' : `Lire ${aLire > 1 ? `les ${aLire} pages` : 'la page'}`}
           </button>
         </div>
       </div>
     )
   }
 
-  // ── Étape 2 : lecture ─────────────────────────────────────────────────────
+  // ── Étape 2 : lecture (sur le serveur : on peut quitter cette page) ───────
   if (etape === 'lecture') {
-    const pct = pages.length ? Math.round((traitees / pages.length) * 100) : 0
+    const total = pagesScan.length
+    const faites = pagesScan.filter(p => p.etat === 'ok' || p.etat === 'erreur').length
+    const debut = enLecture ? debutLecture[enLecture.numero] : undefined
+    // La page en cours avance en douceur (~20 s) sans jamais dépasser 90 % avant la réponse du serveur.
+    const fraction = debut ? Math.min(0.9, (maintenant - debut) / 22_000) : 0
+    const pct = total ? Math.min(100, Math.round(((faites + fraction) / total) * 100)) : 0
+    const trouves = pagesScan.reduce((n, p) => n + (p.nb ?? 0), 0)
+    const reste = Math.max(0, Math.round((total - faites - fraction) * 20))
+    const echec = suivi?.statut === 'erreur'
     return (
-      <div className="flex flex-col gap-3 py-6" aria-live="polite">
-        <div className="flex items-center gap-2 text-sm font-medium text-[var(--text)]">
-          <Loader2 size={18} className="animate-spin text-[var(--brand)]" />
-          {enLecture ? `Lecture de la page ${pages.indexOf(enLecture) + 1} / ${pages.length}…` : 'Lecture…'}
+      <div className="flex flex-col gap-4 py-4" aria-live="polite">
+        <div className="flex items-center gap-3">
+          {echec
+            ? <AlertTriangle size={26} className="text-[var(--danger)] shrink-0" />
+            : <Loader2 size={26} className="animate-spin text-[var(--brand)] shrink-0" />}
+          <div className="min-w-0 flex-1">
+            <p className="text-base font-semibold text-[var(--text)]">
+              {echec ? 'Lecture impossible'
+                : enLecture ? `Lecture de la page ${enLecture.numero} sur ${total}…`
+                : total ? 'Lecture en attente…' : 'Envoi des photos…'}
+            </p>
+            <p className="text-sm text-[var(--text-muted)]">
+              {echec ? suivi?.erreur
+                : trouves > 0 ? `${trouves} arrêt${trouves > 1 ? 's' : ''} trouvé${trouves > 1 ? 's' : ''} jusqu'ici`
+                : 'Le serveur lit ta feuille'}
+            </p>
+          </div>
+          <span className="text-2xl font-bold tabular-nums text-[var(--text)]">{pct} %</span>
         </div>
-        <div className="h-2 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden">
-          <div className="h-full bg-[var(--brand)] transition-[width]" style={{ width: `${pct}%` }} />
+
+        <div className="relative h-4 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden"
+          role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+          <div className={`h-full rounded-full transition-[width] duration-500 ease-out ${echec ? 'bg-[var(--danger)]' : 'bg-[var(--brand)]'}`}
+            style={{ width: `${Math.max(pct, 4)}%` }} />
+          {!echec && (
+            <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-transparent via-white/25 to-transparent" aria-hidden />
+          )}
         </div>
-        <ul className="flex flex-col gap-1 text-sm">
-          {pages.map((p, i) => (
-            <li key={p.cle} className="flex items-center gap-2 text-[var(--text-muted)]">
-              {p.etat === 'ok' ? <Check size={16} className="text-[var(--success)]" />
-                : p.etat === 'erreur' ? <AlertTriangle size={16} className="text-[var(--danger)]" />
-                : p.etat === 'lecture' ? <Loader2 size={16} className="animate-spin" />
-                : <span className="w-4" />}
-              Page {i + 1}{p.etat === 'ok' && ` : ${p.nb} arrêt${(p.nb ?? 0) > 1 ? 's' : ''}`}
-              {p.etat === 'erreur' && ` : ${p.erreur}`}
-            </li>
-          ))}
+
+        <ul className="flex flex-col gap-1.5">
+          {pagesScan.map(p => {
+            const actif = p.etat === 'lecture'
+            return (
+              <li key={p.numero}
+                className={`flex items-center gap-3 min-h-12 px-3 rounded-[var(--r-md)] border text-base ${
+                  actif ? 'border-[var(--brand)] bg-[var(--brand)]/5' : 'border-[var(--border)]'}`}>
+                {p.etat === 'ok' ? <Check size={20} className="text-[var(--success)] shrink-0" />
+                  : p.etat === 'erreur' ? <AlertTriangle size={20} className="text-[var(--danger)] shrink-0" />
+                  : actif ? <Loader2 size={20} className="animate-spin text-[var(--brand)] shrink-0" />
+                  : <span className="w-5 h-5 rounded-full border-2 border-[var(--border)] shrink-0" />}
+                <span className="font-medium text-[var(--text)]">Page {p.numero}</span>
+                <span className="flex-1 min-w-0 truncate text-sm text-[var(--text-muted)] text-right">
+                  {p.etat === 'ok' ? `${p.nb ?? 0} arrêt${(p.nb ?? 0) > 1 ? 's' : ''}`
+                    : p.etat === 'erreur' ? p.erreur
+                    : actif ? 'Lecture…' : 'En attente'}
+                </span>
+              </li>
+            )
+          })}
         </ul>
-        <p className="text-xs text-[var(--text-muted)]">Compte une vingtaine de secondes par page.</p>
+
+        {!echec && (
+          <p className="flex items-start gap-2 p-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] text-sm text-[var(--text-muted)]">
+            <Check size={16} className="shrink-0 mt-0.5 text-[var(--success)]" />
+            <span>
+              Tu peux changer d'onglet ou quitter le site : la lecture continue sur le serveur.
+              Tu retrouveras ta feuille dans <strong className="text-[var(--text)]">Ma tournée</strong>.
+              {reste > 0 && total > 0 && <> Encore environ {reste < 60 ? `${reste} s` : `${Math.ceil(reste / 60)} min`}.</>}
+            </span>
+          </p>
+        )}
+
+        <div className="flex gap-2">
+          <button type="button" onClick={annulerTout} className={`${btnSecondaire} flex-1`}>Annuler la lecture</button>
+          {echec && <button type="button" onClick={reessayer} className={`${btnPrimaire} flex-1`}><RotateCcw size={18} /> Réessayer</button>}
+        </div>
       </div>
     )
   }
@@ -308,7 +412,7 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
           )}
         </ul>
         <p className="text-xs text-[var(--text-muted)]">
-          {pages.length} page{pages.length > 1 ? 's' : ''} lue{pages.length > 1 ? 's' : ''}
+          {pagesScan.length} page{pagesScan.length > 1 ? 's' : ''} lue{pagesScan.length > 1 ? 's' : ''}
           {totalFeuille > 0 && ` sur ${totalFeuille}`}
           {entete.circuit && ` · circuit ${entete.circuit}`}{entete.vehicule && ` · ${entete.vehicule}`}
           {entete.date && ` · feuille du ${entete.date}`}{entete.depart && ` · départ ${entete.depart}`}
@@ -343,13 +447,13 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
       </div>
 
       {enErreur.map(p => (
-        <div key={p.cle} className="flex items-center gap-2 p-2.5 rounded-[var(--r-md)] text-sm
+        <div key={p.numero} className="flex items-center gap-2 p-2.5 rounded-[var(--r-md)] text-sm
           bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-[var(--danger)]">
           <AlertTriangle size={16} className="shrink-0" />
-          <span className="flex-1 min-w-0">Page {pages.indexOf(p) + 1} non lue : {p.erreur}</span>
-          <button type="button" onClick={() => relire(p.cle)} disabled={!!enLecture}
+          <span className="flex-1 min-w-0">Page {p.numero} non lue : {p.erreur}</span>
+          <button type="button" onClick={() => relire(p.numero)} disabled={!!enLecture}
             className="min-h-9 px-2.5 inline-flex items-center gap-1 rounded-[var(--r-md)] border border-current text-xs font-medium">
-            {p.etat === 'lecture' ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />} Relire
+            <RotateCcw size={14} /> Relire
           </button>
         </div>
       ))}
