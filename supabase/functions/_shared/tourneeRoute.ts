@@ -143,6 +143,14 @@ export function completerMatrices(m: { durees: (number | null)[][]; distances: (
   }
 }
 
+/**
+ * Coût optimisé = le plus COURT par la route (mètres). Le temps n'est qu'un départage entre
+ * deux trajets de même longueur (0,05 m par seconde : 10 s d'écart = 0,5 m).
+ */
+export function matriceCouts(m: Matrices, poidsTemps = 0.05): number[][] {
+  return m.distances.map((l, i) => l.map((d, j) => d + poidsTemps * m.durees[i][j]))
+}
+
 // ── 3. Solveur ──────────────────────────────────────────────────────────────
 
 /** Coût d'un parcours : départ → nœuds → arrivée (arrivée null = parcours ouvert). */
@@ -253,6 +261,34 @@ function exact(c: number[][], depart: number, noeuds: number[], arrivee: number 
   return ordre.reverse()
 }
 
+/** Fenêtre glissante : 10 nœuds consécutifs réordonnés EXACTEMENT, bouts (précédent / suivant) fixés. */
+const FENETRE = 10
+
+/**
+ * Polissage final : tout groupe de 10 nœuds qui se suivent est le meilleur possible (calcul exact),
+ * ce que 2-opt / Or-opt seuls ne garantissent pas (un petit quartier visité dans un mauvais ordre).
+ * Modifie `ordre` ; s'arrête quand plus rien ne s'améliore ou à la limite de temps.
+ */
+export function polirParFenetres(c: number[][], depart: number, ordre: number[], arrivee: number | null, limite: number): void {
+  const n = ordre.length
+  if (n <= EXACT_MAX) return
+  let ameliore = true
+  while (ameliore && Date.now() < limite) {
+    ameliore = false
+    for (let i = 0; i + FENETRE <= n && Date.now() < limite; i++) {
+      const fen = ordre.slice(i, i + FENETRE)
+      const avant = i === 0 ? depart : ordre[i - 1]
+      const apres = i + FENETRE < n ? ordre[i + FENETRE] : arrivee
+      const ancien = coutParcours(c, avant, fen, apres)
+      const mieux = exact(c, avant, fen, apres)
+      if (coutParcours(c, avant, mieux, apres) + EPS < ancien) {
+        ordre.splice(i, FENETRE, ...mieux)
+        ameliore = true
+      }
+    }
+  }
+}
+
 export interface OptionsSolveur {
   /** Garde-fou de temps (ms) ; l'ordre reste valide s'il est atteint. */
   limiteMs?: number
@@ -296,6 +332,7 @@ export function resoudre(c: number[][], depart: number, noeuds: number[], arrive
   let meilleur = plusProcheVoisin(c, depart, noeuds)
   rechercheLocale(c, depart, meilleur, arrivee, limite)
   if (noeuds.length < 8) return meilleur
+  polirParFenetres(c, depart, meilleur, arrivee, limite)
   let cout = coutParcours(c, depart, meilleur, arrivee)
   const rnd = hasard(noeuds.length * 7919 + depart)
   const essais = opts.perturbations ?? 300
@@ -305,6 +342,8 @@ export function resoudre(c: number[][], depart: number, noeuds: number[], arrive
     const ce = coutParcours(c, depart, essai, arrivee)
     if (ce + EPS < cout) { meilleur = essai; cout = ce }
   }
+  // Dernier polissage (100 ms de marge au-delà de la limite).
+  polirParFenetres(c, depart, meilleur, arrivee, limite + 100)
   return meilleur
 }
 

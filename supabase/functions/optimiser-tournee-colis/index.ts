@@ -9,12 +9,12 @@
 //   - départ : celui fourni (position du livreur) ; sinon le départ des tournées de colis réglé
 //     dans Paramètres (centre de tri) ; sinon l'adresse du remettant lue sur la feuille ; sinon
 //     le dépôt de la société. Arrivée par défaut : retour au départ.
-// Sortie : { ok, approximatif, message?, km_total, duree_min, km_feuille, places, a_placer }
+// Sortie : { ok, approximatif (toujours false), km_total, duree_min, km_feuille, places, a_placer }
 //
 // Calcul : `_shared/tourneeRoute.ts` (pur, testé). Temps de conduite : matrice ORS
 // `driving-car` en blocs ≤ 3 500 éléments ; tracé : itinéraire IGN (Géoplateforme, sans clé)
 // par tronçons de 17 points, ORS en secours, ligne droite pour un tronçon qui échoue.
-// ORS indisponible → ligne droite × 1,3 à 35 km/h, `approximatif = true`, jamais bloquant.
+// Aucun secours : ORS ou IGN indisponible / quota atteint → erreur claire, rien n'est modifié.
 //
 // Accès (verify_jwt = true) : la requête tourne avec la session de l'appelant, donc la RLS de
 // `tournees_colis` décide (le salarié sur SA tournée non clôturée, le bureau avec
@@ -25,11 +25,12 @@ import { ExternalApiError, fetchJson } from '../_shared/http.ts'
 import { geocode } from '../_shared/geocode.ts'
 import {
   ARRET_S, IGN_MAX_POINTS, blocsMatrice, completerMatrices, decoderPolyligne, distanceParcours, encoderPolyligne,
-  matricesVolOiseau, passages, regrouperNoeuds, resoudre, troncons, type Matrices, type Point,
+  matriceCouts, passages, regrouperNoeuds, resoudre, troncons, type Matrices, type Point,
 } from '../_shared/tourneeRoute.ts'
 
-const ORS = 'https://api.openrouteservice.org/v2'
-const MESSAGE_APPROX = "Ordre approximatif : service d'itinéraire indisponible"
+// Adresse officielle depuis le 28/04/2026 (l'ancienne api.openrouteservice.org n'a plus que 10 % du quota
+// depuis le 27/08/2026 et ferme début 11/2026). Même clé.
+const ORS = 'https://api.heigit.org/openrouteservice/v2'
 const PARALLELE_ECRITURES = 10
 
 interface Arret {
@@ -92,39 +93,16 @@ async function tronconIgn(part: Point[]): Promise<Array<[number, number]> | null
   }
 }
 
-/** Le même tronçon par ORS (secours). null si échec. */
-async function tronconOrs(cle: string, part: Point[]): Promise<Array<[number, number]> | null> {
-  if (!cle) return null
-  try {
-    const r = await fetchJson<{ routes?: Array<{ geometry?: string }> }>(`${ORS}/directions/driving-car`, {
-      method: 'POST', headers: { Authorization: cle },
-      body: { coordinates: part.map(q => [q.lng, q.lat]), instructions: false },
-      timeoutMs: 15_000,
-    })
-    const geo = r?.routes?.[0]?.geometry
-    return geo ? decoderPolyligne(geo) : null
-  } catch (e) {
-    console.warn('optimiser-tournee-colis: tracé ORS', (e as Error)?.message, e instanceof ExternalApiError ? JSON.stringify(e.responseBody).slice(0, 300) : '')
-    return null
-  }
-}
-
-/**
- * Tracé routier du parcours, tronçon par tronçon (IGN, sinon ORS, sinon ligne droite pour ce
- * tronçon seulement). Renvoie la polyligne et le nombre de tronçons restés en ligne droite.
- */
-async function tracer(cle: string, pts: Point[]): Promise<{ polyline: string; droits: number; appels: number }> {
+/** Tracé routier du parcours, tronçon par tronçon (IGN). null si un tronçon échoue : pas de ligne droite. */
+async function tracer(pts: Point[]): Promise<{ polyline: string; appels: number } | null> {
   const parts = troncons(pts, IGN_MAX_POINTS)
   const tout: Array<[number, number]> = []
-  let droits = 0; let appels = 0
   for (const [k, part] of parts.entries()) {
-    appels++
-    let seg = await tronconIgn(part)
-    if (!seg) { appels++; seg = await tronconOrs(cle, part) }
-    if (!seg) { droits++; seg = part.map(q => [q.lat, q.lng] as [number, number]) }
+    const seg = await tronconIgn(part)
+    if (!seg) return null
     tout.push(...(k === 0 ? seg : seg.slice(1)))
   }
-  return { polyline: encoderPolyligne(tout), droits, appels }
+  return { polyline: encoderPolyligne(tout), appels: parts.length }
 }
 
 Deno.serve(async (req: Request) => {
@@ -198,20 +176,28 @@ Deno.serve(async (req: Request) => {
   const idx = noeuds.map((_, i) => i + 1)
   const arrivee = arriveeMode === 'depart' ? 0 : null
 
+  // Pas de calcul « à vol d'oiseau » : si ORS refuse (quota du jour, panne), on le dit et on
+  // ne touche à rien (l'ordre déjà enregistré reste celui d'avant).
   let m: Matrices
-  let approximatif = false
   let appels = 0
   try {
     if (!cleOrs) throw new Error('ORS_API_KEY absente')
     const r = await matriceOrs(cleOrs, pts)
     m = r.m; appels += r.appels
   } catch (e) {
-    console.warn('optimiser-tournee-colis: matrice ORS indisponible', (e as Error)?.message)
-    m = matricesVolOiseau(pts); approximatif = true
+    const quota = e instanceof ExternalApiError && e.status === 403
+    console.warn('optimiser-tournee-colis: matrice ORS indisponible', (e as Error)?.message, e instanceof ExternalApiError ? JSON.stringify(e.responseBody).slice(0, 200) : '')
+    return jsonResponse({
+      ok: false,
+      error: quota
+        ? "Limite du jour du service de routes atteinte : réessaie demain. L'ordre actuel est conservé."
+        : "Service de routes indisponible : réessaie dans un moment. L'ordre actuel est conservé.",
+    }, 503)
   }
 
   // ~0,8 s de calcul au plus (les fonctions Supabase coupent vers 2 s de calcul).
-  const ordre = resoudre(m.durees, 0, idx, arrivee, { limiteMs: 800 })
+  // On optimise la DISTANCE par la route (le plus court), pas le temps ni le vol d'oiseau.
+  const ordre = resoudre(matriceCouts(m), 0, idx, arrivee, { limiteMs: 800 })
   const pass = passages(m, 0, ordre)
   const kmTotal = distanceParcours(m, 0, ordre, arrivee) / 1000
   const kmFeuille = distanceParcours(m, 0, idx, arrivee) / 1000
@@ -220,13 +206,16 @@ Deno.serve(async (req: Request) => {
 
   // Tracé : départ → nœuds → (retour).
   const parcours = [pts[0], ...ordre.map(i => pts[i]), ...(arrivee != null ? [pts[0]] : [])]
-  const trace = await tracer(cleOrs, parcours)
+  const trace = await tracer(parcours)
+  if (!trace) {
+    return jsonResponse({ ok: false, error: "Tracé indisponible (service de l'IGN) : réessaie dans un moment. L'ordre actuel est conservé." }, 503)
+  }
   appels += trace.appels
   const polyline = trace.polyline
 
   const trajet = {
-    // approximatif = ORDRE calculé sans les temps de route ; trace_droit = tracé en lignes droites.
-    polyline, approximatif, trace_droit: trace.droits > 0,
+    // approximatif / trace_droit : toujours faux (plus de secours), gardés pour l'écran.
+    polyline, approximatif: false, trace_droit: false,
     km_total: Math.round(kmTotal * 10) / 10, km_feuille: Math.round(kmFeuille * 10) / 10,
     duree_min: Math.round(dureeS / 60), mode, depart: pts[0], depart_source: depart ? departSource : 'premier_arret',
     arrivee: arriveeMode, calcule_a: new Date().toISOString(),
@@ -269,12 +258,12 @@ Deno.serve(async (req: Request) => {
 
   console.log('optimiser-tournee-colis:', JSON.stringify({
     tournee: tourneeId, mode, noeuds: noeuds.length, arrets: aOrdonner.length, a_placer: aPlacer,
-    appels_externes: appels, troncons_droits: trace.droits, approximatif: trajet.approximatif, km: trajet.km_total, km_feuille: trajet.km_feuille,
+    appels_externes: appels, km: trajet.km_total, km_feuille: trajet.km_feuille,
     gain_km: Math.round((kmFeuille - kmTotal) * 10) / 10, duree_ms: Date.now() - t0, depart: trajet.depart_source,
   }))
 
   return jsonResponse({
-    ok: true, approximatif: trajet.approximatif, message: trajet.approximatif ? MESSAGE_APPROX : undefined,
+    ok: true, approximatif: false,
     km_total: trajet.km_total, duree_min: trajet.duree_min, km_feuille: trajet.km_feuille,
     places: ecritures.filter(e => e.ordre != null).length, a_placer: aPlacer,
   })
