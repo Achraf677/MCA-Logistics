@@ -17,8 +17,8 @@ const CLE_APP_NAV = 'mca.chauffeur.appNavigation'
 
 const VALEURS: readonly AppNavigation[] = ['google', 'waze', 'plans']
 
-/** Application par defaut : celle qui marche partout, sur tous les systemes. */
-export const APP_NAV_DEFAUT: AppNavigation = 'google'
+/** Application par defaut : Waze (choix de la societe, 19/10/2026) ; chaque chauffeur peut changer dans Moi. */
+export const APP_NAV_DEFAUT: AppNavigation = 'waze'
 
 export function lireAppNavigation(): AppNavigation {
   try {

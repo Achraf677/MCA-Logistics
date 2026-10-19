@@ -10,7 +10,7 @@ import { useProfile } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  CATEGORIES_DEPENSE, LIBELLE_MOYEN, LIBELLE_STATUT_DEPENSE, libelleCategorie, totalARembourser,
+  LIBELLE_MOYEN, LIBELLE_STATUT_DEPENSE, totalARembourser,
   type MoyenPaiement, type StatutDepense,
 } from '../../shared/lib/depenses'
 import {
@@ -95,7 +95,6 @@ export function MesDepenses() {
           <div className="flex-1 min-w-0">
             <span className="block text-sm text-[var(--text-muted)]">À te rembourser</span>
             <span className="block text-2xl font-semibold tabular-nums text-[var(--text)]">{formatMoney(aRembourser)}</span>
-            <span className="block text-xs text-[var(--text-muted)]">Tes notes de frais (payées de ta poche), hors refusées.</span>
           </div>
         </div>
         <button className={`${boutonPrimaireCls} w-full`} onClick={() => setFiche({ depense: null })}>
@@ -105,12 +104,10 @@ export function MesDepenses() {
 
       {erreur && <MessageErreur>Impossible de lire tes dépenses : {erreur}</MessageErreur>}
 
-      <h2 className="text-sm font-semibold text-[var(--text-muted)] uppercase tracking-wide">Mes dépenses</h2>
       {chargement ? (
         <div className="flex flex-col gap-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-20" />)}</div>
       ) : liste.length === 0 ? (
-        <EmptyState icon={<Receipt size={28} />} title="Aucune dépense"
-          description="Péage, plein, parking, repas : prends le justificatif en photo avec « Nouvelle dépense »." />
+        <EmptyState icon={<Receipt size={28} />} title="Aucune dépense" />
       ) : (
         <ul className="flex flex-col gap-2">
           {liste.map(t => (
@@ -126,7 +123,7 @@ export function MesDepenses() {
       )}
 
       {enGrand && (
-        <VisionneusePhoto src={enGrand.url} titre={libelleCategorie(enGrand.t.categorie)} onFermer={() => setEnGrand(null)} />
+        <VisionneusePhoto src={enGrand.url} titre="Justificatif" onFermer={() => setEnGrand(null)} />
       )}
 
       <ConfirmDialog open={!!aRetirer} title="Retirer la dépense"
@@ -158,12 +155,11 @@ function LigneDepense({ t, onOuvrir, onModifier, onRetirer }: {
           <Badge color={COULEUR_STATUT[statut] ?? 'muted'}>{LIBELLE_STATUT_DEPENSE[statut] ?? t.statut}</Badge>
         </div>
         <span className="text-sm text-[var(--text)] truncate">
-          {libelleCategorie(t.categorie)} · <span className="first-letter:uppercase">{libelleDateCourte(date)}</span>
+          {t.note ? `${t.note} · ` : ''}<span className="first-letter:uppercase">{libelleDateCourte(date)}</span>
         </span>
         {t.moyen_paiement && (
           <span className="text-xs text-[var(--text-muted)]">{LIBELLE_MOYEN[t.moyen_paiement as MoyenPaiement] ?? t.moyen_paiement}</span>
         )}
-        {t.note && <span className="text-xs text-[var(--text-muted)] truncate">{t.note}</span>}
         {statut === 'ignore' && t.motif_refus && (
           <span className="text-xs text-[var(--danger)]">Refusée : {t.motif_refus}</span>
         )}
@@ -282,7 +278,6 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
                 )}
                 <div className="flex-1 min-w-0 flex flex-col gap-1">
                   {nomPdf && <span className="text-xs text-[var(--text-muted)] truncate">{nomPdf}</span>}
-                  {apercuUrl && <span className="text-xs text-[var(--text-muted)]">Touche la photo pour la vérifier en grand.</span>}
                   {!depense && (
                     <button className={boutonSecondaireCls} onClick={reprise.ouvrir} disabled={envoi}>
                       <RotateCcw size={16} /> Reprendre
@@ -290,9 +285,7 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
                   )}
                 </div>
               </div>
-            ) : depense ? (
-              <span className="text-xs text-[var(--text-muted)]">Photo déjà envoyée.</span>
-            ) : (
+            ) : depense ? null : (
               <ChoixPhoto onFichier={choisir} accept={ACCEPT} disabled={envoi} />
             )}
           </div>
@@ -329,26 +322,9 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
             </label>
           </div>
 
-          {/* 4. Catégorie : boutons, pas de liste déroulante. */}
-          <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-[var(--text)]">Catégorie <span className="text-[var(--danger)]">*</span></span>
-            <div className="flex flex-wrap gap-2">
-              {CATEGORIES_DEPENSE.map(c => {
-                const on = form.categorie === c.valeur
-                return (
-                  <button key={c.valeur} type="button" onClick={() => setForm(f => ({ ...f, categorie: c.valeur }))} aria-pressed={on}
-                    className={`min-h-11 px-3 rounded-[var(--r-pill)] border text-sm ${
-                      on ? 'border-[var(--brand)] bg-[var(--brand)] text-white' : 'border-[var(--border)] text-[var(--text)]'}`}>
-                    {c.libelle}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
           <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-[var(--text)]">Note <span className="text-xs font-normal text-[var(--text-muted)]">(facultatif)</span></span>
-            <input className={champCls} value={form.note} placeholder="Péage A35, plein du Movano…"
+            <span className="text-sm font-medium text-[var(--text)]">Note <span className="text-[var(--danger)]">*</span></span>
+            <input className={champCls} value={form.note} placeholder="Ex. : péage A35"
               onChange={e => setForm(f => ({ ...f, note: e.target.value }))} />
           </label>
         </div>

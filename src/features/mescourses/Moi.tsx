@@ -1,71 +1,59 @@
-import { useEffect, useState } from 'react'
-import { Phone, Mail, IdCard, Stethoscope, FileText, Image as ImageIcon, Truck, LogOut, Smartphone, User } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Phone, Mail, IdCard, Stethoscope, FileText, Image as ImageIcon, Upload, User } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
-import { InstallAppButton } from '../../shared/ui/InstallAppButton'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
-import { getDownloadUrl } from '../../shared/lib/documents.queries'
+import { getDownloadUrl, uploadDocument } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
-import { getDocumentsDeMaFiche, getMesCourses, seDeconnecter } from './mescourses.queries'
-import { filtrerMesCourses, libelleCategorieDocument, libelleDateCourte, vehiculesDuJour } from './mescourses.logic'
+import { getDocumentsDeMaFiche } from './mescourses.queries'
+import { libelleCategorieDocument, libelleDateCourte } from './mescourses.logic'
 import { etatEcheance, type EtatEcheance } from './espace.logic'
 import type { EtatFiche, MaFiche } from './mescourses.types'
 import { Carte, TitreCarte, MessageErreur, GardeFiche, boutonSecondaireCls } from './EspaceCommun'
 
 /**
- * Moi : mes coordonnées, mon permis et ma visite médicale (avec alerte), mes
- * documents, mon véhicule du jour, installer l'appli, se déconnecter.
+ * Moi : mes coordonnées, mon permis et ma visite médicale (avec alerte), mes documents (et un
+ * envoi de document au bureau). Pas de « Se déconnecter » ici : le bouton du haut suffit.
  * Pas de « Appeler le bureau » : la société n'a pas de numéro de téléphone en
  * base (`companies` sans colonne téléphone, vérifié le 13/10/2026).
  */
 export function Moi({ fiche }: { fiche: EtatFiche }) {
-  const [sortie, setSortie] = useState(false)
-  const deconnexion = async () => { setSortie(true); await seDeconnecter() }
   return (
     <div className="flex flex-col gap-4">
       <GardeFiche fiche={fiche}>{f => <MoiFiche fiche={f} />}</GardeFiche>
-
-      <Carte>
-        <TitreCarte icone={<Smartphone size={18} />}>L'appli sur ton téléphone</TitreCarte>
-        <p className="text-sm text-[var(--text-muted)]">
-          Installe le site comme une appli : il s'ouvre d'un geste depuis l'écran d'accueil.
-        </p>
-        <InstallAppButton />
-      </Carte>
-
-      <button className={`${boutonSecondaireCls} w-full text-[var(--danger)]`} onClick={deconnexion} disabled={sortie}>
-        <LogOut size={18} /> {sortie ? 'Déconnexion…' : 'Se déconnecter'}
-      </button>
     </div>
   )
 }
 
 function MoiFiche({ fiche }: { fiche: MaFiche }) {
   const { toast } = useToast()
-  const { profile } = useProfile()
+  const { companyId } = useProfile()
   const auj = toLocalISO(new Date())
   const [docs, setDocs] = useState<DocumentRow[] | null>(null)
   const [erreurDocs, setErreurDocs] = useState<string | null>(null)
-  const [vehicules, setVehicules] = useState<string[] | null>(null)
   const [ouverture, setOuverture] = useState<string | null>(null)
+  const [envoi, setEnvoi] = useState(false)
+  const fichierRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    let annule = false
-    getDocumentsDeMaFiche(fiche.id).then(({ data, error }) => {
-      if (annule) return
-      setErreurDocs(error ? error.message : null)
-      setDocs(data)
-    })
-    // Véhicule du jour : celui de SES courses (un président voit toutes les courses).
-    getMesCourses(auj, auj).then(({ data }) => {
-      if (annule) return
-      const siennes = profile?.role === 'chauffeur' ? (data ?? []) : filtrerMesCourses(data ?? [], fiche.id)
-      setVehicules(vehiculesDuJour(siennes))
-    })
-    return () => { annule = true }
-  }, [fiche.id, auj, profile?.role])
+  const charger = () => getDocumentsDeMaFiche(fiche.id).then(({ data, error }) => {
+    setErreurDocs(error ? error.message : null)
+    setDocs(data)
+  })
+  useEffect(() => { charger() }, [fiche.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Dépose un document sur SA fiche Équipe : le bureau le voit dans la fiche. */
+  const envoyer = async (f: File | undefined) => {
+    if (!f || !companyId) return
+    setEnvoi(true)
+    const { error } = await uploadDocument(f, companyId, { entity_type: 'team_member', entity_id: fiche.id, category: 'Administratif' })
+    setEnvoi(false)
+    if (fichierRef.current) fichierRef.current.value = ''
+    if (error) { toast(`Document non envoyé : ${error.message}`, 'error'); return }
+    toast('Document envoyé au bureau')
+    await charger()
+  }
 
   const ouvrir = async (d: DocumentRow) => {
     setOuverture(d.id)
@@ -91,18 +79,14 @@ function MoiFiche({ fiche }: { fiche: MaFiche }) {
       </Carte>
 
       <Carte>
-        <TitreCarte icone={<Truck size={18} />}>Mon véhicule aujourd'hui</TitreCarte>
-        {vehicules == null ? <Skeleton className="h-6" />
-          : vehicules.length === 0
-            ? <p className="text-sm text-[var(--text-muted)]">Aucune course aujourd'hui, donc pas de véhicule attribué.</p>
-            : <p className="text-base font-medium text-[var(--text)]">{vehicules.join(' / ')}</p>}
-      </Carte>
-
-      <Carte>
         <TitreCarte icone={<FileText size={18} />}>Mes documents</TitreCarte>
+        <input ref={fichierRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={e => envoyer(e.target.files?.[0])} />
+        <button className={`${boutonSecondaireCls} w-full`} disabled={envoi} onClick={() => fichierRef.current?.click()}>
+          <Upload size={18} /> {envoi ? 'Envoi…' : 'Envoyer un document au bureau'}
+        </button>
         {erreurDocs && <MessageErreur>Documents illisibles : {erreurDocs}</MessageErreur>}
         {docs == null ? <Skeleton className="h-12" />
-          : docs.length === 0 ? <p className="text-sm text-[var(--text-muted)]">Aucun document sur ta fiche.</p>
+          : docs.length === 0 ? <p className="text-sm text-[var(--text-muted)]">Aucun document.</p>
           : (
             <ul className="flex flex-col gap-1.5">
               {docs.map(d => (
