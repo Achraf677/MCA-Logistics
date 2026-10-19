@@ -20,6 +20,8 @@ export interface ArretAPlacer {
   lng: number | null
   numero: string | null
   rang: number
+  /** Village de l'arrêt : la tournée fait village par village (`penaliserChangementsVillage`). */
+  commune?: string | null
 }
 
 export interface Noeud {
@@ -30,6 +32,8 @@ export interface Noeud {
   arrets: string[]
   /** Plus petit rang de la feuille (sert à l'ordre de référence « feuille »). */
   rang: number
+  /** Village du nœud (celui de son premier arrêt), null si inconnu. */
+  commune: string | null
 }
 
 export interface Point {
@@ -74,7 +78,7 @@ export function regrouperNoeuds(arrets: ArretAPlacer[]): Noeud[] {
         const a = numeroTri(x.numero); const b = numeroTri(y.numero)
         return a.pair - b.pair || a.valeur - b.valeur || x.rang - y.rang
       })
-      return { cle, lat: n.lat, lng: n.lng, arrets: tries.map(a => a.id), rang: Math.min(...n.arrets.map(a => a.rang)) }
+      return { cle, lat: n.lat, lng: n.lng, arrets: tries.map(a => a.id), rang: Math.min(...n.arrets.map(a => a.rang)), commune: tries[0].commune?.trim() || null }
     })
     .sort((a, b) => a.rang - b.rang || (a.cle < b.cle ? -1 : 1))
 }
@@ -149,6 +153,20 @@ export function completerMatrices(m: { durees: (number | null)[][]; distances: (
  */
 export function matriceCouts(m: Matrices, poidsTemps = 0.05): number[][] {
   return m.distances.map((l, i) => l.map((d, j) => d + poidsTemps * m.durees[i][j]))
+}
+
+/** Coût d'un changement de village (1 000 km) : bien plus que tout gain possible en route. */
+export const PENALITE_VILLAGE = 1_000_000
+
+/**
+ * Village par village : chaque passage d'un village à un autre coûte `PENALITE_VILLAGE` en plus.
+ * Le plus court devient alors « le moins de changements de village possible (chaque village en un
+ * seul bloc), puis le plus court par la route ». `communes[i]` = village du nœud i (null = départ
+ * ou village inconnu : aucune pénalité). Les mètres réels se lisent toujours sur `m.distances`.
+ */
+export function penaliserChangementsVillage(c: number[][], communes: (string | null)[], penalite = PENALITE_VILLAGE): number[][] {
+  const cle = communes.map(v => (v ? v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() : null))
+  return c.map((l, i) => l.map((v, j) => (cle[i] && cle[j] && cle[i] !== cle[j] ? v + penalite : v)))
 }
 
 // ── 3. Solveur ──────────────────────────────────────────────────────────────
