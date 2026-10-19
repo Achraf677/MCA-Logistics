@@ -417,7 +417,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
           {tournee.trajet && !sansCalcul(mode) && <span>{libelleDistance(tournee.trajet.km_total * 1000)}</span>}
           {calcul && <span className="text-sm font-medium text-[var(--text-muted)]">Calcul…</span>}
         </p>
-        <div className="grid grid-flow-col auto-cols-fr gap-1.5" role="toolbar" aria-label="Gestes de la tournée">
+        <div className="grid grid-flow-col auto-cols-fr gap-1" role="toolbar" aria-label="Gestes de la tournée">
           {([['liste', List, 'Liste'], ['carte', IconeCarte, 'Carte']] as const).map(([v, Ic, l]) => (
             <BtnHaut key={v} icone={Ic} libelle={l} actif={vue === v} onClick={() => changerVue(v)} />
           ))}
@@ -665,7 +665,7 @@ function PartagePosition({ tournee, memberId }: { tournee: TourneeColis; memberI
       style={couleur ? { color: couleur, borderColor: couleur } : undefined}
       className={`relative min-h-14 min-w-0 px-0.5 flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] border ${actif ? '' : 'border-[var(--border)] text-[var(--text-muted)]'}`}>
       <Radio size={20} />
-      <span className="text-[11px] leading-none font-medium truncate max-w-full">{actif ? 'Partagée' : 'Partager'}</span>
+      <span className="text-[10px] leading-none font-medium tracking-tighter whitespace-nowrap">{actif ? 'Partagée' : 'Partager'}</span>
       {actif && etat !== 'refus' && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[var(--success)]" />}
     </button>
   )
@@ -681,7 +681,7 @@ function BtnHaut({ icone: Icone, libelle, titre, onClick, disabled, tourne, acti
       className={`min-h-14 min-w-0 px-0.5 flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] border disabled:opacity-40 ${
         actif ? 'border-[var(--brand)] text-[var(--brand)]' : 'border-[var(--border)] text-[var(--text)]'}`}>
       <Icone size={20} className={tourne ? 'animate-spin' : ''} />
-      <span className="text-[11px] leading-none font-medium truncate max-w-full">{libelle}</span>
+      <span className="text-[10px] leading-none font-medium tracking-tighter whitespace-nowrap">{libelle}</span>
     </button>
   )
 }
