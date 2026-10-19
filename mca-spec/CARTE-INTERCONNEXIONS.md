@@ -205,3 +205,10 @@
   bureau = `planning.tournees` view / update / delete ou président).
 - Toute NOUVELLE table lisible par la société doit recevoir sa policy « pas pour le salarié »
   (ou « les siennes ») dans la même migration.
+- **Scan de feuille de route côté serveur (19/10/2026)** : tables `scans_feuille_route` (statuts brouillon →
+  en_cours → pret → termine / annule / erreur) et `scans_feuille_route_pages` (photo en data URL, résultat par
+  page) ; policy unique par table (salarié = SES scans, bureau = `planning.tournees` update). Écrivains :
+  front (photos, création, annulation, terminer) + Edge `scanner-feuille-route` (résultats, clé de service) ;
+  lecteurs : `ScanFeuilleRoute`, `useScanOuvert` (pastille + carte « Aujourd'hui »), `MaTournee`,
+  `TourneesColisDuJour`. `_shared/lireFeuilleCore.ts` = lecture d'une page (aussi `lire-feuille-route`).
+- `optimiser-tournee-colis` mode `suivre` : lit `ordre` des arrêts, écrit `trajet` + `eta_min` (jamais `ordre`).

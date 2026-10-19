@@ -213,3 +213,7 @@ Pas bon — reste
 - Heure prévue passée → rouge ; dans l'heure → orange.
 - Ticket flottant → apparaît dans Finance › Charges (tickets à traiter).
 - PC, président avec fiche : bascule Mes courses / Tous, nom du chauffeur.
+- (19/10/2026) Ma tournée : bandeau du haut collé (Liste / Carte / Réinitialiser / Par la fin / Depuis ici /
+  Partager), flèches par village, trajet recalculé après chaque changement à la main, double validation de 3 s
+  sur Livré / Remis / Collecté, scan lu en arrière-plan (photos envoyées au fil de l'eau, reprise au retour).
+  À tester : scanner, fermer la page juste après « Lire », revenir ; « Par la fin » ; « Livré » puis « Annuler ».
