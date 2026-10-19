@@ -25,7 +25,7 @@ import { ExternalApiError, fetchJson } from '../_shared/http.ts'
 import { geocode } from '../_shared/geocode.ts'
 import {
   ARRET_S, IGN_MAX_POINTS, blocsMatrice, completerMatrices, decoderPolyligne, distanceParcours, encoderPolyligne,
-  matriceCouts, matricesVolOiseau, passages, regrouperNoeuds, resoudre, troncons, type Matrices, type Point,
+  matriceCouts, passages, regrouperNoeuds, resoudre, troncons, type Matrices, type Point,
 } from '../_shared/tourneeRoute.ts'
 
 const ORS = 'https://api.openrouteservice.org/v2'
@@ -71,20 +71,6 @@ async function matriceOrs(cle: string, pts: Point[]): Promise<{ m: Matrices; app
     }
   }
   return { m: completerMatrices({ durees, distances }, pts), appels: blocs.length }
-}
-
-/**
- * Secours si ORS refuse (quota du jour dépassé…) : matrice OSRM (routes OpenStreetMap), un seul
- * appel jusqu'à 100 points. Service public sans garantie : utilisé en second choix seulement.
- */
-const OSRM = 'https://router.project-osrm.org/table/v1/driving'
-async function matriceOsrm(pts: Point[]): Promise<Matrices> {
-  if (pts.length > 100) throw new Error('OSRM : plus de 100 points')
-  const coords = pts.map(p => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';')
-  const r = await fetchJson<{ code?: string; durations?: (number | null)[][]; distances?: (number | null)[][] }>(
-    `${OSRM}/${coords}?annotations=duration,distance`, { timeoutMs: 20_000 })
-  if (r?.code !== 'Ok' || !r.durations || !r.distances) throw new Error('matrice OSRM incomplète')
-  return completerMatrices({ durees: r.durations, distances: r.distances }, pts)
 }
 
 const IGN = 'https://data.geopf.fr/navigation/itineraire'
@@ -212,24 +198,24 @@ Deno.serve(async (req: Request) => {
   const idx = noeuds.map((_, i) => i + 1)
   const arrivee = arriveeMode === 'depart' ? 0 : null
 
+  // Pas de calcul « à vol d'oiseau » : si ORS refuse (quota du jour, panne), on le dit et on
+  // ne touche à rien (l'ordre déjà enregistré reste celui d'avant).
   let m: Matrices
-  let approximatif = false
-  let erreurOrs: string | null = null
+  const approximatif = false
   let appels = 0
   try {
     if (!cleOrs) throw new Error('ORS_API_KEY absente')
     const r = await matriceOrs(cleOrs, pts)
     m = r.m; appels += r.appels
   } catch (e) {
-    erreurOrs = `${(e as Error)?.message ?? 'erreur'} ${e instanceof ExternalApiError ? JSON.stringify(e.responseBody).slice(0, 200) : ''}`.trim()
-    console.warn('optimiser-tournee-colis: matrice ORS indisponible', erreurOrs)
-    try {
-      m = await matriceOsrm(pts); appels++
-    } catch (e2) {
-      erreurOrs += ` | OSRM : ${(e2 as Error)?.message ?? 'erreur'}`
-      console.warn('optimiser-tournee-colis: matrice OSRM indisponible', (e2 as Error)?.message)
-      m = matricesVolOiseau(pts); approximatif = true
-    }
+    const quota = e instanceof ExternalApiError && e.status === 403
+    console.warn('optimiser-tournee-colis: matrice ORS indisponible', (e as Error)?.message, e instanceof ExternalApiError ? JSON.stringify(e.responseBody).slice(0, 200) : '')
+    return jsonResponse({
+      ok: false,
+      error: quota
+        ? "Limite du jour du service de routes atteinte : réessaie demain. L'ordre actuel est conservé."
+        : "Service de routes indisponible : réessaie dans un moment. L'ordre actuel est conservé.",
+    }, 503)
   }
 
   // ~0,8 s de calcul au plus (les fonctions Supabase coupent vers 2 s de calcul).
@@ -249,7 +235,7 @@ Deno.serve(async (req: Request) => {
 
   const trajet = {
     // approximatif = ORDRE calculé sans les temps de route ; trace_droit = tracé en lignes droites.
-    polyline, approximatif, erreur_ors: erreurOrs, trace_droit: trace.droits > 0,
+    polyline, approximatif, trace_droit: trace.droits > 0,
     km_total: Math.round(kmTotal * 10) / 10, km_feuille: Math.round(kmFeuille * 10) / 10,
     duree_min: Math.round(dureeS / 60), mode, depart: pts[0], depart_source: depart ? departSource : 'premier_arret',
     arrivee: arriveeMode, calcule_a: new Date().toISOString(),
