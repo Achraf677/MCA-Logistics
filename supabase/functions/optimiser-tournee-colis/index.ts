@@ -8,7 +8,7 @@
 //     (les traités gardent leur place, devant) — typiquement « Recalculer depuis ma position ».
 //   - 'suivre' : l'ordre ENREGISTRÉ (changé à la main : village déplacé, tournée inversée, glissé-déposé) n'est
 //     pas recalculé ; on refait seulement kilomètres, durée, heures de passage et tracé le long de cet ordre
-//     (tronçons ORS directions, pas de matrice). Départ : dernier arrêt traité, sinon le départ habituel.
+//     (tracé IGN, qui donne aussi distance et durée de chaque étape : ni ORS ni matrice). Départ : dernier arrêt traité, sinon le départ habituel.
 //   - départ : celui fourni (position du livreur) ; sinon le départ des tournées de colis réglé
 //     dans Paramètres (centre de tri) ; sinon l'adresse du remettant lue sur la feuille ; sinon
 //     le dépôt de la société. Arrivée par défaut : retour au départ.
@@ -79,8 +79,10 @@ async function matriceOrs(cle: string, pts: Point[]): Promise<{ m: Matrices; app
 
 const IGN = 'https://data.geopf.fr/navigation/itineraire'
 
-/** Un tronçon (≤ 17 points) par l'itinéraire IGN (BD TOPO, sans clé). null si échec. */
-async function tronconIgn(part: Point[]): Promise<Array<[number, number]> | null> {
+interface Etape { distance: number; duration: number }
+
+/** Un tronçon (≤ 17 points) par l'itinéraire IGN (BD TOPO, sans clé) : tracé + distance / durée de chaque étape. null si échec. */
+async function tronconIgn(part: Point[]): Promise<{ pts: Array<[number, number]>; etapes: Etape[] } | null> {
   const p = (q: Point) => `${q.lng.toFixed(6)},${q.lat.toFixed(6)}`
   const params = new URLSearchParams({
     resource: 'bdtopo-osrm', profile: 'car', optimization: 'fastest', geometryFormat: 'polyline', getSteps: 'false',
@@ -88,42 +90,31 @@ async function tronconIgn(part: Point[]): Promise<Array<[number, number]> | null
   })
   if (part.length > 2) params.set('intermediates', part.slice(1, -1).map(p).join('|'))
   try {
-    const r = await fetchJson<{ geometry?: string }>(`${IGN}?${params.toString()}`, { timeoutMs: 15_000 })
-    return r?.geometry ? decoderPolyligne(r.geometry) : null
+    const r = await fetchJson<{ geometry?: string; portions?: Array<{ distance?: number; duration?: number }> }>(`${IGN}?${params.toString()}`, { timeoutMs: 15_000 })
+    if (!r?.geometry) return null
+    const etapes = (r.portions ?? []).map(x => ({ distance: Number(x.distance ?? 0), duration: Number(x.duration ?? 0) }))
+    return { pts: decoderPolyligne(r.geometry), etapes }
   } catch (e) {
     console.warn('optimiser-tournee-colis: tracé IGN', (e as Error)?.message, e instanceof ExternalApiError ? JSON.stringify(e.responseBody).slice(0, 300) : '')
     return null
   }
 }
 
-/** Tracé routier du parcours, tronçon par tronçon (IGN). null si un tronçon échoue : pas de ligne droite. */
-async function tracer(pts: Point[]): Promise<{ polyline: string; appels: number } | null> {
+/**
+ * Tracé routier du parcours, tronçon par tronçon (IGN), avec distance et durée de chaque étape
+ * (une par point d'arrêt). null si un tronçon échoue : pas de ligne droite.
+ */
+async function tracer(pts: Point[]): Promise<{ polyline: string; appels: number; etapes: Etape[] } | null> {
   const parts = troncons(pts, IGN_MAX_POINTS)
   const tout: Array<[number, number]> = []
+  const etapes: Etape[] = []
   for (const [k, part] of parts.entries()) {
     const seg = await tronconIgn(part)
     if (!seg) return null
-    tout.push(...(k === 0 ? seg : seg.slice(1)))
+    tout.push(...(k === 0 ? seg.pts : seg.pts.slice(1)))
+    etapes.push(...seg.etapes)
   }
-  return { polyline: encoderPolyligne(tout), appels: parts.length }
-}
-
-/** Tronçons d'un parcours (≤ 50 points par appel ORS directions) : distance et durée de chaque étape. */
-async function etapesOrs(cle: string, pts: Point[]): Promise<Array<{ distance: number; duration: number }>> {
-  const out: Array<{ distance: number; duration: number }> = []
-  for (let i = 0; i < pts.length - 1; i += 49) {
-    const part = pts.slice(i, Math.min(pts.length, i + 50))
-    const r = await fetchJson<{ routes?: Array<{ segments?: Array<{ distance: number; duration: number }> }> }>(`${ORS}/directions/driving-car`, {
-      method: 'POST',
-      headers: { Authorization: cle },
-      body: { coordinates: part.map(p => [p.lng, p.lat]), radiuses: part.map(() => -1), instructions: false },
-      timeoutMs: 20_000,
-    })
-    const seg = r?.routes?.[0]?.segments
-    if (!seg || seg.length !== part.length - 1) throw new Error('itinéraire ORS incomplet')
-    out.push(...seg)
-  }
-  return out
+  return { polyline: encoderPolyligne(tout), appels: parts.length, etapes }
 }
 
 /** Réponse claire quand ORS refuse : quota du jour, accès, panne. Rien n'est modifié. */
@@ -218,20 +209,19 @@ Deno.serve(async (req: Request) => {
   const arrivee = arriveeMode === 'depart' ? 0 : null
 
   if (mode === 'suivre') {
-    if (!cleOrs) return jsonResponse({ ok: false, error: 'ORS_API_KEY absente' }, 503)
     const suite = noeudsDansOrdre(noeuds, new Map(aOrdonner.map(a => [a.id, a.ordre])))
     const parcoursS = [pts[0], ...suite.map(n => ({ lat: n.lat, lng: n.lng })), ...(arrivee != null ? [pts[0]] : [])]
-    let etapes: Array<{ distance: number; duration: number }>
-    try { etapes = await etapesOrs(cleOrs, parcoursS) } catch (e) { return erreurRoutes(e) }
+    // Tracé IGN le long de l'ordre enregistré : il donne aussi distance et durée de chaque étape (sans ORS).
+    const traceS = await tracer(parcoursS)
+    if (!traceS || traceS.etapes.length !== parcoursS.length - 1) {
+      return jsonResponse({ ok: false, error: "Tracé indisponible (service de l'IGN) : réessaie dans un moment. L'ordre actuel est conservé." }, 503)
+    }
+    const etapes = traceS.etapes
     const aller = etapes.slice(0, suite.length)
     const passS = passagesDepuisEtapes(aller)
     const retour = arrivee != null ? etapes[suite.length] : null
     const kmS = etapes.reduce((s, x) => s + x.distance, 0) / 1000
     const dureeSuivre = passS[passS.length - 1].etaMin * 60 + ARRET_S + (retour?.duration ?? 0)
-    const traceS = await tracer(parcoursS)
-    if (!traceS) {
-      return jsonResponse({ ok: false, error: "Tracé indisponible (service de l'IGN) : réessaie dans un moment. L'ordre actuel est conservé." }, 503)
-    }
     const avant = (t.trajet ?? {}) as Record<string, unknown>
     const trajetS = {
       ...avant,

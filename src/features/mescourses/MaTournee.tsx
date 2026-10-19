@@ -14,7 +14,7 @@ import { toLocalISO } from '../../shared/lib/dates'
 import { LIBELLE_STATUT_ARRET, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
 import {
   arretsAPlacer, bandeauOrdre, deplacer, doitEnvoyerPosition, grouperEnSuite, libelleDistance, modeOrdre,
-  nonTraites, ordreManuel, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
+  nonTraites, ordreInverse, ordreManuel, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
 } from '../../shared/lib/tourneesColisRoute'
 import {
   listerTourneesColis, arretsDesTournees, supprimerTourneeColis, nomsClients, calculerItineraire,
@@ -352,7 +352,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   const groupesComplets = useMemo(
     () => grouperEnSuite([...(prochain ? [prochain] : []), ...ordreAffiche.aFaire]),
     [prochain, ordreAffiche.aFaire])
-  const inverser = () => appliquerOrdre(groupesComplets.flatMap(g => g.arrets.map(a => a.id)).reverse())
+  const inverser = () => appliquerOrdre(ordreInverse(arrets, mode))
   const deplacerVillage = (idArret: string, vers: 'premier' | 'haut' | 'bas') => {
     const i = groupesComplets.findIndex(g => g.arrets.some(a => a.id === idArret))
     if (i < 0) return
