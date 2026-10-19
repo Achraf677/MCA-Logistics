@@ -9,7 +9,7 @@ import {
   LIBELLE_TYPE_ARRET, arretVide, fusionnerEntetes, manquesApercu, modifierArretLu, ordonnerParPage, ordreHabituel, pagesEnDouble,
   pagesManquantes, retirerPhoto, totauxApercu, type ArretLu, type EnteteFeuille, type PageLue, type TypeArretColis,
 } from '../lib/tourneesColis'
-import { compresserPage, creerTourneeColis, lirePageFeuille } from '../lib/tourneesColis.queries'
+import { calculerItineraire, compresserPage, creerTourneeColis, lirePageFeuille } from '../lib/tourneesColis.queries'
 
 interface Page {
   cle: string
@@ -176,9 +176,13 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     const { id, error } = await creerTourneeColis({
       companyId, memberId, date, clientId: clientId || null, entete, arrets: ordonnes,
     })
+    if (error || !id) { setCreation(false); toast(error?.message ?? 'Création impossible', 'error'); return }
+    // Ordre par les routes calculé tout de suite : la tournée s'ouvre déjà optimisée. Si le service
+    // de routes refuse (limite du jour…), la tournée reste créée, dans l'ordre habituel.
+    const calcul = await calculerItineraire({ tourneeId: id, mode: 'tout' })
     setCreation(false)
-    if (error || !id) { toast(error?.message ?? 'Création impossible', 'error'); return }
     toast(`Tournée créée : ${totaux.arrets + totaux.collectes} arrêts`, 'success')
+    if (calcul.error) toast(`Ordre non calculé : ${calcul.error.message}`, 'error')
     onCree(id)
   }
 

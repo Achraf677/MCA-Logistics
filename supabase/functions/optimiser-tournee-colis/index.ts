@@ -185,12 +185,15 @@ Deno.serve(async (req: Request) => {
     const r = await matriceOrs(cleOrs, pts)
     m = r.m; appels += r.appels
   } catch (e) {
-    const quota = e instanceof ExternalApiError && e.status === 403
+    const brut = e instanceof ExternalApiError ? JSON.stringify(e.responseBody ?? '') : ''
+    const quota = e instanceof ExternalApiError && e.status === 403 && /quota/i.test(brut)
+    const refuse = e instanceof ExternalApiError && e.status === 403 && !quota
     console.warn('optimiser-tournee-colis: matrice ORS indisponible', (e as Error)?.message, e instanceof ExternalApiError ? JSON.stringify(e.responseBody).slice(0, 200) : '')
     return jsonResponse({
       ok: false,
       error: quota
         ? "Limite du jour du service de routes atteinte : réessaie demain. L'ordre actuel est conservé."
+        : refuse ? `Accès refusé par le service de routes (clé ou droits) : ${brut.slice(0, 120)}. L'ordre actuel est conservé.`
         : "Service de routes indisponible : réessaie dans un moment. L'ordre actuel est conservé.",
     }, 503)
   }
