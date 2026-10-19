@@ -16,7 +16,7 @@ create table if not exists public.scans_feuille_route (
   member_id uuid not null references public.team_members(id) on delete cascade,
   date date not null,
   client_id uuid references public.clients(id) on delete set null,
-  statut text not null default 'en_cours' check (statut in ('en_cours', 'pret', 'erreur', 'termine', 'annule')),
+  statut text not null default 'brouillon' constraint scans_feuille_route_statut_check check (statut in ('brouillon', 'en_cours', 'pret', 'erreur', 'termine', 'annule')),
   erreur text,
   tournee_id uuid references public.tournees_colis(id) on delete set null,
   battement timestamptz not null default now(),

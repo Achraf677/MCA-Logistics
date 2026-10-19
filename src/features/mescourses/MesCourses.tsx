@@ -99,7 +99,7 @@ export function MesCourses() {
         {onglet === 'depenses' && <MesDepenses />}
         {onglet === 'moi' && <Moi fiche={fiche} />}
       </div>
-      <BarreOnglets actif={onglet} onChange={changerOnglet} pastilles={{ tournee: scanOuvert?.statut === 'pret' || scanOuvert?.statut === 'erreur' }} />
+      <BarreOnglets actif={onglet} onChange={changerOnglet} pastilles={{ tournee: !!scanOuvert && scanOuvert.statut !== 'en_cours' }} />
     </Shell>
   )
 }

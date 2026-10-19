@@ -140,6 +140,7 @@ function CarteScan({ scan, onOuvrir }: { scan: ScanSuivi; onOuvrir: () => void }
         <p className="flex-1 min-w-0 text-base font-semibold text-[var(--text)]">
           {enCours ? `Lecture de ta feuille : ${faites} / ${total} page${total > 1 ? 's' : ''}`
             : scan.statut === 'pret' ? 'Ta feuille est lue : vérifie et crée ta tournée'
+            : scan.statut === 'brouillon' ? 'Scan de ta feuille commencé : reprends-le'
             : 'Lecture de ta feuille impossible'}
         </p>
       </div>
@@ -149,7 +150,7 @@ function CarteScan({ scan, onOuvrir }: { scan: ScanSuivi; onOuvrir: () => void }
         </div>
       )}
       <button className={`${boutonPrimaireCls} w-full`} onClick={onOuvrir}>
-        <RouteIcon size={18} /> {enCours ? 'Voir la lecture' : scan.statut === 'pret' ? 'Voir mes arrêts' : 'Réessayer'}
+        <RouteIcon size={18} /> {enCours ? 'Voir la lecture' : scan.statut === 'pret' ? 'Voir mes arrêts' : scan.statut === 'brouillon' ? 'Reprendre' : 'Réessayer'}
       </button>
     </Carte>
   )

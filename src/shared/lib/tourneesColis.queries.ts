@@ -98,7 +98,7 @@ export async function lirePageFeuille(dataUrl: string, page: number, communePrec
 
 // ── Lecture en arrière-plan (scan côté serveur) ──────────────────────────────
 
-export type StatutScan = 'en_cours' | 'pret' | 'erreur' | 'termine' | 'annule'
+export type StatutScan = 'brouillon' | 'en_cours' | 'pret' | 'erreur' | 'termine' | 'annule'
 
 export interface ScanPage {
   numero: number
@@ -129,34 +129,64 @@ async function pagesDuScan(scanId: string): Promise<ScanPage[]> {
   return (data ?? []) as unknown as ScanPage[]
 }
 
+/** Scan « brouillon » : créé dès la première photo, les photos partent au fur et à mesure (avant même « Lire »). */
+export async function creerScan(p: { companyId: string; memberId: string; date: string; clientId: string | null }):
+  Promise<{ id: string | null; error: Error | null }> {
+  const { data, error } = await supabase.from('scans_feuille_route').insert({
+    company_id: p.companyId, member_id: p.memberId, date: p.date, client_id: p.clientId,
+  }).select('id').single()
+  if (error || !data) return { id: null, error: erreurClaire(error) ?? new Error(REFUS) }
+  return { id: (data as { id: string }).id, error: null }
+}
+
+/** Envoie UNE photo (déjà compressée) au serveur : page `numero` du scan. */
+export async function envoyerPhotoScan(p: { scanId: string; companyId: string; numero: number; image: string }) {
+  const { error } = await supabase.from('scans_feuille_route_pages').insert({
+    scan_id: p.scanId, company_id: p.companyId, numero: p.numero, image: p.image,
+  })
+  return { error: erreurClaire(error) }
+}
+
+/** Retire une photo envoyée ; les suivantes remontent d'un numéro (les numéros restent 1, 2, 3…). */
+export async function retirerPhotoScan(scanId: string, numero: number) {
+  const { error } = await supabase.from('scans_feuille_route_pages').delete().eq('scan_id', scanId).eq('numero', numero)
+  if (error) return { error: erreurClaire(error) }
+  const { data } = await supabase.from('scans_feuille_route_pages').select('numero').eq('scan_id', scanId).gt('numero', numero).order('numero')
+  for (const r of (data ?? []) as Array<{ numero: number }>) {
+    const { error: e2 } = await supabase.from('scans_feuille_route_pages').update({ numero: r.numero - 1 }).eq('scan_id', scanId).eq('numero', r.numero)
+    if (e2) return { error: erreurClaire(e2) }
+  }
+  return { error: null }
+}
+
 /**
- * Envoie les photos (déjà compressées) puis lance la lecture sur le SERVEUR : on peut ensuite
- * changer d'onglet ou quitter le site, la lecture continue. `scanId` = ajouter des pages à un scan existant.
+ * Lance la lecture sur le serveur. Requête minuscule envoyée avec `keepalive` : elle part même si
+ * l'on ferme la page ou quitte le site à l'instant du clic. Les photos, elles, sont déjà sur le serveur.
  */
-export async function lancerScan(p: {
-  companyId: string; memberId: string; date: string; clientId: string | null; images: string[]; scanId?: string | null
-}): Promise<{ id: string | null; error: Error | null }> {
-  let id = p.scanId ?? null
-  let debut = 0
-  if (id) {
-    const { data } = await supabase.from('scans_feuille_route_pages').select('numero').eq('scan_id', id)
-    debut = Math.max(0, ...((data ?? []) as Array<{ numero: number }>).map(x => x.numero))
-    await supabase.from('scans_feuille_route').update({ client_id: p.clientId }).eq('id', id)
-  } else {
-    const { data, error } = await supabase.from('scans_feuille_route').insert({
-      company_id: p.companyId, member_id: p.memberId, date: p.date, client_id: p.clientId,
-    }).select('id').single()
-    if (error || !data) return { id: null, error: erreurClaire(error) ?? new Error(REFUS) }
-    id = (data as { id: string }).id
-  }
-  for (const [i, image] of p.images.entries()) {
-    const { error } = await supabase.from('scans_feuille_route_pages').insert({
-      scan_id: id, company_id: p.companyId, numero: debut + i + 1, image,
+export async function lancerLecture(scanId: string, pages?: number[]): Promise<{ error: Error | null }> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) return { error: new Error('Session expirée : reconnecte-toi.') }
+  try {
+    const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/scanner-feuille-route`, {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: import.meta.env.VITE_SUPABASE_ANON_KEY as string,
+      },
+      body: JSON.stringify({ scan_id: scanId, ...(pages ? { pages } : {}) }),
     })
-    if (error) return { id: null, error: erreurClaire(error) }
+    if (!res.ok && res.status !== 202) {
+      const d = await res.json().catch(() => null) as { error?: string } | null
+      return { error: new Error(d?.error ?? 'Lancement de la lecture impossible : réessaie.') }
+    }
+    return { error: null }
+  } catch {
+    // `keepalive` refusé par ce navigateur : appel ordinaire (la page doit alors rester ouverte une seconde).
+    const r = await relancerScan(scanId, pages)
+    return r.error ? { error: new Error('Pas de connexion : réessaie.') } : { error: null }
   }
-  const { error } = await relancerScan(id)
-  return { id, error }
 }
 
 /** (Re)lance la lecture côté serveur : pages pas lues, ou seulement `pages` (bouton « Relire »). */
@@ -179,7 +209,7 @@ export async function suivreScan(scanId: string): Promise<{ data: ScanSuivi | nu
 /** Le scan d'un salarié encore ouvert (en cours, prêt ou en erreur), le plus récent. */
 export async function trouverScan(memberId: string): Promise<ScanSuivi | null> {
   const { data } = await supabase.from('scans_feuille_route').select(COLS_SCAN)
-    .eq('member_id', memberId).in('statut', ['en_cours', 'pret', 'erreur'])
+    .eq('member_id', memberId).in('statut', ['brouillon', 'en_cours', 'pret', 'erreur'])
     .order('created_at', { ascending: false }).limit(1)
   const s = (data ?? [])[0] as unknown as Omit<ScanSuivi, 'pages'> | undefined
   return s ? { ...s, pages: await pagesDuScan(s.id) } : null

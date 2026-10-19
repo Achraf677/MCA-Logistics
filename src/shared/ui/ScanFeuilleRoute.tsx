@@ -10,15 +10,19 @@ import {
   pagesManquantes, totauxApercu, type ArretLu, type EnteteFeuille, type PageLue, type TypeArretColis,
 } from '../lib/tourneesColis'
 import {
-  SCAN_COUPE_APRES_MS, abandonnerScan, calculerItineraire, compresserPage, creerTourneeColis, lancerScan, relancerScan,
-  resultatScan, suivreScan, terminerScan, type ScanPage, type ScanSuivi,
+  SCAN_COUPE_APRES_MS, abandonnerScan, calculerItineraire, compresserPage, creerScan, creerTourneeColis, envoyerPhotoScan,
+  lancerLecture, resultatScan, retirerPhotoScan, suivreScan, terminerScan, type ScanPage, type ScanSuivi,
 } from '../lib/tourneesColis.queries'
 
-/** Photo choisie sur ce téléphone, pas encore envoyée. */
+/** Photo choisie sur ce téléphone : elle part au serveur tout de suite, sans attendre « Lire ». */
 interface Photo {
   cle: string
   file: File
   apercu: string
+  /** Numéro de page dans le scan (1, 2, 3…). */
+  numero: number
+  etat: 'envoi' | 'ok' | 'erreur'
+  erreur?: string
 }
 
 const champ = `min-w-0 min-h-10 px-2.5 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
@@ -59,6 +63,10 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
   // Photos pas encore envoyées (les pages déjà envoyées vivent côté serveur : `pagesScan`).
   const [pages, setPages] = useState<Photo[]>([])
   const [scanId, setScanId] = useState<string | null>(reprendre)
+  const scanIdRef = useRef<string | null>(reprendre)
+  const scanPromesse = useRef<Promise<string | null> | null>(null)
+  /** Dernier numéro de page attribué (les photos prises gardent leur place même avant d'être envoyées). */
+  const prochainNumero = useRef(0)
   const [suivi, setSuivi] = useState<ScanSuivi | null>(null)
   const [pagesScan, setPagesScan] = useState<ScanPage[]>([])
   const [pageLues, setPageLues] = useState<Record<number, PageLue | null>>({})
@@ -85,22 +93,60 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
   useEffect(() => { pagesRef.current = pages }, [pages])
   useEffect(() => () => { pagesRef.current.forEach(p => URL.revokeObjectURL(p.apercu)) }, [])
 
+  const majPhoto = (cle: string, patch: Partial<Photo>) =>
+    setPages(prev => prev.map(p => (p.cle === cle ? { ...p, ...patch } : p)))
+
+  /** Le scan « brouillon » naît à la première photo ; un seul, même si plusieurs photos arrivent d'un coup. */
+  const assurerScan = (): Promise<string | null> => {
+    if (scanIdRef.current) return Promise.resolve(scanIdRef.current)
+    scanPromesse.current ??= creerScan({ companyId, memberId, date, clientId: clientId || null }).then(r => {
+      if (r.error || !r.id) { toast(r.error?.message ?? 'Envoi impossible', 'error'); scanPromesse.current = null; return null }
+      scanIdRef.current = r.id
+      setScanId(r.id)
+      return r.id
+    })
+    return scanPromesse.current
+  }
+
+  /** Compresse puis envoie une photo au serveur (dès qu'elle est prise). */
+  const envoyer = async (photo: Photo) => {
+    majPhoto(photo.cle, { etat: 'envoi', erreur: undefined })
+    const id = await assurerScan()
+    if (!id) { majPhoto(photo.cle, { etat: 'erreur', erreur: 'Envoi impossible' }); return }
+    try {
+      const image = await compresserPage(photo.file)
+      const { error } = await envoyerPhotoScan({ scanId: id, companyId, numero: photo.numero, image })
+      majPhoto(photo.cle, error ? { etat: 'erreur', erreur: error.message } : { etat: 'ok' })
+    } catch {
+      majPhoto(photo.cle, { etat: 'erreur', erreur: 'Envoi impossible' })
+    }
+  }
+
   const ajouterFichiers = (e: React.ChangeEvent<HTMLInputElement>) => {
     const fichiers = [...(e.target.files ?? [])].filter(f => f.type.startsWith('image/'))
     e.target.value = ''
     if (fichiers.length === 0) return
-    setPages(prev => [...prev, ...fichiers.map(file => {
+    const base = Math.max(prochainNumero.current, pagesScan.length)
+    prochainNumero.current = base + fichiers.length
+    const neuves: Photo[] = fichiers.map((file, i) => {
       clePage += 1
-      return { cle: `p${clePage}`, file, apercu: URL.createObjectURL(file) }
-    })])
+      return { cle: `p${clePage}`, file, apercu: URL.createObjectURL(file), numero: base + i + 1, etat: 'envoi' as const }
+    })
+    setPages(prev => [...prev, ...neuves])
+    neuves.forEach(p => { void envoyer(p) })
   }
 
-  /** Retire une photo pas encore envoyée. */
-  const retirerPage = (cle: string) => {
+  /** Retire une photo (et la page envoyée au serveur) ; les suivantes remontent d'un numéro. */
+  const retirerPage = async (cle: string) => {
     const p = pages.find(x => x.cle === cle)
-    if (!p) return
+    if (!p || pages.some(x => x.etat === 'envoi')) return
     URL.revokeObjectURL(p.apercu)
-    setPages(prev => prev.filter(x => x.cle !== cle))
+    setPages(prev => prev.filter(x => x.cle !== cle).map(x => (x.numero > p.numero ? { ...x, numero: x.numero - 1 } : x)))
+    prochainNumero.current = Math.max(0, prochainNumero.current - 1)
+    if (scanIdRef.current) {
+      const { error } = await retirerPhotoScan(scanIdRef.current, p.numero)
+      if (error) toast(error.message, 'error')
+    }
   }
 
   /** Ramène les arrêts lus par le serveur (toutes les pages, ou seulement celles qui viennent d'être relues). */
@@ -139,7 +185,7 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
         const silence = Date.now() - new Date(data.battement).getTime()
         if (silence > SCAN_COUPE_APRES_MS && Date.now() - dernierLancement.current > 60_000) {
           dernierLancement.current = Date.now()
-          relancerScan(scanId)
+          lancerLecture(scanId)
         }
       } else if (data.statut === 'pret') {
         await chargerResultats(scanId)
@@ -150,6 +196,20 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     return () => { annule = true; clearInterval(t) }
   }, [scanId, etape, chargerResultats])
 
+  // Retour sur un scan déjà ouvert : un brouillon (photos envoyées, pas encore lues) rouvre l'étape photos.
+  useEffect(() => {
+    if (!reprendre) return
+    let annule = false
+    suivreScan(reprendre).then(({ data }) => {
+      if (annule || !data) return
+      setSuivi(data)
+      setPagesScan(data.pages)
+      prochainNumero.current = Math.max(prochainNumero.current, data.pages.length)
+      if (data.statut === 'brouillon') setEtape('photos')
+    })
+    return () => { annule = true }
+  }, [reprendre])
+
   // Horloge pour animer la barre entre deux relevés du serveur.
   useEffect(() => {
     if (etape !== 'lecture') return
@@ -157,24 +217,20 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     return () => clearInterval(t)
   }, [etape])
 
-  /** Envoie les photos au serveur et lance la lecture : on peut ensuite quitter la page. */
+  /** Lance la lecture sur le serveur (les photos y sont déjà) : requête minuscule qui part même si l'on quitte la page. */
   const toutLire = async () => {
+    const id = scanIdRef.current
+    if (!id || pages.some(p => p.etat === 'envoi')) return
+    if (pages.some(p => p.etat === 'erreur')) { toast('Une photo n’est pas partie : touche-la pour la renvoyer.', 'error'); return }
     setEnvoi(true)
-    try {
-      const images = await Promise.all(pages.map(p => compresserPage(p.file)))
-      const debut = pagesScan.reduce((m, p) => Math.max(m, p.numero), 0)
-      const { id, error } = await lancerScan({
-        companyId, memberId, date, clientId: clientId || null, images, scanId,
-      })
-      if (error || !id) { toast(error?.message ?? 'Envoi impossible', 'error'); return }
-      aRecharger.current = [...(aRecharger.current ?? []), ...images.map((_, i) => debut + i + 1)]
-      pages.forEach(p => URL.revokeObjectURL(p.apercu))
-      setPages([])
-      setScanId(id)
-      setEtape('lecture')
-    } finally {
-      setEnvoi(false)
-    }
+    const { error } = await lancerLecture(id)
+    setEnvoi(false)
+    if (error) { toast(error.message, 'error'); return }
+    aRecharger.current = arrets.length > 0 ? pages.map(p => p.numero) : null
+    pages.forEach(p => URL.revokeObjectURL(p.apercu))
+    setPages([])
+    setScanId(id)
+    setEtape('lecture')
   }
 
   const relire = async (numero: number) => {
@@ -182,18 +238,19 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     aRecharger.current = [...(aRecharger.current ?? []), numero]
     setPagesScan(prev => prev.map(p => (p.numero === numero ? { ...p, etat: 'attente', erreur: null } : p)))
     setEtape('lecture')
-    const { error } = await relancerScan(scanId, [numero])
+    const { error } = await lancerLecture(scanId, [numero])
     if (error) toast(error.message, 'error')
   }
 
   const reessayer = async () => {
     if (!scanId) return
-    const { error } = await relancerScan(scanId)
+    const { error } = await lancerLecture(scanId)
     if (error) toast(error.message, 'error')
   }
 
   const annulerTout = async () => {
-    if (scanId) await abandonnerScan(scanId)
+    const id = scanIdRef.current
+    if (id) await abandonnerScan(id)
     onAnnuler()
   }
 
@@ -237,7 +294,8 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
     onCree(id)
   }
 
-  const aLire = pages.length
+  const enEnvoi = pages.some(p => p.etat === 'envoi')
+  const nbALire = pages.length > 0 ? pages.length : pagesScan.length
 
   // ── Étape 1 : photos ──────────────────────────────────────────────────────
   if (etape === 'photos') {
@@ -260,16 +318,33 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
 
         {pages.length > 0 && (
           <ol className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-            {pages.map((p, i) => (
-              <li key={p.cle} className="relative rounded-[var(--r-md)] overflow-hidden border border-[var(--border)] bg-[var(--bg)]">
-                <img src={p.apercu} alt={`Page ${i + 1}`} className="w-full aspect-[3/4] object-cover" />
+            {pages.map(p => (
+              <li key={p.cle} className={`relative rounded-[var(--r-md)] overflow-hidden border bg-[var(--bg)] ${
+                p.etat === 'erreur' ? 'border-[var(--danger)]' : 'border-[var(--border)]'}`}>
+                <img src={p.apercu} alt={`Page ${p.numero}`} className="w-full aspect-[3/4] object-cover" />
                 <span className="absolute left-1 top-1 px-1.5 rounded-[var(--r-sm)] bg-black/70 text-white text-xs font-semibold">
-                  Page {i + 1}
+                  Page {p.numero}
                 </span>
-                <button type="button" onClick={() => retirerPage(p.cle)} aria-label={`Retirer la page ${i + 1}`}
-                  className="absolute right-1 top-1 w-8 h-8 inline-flex items-center justify-center rounded-full bg-black/70 text-white">
+                <button type="button" onClick={() => retirerPage(p.cle)} disabled={enEnvoi} aria-label={`Retirer la page ${p.numero}`}
+                  className="absolute right-1 top-1 w-8 h-8 inline-flex items-center justify-center rounded-full bg-black/70 text-white disabled:opacity-40">
                   <X size={16} />
                 </button>
+                {p.etat === 'envoi' && (
+                  <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 py-1 bg-black/70 text-white text-xs">
+                    <Loader2 size={12} className="animate-spin" /> Envoi…
+                  </span>
+                )}
+                {p.etat === 'ok' && (
+                  <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 py-1 bg-[var(--success)] text-black text-xs font-semibold">
+                    <Check size={12} /> Envoyée
+                  </span>
+                )}
+                {p.etat === 'erreur' && (
+                  <button type="button" onClick={() => envoyer(p)}
+                    className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 py-1.5 bg-[var(--danger)] text-white text-xs font-semibold">
+                    <RotateCcw size={12} /> Renvoyer
+                  </button>
+                )}
               </li>
             ))}
           </ol>
@@ -279,13 +354,16 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
           <p className="text-sm text-[var(--text-muted)]">{pagesScan.length} page{pagesScan.length > 1 ? 's' : ''} déjà envoyée{pagesScan.length > 1 ? 's' : ''}.</p>
         )}
         <div className="flex gap-2">
-          {scanId && pagesScan.some(p => p.etat === 'ok')
+          {scanId && arrets.length > 0
             ? <button type="button" onClick={() => setEtape('apercu')} className={`${btnSecondaire} flex-1`}>Retour</button>
             : <button type="button" onClick={annulerTout} className={`${btnSecondaire} flex-1`}>Annuler</button>}
-          <button type="button" onClick={aLire === 0 ? () => setEtape('apercu') : toutLire}
-            disabled={(pages.length === 0 && !pagesScan.some(p => p.etat === 'ok')) || envoi} className={`${btnPrimaire} flex-[2]`}>
-            {envoi ? <Loader2 size={18} className="animate-spin" /> : <ScanText size={18} />}
-            {envoi ? 'Envoi…' : aLire === 0 ? 'Voir les arrêts lus' : `Lire ${aLire > 1 ? `les ${aLire} pages` : 'la page'}`}
+          <button type="button" onClick={pages.length === 0 && arrets.length > 0 ? () => setEtape('apercu') : toutLire}
+            disabled={envoi || enEnvoi || (pages.length === 0 && arrets.length === 0 && pagesScan.length === 0)}
+            className={`${btnPrimaire} flex-[2]`}>
+            {envoi || enEnvoi ? <Loader2 size={18} className="animate-spin" /> : <ScanText size={18} />}
+            {envoi ? 'Lancement…' : enEnvoi ? 'Envoi des photos…'
+              : pages.length === 0 && arrets.length > 0 ? 'Voir les arrêts lus'
+              : `Lire ${nbALire > 1 ? `les ${nbALire} pages` : 'la page'}`}
           </button>
         </div>
       </div>
