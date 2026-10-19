@@ -1,14 +1,15 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { Flag, Route as RouteIcon, ClipboardList } from 'lucide-react'
+import { Flag, Route as RouteIcon } from 'lucide-react'
 import { Skeleton } from '../../shared/ui/Skeleton'
+import { avancementParCategorie, type CategorieArret } from '../../shared/lib/tourneesColisRoute'
 import { compteursTournee, type CompteursTournee } from '../../shared/lib/tourneesColis'
 import { listerTourneesColis, arretsDesTournees } from '../../shared/lib/tourneesColis.queries'
 import { jourParis } from '../../shared/lib/relaisPoste'
 import { getMesCourses } from './mescourses.queries'
 import type { EtatFiche, MaFiche } from './mescourses.types'
-import { Carte, TitreCarte, MessageErreur, GardeFiche, boutonPrimaireCls } from './EspaceCommun'
+import { Carte, MessageErreur, GardeFiche, boutonPrimaireCls } from './EspaceCommun'
 
-interface Recap { c: CompteursTournee; tournees: number; terminees: number; km: number | null; minutes: number | null }
+interface Recap { c: CompteursTournee; categories: CategorieArret[]; tournees: number; terminees: number; km: number | null; minutes: number | null }
 
 /**
  * « Aujourd'hui » : le récap de ma journée en un coup d'œil (colis livrés / en attente / retours,
@@ -47,7 +48,7 @@ function RecapJour({ fiche, onOuvrirTournee }: { fiche: MaFiche; onOuvrirTournee
       const km = t.data.reduce((s, x) => s + (x.trajet?.km_total ?? 0), 0)
       const minutes = t.data.reduce((s, x) => s + (x.trajet?.duree_min ?? 0), 0)
       setRecap({
-        c: compteursTournee(a.data), tournees: t.data.length, terminees: t.data.filter(x => x.statut === 'cloturee').length,
+        c: compteursTournee(a.data), categories: avancementParCategorie(a.data), tournees: t.data.length, terminees: t.data.filter(x => x.statut === 'cloturee').length,
         km: km > 0 ? Math.round(km) : null, minutes: minutes > 0 ? minutes : null,
       })
     })()
@@ -58,7 +59,6 @@ function RecapJour({ fiche, onOuvrirTournee }: { fiche: MaFiche; onOuvrirTournee
   if (!recap) {
     return (
       <Carte>
-        <TitreCarte icone={<ClipboardList size={18} />}>Aujourd’hui</TitreCarte>
         {erreur && <MessageErreur>{erreur}</MessageErreur>}
         <p className="text-sm text-[var(--text-muted)]">Pas de tournée de colis aujourd’hui.</p>
         <button className={`${boutonPrimaireCls} w-full`} onClick={onOuvrirTournee}><RouteIcon size={18} /> Ma tournée</button>
@@ -69,34 +69,51 @@ function RecapJour({ fiche, onOuvrirTournee }: { fiche: MaFiche; onOuvrirTournee
   const pct = c.arrets > 0 ? Math.round((c.arretsTraites / c.arrets) * 100) : 0
   const fini = recap.terminees === recap.tournees
   return (
-    <Carte>
-      <TitreCarte icone={<ClipboardList size={18} />}>Aujourd’hui</TitreCarte>
+    <div className="flex flex-col gap-3">
       {erreur && <MessageErreur>{erreur}</MessageErreur>}
-      <div>
-        <div className="flex items-baseline justify-between">
-          <span className="text-3xl font-bold tabular-nums text-[var(--text)]">{c.arretsTraites}<span className="text-lg font-medium text-[var(--text-muted)]"> / {c.arrets} arrêts</span></span>
-          <span className="text-lg font-semibold tabular-nums text-[var(--text-muted)]">{pct} %</span>
-        </div>
-        <div className="mt-2 h-3 rounded-full bg-[var(--bg-elevated)] overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-          <div className="h-full bg-[var(--success)]" style={{ width: `${pct}%` }} />
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <Chiffre n={c.colisLivres} libelle="Livrés" couleur="var(--success)" />
-        <Chiffre n={c.colisAttente} libelle="En attente" couleur="var(--warning)" />
-        <Chiffre n={c.colisRetour} libelle="Retours" couleur="var(--danger)" />
-      </div>
-      {(recap.km != null || recap.minutes != null) && (
-        <p className="text-sm text-[var(--text-muted)]">
-          {recap.km != null && <>Trajet prévu : <strong className="text-[var(--text)]">{recap.km} km</strong></>}
-          {recap.km != null && recap.minutes != null && ' · '}
-          {recap.minutes != null && <>environ <strong className="text-[var(--text)]">{Math.floor(recap.minutes / 60)} h {String(recap.minutes % 60).padStart(2, '0')}</strong></>}
-        </p>
-      )}
       {fini
-        ? <p className="flex items-center gap-2 text-base font-semibold text-[var(--success)]"><Flag size={18} /> Tournée terminée</p>
-        : <button className={`${boutonPrimaireCls} w-full`} onClick={onOuvrirTournee}><RouteIcon size={18} /> Continuer ma tournée</button>}
-    </Carte>
+        ? <p className="flex items-center justify-center gap-2 min-h-14 text-lg font-semibold text-[var(--success)]"><Flag size={20} /> Tournée terminée</p>
+        : <button className={`${boutonPrimaireCls} w-full min-h-14 text-base`} onClick={onOuvrirTournee}><RouteIcon size={20} /> Continuer ma tournée</button>}
+      <Carte>
+        <div>
+          <div className="flex items-baseline justify-between">
+            <span className="text-4xl font-bold tabular-nums text-[var(--text)]">{c.arretsTraites}<span className="text-xl font-medium text-[var(--text-muted)]"> / {c.arrets} arrêts</span></span>
+            <span className="text-xl font-semibold tabular-nums text-[var(--text-muted)]">{pct} %</span>
+          </div>
+          <div className="mt-2 h-3 rounded-full bg-[var(--bg-elevated)] overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+            <div className="h-full bg-[var(--success)]" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <Chiffre n={c.colisLivres} libelle="Livrés" couleur="var(--success)" />
+          <Chiffre n={c.colisAttente} libelle="En attente" couleur="var(--warning)" />
+          <Chiffre n={c.colisRetour} libelle="Retours" couleur="var(--danger)" />
+        </div>
+        <p className="text-sm text-[var(--text-muted)]">{c.colisTraites} / {c.colis} colis traités</p>
+      </Carte>
+      <Carte className="gap-3">
+        <ul className="flex flex-col gap-3">
+          {recap.categories.map(cat => (
+            <li key={cat.type} className="flex flex-col gap-1">
+              <div className="flex items-baseline justify-between text-base">
+                <span className="font-semibold" style={{ color: cat.couleur }}>{cat.libelle}</span>
+                <span className="tabular-nums text-[var(--text)]">{cat.traites} / {cat.total}</span>
+              </div>
+              <div className="h-3 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden" aria-hidden>
+                <div className="h-full" style={{ width: `${cat.total ? Math.round((cat.traites / cat.total) * 100) : 0}%`, background: cat.couleur }} />
+              </div>
+            </li>
+          ))}
+        </ul>
+        {(recap.km != null || recap.minutes != null) && (
+          <p className="pt-3 border-t border-[var(--border)] text-sm text-[var(--text-muted)]">
+            {recap.km != null && <>Trajet prévu : <strong className="text-[var(--text)]">{recap.km} km</strong></>}
+            {recap.km != null && recap.minutes != null && ' · '}
+            {recap.minutes != null && <>environ <strong className="text-[var(--text)]">{Math.floor(recap.minutes / 60)} h {String(recap.minutes % 60).padStart(2, '0')}</strong></>}
+          </p>
+        )}
+      </Carte>
+    </div>
   )
 }
 
