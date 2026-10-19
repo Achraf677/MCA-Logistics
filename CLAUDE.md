@@ -212,14 +212,13 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 ## 11. État actuel (01/10/2026)
 - 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis,
   Modèles, Lettres de voiture) · **Finance** (Trésorerie, Charges, Encaissement, TVA, Relances) ·
-  **Flotte** (Véhicules, Carburant, Entretiens, Inspections, Incidents) · **Planning** (Tournées, Planning : vues par chauffeur / par jour / mois — l'ancien Calendrier y est fondu) · **Tiers**
+  **Flotte** (Véhicules, Carburant, Entretiens, Inspections, Incidents) · **Planning** (Tournées, Planning : vues Jour / Semaine / Mois, refonte du 19/10/2026 ; l'ancien Calendrier y est fondu) · **Tiers**
   (Clients, Fournisseurs, Devis) · **Équipe** (Équipe, Heures) · **Système** (Paramètres, Admins,
   Modèles). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
   Les specs `mca-spec/tabs/` n'en couvrent qu'une partie : vérifier le code.
 - Revue onglet par onglet (méthode § 13) : 01 Mes courses ✔ · 02 Dashboard ✔ · 03 Livraisons ✔
   (liste, facturation, lettre de voiture, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie)
-  · 04 Planning ✔ (lots P1-P4 : vue par chauffeur, affectation rapide, tournées en retard,
-  calendrier enrichi, puis fondu dans le Planning en vue « Mois »).
+  · 04 Planning ✔ (refonte 19/10/2026 : Jour / Semaine / Mois, charge par chauffeur, tournées de colis du jour, menu d'actions ; `mca-spec/revue/04-planning.md`).
 - Mes courses (salarié) : **4 onglets depuis le 19/10/2026** (« Ma journée » supprimé : plus de journée de colis ; le relevé du mois compte les colis DIRECTEMENT depuis les tournées TERMINÉES du client — `tourneesColis.queries#colisDesTourneesClient`, `livraisons/ColisDesJournees` ; l'onglet « Courses » est devenu **Aujourd'hui** = récap du jour (colis livrés / en attente / retours, arrêts, km) + courses express du jour s'il y en a — 1 seule course express en un mois au 19/10/2026) — Aujourd'hui · **Ma tournée** (feuille de route scannée,
   ordre par la route, carte, Y aller, partage de position, photo de preuve, Terminer) · Dépenses · Moi. Tournées (bureau) : bloc « Tournées de colis du jour » (Carte du
   jour avec positions, calcul, rouvrir) + « Scanner pour un salarié ».
