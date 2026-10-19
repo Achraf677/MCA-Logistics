@@ -13,6 +13,7 @@ import { lienNavigation } from '../../shared/lib/navigation'
 import { lireAppNavigation } from '../../shared/lib/prefChauffeur'
 import { statutsProposes, libelleAdresse, patchStatut, familleStatut, issueRapide } from './tourneeColis.logic'
 import { champCls } from './EspaceCommun'
+import { HorairesRelais } from './HorairesRelais'
 
 const COULEUR_FAMILLE = { livre: 'success', attente: 'warning', retour: 'danger', neutre: 'muted' } as const
 
@@ -100,6 +101,7 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
           <div className="flex-1 min-w-0">
             <p className="text-xl font-bold text-[var(--text)] break-words">{libelleAdresse(arret)}</p>
             <p className="text-base text-[var(--text-muted)]">{arret.commune} · {arret.quantite} colis{arret.type !== 'c' ? ` · ${LIBELLE_TYPE_ARRET[arret.type]}` : ''}</p>
+            <HorairesRelais arret={arret} />
           </div>
           <button type="button" onClick={onFermer} aria-label="Fermer"
             className="size-12 shrink-0 inline-flex items-center justify-center rounded-full border border-[var(--border)] text-[var(--text)]">
@@ -215,6 +217,7 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
                 {arret.type !== 'c' && <strong style={{ color: COULEUR_CATEGORIE[arret.type] }}> · {LIBELLE_TYPE_ARRET[arret.type]}</strong>}
                 {arret.note ? ` · ${arret.note}` : ''}
               </p>
+              <HorairesRelais arret={arret} />
             </div>
             {yAller && (
               <a href={yAller} target="_blank" rel="noopener noreferrer"

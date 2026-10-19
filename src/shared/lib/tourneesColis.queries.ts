@@ -329,3 +329,20 @@ export async function preremplirJournee(p: { companyId: string; memberId: string
   })
   return { etat: existante ? 'mise_a_jour' : 'creee', error }
 }
+
+/** Horaires du jour des points La Poste de la zone (Edge `horaires-relais-poste`), gardés par jour en mémoire. */
+const horairesPoste = new Map<string, Promise<Record<string, { plages: string[]; ferme: boolean }>>>()
+export function horairesRelaisPoste(ids: string[], jour: string): Promise<Record<string, { plages: string[]; ferme: boolean }>> {
+  const cle = `${jour}|${ids.join(',')}`
+  let p = horairesPoste.get(cle)
+  if (!p) {
+    p = supabase.functions.invoke('horaires-relais-poste', { body: { ids } })
+      .then(({ data }) => {
+        const d = data as { ok?: boolean; sites?: Record<string, { plages: string[]; ferme: boolean }> } | null
+        if (!d?.ok || !d.sites) { horairesPoste.delete(cle); return {} }
+        return d.sites
+      }, () => { horairesPoste.delete(cle); return {} })
+    horairesPoste.set(cle, p)
+  }
+  return p
+}
