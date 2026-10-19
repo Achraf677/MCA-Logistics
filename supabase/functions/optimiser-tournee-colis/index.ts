@@ -25,7 +25,7 @@ import { ExternalApiError, fetchJson } from '../_shared/http.ts'
 import { geocode } from '../_shared/geocode.ts'
 import {
   ARRET_S, IGN_MAX_POINTS, blocsMatrice, completerMatrices, decoderPolyligne, distanceParcours, encoderPolyligne,
-  matricesVolOiseau, passages, regrouperNoeuds, resoudre, troncons, type Matrices, type Point,
+  matriceCouts, matricesVolOiseau, passages, regrouperNoeuds, resoudre, troncons, type Matrices, type Point,
 } from '../_shared/tourneeRoute.ts'
 
 const ORS = 'https://api.openrouteservice.org/v2'
@@ -211,7 +211,8 @@ Deno.serve(async (req: Request) => {
   }
 
   // ~0,8 s de calcul au plus (les fonctions Supabase coupent vers 2 s de calcul).
-  const ordre = resoudre(m.durees, 0, idx, arrivee, { limiteMs: 800 })
+  // On optimise la DISTANCE par la route (le plus court), pas le temps ni le vol d'oiseau.
+  const ordre = resoudre(matriceCouts(m), 0, idx, arrivee, { limiteMs: 800 })
   const pass = passages(m, 0, ordre)
   const kmTotal = distanceParcours(m, 0, ordre, arrivee) / 1000
   const kmFeuille = distanceParcours(m, 0, idx, arrivee) / 1000

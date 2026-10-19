@@ -381,6 +381,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   v3) ; repli : adresse du remettant, puis dépôt. À valider : temps par arrêt (2 min,
   `_shared/tourneeRoute#ARRET_S`),
   partage de position (prévenir les salariés : information CNIL / affichage).
+  **Plus court par la route (19/10/2026)** : le solveur minimise la DISTANCE routière (`matriceCouts` = mètres + 0,05·secondes en départage) et non plus le temps, + polissage exact par fenêtres de 10 arrêts (`polirParFenetres`) ; sur la vraie tournée de 68 arrêts (matrice OSRM) 69,7 → 67,5 km. optimiser-tournee-colis **v4 déployée** ; il faut « Recalculer » une tournée déjà calculée.
   Piège Leaflet : `keyboard={false}` sur la carte (sinon le toucher fait sauter la page et la
   pastille n'est plus sous le doigt) ; `isolate` sur le conteneur (sinon la carte passe sur
   l'en-tête collant).
