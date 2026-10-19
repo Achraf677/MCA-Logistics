@@ -10,12 +10,12 @@ describe('application de navigation du chauffeur', () => {
     })
   })
 
-  it('Waze par défaut', () => {
-    expect(APP_NAV_DEFAUT).toBe('waze')
-    expect(lireAppNavigation()).toBe('waze')
+  it('Google Maps par défaut', () => {
+    expect(APP_NAV_DEFAUT).toBe('google')
+    expect(lireAppNavigation()).toBe('google')
   })
   it('le choix du chauffeur est gardé et prime sur le défaut', () => {
-    ecrireAppNavigation('google')
-    expect(lireAppNavigation()).toBe('google')
+    ecrireAppNavigation('waze')
+    expect(lireAppNavigation()).toBe('waze')
   })
 })

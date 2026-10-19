@@ -1,8 +1,8 @@
-import { Route, ClipboardList, Receipt, User, type LucideIcon } from 'lucide-react'
+import { Home, ClipboardList, Receipt, User, type LucideIcon } from 'lucide-react'
 import type { OngletEspace } from './espace.logic'
 
 const ONGLETS: Array<{ cle: OngletEspace; libelle: string; icone: LucideIcon }> = [
-  { cle: 'courses', libelle: 'Courses', icone: Route },
+  { cle: 'courses', libelle: 'Aujourd’hui', icone: Home },
   { cle: 'tournee', libelle: 'Ma tournée', icone: ClipboardList },
   { cle: 'depenses', libelle: 'Dépenses', icone: Receipt },
   { cle: 'moi', libelle: 'Moi', icone: User },

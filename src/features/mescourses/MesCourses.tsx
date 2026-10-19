@@ -16,6 +16,7 @@ import { toLocalISO } from '../../shared/lib/dates'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useSearchParams } from 'react-router-dom'
 import { BarreOnglets } from './BarreOnglets'
+import { Aujourdhui } from './Aujourdhui'
 import { MaTournee } from './MaTournee'
 import { MesDepenses } from './MesDepenses'
 import { Moi } from './Moi'
@@ -53,12 +54,12 @@ import {
 import type { CourseChauffeur, DocumentCourse, EtatFiche, TourneeChauffeur } from './mescourses.types'
 
 const TITRES: Record<OngletEspace, string> = {
-  courses: 'Mes courses', tournee: 'Ma tournée', depenses: 'Mes dépenses', moi: 'Moi',
+  courses: 'Aujourd’hui', tournee: 'Ma tournée', depenses: 'Mes dépenses', moi: 'Moi',
 }
 
 /**
  * Espace salarié — « Mes courses » et ses 4 onglets (navigation en bas) :
- * Courses (l'écran terrain) · Ma tournée (feuille de route de colis scannée) · Dépenses · Moi.
+ * Aujourd'hui (récap du jour + courses express s'il y en a) · Ma tournée (feuille de route de colis scannée) · Dépenses · Moi.
  * « Ma journée » supprimé le 19/10/2026 (pas encore au point).
  * L'onglet vit dans l'URL (`?onglet=`) : un retour arrière, un lien ou un
  * rechargement retombent au même endroit.
@@ -90,7 +91,7 @@ export function MesCourses() {
   return (
     <Shell pageTitle={TITRES[onglet]}>
       <div className="mx-auto w-full max-w-[40rem]">
-        {onglet === 'courses' && <OngletCourses />}
+        {onglet === 'courses' && <Aujourdhui fiche={fiche} onOuvrirTournee={() => changerOnglet('tournee')} express={<OngletCourses />} />}
         {onglet === 'tournee' && <MaTournee fiche={fiche} />}
         {onglet === 'depenses' && <MesDepenses />}
         {onglet === 'moi' && <Moi fiche={fiche} />}

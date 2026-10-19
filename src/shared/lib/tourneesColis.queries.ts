@@ -7,7 +7,6 @@ import { supabase } from '../../app/providers'
 import { lireErreurEdge } from './erreurEdge'
 import { uploadDocument, getDownloadUrl } from './documents.queries'
 import type { DocumentRow } from './documents.types'
-import { enregistrerJournee } from './journeesColis.queries'
 import { journeeDepuisArrets } from './tourneesColisRoute'
 import {
   arretsDepuisLecture, lignesArrets, ordreHabituel, pageDepuisLecture, statutApresGeste, type PageLue,
@@ -293,41 +292,30 @@ export async function rouvrirTournee(id: string) {
 
 // ── Journée de colis déduite (lot 5) ────────────────────────────────────────
 
-export type ResultatJournee = 'creee' | 'mise_a_jour' | 'deja_envoyee' | 'deja_saisie' | 'sans_client'
-
-/** Note posée par le préremplissage : une journée qui la porte encore n'a pas été retouchée. */
-const NOTE_AUTO = 'Compté depuis'
-
 /**
- * Après une clôture : la journée de colis (même salarié, jour, client) est préremplie en
- * BROUILLON depuis toutes ses tournées clôturées du jour. Le salarié vérifie, ajoute la photo du
- * compteur et envoie (Ma journée). Jamais touchée : une journée envoyée ou validée, ni une
- * journée saisie ou corrigée à la main (brouillon sans la note automatique, refusée).
+ * Colis d'un client sur une période, comptés DIRECTEMENT depuis les tournées TERMINÉES (plus de
+ * « journée de colis » : décision du 19/10/2026). Alimente le relevé mensuel de messagerie.
+ * Les tournées pas encore terminées sont signalées, jamais comptées.
  */
-export async function preremplirJournee(p: { companyId: string; memberId: string; date: string; clientId: string | null }):
-  Promise<{ etat: ResultatJournee; error: Error | null }> {
-  if (!p.clientId) return { etat: 'sans_client', error: null }
-  const { data: ts, error: eT } = await supabase.from('tournees_colis').select('id')
-    .eq('member_id', p.memberId).eq('date', p.date).eq('client_id', p.clientId).eq('statut', 'cloturee')
-  if (eT) return { etat: 'sans_client', error: erreurClaire(eT) }
-  const ids = (ts ?? []).map((t: { id: string }) => t.id)
-  const { data: arrets, error: eA } = await arretsDesTournees(ids)
-  if (eA) return { etat: 'sans_client', error: eA }
-  const colis = journeeDepuisArrets(arrets)
-
-  const { data: j, error: eJ } = await supabase.from('journees_colis').select('id, statut, note')
-    .eq('member_id', p.memberId).eq('date', p.date).eq('client_id', p.clientId).maybeSingle()
-  if (eJ) return { etat: 'sans_client', error: erreurClaire(eJ) }
-  const existante = j as { id: string; statut: string; note: string | null } | null
-  if (existante && (existante.statut === 'envoyee' || existante.statut === 'validee')) return { etat: 'deja_envoyee', error: null }
-  if (existante && (existante.statut !== 'brouillon' || !(existante.note ?? '').startsWith(NOTE_AUTO))) return { etat: 'deja_saisie', error: null }
-
-  const { error } = await enregistrerJournee({
-    id: existante?.id ?? null, companyId: p.companyId, memberId: p.memberId, date: p.date, clientId: p.clientId,
-    champs: { ...colis, note: `${NOTE_AUTO} ${ids.length > 1 ? `${ids.length} tournées` : 'la tournée'} de colis.` },
-    statut: 'brouillon',
-  })
-  return { etat: existante ? 'mise_a_jour' : 'creee', error }
+export async function colisDesTourneesClient(clientId: string, du: string, au: string): Promise<{
+  data: { colis: number; domicile: number; relais: number; litige: number; terminees: number; enCours: number } | null
+  error: Error | null
+}> {
+  const { data: ts, error } = await supabase.from('tournees_colis').select('id, statut')
+    .eq('client_id', clientId).gte('date', du).lte('date', au)
+  if (error) return { data: null, error: erreurClaire(error) }
+  const lignes = (ts ?? []) as Array<{ id: string; statut: string }>
+  const finies = lignes.filter(t => t.statut === 'cloturee').map(t => t.id)
+  const { data: arrets, error: eA } = await arretsDesTournees(finies)
+  if (eA) return { data: null, error: eA }
+  const j = journeeDepuisArrets(arrets)
+  return {
+    data: {
+      colis: j.colis_domicile + j.colis_relais, domicile: j.colis_domicile, relais: j.colis_relais, litige: j.colis_litige,
+      terminees: finies.length, enCours: lignes.length - finies.length,
+    },
+    error: null,
+  }
 }
 
 /** Horaires du jour des points La Poste de la zone (Edge `horaires-relais-poste`), gardés par jour en mémoire. */

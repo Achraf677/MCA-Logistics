@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Phone, Mail, IdCard, Stethoscope, FileText, Image as ImageIcon, Upload, User } from 'lucide-react'
+import { Phone, Mail, IdCard, Stethoscope, FileText, Image as ImageIcon, Upload, User, Navigation } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
@@ -7,6 +7,8 @@ import { useProfile } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
 import { getDownloadUrl, uploadDocument } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
+import { APPS_NAVIGATION, type AppNavigation } from '../../shared/lib/navigation'
+import { lireAppNavigation, ecrireAppNavigation } from '../../shared/lib/prefChauffeur'
 import { getDocumentsDeMaFiche } from './mescourses.queries'
 import { libelleCategorieDocument, libelleDateCourte } from './mescourses.logic'
 import { etatEcheance, type EtatEcheance } from './espace.logic'
@@ -23,7 +25,28 @@ export function Moi({ fiche }: { fiche: EtatFiche }) {
   return (
     <div className="flex flex-col gap-4">
       <GardeFiche fiche={fiche}>{f => <MoiFiche fiche={f} />}</GardeFiche>
+      <ChoixNavigation />
     </div>
+  )
+}
+
+/** Application ouverte par « Y aller » : réglage de CE téléphone (Google Maps par défaut). */
+function ChoixNavigation() {
+  const [app, setApp] = useState<AppNavigation>(lireAppNavigation)
+  const choisir = (a: AppNavigation) => { setApp(a); ecrireAppNavigation(a) }
+  return (
+    <Carte>
+      <TitreCarte icone={<Navigation size={18} />}>Navigation (« Y aller »)</TitreCarte>
+      <div className="grid grid-cols-3 gap-2">
+        {APPS_NAVIGATION.map(a => (
+          <button key={a.cle} type="button" onClick={() => choisir(a.cle)} aria-pressed={app === a.cle}
+            className={`min-h-12 px-2 rounded-[var(--r-md)] border text-sm font-medium ${
+              app === a.cle ? 'border-[var(--brand)] bg-[var(--brand)]/10 text-[var(--brand)]' : 'border-[var(--border)] text-[var(--text)]'}`}>
+            {a.libelle}
+          </button>
+        ))}
+      </div>
+    </Carte>
   )
 }
 

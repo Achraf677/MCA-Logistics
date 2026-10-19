@@ -18,7 +18,7 @@ import {
 } from '../../shared/lib/tourneesColisRoute'
 import {
   listerTourneesColis, arretsDesTournees, supprimerTourneeColis, nomsClients, calculerItineraire,
-  majArret, ecrireOrdre, placerArret, chercherAdresse, photosArrets, cloturerTournee, preremplirJournee, envoyerPosition,
+  majArret, ecrireOrdre, placerArret, chercherAdresse, photosArrets, cloturerTournee, envoyerPosition,
   effacerPosition,
 } from '../../shared/lib/tourneesColis.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
@@ -256,7 +256,6 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   onOuvrirJournee?: () => void
 }) {
   const { toast } = useToast()
-  const { companyId } = useProfile()
   const [vue, setVue] = useState<'liste' | 'carte'>(() => (lirePref(CLE_VUE) === 'carte' ? 'carte' : 'liste'))
   const [calcul, setCalcul] = useState<null | 'tout' | 'restants' | 'ordre'>(null)
   const [moi, setMoi] = useState<{ lat: number; lng: number } | null>(null)
@@ -395,15 +394,10 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     const { data, error } = await cloturerTournee(tournee.id)
     if (error || !data) { setClotureEnCours(false); toast(error?.message ?? 'Clôture impossible', 'error'); return }
     if (lirePref(CLE_PARTAGE) === tournee.id) ecrirePref(CLE_PARTAGE, null)
-    const j = companyId ? await preremplirJournee({ companyId, memberId: fiche.id, date: tournee.date, clientId: tournee.client_id }) : null
     setClotureEnCours(false)
     setCloture(false)
     onTournee(data)
-    if (j?.error) toast(`Tournée terminée. Journée non préremplie : ${j.error.message}`, 'error')
-    else if (j?.etat === 'creee' || j?.etat === 'mise_a_jour') toast('Tournée terminée. Ta journée de colis est préremplie : vérifie-la et envoie-la.', 'success')
-    else if (j?.etat === 'deja_envoyee') toast("Tournée terminée. Ta journée est déjà envoyée : elle n'a pas été modifiée.", 'success')
-    else if (j?.etat === 'deja_saisie') toast("Tournée terminée. Ta journée déjà saisie n'a pas été modifiée : vérifie les colis.", 'success')
-    else toast('Tournée terminée', 'success')
+    toast('Tournée terminée', 'success')
   }
 
   const nt = nonTraites(arrets)
