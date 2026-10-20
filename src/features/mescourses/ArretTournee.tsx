@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
-  Check, Store, PackagePlus, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw,
+  Check, Store, Package, PackagePlus, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw,
 } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { useToast } from '../../shared/ui/useToast'
@@ -55,42 +55,30 @@ function useGestes(arret: ArretColis, tournee: TourneeColis, onGeste: (a: ArretC
   return { occupe, fait, ecrire, geste }
 }
 
-/** Délai de la double validation : « Livré » / « Remis » ne s'enregistre qu'après 3 s, annulable. */
-const DELAI_VALIDATION_MS = 3000
-
 /**
- * Double validation d'un « Livré » / « Remis » : on appuie, un compte à rebours de 3 s démarre avec un
- * gros bouton « Annuler » ; passé ce délai, le geste est enregistré. Un appui par erreur ne coûte rien
- * et rien ne bouge dans la liste avant la fin du délai.
+ * Double confirmation sur le MÊME bouton : un 1er appui « arme » le geste (le bouton devient
+ * « Confirmer », un bouton « Annuler » apparaît), un 2e appui l'enregistre tout de suite. Pas de
+ * compte à rebours : on confirme quand on veut, ou on annule.
  */
 function useValidation(geste: (s: StatutArretColis | null) => Promise<boolean>) {
-  const [fin, setFin] = useState<number | null>(null)
-  const [reste, setReste] = useState(DELAI_VALIDATION_MS)
+  const [armee, setArmee] = useState(false)
   const cible = useRef<StatutArretColis | null>(null)
-  const dernier = useRef(geste)
-  useEffect(() => { dernier.current = geste })
-  useEffect(() => {
-    if (fin == null) return
-    const t = setInterval(() => {
-      const r = fin - Date.now()
-      if (r <= 0) { clearInterval(t); setFin(null); dernier.current(cible.current) } else setReste(r)
-    }, 100)
-    return () => clearInterval(t)
-  }, [fin])
-  const demander = (s: StatutArretColis | null) => { cible.current = s; setReste(DELAI_VALIDATION_MS); setFin(Date.now() + DELAI_VALIDATION_MS) }
-  const annuler = () => setFin(null)
-  return { enAttente: fin != null, reste, demander, annuler }
+  const demander = (s: StatutArretColis | null) => { cible.current = s; setArmee(true) }
+  const confirmer = async () => { setArmee(false); await geste(cible.current) }
+  const annuler = () => setArmee(false)
+  return { armee, demander, confirmer, annuler }
 }
 
 /** Nombre de colis de l'arrêt, bien visible : un arrêt à plusieurs colis saute aux yeux. */
 export function PastilleColis({ n, grand = false }: { n: number; grand?: boolean }) {
   const plusieurs = n > 1
   return (
-    <span className={`shrink-0 inline-flex items-center justify-center gap-1 rounded-full font-bold tabular-nums ${
-      grand ? 'px-3 py-1 text-xl' : 'px-2.5 py-0.5 text-base'} ${
-      plusieurs ? 'bg-[var(--brand)] text-white' : 'border border-[var(--border-strong)] text-[var(--text-muted)]'}`}
+    <span className={`shrink-0 inline-flex items-center justify-center gap-1.5 rounded-full font-bold tabular-nums leading-none ${
+      grand ? 'px-3.5 py-1.5 text-2xl' : 'px-3 py-1 text-xl'} ${
+      plusieurs ? 'bg-[var(--brand)] text-white shadow-sm' : 'bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-[var(--text)]'}`}
       aria-label={`${n} colis`}>
-      {n} <span className={grand ? 'text-base font-semibold' : 'text-sm font-semibold'}>colis</span>
+      <Package size={grand ? 20 : 16} aria-hidden /> {n}
+      <span className={`font-semibold opacity-80 ${grand ? 'text-base' : 'text-sm'}`}>colis</span>
     </span>
   )
 }
@@ -305,14 +293,12 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
               </a>
             )}
           </div>
-          {validation.enAttente ? (
+          {validation.armee ? (
             <div className="flex gap-2">
-              <div className={`${GROS} flex-[3] relative overflow-hidden bg-[var(--success)] text-black`} role="status" aria-live="polite">
-                <span className="absolute inset-y-0 left-0 bg-black/20" style={{ width: `${Math.round((1 - validation.reste / DELAI_VALIDATION_MS) * 100)}%` }} aria-hidden />
-                <span className="relative inline-flex items-center gap-2">
-                  <Check size={24} /> {LIBELLE_FAIT[arret.type]} dans {Math.ceil(validation.reste / 1000)} s
-                </span>
-              </div>
+              <button type="button" disabled={occupe} onClick={validation.confirmer}
+                className={`${GROS} flex-[3] bg-[var(--success)] text-black ring-4 ring-[var(--success)]/40`}>
+                <Check size={24} /> Confirmer : {LIBELLE_FAIT[arret.type]}
+              </button>
               <button type="button" onClick={validation.annuler}
                 className={`${GROS} flex-[2] border-2 border-[var(--danger)] text-[var(--danger)]`}>
                 <X size={22} /> Annuler
@@ -397,11 +383,17 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
           {arret.note && <span className="inline-flex items-center gap-1"><MessageSquare size={13} /> {arret.note}</span>}
         </span>
       </button>
-      {!verrouillee && !arret.statut && (validation.enAttente ? (
-        <button type="button" onClick={validation.annuler}
-          className="w-24 shrink-0 m-1.5 inline-flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] border-2 border-[var(--danger)] text-[var(--danger)] text-sm font-bold active:scale-[0.97]">
-          <X size={20} /> Annuler {Math.ceil(validation.reste / 1000)}
-        </button>
+      {!verrouillee && !arret.statut && (validation.armee ? (
+        <div className="shrink-0 m-1.5 flex gap-1.5">
+          <button type="button" onClick={validation.annuler} aria-label="Annuler"
+            className="w-12 inline-flex items-center justify-center rounded-[var(--r-md)] border-2 border-[var(--danger)] text-[var(--danger)] active:scale-[0.97]">
+            <X size={22} />
+          </button>
+          <button type="button" onClick={validation.confirmer} disabled={occupe}
+            className="w-24 inline-flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] bg-[var(--success)] text-black text-sm font-bold ring-4 ring-[var(--success)]/40 disabled:opacity-40 active:scale-[0.97]">
+            <Check size={20} /> Confirmer
+          </button>
+        </div>
       ) : (
         <button type="button" onClick={() => (arret.quantite > 1 ? setConfirmer(true) : validation.demander(fait))} disabled={occupe}
           className="w-24 shrink-0 m-1.5 inline-flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] bg-[var(--success)] text-black text-sm font-bold disabled:opacity-40 active:scale-[0.97]">
