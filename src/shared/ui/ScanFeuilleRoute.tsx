@@ -4,6 +4,7 @@ import {
 } from 'lucide-react'
 import { Badge } from './Badge'
 import { BoutonIcone } from './BoutonIcone'
+import { ConfirmDialog } from './ConfirmDialog'
 import { useToast } from './useToast'
 import {
   LIBELLE_TYPE_ARRET, arretVide, fusionnerEntetes, manquesApercu, modifierArretLu, ordonnerParPage, ordreHabituel, pagesEnDouble,
@@ -78,6 +79,7 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
   const [seulementAVerifier, setSeulementAVerifier] = useState(false)
   const [details, setDetails] = useState(false)
   const [creation, setCreation] = useState(false)
+  const [confirmerSuppression, setConfirmerSuppression] = useState(false)
   const [envoi, setEnvoi] = useState(false)
   const camRef = useRef<HTMLInputElement>(null)
   const galRef = useRef<HTMLInputElement>(null)
@@ -581,7 +583,15 @@ export function ScanFeuilleRoute({ companyId, memberId, nomSalarie, date, client
             {creation ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} />} Créer la tournée
           </button>
         </div>
+        <button type="button" onClick={() => setConfirmerSuppression(true)} disabled={creation}
+          className="min-h-11 inline-flex items-center justify-center gap-2 text-sm text-[var(--text-muted)] underline disabled:opacity-40">
+          <Trash2 size={15} /> Supprimer ce scan
+        </button>
       </div>
+      <ConfirmDialog open={confirmerSuppression} title="Supprimer ce scan ?"
+        message="La lecture et les photos de cette feuille sont effacées. Rien n'est créé."
+        confirmLabel="Supprimer" onConfirm={() => { setConfirmerSuppression(false); void annulerTout() }}
+        onCancel={() => setConfirmerSuppression(false)} />
     </div>
   )
 }
