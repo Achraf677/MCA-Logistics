@@ -1,6 +1,9 @@
 // Edge Function `optimize-tours` — répartition MULTI-véhicule (Tournée V3).
 // Entrée : { date: 'YYYY-MM-DD', heure_depart?: 'HH:MM', assignments: [{ vehicle_id, driver_id? }], delivery_ids: string[] }
-// Équilibrage : amount:[1] par livraison + capacity:[ceil(N/V)] par véhicule → force l'usage équilibré.
+// Équilibrage : au plus ceil(N/V) courses par véhicule → usage équilibré.
+// Calcul (depuis 20/10/2026, Vroom / ORS /optimization fermant début 11/2026) : matrice ORS réelle
+// (api.heigit.org) + planificateur maison `_shared/planifExpress.ts` + tracé IGN ; aucun secours,
+// en cas d'échec rien n'est modifié.
 // Heures justes (lot T3) : départ choisi (défaut 08:00, gardé sur `tours.heure_depart`), 5 min
 // d'arrêt, créneaux de la fiche en fenêtres horaires, urgent prioritaire, durée = conduite +
 // arrêts + attente. Express (lot T4) : un retrait à faire est géocodé ici (BAN) et envoyé en paire
@@ -16,7 +19,8 @@ import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError } from '../_shared/http.ts';
-import { optimize } from '../_shared/ors.ts';
+import { matriceOrs, messageRoutes, tracerIgn } from '../_shared/routesOrs.ts';
+import { planifier, pointsDuProbleme, type ProblemeVroom } from '../_shared/planifExpress.ts';
 import { geocode } from '../_shared/geocode.ts';
 import { DEPART_DEFAUT, construireProbleme, coursesNonPlacees, dureeRouteMin, heureEnSecondes, lireRoute, secondesEnHeure } from '../_shared/vroom.ts';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -152,12 +156,31 @@ Deno.serve(async (req)=>{
     capacite: cap
   });
   try {
-    const result = await optimize(apiKey, probleme.jobs, probleme.vehicles, probleme.shipments);
-    const routes = result.routes ?? [];
+    // Matrice de routes réelles (ORS) puis calcul maison : rien n'est écrit tant que tout n'est pas prêt.
+    const pb = probleme as ProblemeVroom;
+    const { points, unites } = pointsDuProbleme(pb);
+    const { m } = await matriceOrs(apiKey, points);
+    const result = planifier(pb, m);
+    const routes = result.routes;
     if (routes.length === 0) return jsonResponse({
       ok: false,
-      error: 'no route returned by ORS'
-    }, 502);
+      error: 'no route',
+      message: "Aucune course n'a pu être placée (créneaux impossibles à tenir avec ce départ, ou journée trop courte)."
+    }, 422);
+    // Tracé routier de chaque tournée (IGN), AVANT toute écriture : si un tracé échoue, rien n'est modifié.
+    const pointParId = new Map<number, { lat: number; lng: number }>();
+    for (const u of unites) for (const t of u.taches) pointParId.set(t.id, points[t.noeud]);
+    const geometries = new Map<number, string>();
+    for (const route of routes) {
+      const parcours = [points[0], ...route.steps.filter((s)=>s.id != null).map((s)=>pointParId.get(s.id as number)!), points[0]];
+      const trace = await tracerIgn(parcours);
+      if (!trace) return jsonResponse({
+        ok: false,
+        error: 'trace',
+        message: 'Tracé routier indisponible (service IGN) : réessaie dans un moment. Rien n’a été modifié.'
+      }, 502);
+      geometries.set(route.vehicle, trace);
+    }
     // ── Repartir VRAIMENT propre : détacher (a) toutes les livraisons des tournées concernées, (b) le pool ──
     if (existingTourIds.length > 0) {
       const { error } = await supabase.from('deliveries').update({
@@ -197,7 +220,7 @@ Deno.serve(async (req)=>{
         depot_lng: depotLng,
         total_km: totalKm,
         total_duration_min: totalMin,
-        geometry: route.geometry ?? null,
+        geometry: geometries.get(route.vehicle) ?? null,
         status: 'optimisee',
         heure_depart: heureDepart,
         optimized_at: new Date().toISOString()
@@ -265,12 +288,12 @@ Deno.serve(async (req)=>{
       }
     });
   } catch (err) {
-    if (err instanceof ExternalApiError) {
+    if (err instanceof ExternalApiError || /matrice ORS/.test((err as Error)?.message ?? '')) {
+      console.warn('optimize-tours: routes indisponibles', (err as Error)?.message);
       return jsonResponse({
         ok: false,
-        error: err.message,
-        status: err.status,
-        body: err.responseBody
+        error: (err as Error).message,
+        message: messageRoutes(err)
       }, 502);
     }
     return jsonResponse({
