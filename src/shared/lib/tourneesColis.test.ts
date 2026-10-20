@@ -157,6 +157,10 @@ describe('pages de la feuille', () => {
     expect(pagesManquantes([{ numero: 1, total: 2 }, null, { numero: 2, total: 2 }])).toEqual([])
     expect(pagesManquantes([null, undefined])).toEqual([])
   })
+  it('photo sans « x/y » lisible (pied de page rogné) : elle prend la place libre', () => {
+    expect(pagesManquantes([{ numero: 1, total: 2 }, null])).toEqual([])
+    expect(pagesManquantes([{ numero: 1, total: 3 }, null])).toEqual([3])
+  })
   it('page en double', () => {
     expect(pagesEnDouble([{ numero: 2, total: 3 }, { numero: 2, total: 3 }, { numero: 1, total: 3 }])).toEqual([2])
   })

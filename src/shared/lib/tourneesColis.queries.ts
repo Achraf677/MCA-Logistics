@@ -68,14 +68,15 @@ export async function nomsClients(ids: string[]): Promise<Map<string, string>> {
 // ── Scan d'une page ─────────────────────────────────────────────────────────
 
 /**
- * Photo d'une page → data URL JPEG ~130 Ko. Assez net pour lire un tableau imprimé, assez
- * léger pour la 4G du matin au dépôt.
+ * Photo d'une page → data URL JPEG ~500 Ko (2 200 px). Les petits caractères du tableau (exposants,
+ * « RC », lettres collées aux numéros) exigent de la netteté ; les photos partent une par une en
+ * arrière-plan, donc le poids reste sans gravité sur la 4G du dépôt.
  */
 export async function compresserPage(file: File): Promise<string> {
   let f: File | Blob = file
   try {
     f = await imageCompression(file, {
-      maxSizeMB: 0.13, maxWidthOrHeight: 1800, initialQuality: 0.75, fileType: 'image/jpeg', useWebWorker: true,
+      maxSizeMB: 0.5, maxWidthOrHeight: 2200, initialQuality: 0.85, fileType: 'image/jpeg', useWebWorker: true,
     })
   } catch { /* compression impossible : on envoie l'original, l'Edge refusera s'il est trop lourd */ }
   return imageCompression.getDataUrlFromFile(f as File)

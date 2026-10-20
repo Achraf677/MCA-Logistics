@@ -409,7 +409,10 @@ export function pagesManquantes(lues: Array<PageLue | null | undefined>): number
   if (ok.length === 0) return []
   const total = Math.max(...ok.map(p => p.total))
   const vues = new Set(ok.map(p => p.numero))
-  return Array.from({ length: total }, (_, i) => i + 1).filter(n => !vues.has(n))
+  const absentes = Array.from({ length: total }, (_, i) => i + 1).filter(n => !vues.has(n))
+  // Une photo dont le « x/y » n'est pas visible (pied de page rogné) occupe l'une des places libres.
+  const sansNumero = lues.length - ok.length
+  return absentes.slice(sansNumero)
 }
 
 /** Même page de la feuille photographiée deux fois (ex. deux « 2/3 »). Pur. */

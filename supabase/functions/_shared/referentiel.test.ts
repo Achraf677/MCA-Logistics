@@ -92,3 +92,109 @@ describe('abréviations de la feuille', () => {
     expect(cleAbrev('rue du Gal de Gaulle')).toBe(cleAbrev('Rue du Général de Gaulle'))
   })
 })
+
+// ── Feuille de Brumath du 20/10/2026 : ce que la vision a mal lu ─────────────
+import { corrigerNumero, trouverRueProche, trouverRueParPlace, distanceEdition } from './referentiel.ts'
+
+const rueB = (rue: string, rang: number, nums: string[] = [], relais: string[] = []): RueRef => ({
+  commune: 'Brumath', commune_cle: 'brumath', rue, rue_cle: cle(rue), rue_souple: cleSouple(rue), rang,
+  numeros: Object.fromEntries(nums.map(n => [n, [48.7, 7.7] as [number, number]])), centre: [48.7, 7.7], relais,
+});
+const BRUMATH = indexer([
+  rueB('Rue des Jardiniers', 573, ['3A', '19', '22']),
+  rueB('Rue de Hochstett', 604, ['1B', '6']),
+  rueB('Rue des Gravières', 642, ['6', '16']),
+  rueB('Rue des Carrières', 644, ['4A', '7'], ['4A']),
+  rueB('Rue de l’Equerre', 645, ['12']),
+  rueB('Rue des Grumes', 646, ['4', '6']),
+  rueB('Rue de la Charpente', 650, ['8']),
+  rueB('Rue du Tonneau', 651, ['1', '2']),
+  rueB('Rue des Ebénistes', 652, ['26', '30']),
+  rueB('Rue de la Scierie', 653, ['2', '9', '10']),
+  rueB('Rue du Maréchal de Lattre de Tassigny', 496, ['1A', '7']),
+]);
+const lu = (rue: string, numero: string | null, type: 'c' | 'rc' | 'col' = 'c') =>
+  ({ commune: 'BRUMATH', cp: '67170', secteur: '632 - ZONE 3', rue, numero, type });
+
+describe('feuille de Brumath : lectures approchées', () => {
+  it('fautes de lecture sur le nom de rue', () => {
+    expect(trouverRueProche(BRUMATH, 'Brumath', 'rue des carriers')?.rue).toBe('Rue des Carrières');
+    expect(trouverRueProche(BRUMATH, 'Brumath', 'rue des graviers')?.rue).toBe('Rue des Gravières');
+    expect(trouverRueProche(BRUMATH, 'Brumath', 'rue de lequierre')?.rue).toBe('Rue de l’Equerre');
+    expect(trouverRueProche(BRUMATH, 'Brumath', 'rue du mal de latte de tassigny')?.rue).toBe('Rue du Maréchal de Lattre de Tassigny');
+    expect(trouverRueProche(BRUMATH, 'Brumath', 'rue des eberlins')).toBeNull(); // trop éloigné : par la place
+    expect(distanceEdition('carriers', 'carrieres')).toBe(1);
+  });
+  it('rue illisible : retrouvée par sa place et ses numéros', () => {
+    // Entre la Charpente (650) et la Scierie (653) : Tonneau (1, 2) ou Ebénistes (26, 30) ?
+    expect(trouverRueParPlace(BRUMATH, 'Brumath', ['26', '30'], 650, 653)?.rue).toBe('Rue des Ebénistes');
+    expect(trouverRueParPlace(BRUMATH, 'Brumath', ['99'], 650, 653)).toBeNull();
+  });
+  it('chiffre pour lettre : 34 → 3A, 18 → 1B, uniquement si la variante existe', () => {
+    const jardiniers = BRUMATH.exact.get('brumath|rue des jardiniers')!;
+    expect(corrigerNumero(jardiniers, '34')).toBe('3A');
+    expect(corrigerNumero(jardiniers, '19')).toBe('19');
+    expect(corrigerNumero(jardiniers, '77')).toBe('77');
+    const hochstett = BRUMATH.exact.get('brumath|rue de hochstett')!;
+    expect(corrigerNumero(hochstett, '18')).toBe('1B');
+  });
+  it('arrêts de la feuille : rue officielle, numéro corrigé, relais du fichier', () => {
+    const r = appliquerReferentiel([
+      lu('Rue des Jardiniers', '34'),
+      lu('rue de hochstett', '18'),
+      lu('rue des graviers', '6'),
+      lu('rue des carriers', '4A', 'c'),
+      lu('rue des eberlins', '26'),
+      lu('rue des eberlins', '30'),
+    ].map(a => ({ ...a })), BRUMATH);
+    expect(r.map(x => x.rue)).toEqual(['Rue des Jardiniers', 'Rue de Hochstett', 'Rue des Gravières', 'Rue des Carrières', 'Rue des Ebénistes', 'Rue des Ebénistes']);
+    expect(r[0].numero).toBe('3A');
+    expect(r[1].numero).toBe('1B');
+    expect(r[3].type).toBe('rc'); // 4A est un relais connu
+    expect(r.every(x => x.rue_connue && x.lat != null)).toBe(true);
+  });
+});
+
+describe('recalage par les numéros (photo penchée)', () => {
+  const nums = (...n: string[]) => n;
+  const R = [
+    rueB('Rue de la Gare', 491, nums('4', '17', '25')),
+    rueB('Rue de Krautwiller', 495, nums('25', '30', '4')),
+    rueB('Rue du Maréchal de Lattre de Tassigny', 496, nums('1A', '13', '20')),
+    rueB('Rue des Tuiles', 500, nums('1A', '7', '3')),
+    rueB('Rue du Général Duport', 501, nums('3', '13', '17', '39', '40', '53')),
+    rueB('Rue de la Rivière', 490, nums('10', '4')),
+  ];
+  const REF2 = indexer(R);
+  it('chaque bloc de numéros revient à la rue où ils existent tous', () => {
+    // Lecture réelle : les numéros de chaque ligne étaient posés sur la rue d'au-dessus.
+    const lus = [
+      lu('rue de la gare', '4'), lu('rue de la gare', '17'),
+      lu('rue de krautwiller', '25'), lu('rue de krautwiller', '30'),
+      lu('rue du mal de lattre de tassigny', '1A'), lu('rue du mal de lattre de tassigny', '13'), lu('rue du mal de lattre de tassigny', '20'),
+      lu('rue des tuiles', '1A'), lu('rue des tuiles', '7'),
+      lu('rue du general duport', '3'), lu('rue du general duport', '13'), lu('rue du general duport', '17'),
+      lu('rue du general duport', '10'), // la ligne suivante de la feuille (Rivière) : rien de voisin ne convient, elle reste
+    ];
+    // décalage : on décale les rues d'un cran (la rue de chaque ligne = la rue de la ligne précédente)
+    const rues = ['rue de la riviere', 'rue de la gare', 'rue de krautwiller', 'rue du mal de lattre de tassigny', 'rue des tuiles', 'rue du general duport'];
+    const blocs = [[0, 1], [2, 3], [4, 5, 6], [7, 8], [9, 10, 11], [12]];
+    const decales = lus.map((a, i) => ({ ...a, rue: rues[blocs.findIndex(b => b.includes(i))] }));
+    const r = appliquerReferentiel(decales, REF2);
+    expect(r.map(x => x.rue)).toEqual([
+      'Rue de la Gare', 'Rue de la Gare',
+      'Rue de Krautwiller', 'Rue de Krautwiller',
+      'Rue du Maréchal de Lattre de Tassigny', 'Rue du Maréchal de Lattre de Tassigny', 'Rue du Maréchal de Lattre de Tassigny',
+      'Rue des Tuiles', 'Rue des Tuiles',
+      'Rue du Général Duport', 'Rue du Général Duport', 'Rue du Général Duport',
+      'Rue du Général Duport',
+    ]);
+  });
+  it('rue correcte ou ambiguë : rien ne bouge', () => {
+    const bon = appliquerReferentiel([lu('rue de la gare', '4'), lu('rue de krautwiller', '30')].map(a => ({ ...a })), REF2);
+    expect(bon.map(x => x.rue)).toEqual(['Rue de la Gare', 'Rue de Krautwiller']);
+    // « 4 » existe dans plusieurs rues voisines : ambigu
+    const amb = appliquerReferentiel([lu('rue de la riviere', '77'), lu('rue de la gare', '4')].map(a => ({ ...a })), REF2);
+    expect(amb[0].rue).toBe('Rue de la Rivière');
+  });
+});
