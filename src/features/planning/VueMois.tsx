@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import type { MouseEvent } from 'react'
 import {
-  Calendar, CalendarClock, UserX, Zap, Plus, Wrench, IdCard,
+  Calendar, CalendarClock, UserX, Zap, Plus, Wrench, IdCard, AlertTriangle, RefreshCw,
 } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
@@ -15,7 +15,6 @@ import { getDeliveries } from '../livraisons/livraisons.queries'
 import type { DeliveryRow } from '../livraisons/livraisons.types'
 import { toLocalISO } from '../../shared/lib/dates'
 import type { EcheanceStatus } from '../../shared/lib/echeances'
-import { getSourcesEcheances } from './planning.queries'
 import {
   grilleDuMois, coursesParJour, estSurLaRoute, tronquer, construireEcheances, echeancesParJour,
   statutLePlusGrave, infoBulleEcheances, montreCourses, montreEcheances, joursAvecContenu,
@@ -45,6 +44,7 @@ interface SourcesEcheances {
   vehicules: VehiculeEcheanceSource[]
   entretiens: EntretienEcheanceSource[]
   membres: MembreEcheanceSource[]
+  incomplet?: boolean
 }
 const SOURCES_VIDES: SourcesEcheances = { vehicules: [], entretiens: [], membres: [] }
 
@@ -58,10 +58,12 @@ function jourLong(iso: string): string {
  * Vue « Mois » du Planning (ancien onglet Calendrier) : courses du mois et
  * échéances flotte / équipe. Le mois affiché et sa navigation viennent du Planning.
  */
-export function VueMois({ annee: year, mois: month }: { annee: number; mois: number }) {
+export function VueMois({ annee: year, mois: month, sources: sourcesPlanning }: { annee: number; mois: number; sources: SourcesEcheances | null }) {
   const [rows, setRows]   = useState<DeliveryRow[]>([])
-  const [sources, setSources] = useState<SourcesEcheances>(SOURCES_VIDES)
+  const sources = sourcesPlanning ?? SOURCES_VIDES
   const [loading, setLoading] = useState(true)
+  const [erreur, setErreur] = useState<string | null>(null)
+  const demande = useRef(0)
   const [filtre, setFiltre] = useState<FiltreCalendrier>('tout')
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<DeliveryRow | null>(null)
@@ -72,14 +74,14 @@ export function VueMois({ annee: year, mois: month }: { annee: number; mois: num
   const monthEnd   = toLocalISO(new Date(year, month + 1, 0))
 
   const load = useCallback(async () => {
+    const id = ++demande.current
     setLoading(true)
-    const [{ data }, ech] = await Promise.all([
-      getDeliveries({ date_from: monthStart, date_to: monthEnd }),
-      getSourcesEcheances(),
-    ])
+    const { data, error } = await getDeliveries({ date_from: monthStart, date_to: monthEnd })
+    // Une réponse arrivée en retard (clic rapide sur « mois suivant ») n'écrase jamais la plus récente.
+    if (id !== demande.current) return
+    setErreur(error ? error.message : null)
     // Relevés de messagerie et forfaits : pas des courses à placer dans le calendrier.
-    setRows(((data as unknown as DeliveryRow[]) ?? []).filter(estSurLaRoute))
-    setSources(ech)
+    setRows(error ? [] : ((data as unknown as DeliveryRow[]) ?? []).filter(estSurLaRoute))
     setLoading(false)
   }, [monthStart, monthEnd])
 
@@ -171,9 +173,17 @@ export function VueMois({ annee: year, mois: month }: { annee: number; mois: num
           </div>
         </div>
 
+        {erreur && (
+          <div role="alert" className="shrink-0 flex items-center gap-2 px-3 py-2 rounded-[var(--r-md)] border border-[var(--danger)]/40 bg-[var(--danger)]/10 text-sm text-[var(--danger)]">
+            <AlertTriangle size={16} className="shrink-0" />
+            <span className="flex-1 min-w-0">Mois illisible : {erreur}</span>
+            <Button variant="secondary" size="compact" onClick={() => void load()}><RefreshCw size={13} /> Réessayer</Button>
+          </div>
+        )}
+
         {loading ? (
           <Skeleton className="h-96 md:flex-1" />
-        ) : (
+        ) : erreur ? null : (
           <>
             {/* ── PC / tablette : grille du mois en hauteur d'écran ── */}
             <div className="hidden md:flex flex-col flex-1 min-h-0 glass rounded-[var(--r-xl)] overflow-hidden">
@@ -284,7 +294,7 @@ function CaseJour({ cle, numero, aujourdhui, weekend, jour, echeances, filtre, o
   const gravite = statutLePlusGrave(echeances)
   return (
     <div role="button" tabIndex={0} onClick={onCase}
-      onKeyDown={e => { if (e.key === 'Enter') onCase() }}
+      onKeyDown={e => { if (e.target === e.currentTarget && e.key === 'Enter') onCase() }}
       aria-label={`${jourLong(cle)}${jour?.nb ? ` — ${jour.nb} course${jour.nb > 1 ? 's' : ''}` : ''}`}
       className={`group relative min-h-0 border-r border-[var(--border)] last:border-r-0 flex flex-col cursor-pointer
         hover:bg-[var(--brand)]/5 transition-colors
@@ -316,7 +326,7 @@ function CaseJour({ cle, numero, aujourdhui, weekend, jour, echeances, filtre, o
           </button>
         )}
         <button type="button" onClick={stop(onNouvelle)} title="Nouvelle livraison ce jour" aria-label="Nouvelle livraison ce jour"
-          className="ml-auto opacity-0 group-hover:opacity-100 focus:opacity-100 text-[var(--text-muted)] hover:text-[var(--brand)] transition-opacity">
+          className="ml-auto opacity-0 group-hover:opacity-100 focus:opacity-100 [@media(pointer:coarse)]:opacity-100 text-[var(--text-muted)] hover:text-[var(--brand)] transition-opacity">
           <Plus size={13} />
         </button>
         <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs font-medium leading-none

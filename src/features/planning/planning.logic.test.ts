@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   joursDeLaSemaine, dateLocale, estDeplacable, grouperParChauffeur, grouperParJour,
   compteursATraiter, correspondAuFiltre, creneauCarte, aDeplacer, appliquerDeplacement,
-  alertesAffectation, alertesDeplacement,
+  alertesAffectation, alertesDeplacement, familleCourse, niveauCharge, kpisJour, sansTerminees, coursesDuJour,
+  retardsHorsSemaine, decalerAncre, SEUIL_CHARGE_DEFAUT,
 } from './planning.logic'
 import type { CoursePlanning, ChauffeurPlanning, VehiculePlanning } from './planning.types'
 import { toLocalISO } from '../../shared/lib/dates'
@@ -137,5 +138,45 @@ describe('contrôle des documents', () => {
     expect(alertesDeplacement(courses, { date: '2026-10-01' }, EQUIPE, VEHICULES)).toEqual([
       'Master : contrôle technique échu le 29/09/2026',
     ])
+  })
+})
+
+describe('familles, charge, chiffres du jour', () => {
+  it('6 statuts → 4 familles', () => {
+    expect(['planifiee', 'en_cours', 'livree', 'facturee', 'payee'].map(familleCourse))
+      .toEqual(['afaire', 'encours', 'livree', 'terminee', 'terminee'])
+  })
+  it('charge : libre, ok jusqu’à 80 %, plein jusqu’au seuil, surcharge au-delà', () => {
+    expect(niveauCharge(0, 8)).toBe('libre')
+    expect(niveauCharge(6, 8)).toBe('ok')
+    expect(niveauCharge(7, 8)).toBe('plein')
+    expect(niveauCharge(8, 8)).toBe('plein')
+    expect(niveauCharge(9, 8)).toBe('surcharge')
+    expect(niveauCharge(9)).toBe(niveauCharge(9, SEUIL_CHARGE_DEFAUT))
+  })
+  it('chiffres du jour : sans chauffeur = ouvertes seulement', () => {
+    const k = kpisJour([
+      c({ id: '1' }), c({ id: '2', statut: 'en_cours', driver_id: 'a' }), c({ id: '3', statut: 'livree' }),
+      c({ id: '4', statut: 'facturee' }),
+    ], [c({ id: '9' })])
+    expect(k).toEqual({ total: 4, afaire: 1, encours: 1, livrees: 1, terminees: 1, sansChauffeur: 1, enRetard: 1 })
+  })
+  it('terminées masquées par défaut, comptées', () => {
+    const l = [c({ id: '1' }), c({ id: '2', statut: 'payee' })]
+    expect(sansTerminees(l, false)).toEqual({ courses: [l[0]], masquees: 1 })
+    expect(sansTerminees(l, true).courses).toHaveLength(2)
+  })
+  it('courses d’un jour, retards hors semaine (avant ET après)', () => {
+    const l = [c({ id: '1', date: '2026-09-28' }), c({ id: '2', date: '2026-09-29' })]
+    expect(coursesDuJour(l, '2026-09-29').map(x => x.id)).toEqual(['2'])
+    const r = [c({ id: 'a', date: '2026-09-20' }), c({ id: 'b', date: '2026-09-30' }), c({ id: 'c', date: '2026-10-09' })]
+    expect(retardsHorsSemaine(r, '2026-09-28', '2026-10-04').map(x => x.id)).toEqual(['a', 'c'])
+  })
+  it('navigation : une copie (le jour d’origine ne bouge pas), jour / semaine / mois', () => {
+    const d = new Date(2026, 9, 31)
+    expect(toLocalISO(decalerAncre(d, 'jour', 1))).toBe('2026-11-01')
+    expect(toLocalISO(decalerAncre(d, 'semaine', -1))).toBe('2026-10-24')
+    expect(decalerAncre(d, 'mois', 1).getMonth()).toBe(10)
+    expect(toLocalISO(d)).toBe('2026-10-31')
   })
 })

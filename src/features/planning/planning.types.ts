@@ -58,3 +58,35 @@ export interface CibleDeplacement {
   /** undefined = inchangé. */
   date?: string
 }
+
+/** Famille d'une course pour l'affichage : 4 couleurs au lieu de 6 statuts. */
+export type FamilleCourse = 'afaire' | 'encours' | 'livree' | 'terminee'
+
+/** Niveau de charge d'un chauffeur sur un jour (courses / seuil réglé). */
+export type NiveauCharge = 'libre' | 'ok' | 'plein' | 'surcharge'
+
+/** Chiffres du jour (bandeau du haut). */
+export interface KpisJour {
+  total: number
+  afaire: number
+  encours: number
+  livrees: number
+  terminees: number
+  sansChauffeur: number
+  enRetard: number
+}
+
+/** Tournée de colis d'un livreur ce jour-là (lecture seule, depuis `tournees_colis`). */
+export interface TourneeColisJour {
+  id: string
+  memberId: string
+  nom: string
+  statut: 'a_faire' | 'en_cours' | 'cloturee'
+  arrets: number
+  arretsTraites: number
+  colis: number
+  colisLivres: number
+  colisAttente: number
+  colisRetour: number
+  km: number | null
+}

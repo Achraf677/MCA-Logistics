@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ScanText, Trash2, ClipboardList, Map as IconeCarte, Route, RotateCcw, Radio } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
@@ -52,15 +52,21 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
   const [positions, setPositions] = useState<PositionLivreur[]>([])
   const [calcul, setCalcul] = useState<string | null>(null)
   const [aRouvrir, setARouvrir] = useState<TourneeColis | null>(null)
+  const [aCalculer, setACalculer] = useState<TourneeColis | null>(null)
   const [maintenant, setMaintenant] = useState(() => Date.now())
 
+  const demande = useRef(0)
   const recharger = useCallback(async () => {
+    const n = ++demande.current
     const t = await listerTourneesColis({ du: date, au: date })
+    if (n !== demande.current) return
     setCharge(true)
     if (t.error) { setErreur(t.error.message); setTournees([]); setArrets([]); return }
+    const a = await arretsDesTournees(t.data.map(x => x.id))
+    if (n !== demande.current) return
+    if (a.error) { setErreur(a.error.message); return }
     setErreur(null)
     setTournees(t.data)
-    const a = await arretsDesTournees(t.data.map(x => x.id))
     setArrets(a.data)
   }, [date])
 
@@ -74,7 +80,7 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
     let annule = false
     const lire = () => positionsLivreurs().then(({ data }) => { if (!annule) { setPositions(data); setMaintenant(Date.now()) } })
     lire()
-    const id = window.setInterval(() => { lire(); if (carte) recharger() }, 30_000)
+    const id = window.setInterval(() => { lire(); if (carte && !document.hidden) recharger() }, 30_000)
     return () => { annule = true; window.clearInterval(id) }
   }, [estAujourdhui, carte, recharger])
 
@@ -113,7 +119,14 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
     libelle: `${(l.t.team_members?.full_name ?? 'Salarié').split(' ')[0]} · ${ilYA(l.pos!.maj_le, maintenant)}`,
   }))
 
+  const demanderCalcul = (t: TourneeColis) => {
+    // Tournée déjà en route ou ordre posé à la main : un recalcul complet l'écraserait.
+    if (t.statut === 'en_cours' || modeOrdre(t) === 'manuel') setACalculer(t)
+    else void calculer(t)
+  }
+
   const calculer = async (t: TourneeColis) => {
+    setACalculer(null)
     setCalcul(t.id)
     const { data, error } = await calculerItineraire({ tourneeId: t.id, mode: 'tout' })
     setCalcul(null)
@@ -243,7 +256,7 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
                 </div>
                 {peutScanner && t.statut !== 'cloturee' && (
                   <BoutonIcone icone={Route} taille="sm" libelle={calcul === t.id ? 'Calcul…' : "Calculer l'itinéraire"}
-                    disabled={calcul != null} onClick={() => calculer(t)} />
+                    disabled={calcul != null} onClick={() => demanderCalcul(t)} />
                 )}
                 {peutScanner && t.statut === 'cloturee' && (
                   <BoutonIcone icone={RotateCcw} taille="sm" libelle="Rouvrir la tournée" onClick={() => setARouvrir(t)} />
@@ -279,6 +292,10 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
       <ConfirmDialog open={aSupprimer != null} title="Supprimer cette tournée de colis ?"
         message={`Feuille de ${aSupprimer?.team_members?.full_name ?? 'ce salarié'} : les arrêts et leurs statuts seront effacés.`}
         loading={suppression} onConfirm={supprimer} onCancel={() => setASupprimer(null)} />
+
+      <ConfirmDialog open={aCalculer != null} title="Recalculer l'itinéraire ?"
+        message="La tournée est en cours ou son ordre a été posé à la main : le recalcul complet remplace cet ordre."
+        confirmLabel="Recalculer" onConfirm={() => aCalculer && calculer(aCalculer)} onCancel={() => setACalculer(null)} />
 
       <ConfirmDialog open={aRouvrir != null} title="Rouvrir cette tournée ?"
         message={`Feuille de ${aRouvrir?.team_members?.full_name ?? 'ce salarié'} : il pourra de nouveau changer les statuts. Sa journée de colis n'est pas modifiée.`}

@@ -6,6 +6,8 @@ import 'leaflet/dist/leaflet.css'
 import { formatDuration } from './TourCard'
 
 const DEPOT_COLOR = '#1f2937'
+const TUILES = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2'
+  + '&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png'
 
 export interface OverviewTour {
   id: string
@@ -115,13 +117,10 @@ function ToursOverviewMap({ tours, depot }: Props) {
   const center: [number, number] = positions[0] ?? [48.58, 7.75]
 
   return (
-    <div className="rounded-[var(--r-lg)] overflow-hidden border border-[var(--border)]">
-      <div className="h-[22rem] w-full">
-        <MapContainer center={center} zoom={12} scrollWheelZoom style={{ height: '100%', width: '100%' }}>
-          <TileLayer
-            attribution="© OpenStreetMap contributors"
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+    <div className="isolate rounded-[var(--r-lg)] overflow-hidden border border-[var(--border)]">
+      <div className="h-[18rem] lg:h-[22rem] w-full">
+        <MapContainer center={center} zoom={12} scrollWheelZoom={false} keyboard={false} style={{ height: '100%', width: '100%' }}>
+          <TileLayer url={TUILES} maxZoom={19} attribution='&copy; <a href="https://www.ign.fr/">IGN</a>' />
           {decoded.map(t => (
             t.line.length > 1 && (
               <Polyline key={t.id} positions={t.line} pathOptions={{ color: t.color, weight: 4, opacity: 0.85 }} />

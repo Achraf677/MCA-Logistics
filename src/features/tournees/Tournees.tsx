@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Route, Clock, MapPin, AlertTriangle, ArrowUp, ArrowDown, PackageOpen, ChevronDown } from 'lucide-react'
+import { MapPin, AlertTriangle, ArrowUp, ArrowDown, PackageOpen, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
+import { BoutonIcone } from '../../shared/ui/BoutonIcone'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 import { Badge } from '../../shared/ui/Badge'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -14,7 +16,7 @@ import {
   getCompanyDepot, getActiveVehicles, getActiveDrivers,
   fetchPlannableDeliveries, getDeliveriesForDate, fetchToursByDate,
   dispatchAndOptimize, repartirDansMonOrdre,
-  fetchLateDeliveries, replanifierRetardsAffectes, setRetraitAFaire,
+  fetchLateDeliveries, replanifierRetardsAffectes, setRetraitAFaire, fetchStopsDesTournees,
 } from './tournees.queries'
 import {
   isGeocoded, canDispatch, groupToursWithStops, totalsAcrossTours,
@@ -30,7 +32,6 @@ import { colorForIndex } from './tours.palette'
 import type { OverviewTour } from './ToursOverviewMap'
 import type { Tour, TourDelivery, Assignment, VehiculeTournee, ChauffeurTournee } from './tournees.types'
 import { alertesAffectation } from '../../shared/lib/documentsAffectation'
-import { Field } from '../../shared/ui/Field'
 import { TourneesColisDuJour } from './TourneesColisDuJour'
 
 // Lazy-load : Leaflet hors bundle initial (chunk séparé).
@@ -39,6 +40,8 @@ const ToursOverviewMap = lazy(() => import('./ToursOverviewMap'))
 export function Tournees() {
   const { companyId } = useProfile()
   const { toast } = useToast()
+  const { can } = usePermissions()
+  const peutEcrire = can('planning.tournees', 'update')
 
   // `?date=AAAA-MM-JJ` (lien « Composer la tournée de ce jour » du Planning),
   // lu au montage seulement : ensuite, c'est le champ Date qui commande.
@@ -73,6 +76,11 @@ export function Tournees() {
   const [planOuvert, setPlanOuvert] = useState(false)
 
   const [loadingList, setLoadingList] = useState(false)
+  // Mobile : une colonne à la fois (Préparer / Tournées). Sur PC les deux sont visibles.
+  const [onglet, setOnglet] = useState<'preparer' | 'tournees'>('preparer')
+  const [erreurChargement, setErreurChargement] = useState<string | null>(null)
+  // Numéro de la dernière demande : une réponse plus lente d'une demande plus ancienne est ignorée.
+  const demande = useRef(0)
   // Affectations reprises une fois par date (jamais par-dessus un choix fait à l'écran).
   const affectationsReprisesPour = useRef<string | null>(null)
   // Répartition en attente de confirmation (affectations existantes remplacées).
@@ -87,23 +95,31 @@ export function Tournees() {
   // ── Référentiels (une fois) ─────────────────────────────────────────────────
   useEffect(() => {
     if (!companyId) return
-    getCompanyDepot(companyId).then(({ data }) => {
-      if (data) setDepot({ lat: data.depot_lat, lng: data.depot_lng, name: data.name })
+    getCompanyDepot(companyId).then(({ data, error }) => {
+      if (error) toast(`Dépôt non chargé : ${error.message}`, 'error')
+      else if (data) setDepot({ lat: data.depot_lat, lng: data.depot_lng, name: data.name })
     })
-    getActiveVehicles().then(({ data }) =>
+    getActiveVehicles().then(({ data, error }) => {
+      if (error) { toast(`Véhicules non chargés : ${error.message}`, 'error'); return }
       setVehicles((data ?? []).map(v => ({
         id: v.id, label: v.label, ct_expiry: v.ct_expiry, insurance_expiry: v.insurance_expiry,
-      }))))
-    getActiveDrivers().then(({ data }) =>
+      })))
+    })
+    getActiveDrivers().then(({ data, error }) => {
+      if (error) { toast(`Chauffeurs non chargés : ${error.message}`, 'error'); return }
       setDrivers((data ?? []).map(d => ({
         id: d.id, label: d.full_name,
         licence_b_expiry: d.licence_b_expiry, medical_visit_expiry: d.medical_visit_expiry,
-      }))))
-  }, [companyId])
+      })))
+    })
+  }, [companyId, toast])
 
   // ── Chargement : pool + livraisons + tournées de la date ─────────────────────
-  const loadBoard = useCallback(async () => {
+  // `garderLocal` : après un geste sur une carte ou une répartition, on garde l'ordre et la
+  // sélection déjà faits à l'écran (seule la date remet tout à zéro).
+  const charger = useCallback(async (garderLocal: boolean) => {
     if (!companyId) return
+    const n = ++demande.current
     setLoadingList(true)
     // Retards : seulement si on compose aujourd'hui ou plus tard (replanifier
     // une course en retard vers une date passée n'aurait pas de sens).
@@ -115,6 +131,18 @@ export function Tournees() {
       fetchToursByDate(companyId, date),
       avecRetards ? fetchLateDeliveries(companyId, aujourdHui) : Promise.resolve({ data: [], error: null }),
     ])
+    if (n !== demande.current) return
+    const toursDuJour = (toursRes.data as unknown as Tour[]) ?? []
+    // Arrêts des tournées lus par tournée : une course facturée ou déplacée reste dans la sienne.
+    const stopsRes = toursRes.error ? { data: [], error: null } : await fetchStopsDesTournees(toursDuJour.map(t => t.id))
+    if (n !== demande.current) return
+    const echec = poolRes.error ?? allRes.error ?? toursRes.error ?? stopsRes.error
+    if (echec) {
+      setErreurChargement(echec.message)
+      setLoadingList(false)
+      return
+    }
+    setErreurChargement(null)
     if (retardsRes.error) toast(`Courses en retard non chargées : ${retardsRes.error.message}`, 'error')
     const retards = coursesEnRetard(
       (retardsRes.data as unknown as TourDeliveryAvecTournee[]) ?? [], aujourdHui,
@@ -122,9 +150,16 @@ export function Tournees() {
     // Urgentes en tête : c'est l'ordre proposé pour « mon ordre ».
     const poolList = urgentesDAbord(fusionnerPool((poolRes.data as unknown as TourDelivery[]) ?? [], retards))
     setPool(poolList)
-    setOrdrePool(poolList.map(d => d.id))
-    const duJour = (allRes.data as unknown as TourDelivery[]) ?? []
-    const toursDuJour = (toursRes.data as unknown as Tour[]) ?? []
+    const idsPool = new Set(poolList.map(d => d.id))
+    setOrdrePool(prev => {
+      if (!garderLocal) return poolList.map(d => d.id)
+      const gardes = prev.filter(id => idsPool.has(id))
+      const connus = new Set(gardes)
+      return [...gardes, ...poolList.filter(d => !connus.has(d.id)).map(d => d.id)]
+    })
+    const parId = new Map<string, TourDelivery>()
+    for (const d of [...((allRes.data as unknown as TourDelivery[]) ?? []), ...((stopsRes.data as unknown as TourDelivery[]) ?? [])]) parId.set(d.id, d)
+    const duJour = [...parId.values()]
     setAllDeliveries(duJour)
     setTours(toursDuJour)
 
@@ -140,13 +175,15 @@ export function Tournees() {
 
     // Pré-coche les géocodées non encore rattachées (tour_id null). Les retards
     // ne sont JAMAIS pré-cochés : les répartir change leur date, ça se décide.
-    setSelectedIds(new Set(
+    if (garderLocal) setSelectedIds(prev => new Set([...prev].filter(id => idsPool.has(id))))
+    else setSelectedIds(new Set(
       poolList.filter(d => isGeocoded(d) && d.tour_id == null && !estEnRetard(d, date)).map(d => d.id),
     ))
     setLoadingList(false)
   }, [companyId, date, toast])
 
-  useEffect(() => { loadBoard() }, [loadBoard])
+  useEffect(() => { void charger(false) }, [charger])
+  const rechargerApresAction = useCallback(() => charger(true), [charger])
 
   // Réinitialise l'avertissement « non réparties » quand la date change.
   useEffect(() => { setUnassignedCount(0) }, [date])
@@ -187,7 +224,7 @@ export function Tournees() {
         const { data: fresh } = await getCompanyDepot(companyId)
         if (fresh) setDepot({ lat: fresh.depot_lat, lng: fresh.depot_lng, name: fresh.name })
       }
-      await loadBoard()
+      await charger(true)
     } finally {
       setGeocoding(false)
     }
@@ -345,7 +382,7 @@ export function Tournees() {
   }
 
   const handleRepartirDansMonOrdre = async () => {
-    if (!companyId || !vehiculeUnique || !ordreReady) return
+    if (!companyId || !vehiculeUnique || !ordreReady || dispatching) return
     setDispatching(true)
     const { error } = await repartirDansMonOrdre({
       companyId,
@@ -354,17 +391,18 @@ export function Tournees() {
       driverId: driverByVehicle[vehiculeUnique] || null,
       depotLat: depot.lat,
       depotLng: depot.lng,
+      heureDepart: hhmm(heureDepart) || null,
       coursesDansLOrdre: selectedDeliveries,
     })
     setDispatching(false)
     if (error) { toast(error.message, 'error'); return }
     setUnassignedCount(0)
     toast(`${idsSelectionnesOrdonnes.length} livraison(s) rangée(s) dans ton ordre`)
-    await loadBoard()
+    await charger(true)
   }
 
   const handleDispatch = async () => {
-    if (!dispatchReady) return
+    if (!dispatchReady || dispatching) return
     setDispatching(true)
     try {
       const data = await dispatchAndOptimize(date, hhmm(heureDepart), assignments, idsSelectionnesOrdonnes)
@@ -382,7 +420,7 @@ export function Tournees() {
       if ((data.retraits_non_localises ?? 0) > 0) {
         toast(`${data.retraits_non_localises} adresse(s) de retrait introuvable(s) : ces courses partent du dépôt dans le calcul`, 'error')
       }
-      await loadBoard()
+      await charger(true)
     } catch (e) {
       toast((e as Error).message, 'error')
     } finally {
@@ -407,39 +445,69 @@ export function Tournees() {
 
   return (
     <Shell pageTitle="Tournées">
+      <div className="flex flex-col gap-3 lg:h-[calc(100dvh-var(--topbar-h)-6.75rem)]">
+      {/* Date, départ, chiffres du jour */}
+      <div className="flex flex-wrap items-end gap-2 shrink-0">
+        <div className="flex items-center gap-1">
+          <BoutonIcone icone={ChevronLeft} libelle="Jour précédent" onClick={() => setDate(d => decalerJour(d, -1))} />
+          <input type="date" value={date} aria-label="Date des tournées"
+            onChange={e => { if (e.target.value) setDate(e.target.value) }} className={`${inputCls} !w-auto`} />
+          <BoutonIcone icone={ChevronRight} libelle="Jour suivant" onClick={() => setDate(d => decalerJour(d, 1))} />
+        </div>
+        <Button variant="secondary" size="compact" onClick={() => setDate(toLocalISO(new Date()))}>Aujourd'hui</Button>
+        <label className="flex items-center gap-2 text-sm text-[var(--text-muted)] ml-auto">
+          Départ du dépôt
+          <input type="time" value={heureDepart} onChange={e => setHeureDepart(e.target.value)}
+            className={`${inputCls} !w-auto`} aria-invalid={!departValide} />
+        </label>
+      </div>
+      <div className="flex gap-2 overflow-x-auto shrink-0 -mx-1 px-1 pb-0.5">
+        <Tuile n={tours.length} libelle="tournées" />
+        <Tuile n={grouped.reduce((n, g) => n + g.stops.length, 0)} libelle="courses en tournée" />
+        <Tuile n={poolCount} libelle="à répartir" />
+        <Tuile n={tours.length ? `${totals.totalKm.toFixed(0)} km` : '—'} libelle="distance" />
+        <Tuile n={tours.length ? formatDuration(totals.totalMin) : '—'} libelle="durée" />
+      </div>
+
+      {erreurChargement && (
+        <div role="alert" className="shrink-0 flex flex-wrap items-center gap-3 px-3 py-2.5 rounded-[var(--r-md)]
+          bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-sm">
+          <AlertTriangle size={16} className="text-[var(--danger)] shrink-0" />
+          <span className="flex-1 min-w-0 text-[var(--text)]">Chargement impossible : {erreurChargement}</span>
+          <Button variant="secondary" size="compact" onClick={() => void charger(true)}>Réessayer</Button>
+        </div>
+      )}
+
+      {/* Mobile : une colonne à la fois */}
+      <div className="lg:hidden shrink-0 grid grid-cols-2 gap-1 p-1 rounded-[var(--r-md)] bg-[var(--bg-elevated)]" role="tablist">
+        {([['preparer', 'Préparer'], ['tournees', `Tournées (${tours.length})`]] as const).map(([k, l]) => (
+          <button key={k} type="button" role="tab" aria-selected={onglet === k} onClick={() => setOnglet(k)}
+            className={`min-h-10 rounded-[var(--r-sm)] text-sm font-medium transition-colors ${
+              onglet === k ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-sm' : 'text-[var(--text-muted)]'}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+
       {/* PC : préparation à gauche, carte et tournées à droite ; chaque colonne
-          défile seule, l'écran tient sans faire défiler la page. Mobile : une colonne. */}
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] lg:h-[calc(100dvh-var(--topbar-h)-6.75rem)] [&>*]:min-w-0 lg:[&>*]:min-h-0">
+          défile seule, l'écran tient sans faire défiler la page. */}
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] lg:flex-1 lg:min-h-0 [&>*]:min-w-0 lg:[&>*]:min-h-0">
 
         {/* ── Colonne préparation ─────────────────────────────────────────── */}
-        <div className="flex flex-col gap-3 lg:overflow-y-auto lg:pr-1">
-
-          {/* Date + départ du dépôt */}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Date">
-              <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} />
-            </Field>
-            <Field label="Départ du dépôt">
-              <input type="time" value={heureDepart} onChange={e => setHeureDepart(e.target.value)}
-                className={inputCls} aria-invalid={!departValide} />
-            </Field>
-          </div>
-          <p className="text-xs text-[var(--text-muted)] -mt-1">
-            L'optimisation compte 5 min par arrêt et respecte les créneaux des courses ; les urgentes passent en priorité.
-          </p>
+        <div className={`${onglet === 'preparer' ? 'flex' : 'hidden'} lg:flex flex-col gap-3 lg:overflow-y-auto lg:pr-1 [&>*]:shrink-0`}>
 
           {/* Adresses non localisées — bouton de rattrapage 1-clic (Edge geocode). */}
           {(!depotGeocoded || nonLocalisees > 0) && (
-            <div className="flex flex-wrap items-start gap-3 px-3 py-2.5 rounded-[var(--r-md)]
+            <div className="flex items-center gap-3 px-3 py-2 rounded-[var(--r-md)]
               bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-sm">
               <AlertTriangle size={16} className="text-[var(--warning)] mt-0.5 shrink-0" />
               <span className="text-[var(--text-muted)] flex-1 min-w-0">
                 {!depotGeocoded
-                  ? 'Le dépôt n’est pas encore localisé.'
-                  : `${nonLocalisees} livraison(s) non localisée(s) : elles ne peuvent pas être optimisées.`}
+                  ? 'Dépôt non localisé.'
+                  : `${nonLocalisees} non localisée(s)`}
               </span>
               <Button variant="secondary" size="compact" onClick={handleBackfillGeocode} disabled={geocoding}>
-                {geocoding ? 'Géocodage…' : 'Géocoder les adresses manquantes'}
+                {geocoding ? 'Géocodage…' : 'Géocoder'}
               </Button>
             </div>
           )}
@@ -511,12 +579,6 @@ export function Tournees() {
               </p>
             ) : (
               <>
-                {/* L'ordre se lit ici, et il compte : c'est celui qui deviendra
-                    l'ordre des arrêts si tu répartis sans optimiser. */}
-                <p className="text-xs text-[var(--text-muted)] pb-2">
-                  Range-les dans l'ordre où tu veux LIVRER (urgentes en tête). Une course « En retard »
-                  cochée puis répartie passe à la date de la tournée.
-                </p>
                 <ul className="flex flex-col divide-y divide-[var(--border)]">
                   {poolOrdonne.map((d, i) => {
                     const geo = isGeocoded(d)
@@ -569,7 +631,7 @@ export function Tournees() {
                         {d.pickup_address && (
                           <label className="basis-full flex items-center gap-2 pl-16 cursor-pointer -mt-1">
                             <input type="checkbox" checked={d.retrait_a_faire}
-                              onChange={() => basculerRetraitPool(d)} disabled={retraitBusy === d.id}
+                              onChange={() => basculerRetraitPool(d)} disabled={retraitBusy === d.id || !peutEcrire}
                               className="accent-[var(--brand)] w-4 h-4 cursor-pointer shrink-0" />
                             <span className="text-xs text-[var(--text-muted)] truncate">
                               Retrait à faire : {d.pickup_address}
@@ -620,13 +682,13 @@ export function Tournees() {
 
             <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[var(--border)] mt-3">
               <Button variant="primary" className="min-h-11" onClick={() => demander('optimiser')}
-                disabled={dispatching || !dispatchReady}
+                disabled={dispatching || !dispatchReady || !peutEcrire}
                 title={!departValide ? 'Heure de départ invalide'
                   : !dispatchReady ? 'Coche au moins un véhicule et une livraison géocodée' : undefined}>
                 {dispatching ? 'Répartition…' : 'Répartir & optimiser'}
               </Button>
               <Button variant="secondary" className="min-h-11" onClick={() => demander('ordre')}
-                disabled={dispatching || !ordreReady}
+                disabled={dispatching || !ordreReady || !peutEcrire}
                 title={!ordreReady ? 'Coche UN seul véhicule et au moins une livraison' : undefined}>
                 Répartir dans mon ordre
               </Button>
@@ -635,17 +697,11 @@ export function Tournees() {
               </span>
             </div>
 
-            {/* Dire ce que chaque bouton fait à l'ordre, avant le clic et non après. */}
-            <p className="text-xs text-[var(--text-disabled)] mt-2">
-              « Répartir & optimiser » recalcule l'ordre des arrêts et les heures prévues : ton ordre
-              sera remplacé. « Répartir dans mon ordre » garde exactement cette liste, sur un seul
-              véhicule, sans calcul de distance ni d'heure.
-            </p>
           </Section>
         </div>
 
         {/* ── Colonne tournées ────────────────────────────────────────────── */}
-        <div className="flex flex-col gap-3 lg:overflow-y-auto lg:pr-1">
+        <div className={`${onglet === 'tournees' ? 'flex' : 'hidden'} lg:flex flex-col gap-3 lg:overflow-y-auto lg:pr-1 [&>*]:shrink-0`}>
           {/* Messagerie : feuilles de route scannées (hors deliveries, hors optimisation). */}
           {companyId && <TourneesColisDuJour companyId={companyId} date={date} />}
 
@@ -667,13 +723,6 @@ export function Tournees() {
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-2 gap-3">
-                <Stat icon={<Route size={15} />} label="Distance cumulée"
-                  value={`${totals.totalKm.toFixed(1)} km`} />
-                <Stat icon={<Clock size={15} />} label="Durée cumulée"
-                  value={formatDuration(totals.totalMin)} />
-              </div>
-
               {/* Carte d'ensemble — toutes les tournées, une couleur par véhicule */}
               {hasMapData && (
                 <Suspense fallback={
@@ -695,13 +744,16 @@ export function Tournees() {
                     vehicleLabel={vehicleLabel(g.tour.vehicle_id)}
                     driverLabel={driverLabel(g.tour.driver_id)}
                     color={colorForIndex(i)}
-                    onChanged={loadBoard}
+                    onChanged={rechargerApresAction}
+                    peutEcrire={peutEcrire}
+                    replie={grouped.length > 2}
                   />
                 ))}
               </div>
             </>
           )}
         </div>
+      </div>
       </div>
 
       <ConfirmDialog
@@ -726,7 +778,22 @@ export function Tournees() {
 
 const inputCls = 'field'
 
-const flecheCls = `p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
+/** 'AAAA-MM-JJ' décalé de n jours (local, sans passer par UTC). */
+function decalerJour(iso: string, n: number): string {
+  const [a, m, j] = iso.split('-').map(Number)
+  return toLocalISO(new Date(a, m - 1, j + n))
+}
+
+function Tuile({ n, libelle }: { n: string | number; libelle: string }) {
+  return (
+    <div className="shrink-0 min-w-[5.5rem] flex-1 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1.5">
+      <p className="text-xl font-bold tabular-nums leading-tight text-[var(--text)]">{n}</p>
+      <p className="text-xs text-[var(--text-muted)] truncate">{libelle}</p>
+    </div>
+  )
+}
+
+const flecheCls = `min-w-10 min-h-10 inline-flex items-center justify-center rounded-[var(--r-md)] text-[var(--text-muted)]
   hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
   disabled:opacity-30 disabled:cursor-not-allowed transition-colors`
 
@@ -737,18 +804,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
         <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">{title}</span>
       </div>
       <div className="p-3">{children}</div>
-    </div>
-  )
-}
-
-function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="bg-[var(--bg-card)] rounded-[var(--r-md)] border border-[var(--border)] px-3 py-2.5">
-      <div className="flex items-center gap-1.5 text-[var(--text-muted)] mb-1">
-        {icon}
-        <span className="text-xs uppercase tracking-wide">{label}</span>
-      </div>
-      <p className="text-lg font-semibold text-[var(--text)]">{value}</p>
     </div>
   )
 }

@@ -1,5 +1,7 @@
 import { supabase } from '../../app/providers'
-import type { CoursePlanning, ChauffeurPlanning, VehiculePlanning } from './planning.types'
+import { listerTourneesColis, arretsDesTournees } from '../../shared/lib/tourneesColis.queries'
+import { compteursTournee } from '../../shared/lib/tourneesColis'
+import type { CoursePlanning, ChauffeurPlanning, VehiculePlanning, TourneeColisJour } from './planning.types'
 import type {
   VehiculeEcheanceSource, EntretienEcheanceSource, MembreEcheanceSource,
 } from './mois.logic'
@@ -23,18 +25,22 @@ export async function getDeliveriesForWeek(dateFrom: string, dateTo: string) {
 }
 
 /**
- * Courses en retard : planifiées avant aujourd'hui et encore ouvertes
- * (planifiée / en cours), toutes dates passées confondues.
+ * Courses en retard : planifiées avant aujourd'hui et encore ouvertes (planifiée / en cours),
+ * sur les 120 derniers jours (les plus vieilles sont de l'oubli, pas du retard à gérer).
  */
 export async function getCoursesEnRetard(aujourdhui: string) {
+  const [a, m, j] = aujourdhui.split('-').map(Number)
+  const depuis = new Date(a, m - 1, j - 120)
+  const debut = `${depuis.getFullYear()}-${String(depuis.getMonth() + 1).padStart(2, '0')}-${String(depuis.getDate()).padStart(2, '0')}`
   return supabase
     .from('deliveries')
     .select(JOINS)
     .lt('date', aujourdhui)
+    .gte('date', debut)
     .in('statut', ['planifiee', 'en_cours'])
     .or(SUR_LA_ROUTE)
     .order('date', { ascending: true })
-    .limit(200)
+    .limit(500)
     .returns<CoursePlanning[]>()
 }
 
@@ -73,24 +79,51 @@ export async function deplacerCourses(
   ids: string[],
   maj: { driver_id?: string | null; date?: string },
   detacherDeTournee: string[],
-) {
+): Promise<{ error: { message: string } | null; ecrites: number }> {
   // Deux lots disjoints, chacun écrit en une fois et cohérent à lui seul.
   const aDetacher = new Set(detacherDeTournee)
   const simples = ids.filter(id => !aDetacher.has(id))
   const detachees = ids.filter(id => aDetacher.has(id))
+  let ecrites = 0
   if (simples.length) {
-    const { error } = await supabase.from('deliveries').update(maj).in('id', simples).not('statut', 'in', FIGES)
-    if (error) return { error }
+    const { data, error } = await supabase.from('deliveries').update(maj).in('id', simples).not('statut', 'in', FIGES).select('id')
+    if (error) return { error, ecrites }
+    ecrites += data?.length ?? 0
   }
   if (detachees.length) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('deliveries')
       .update({ ...maj, tour_id: null, stop_order: null, arrival_time: null })
       .in('id', detachees)
       .not('statut', 'in', FIGES)
-    if (error) return { error }
+      .select('id')
+    if (error) return { error, ecrites }
+    ecrites += data?.length ?? 0
   }
-  return { error: null }
+  return { error: null, ecrites }
+}
+
+/**
+ * Tournées de colis d'un jour, une ligne par livreur (avancement, colis, km). Lecture seule, via les
+ * requêtes partagées. Droit `planning.tournees` : sans lui la liste est vide (et non une erreur).
+ */
+export async function getTourneesColisJour(jour: string): Promise<{ data: TourneeColisJour[]; error: string | null }> {
+  const t = await listerTourneesColis({ du: jour, au: jour })
+  if (t.error) return { data: [], error: t.error.message }
+  if (!t.data.length) return { data: [], error: null }
+  const a = await arretsDesTournees(t.data.map(x => x.id))
+  if (a.error) return { data: [], error: a.error.message }
+  return {
+    data: t.data.map(x => {
+      const c = compteursTournee(a.data.filter(r => r.tournee_id === x.id))
+      return {
+        id: x.id, memberId: x.member_id, nom: x.team_members?.full_name ?? 'Livreur', statut: x.statut,
+        arrets: c.arrets, arretsTraites: c.arretsTraites, colis: c.colis, colisLivres: c.colisLivres,
+        colisAttente: c.colisAttente, colisRetour: c.colisRetour, km: x.trajet?.km_total ?? null,
+      }
+    }),
+    error: null,
+  }
 }
 
 /**
@@ -110,6 +143,8 @@ export async function getSourcesEcheances(): Promise<{
   vehicules: VehiculeEcheanceSource[]
   entretiens: EntretienEcheanceSource[]
   membres: MembreEcheanceSource[]
+  /** Une des trois lectures a échoué : les échéances affichées peuvent être incomplètes. */
+  incomplet: boolean
 }> {
   const [vRes, eRes, mRes] = await Promise.all([
     supabase
@@ -126,5 +161,6 @@ export async function getSourcesEcheances(): Promise<{
     vehicules: (vRes.data as VehiculeEcheanceSource[] | null) ?? [],
     entretiens: (eRes.data as EntretienEcheanceSource[] | null) ?? [],
     membres: (mRes.data as MembreEcheanceSource[] | null) ?? [],
+    incomplet: !!(vRes.error || eRes.error || mRes.error),
   }
 }

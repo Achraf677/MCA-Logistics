@@ -5,7 +5,7 @@ import { toLocalISO } from '../../shared/lib/dates'
 import { heureCourte, libelleCreneau } from '../livraisons/livraisons.logic'
 import type {
   CoursePlanning, ChauffeurPlanning, VehiculePlanning, LigneRessource,
-  FiltreATraiter, CompteursATraiter, CibleDeplacement,
+  FiltreATraiter, CompteursATraiter, CibleDeplacement, FamilleCourse, NiveauCharge, KpisJour,
 } from './planning.types'
 
 // ── Semaine ──────────────────────────────────────────────────────────────────
@@ -181,4 +181,69 @@ export function alertesDeplacement(
 /** Aujourd'hui en 'AAAA-MM-JJ' local. */
 export function aujourdhuiIso(): string {
   return toLocalISO(new Date())
+}
+
+// ── Familles de statut, charge, chiffres du jour ─────────────────────────────
+
+/** 4 familles visibles : à faire · en cours · livrée (à facturer) · terminée (facturée / payée). */
+export function familleCourse(statut: string): FamilleCourse {
+  if (statut === 'en_cours') return 'encours'
+  if (statut === 'livree') return 'livree'
+  if (statut === 'facturee' || statut === 'payee') return 'terminee'
+  return 'afaire'
+}
+
+/** Couleur de la bordure et du statut : 4 familles, le rouge est réservé à ce qui demande une action. */
+export const COULEUR_FAMILLE: Record<FamilleCourse, string> = {
+  afaire: 'var(--text-muted)', encours: 'var(--info)', livree: 'var(--warning)', terminee: 'var(--text-disabled)',
+}
+
+/** Seuil de charge par défaut : au-delà, le chauffeur est en surcharge. */
+export const SEUIL_CHARGE_DEFAUT = 8
+
+/** Charge d'un chauffeur : libre (0), ok (≤ 80 %), plein (≤ 100 %), surcharge (> seuil). */
+export function niveauCharge(nb: number, seuil: number = SEUIL_CHARGE_DEFAUT): NiveauCharge {
+  if (nb <= 0) return 'libre'
+  const s = Math.max(1, seuil)
+  if (nb > s) return 'surcharge'
+  return nb <= s * 0.8 ? 'ok' : 'plein'
+}
+
+/** Chiffres d'un jour : `courses` = celles du jour (hors annulées), `enRetard` = toutes les courses en retard. */
+export function kpisJour(courses: CoursePlanning[], enRetard: CoursePlanning[]): KpisJour {
+  const k: KpisJour = { total: courses.length, afaire: 0, encours: 0, livrees: 0, terminees: 0, sansChauffeur: 0, enRetard: enRetard.length }
+  for (const c of courses) {
+    const f = familleCourse(c.statut)
+    if (f === 'afaire') k.afaire++
+    else if (f === 'encours') k.encours++
+    else if (f === 'livree') k.livrees++
+    else k.terminees++
+    if (!c.driver_id && estOuverte(c.statut)) k.sansChauffeur++
+  }
+  return k
+}
+
+/** Retire les courses terminées (facturées / payées) quand on ne veut pas les voir ; renvoie aussi leur nombre. */
+export function sansTerminees(courses: CoursePlanning[], afficher: boolean): { courses: CoursePlanning[]; masquees: number } {
+  if (afficher) return { courses, masquees: 0 }
+  const gardees = courses.filter(c => familleCourse(c.statut) !== 'terminee')
+  return { courses: gardees, masquees: courses.length - gardees.length }
+}
+
+/** Courses d'un seul jour. */
+export function coursesDuJour(courses: CoursePlanning[], jour: string): CoursePlanning[] {
+  return courses.filter(c => c.date === jour)
+}
+
+/** Retards qui ne sont pas dans la semaine affichée (avant OU après) : à montrer à part. */
+export function retardsHorsSemaine(enRetard: CoursePlanning[], du: string, au: string): CoursePlanning[] {
+  return enRetard.filter(c => c.date < du || c.date > au)
+}
+
+/** Jour d'ancrage de la vue : une copie, jamais l'original (naviguer d'un mois ne déplace pas le jour courant). */
+export function decalerAncre(ancre: Date, vue: 'jour' | 'semaine' | 'mois', sens: 1 | -1): Date {
+  const d = new Date(ancre.getFullYear(), ancre.getMonth(), ancre.getDate())
+  if (vue === 'mois') return new Date(d.getFullYear(), d.getMonth() + sens, Math.min(d.getDate(), 28))
+  d.setDate(d.getDate() + (vue === 'semaine' ? 7 : 1) * sens)
+  return d
 }
