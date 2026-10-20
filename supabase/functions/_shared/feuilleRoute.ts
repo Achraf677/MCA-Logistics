@@ -237,7 +237,7 @@ export function lignesEnArrets(lignes: LigneFeuille[]): ArretFeuille[] {
   for (const l of lignes) {
     if (l.commune_bandeau) {
       const sep = separerCommune(l.commune_bandeau)
-      commune = sep.commune; cp = sep.cp
+      commune = sep.commune; cp = sep.cp ?? cpDeCommune(sep.commune)
     }
     if (!l.rue && !l.numeros) continue
     const numeros = decouperNumeros(l.numeros)
@@ -270,4 +270,45 @@ export function lignesEnArrets(lignes: LigneFeuille[]): ArretFeuille[] {
     }
   }
   return arrets
+}
+
+// ── Secteurs « ZONE n » de Brumath, codes postaux ───────────────────────────
+
+/**
+ * Code postal des communes de la tournée (bandeau absent ou non lu : page sans bandeau, page
+ * suivante). Seulement les communes dont le code est connu avec certitude (feuilles réelles).
+ */
+const CP_COMMUNE: Record<string, string> = {
+  BRUMATH: '67170', KRIEGSHEIM: '67170', WINGERSHEIM: '67170', 'OHLUNGEN': '67590',
+}
+
+export function cpDeCommune(commune: string | null | undefined): string | null {
+  const c = (commune ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim()
+  for (const [nom, cp] of Object.entries(CP_COMMUNE)) if (c === nom || c.startsWith(nom + ' ')) return cp
+  return null
+}
+
+/** Secteur de la tournée de Brumath : « 630 - ZONE 1 (Brumath) », « 634 - ZONE 5 » (zones 630 à 636). */
+export function estSecteurBrumath(secteur: string | null | undefined): boolean {
+  return /\bzone\s*\d/i.test(secteur ?? '') || /\b63\d\s*-\s*zone\b/i.test(secteur ?? '')
+}
+
+/**
+ * Tournée de Brumath : TOUT est à Brumath (67170). Les cellules de zone sont fusionnées sur
+ * plusieurs lignes, le bandeau n'est présent qu'en haut de la 1re page, et la vision confond
+ * parfois zone / bandeau / commune. Toute ligne dont le secteur est une « ZONE n » est donc
+ * rattachée à « 67170 BRUMATH » (bandeau absent, mal lu ou d'une autre commune). Les autres
+ * lignes gardent le report normal du dernier bandeau. Pur : renvoie de nouvelles lignes.
+ */
+export function forcerBrumath(lignes: LigneFeuille[]): LigneFeuille[] {
+  let commune: string | null = null
+  return lignes.map(l => {
+    let bandeau = l.commune_bandeau
+    if (bandeau) commune = separerCommune(bandeau).commune
+    if (estSecteurBrumath(l.secteur) && commune !== 'BRUMATH') {
+      bandeau = '67170 BRUMATH'
+      commune = 'BRUMATH'
+    }
+    return bandeau === l.commune_bandeau ? l : { ...l, commune_bandeau: bandeau }
+  })
 }

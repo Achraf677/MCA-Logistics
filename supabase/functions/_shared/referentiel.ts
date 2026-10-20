@@ -31,6 +31,12 @@ const MOTS_VIDES = new Set(['de', 'la', 'le', 'les', 'des', 'du', 'd', 'l', 'a',
 export function cle(s: string | null | undefined): string {
   return String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
     .replace(/[’'`\-_.]/g, ' ').replace(/\s+/g, ' ').trim()
+    .split(' ').map(w => ABREVIATIONS[w] ?? w).join(' ')
+}
+
+/** Abréviations imprimées sur les feuilles (« rue du Mal de Lattre de Tassigny »). */
+const ABREVIATIONS: Record<string, string> = {
+  mal: 'marechal', gal: 'general', dr: 'docteur', pr: 'professeur', av: 'avenue', bd: 'boulevard', pl: 'place', imp: 'impasse',
 }
 
 /** Clé « souple » : sans mots vides, pluriels retirés (« rue des pres » = « rue pre »). */

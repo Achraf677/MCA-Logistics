@@ -3,7 +3,7 @@
 // pages, en arrière-plan côté serveur). Aucune écriture en base ici.
 import { generateJsonFromImage } from './mistral.ts'
 import { ExternalApiError } from './http.ts'
-import { lignesEnArrets, nettoyerLecture, type ArretFeuille } from './feuilleRoute.ts'
+import { cpDeCommune, forcerBrumath, lignesEnArrets, nettoyerLecture, type ArretFeuille } from './feuilleRoute.ts'
 import { geocoderArret, type PointArret } from './geocodeArret.ts'
 import { appliquerReferentiel, indexer, type RueRef } from './referentiel.ts'
 
@@ -19,6 +19,8 @@ MISE EN PAGE
 - Le tableau « ADRESSES DE LIVRAISON » a les colonnes : District | Rue | Nb Colis | Nb PGEO | N° | CRBT/taxes.
 - Des BANDEAUX en gras « 67170 KRIEGSHEIM » (code postal + commune) coupent le tableau : chaque bandeau ouvre un groupe de lignes.
 - La colonne District n'est PAS la commune : c'est le SECTEUR (ex. « (HC) 610 - KRIEGSHEIM », « 601 - GEUDERTHEIM EGLISE »), répété sur chaque ligne du secteur. Un mot coupé sur deux lignes se recolle.
+
+TOURNÉE DE BRUMATH (cas fréquent) : le bandeau « 67170 BRUMATH » n'est que sur la 1re page ; les pages suivantes n'en ont pas et TOUT reste à Brumath (67170). La colonne District contient des ZONES : « 630 - ZONE 1 (Brumath) », « 631 - ZONE 2 »… « 636 - ZONE 7 », et « (HC) 0 - District inconnu ». Ces cellules sont FUSIONNÉES sur plusieurs lignes et leur texte est centré dans son bloc : chaque ligne appartient à la zone dont le bloc (délimité par les traits horizontaux) la contient ; recopie ce libellé dans "secteur" pour chacune de ses lignes. Une zone n'est jamais une commune : ne la mets pas dans "commune_bandeau". Des rues portent le nom d'un village (« rue de Krautwiller », « rue de Vendenheim », « rue de Bernolsheim », « rue de Geudertheim », « rue de Hochstett », « rue de Bilwisheim ») : ce sont des rues de Brumath, pas des communes.
 
 RÈGLES, pour CHAQUE ligne du tableau, de haut en bas (une entrée de "lignes" par ligne, ni fusion, ni saut, ni invention) :
 - "commune_bandeau" : le texte du bandeau (ex. "67170 KRIEGSHEIM") SEULEMENT sur la première ligne qui suit ce bandeau ; null sur toutes les autres lignes.
@@ -115,7 +117,9 @@ export async function lirePage(p: {
     )
   }
   const lecture = nettoyerLecture(brut)
-  const arrets = appliquerReferentiel(lignesEnArrets(lecture.lignes), p.ref, p.communePrecedente)
+  const arrets = appliquerReferentiel(lignesEnArrets(forcerBrumath(lecture.lignes)), p.ref, p.communePrecedente)
+    // Commune retrouvée sans bandeau (page suivante, secteur) : son code postal est complété.
+    .map(a => (a.cp ? a : { ...a, cp: cpDeCommune(a.commune) }))
   // Seuls les arrêts que le référentiel ne place pas partent au géocodage BAN.
   const aGeocoder = arrets.filter(a => a.lat == null)
   const trouves = await geocoderTous(aGeocoder)

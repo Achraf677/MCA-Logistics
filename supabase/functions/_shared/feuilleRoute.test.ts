@@ -170,3 +170,65 @@ describe('choisirResultat (BAN)', () => {
     expect(choisirResultat([f('street', 0.8, '67000', 'Strasbourg')], { type: 'street', cp: null, commune: 'OSTWALD' })).toBeNull();
   });
 });
+
+// ── Tournée de Brumath (feuille du 20/10/2026) : zones, code postal, collecte, relais ───────────
+import { forcerBrumath, estSecteurBrumath, cpDeCommune } from './feuilleRoute.ts'
+
+const L = (rue: string, nb_colis: number, nb_pgeo: number, numeros: string, secteur: string | null, commune_bandeau: string | null = null) =>
+  ({ commune_bandeau, secteur, rue, nb_colis, nb_pgeo, numeros, crbt: null as string | null })
+
+describe('tournée de Brumath', () => {
+  const page1 = [
+    L('rue balzac', 8, 6, '23, 31, 34(3), 37, 44, 56', '(HC) 0 - District inconnu', '67170 BRUMATH'),
+    L('avenue de strasbourg', 18, 11, '24, 55, 56, 64, 125, RC141(6), 144, 167, 177, [C]179, 182(3)', '(HC) 0 - District inconnu'),
+    L('rue de bilwisheim', 1, 1, '', '630 - ZONE 1 (Brumath)'),
+    L('rue de la hardt', 1, 1, '15', null),
+    L('rue de krautwiller', 3, 3, '25(2), 30', '631 - ZONE 2'),
+  ]
+  it('reconnaît les secteurs « ZONE n »', () => {
+    expect(estSecteurBrumath('630 - ZONE 1 (Brumath)')).toBe(true)
+    expect(estSecteurBrumath('634 - ZONE 5')).toBe(true)
+    expect(estSecteurBrumath('(HC) 610 - KRIEGSHEIM')).toBe(false)
+    expect(estSecteurBrumath(null)).toBe(false)
+  })
+  it('code postal connu', () => {
+    expect(cpDeCommune('Brumath')).toBe('67170')
+    expect(cpDeCommune('BRUMATH')).toBe('67170')
+    expect(cpDeCommune('Donnenheim')).toBeNull()
+  })
+  it('avenue de Strasbourg : 18 colis = 11 numéros, relais 141 (6 colis), collecte 179 : rien « à vérifier »', () => {
+    const a = lignesEnArrets(forcerBrumath(page1)).filter(x => x.rue === 'avenue de strasbourg')
+    expect(a).toHaveLength(11)
+    expect(a.some(x => x.a_verifier)).toBe(false)
+    expect(a.find(x => x.numero === '141')).toMatchObject({ type: 'rc', quantite: 6 })
+    expect(a.find(x => x.numero === '179')?.type).toBe('col')
+    expect(a.find(x => x.numero === '182')?.quantite).toBe(3)
+    expect(a.reduce((s, x) => s + x.quantite, 0)).toBe(18)
+  })
+  it('tout est à Brumath 67170, même sans bandeau, bandeau erroné ou secteur manquant', () => {
+    const lignes = [
+      L('rue de bilwisheim', 1, 1, '', '630 - ZONE 1 (Brumath)', '67170 BILWISHEIM'), // la vision a pris la rue pour un bandeau
+      L('rue de la hardt', 1, 1, '15', null),
+      L('rue de krautwiller', 3, 3, '25(2), 30', '631 - ZONE 2'),
+    ]
+    const a = lignesEnArrets(forcerBrumath(lignes))
+    expect(a.every(x => x.commune === 'BRUMATH' && x.cp === '67170')).toBe(true)
+  })
+  it('page 2 sans aucun bandeau : les zones suffisent', () => {
+    const p2 = [
+      L('rue des jardiniers', 2, 1, '3A(2)', '634 - ZONE 5'),
+      L('rue du general de gaulle', 2, 2, '11, 19B', null),
+      L('rue de l industrie', 6, 5, '6, 9(2), 19, 26, 38', '635 - ZONE 6'),
+      L('rue des carrieres', 5, 2, 'RC4A(4), 7', null),
+      L('rue de la scierie', 4, 3, '2, 3(2), 10', '636 - ZONE 7'),
+    ]
+    const a = lignesEnArrets(forcerBrumath(p2))
+    expect(a.every(x => x.commune === 'BRUMATH' && x.cp === '67170')).toBe(true)
+    expect(a.every(x => !x.a_verifier)).toBe(true)
+    expect(a.find(x => x.numero === '4A')).toMatchObject({ type: 'rc', quantite: 4 })
+  })
+  it('une feuille d\'un autre secteur n\'est pas touchée', () => {
+    const l = [L('rue du stade', 1, 1, '5', '(HC) 610 - KRIEGSHEIM', '67170 KRIEGSHEIM')]
+    expect(forcerBrumath(l)).toEqual(l)
+  })
+})
