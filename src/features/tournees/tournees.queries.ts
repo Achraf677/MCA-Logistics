@@ -4,6 +4,21 @@ import type { Assignment, DispatchData } from './tournees.types'
 import type { LigneHeuresTournee } from './tournees.logic'
 import { majTourneeApresRetrait, positionsDansLOrdre } from './tournees.logic'
 
+const ECRITURE_REFUSEE = 'Modification refusée (droits insuffisants) ou course déjà modifiée'
+
+/** Une écriture `.select('id')` qui ne touche aucune ligne n'est pas un succès (droits, filtre de statut). */
+async function ecritureComptee(
+  req: PromiseLike<{ data: { id: string }[] | null; error: { message: string } | null }>,
+  attendu: number,
+): Promise<{ error: { message: string } | null }> {
+  const { data, error } = await req
+  if (error) return { error }
+  if ((data?.length ?? 0) < attendu) {
+    return { error: { message: data?.length ? `${data.length} course(s) sur ${attendu} modifiée(s) : les autres sont figées ou refusées` : ECRITURE_REFUSEE } }
+  }
+  return { error: null }
+}
+
 // ── Société / dépôt ───────────────────────────────────────────────────────────
 // (feature étanche : on ne ré-importe pas les queries d'autres features)
 
@@ -49,6 +64,16 @@ export async function getDeliveriesForDate(companyId: string, date: string) {
     .in('statut', ['planifiee', 'en_cours', 'livree'])
     // Relevés de messagerie et forfaits : rien à faire sur la route.
     .or('prestation.is.null,prestation.not.in.(messagerie,forfait)')
+    .order('stop_order', { ascending: true, nullsFirst: false })
+}
+
+/** Arrêts des tournées données, quelle que soit la date ou le statut (une course facturée ou déplacée reste dans sa tournée). */
+export async function fetchStopsDesTournees(tourIds: string[]) {
+  if (tourIds.length === 0) return { data: [] as unknown[], error: null }
+  return supabase
+    .from('deliveries')
+    .select(DELIVERY_COLS)
+    .in('tour_id', tourIds)
     .order('stop_order', { ascending: true, nullsFirst: false })
 }
 
@@ -99,10 +124,14 @@ export async function assignDeliveries(
   if (ids.length === 0) return { error: null }
   // Chauffeur et véhicule écrits sur la course, comme l'optimiseur : c'est
   // `deliveries.driver_id` qui fait apparaître la course dans « Mes courses ».
-  return supabase
-    .from('deliveries')
-    .update({ tour_id: tourId, date, vehicle_id: affectation.vehicleId, driver_id: affectation.driverId })
-    .in('id', ids)
+  return ecritureComptee(
+    supabase
+      .from('deliveries')
+      .update({ tour_id: tourId, date, vehicle_id: affectation.vehicleId, driver_id: affectation.driverId })
+      .in('id', ids)
+      .select('id'),
+    ids.length,
+  )
 }
 
 /**
@@ -127,27 +156,43 @@ export async function replanifierRetardsAffectes(ids: string[], date: string) {
 export async function retirerDeTournee(deliveryId: string, tour: Pick<Tour, 'id' | 'status'>) {
   const { error } = await unassignDeliveries([deliveryId])
   if (error) return { error }
-  const { error: majErr } = await supabase.from('tours').update(majTourneeApresRetrait(tour.status)).eq('id', tour.id)
-  return { error: majErr }
+  return invaliderChiffresTournee(tour)
+}
+
+/** Km, durée et tracé ne valent plus (ordre ou contenu changé) : remis à null. */
+export async function invaliderChiffresTournee(tour: Pick<Tour, 'id' | 'status'>) {
+  const { data, error } = await supabase.from('tours').update(majTourneeApresRetrait(tour.status)).eq('id', tour.id).select('id')
+  if (error) return { error }
+  if (!data?.length) return { error: { message: ECRITURE_REFUSEE } }
+  return { error: null }
 }
 
 /** Supprime une tournée non démarrée : ses courses reviennent dans le pool d'abord. */
 export async function supprimerTournee(tourId: string) {
+  // Seules les courses encore ouvertes sont détachées : une course livrée garde sa trace.
   const { error } = await supabase
     .from('deliveries')
     .update({ tour_id: null, stop_order: null, arrival_time: null })
     .eq('tour_id', tourId)
+    .in('statut', ['planifiee', 'en_cours'])
   if (error) return { error }
-  return supabase.from('tours').delete().eq('id', tourId)
+  const { data, error: delErr } = await supabase.from('tours').delete().eq('id', tourId).select('id')
+  if (delErr) return { error: delErr }
+  if (!data?.length) return { error: { message: 'Suppression refusée (droits insuffisants ou tournée déjà supprimée)' } }
+  return { error: null }
 }
 
 /** Détache des livraisons (tour_id, stop_order, arrival_time remis à null). No-op si vide. */
 export async function unassignDeliveries(ids: string[]) {
   if (ids.length === 0) return { error: null }
-  return supabase
-    .from('deliveries')
-    .update({ tour_id: null, stop_order: null, arrival_time: null })
-    .in('id', ids)
+  return ecritureComptee(
+    supabase
+      .from('deliveries')
+      .update({ tour_id: null, stop_order: null, arrival_time: null })
+      .in('id', ids)
+      .select('id'),
+    ids.length,
+  )
 }
 
 // ── Suivi : marquer un arrêt livré ────────────────────────────────────────────
@@ -155,11 +200,16 @@ export async function unassignDeliveries(ids: string[]) {
 // livraisons.logic.ts (machine d'états unique, pas de duplication).
 
 export async function markDelivered(deliveryId: string, when: string) {
-  return supabase
-    .from('deliveries')
-    // Lève l'échec éventuel (relivraison réussie), comme Mes courses.
-    .update({ statut: 'livree', delivered_at: when, probleme_le: null })
-    .eq('id', deliveryId)
+  return ecritureComptee(
+    supabase
+      .from('deliveries')
+      // Lève l'échec éventuel (relivraison réussie), comme Mes courses.
+      .update({ statut: 'livree', delivered_at: when, probleme_le: null })
+      .eq('id', deliveryId)
+      .in('statut', ['planifiee', 'en_cours'])
+      .select('id'),
+    1,
+  )
 }
 
 // ── Cycle de vie de la tournée ────────────────────────────────────────────────
@@ -276,10 +326,10 @@ export type { TourDelivery }
 
 /** Coche ou décoche l'arrêt de retrait d'une course. */
 export async function setRetraitAFaire(deliveryId: string, valeur: boolean) {
-  return supabase
-    .from('deliveries')
-    .update({ retrait_a_faire: valeur })
-    .eq('id', deliveryId)
+  return ecritureComptee(
+    supabase.from('deliveries').update({ retrait_a_faire: valeur }).eq('id', deliveryId).select('id'),
+    1,
+  )
 }
 
 /**
@@ -303,11 +353,14 @@ export async function enregistrerOrdreArrets(
       supabase.from('deliveries')
         // Heure prévue effacée : elle valait pour l'ordre calculé, plus pour celui-ci.
         .update({ stop_order: p.stop_order, pickup_order: p.pickup_order, arrival_time: null })
-        .eq('id', p.id),
+        .eq('id', p.id)
+        .select('id'),
     ),
   )
   const echec = resultats.find(r => r.error)
-  return { error: echec?.error ?? null }
+  if (echec?.error) return { error: echec.error }
+  if (resultats.some(r => !r.data?.length)) return { error: { message: ECRITURE_REFUSEE } }
+  return { error: null }
 }
 
 /**
@@ -337,9 +390,10 @@ export async function repartirDansMonOrdre(params: {
   driverId: string | null
   depotLat: number | null
   depotLng: number | null
+  heureDepart?: string | null
   coursesDansLOrdre: Array<Pick<TourDelivery, 'id' | 'retrait_a_faire' | 'pickup_address'>>
 }): Promise<{ error: { message: string } | null }> {
-  const { companyId, date, vehicleId, driverId, depotLat, depotLng, coursesDansLOrdre } = params
+  const { companyId, date, vehicleId, driverId, depotLat, depotLng, heureDepart, coursesDansLOrdre } = params
   const idsDansLOrdre = coursesDansLOrdre.map(c => c.id)
   if (idsDansLOrdre.length === 0) return { error: { message: 'Aucune livraison sélectionnée' } }
 
@@ -377,6 +431,7 @@ export async function repartirDansMonOrdre(params: {
 
   const { error: majErr } = await updateTour(tourId, {
     driver_id: driverId,
+    ...(heureDepart ? { heure_depart: heureDepart } : {}),
     status: 'brouillon',
     total_km: null,
     total_duration_min: null,

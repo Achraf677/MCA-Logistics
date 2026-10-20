@@ -8,7 +8,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { poidsTotal, libellePoids } from '../../shared/lib/poids'
 // Machine d'états unique (réutilisée, pas dupliquée).
 import { canTransition, libelleCreneau } from '../livraisons/livraisons.logic'
-import { markDelivered, setTourStatus, updateTour, setRetraitAFaire, enregistrerOrdreArrets, getHeuresChauffeurJour, retirerDeTournee, supprimerTournee } from './tournees.queries'
+import { markDelivered, setTourStatus, updateTour, setRetraitAFaire, enregistrerOrdreArrets, getHeuresChauffeurJour, retirerDeTournee, supprimerTournee, invaliderChiffresTournee } from './tournees.queries'
 import { DialogueHeuresTournee } from './DialogueHeuresTournee'
 import {
   googleMapsStopUrl, wazeUrl, googleMapsRouteUrl,
@@ -36,6 +36,10 @@ interface Props {
   color?: string
   /** Appelé après une modification (livré, démarrer, terminer) pour recharger. */
   onChanged: () => void | Promise<void>
+  /** Droit `planning.tournees : update` : sans lui, la carte se consulte seulement. */
+  peutEcrire?: boolean
+  /** Corps replié au départ (plusieurs tournées sur l'écran). */
+  replie?: boolean
 }
 
 /**
@@ -48,7 +52,7 @@ interface Props {
 // redessine en entier à chaque clic sur N'IMPORTE QUELLE tournée de l'écran
 // (le parent Tournees.tsx se re-rend à chaque interaction) — c'était la
 // première cause de lourdeur générale ressentie sur l'écran Tournées.
-function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged }: Props) {
+function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged, peutEcrire = true, replie = false }: Props) {
   const { toast } = useToast()
   const [stopBusy, setStopBusy] = useState<string | null>(null)
   const [lifecycleBusy, setLifecycleBusy] = useState(false)
@@ -60,6 +64,7 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
   // Retrait d'une course / suppression de la tournée (lot T2) : confirmés d'abord.
   const [aRetirer, setARetirer] = useState<TourDelivery | null>(null)
   const [confirmSuppr, setConfirmSuppr] = useState(false)
+  const [ouverte, setOuverte] = useState(!replie)
 
   const doRetirer = async () => {
     if (!aRetirer) return
@@ -102,16 +107,19 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
     setOrdreBusy(true)
     const parId = new Map(stops.map(s => [s.id, s]))
     const { error } = await enregistrerOrdreArrets(nouveau.map(i => parId.get(i)!).filter(Boolean))
+    // Km, durée, tracé et heures prévues valaient pour l'ancien ordre : effacés.
+    const maj = error ? { error } : await invaliderChiffresTournee(tour)
     setOrdreBusy(false)
-    if (error) { toast(error.message, 'error'); return }
+    if (maj.error) { toast(maj.error.message, 'error'); return }
     await onChanged()
   }
 
   const basculerRetrait = async (s: TourDelivery) => {
     setStopBusy(s.id)
     const { error } = await setRetraitAFaire(s.id, !s.retrait_a_faire)
+    const maj = error ? { error } : await invaliderChiffresTournee(tour)
     setStopBusy(null)
-    if (error) { toast(error.message, 'error'); return }
+    if (maj.error) { toast(maj.error.message, 'error'); return }
     await onChanged()
   }
 
@@ -226,7 +234,8 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
   return (
     <div className="rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden">
       {/* En-tête véhicule / chauffeur + statut */}
-      <div className="px-4 py-3 bg-[var(--bg-elevated)] border-b border-[var(--border)] flex flex-wrap items-center gap-2">
+      <button type="button" onClick={() => setOuverte(o => !o)} aria-expanded={ouverte}
+        className="w-full text-left px-4 py-3 min-h-11 bg-[var(--bg-elevated)] border-b border-[var(--border)] flex flex-wrap items-center gap-2">
         {color
           ? <span className="w-3 h-3 rounded-full shrink-0" style={{ background: color }} aria-hidden />
           : <Truck size={16} className="text-[var(--brand)] shrink-0" />}
@@ -240,9 +249,10 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
         <span className="ml-auto text-sm font-medium text-[var(--text)]">
           {progress.delivered} / {progress.total} livrés
         </span>
-      </div>
+        <ChevronDown size={16} className={`text-[var(--text-muted)] shrink-0 transition-transform ${ouverte ? 'rotate-180' : ''}`} />
+      </button>
 
-      <div className="p-4">
+      {ouverte && <div className="p-4">
         {/* Totaux */}
         <div className="grid grid-cols-3 gap-3 mb-4">
           <Stat icon={<Route size={15} />} label="Distance"
@@ -255,12 +265,12 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
 
         {/* Cycle de vie + itinéraire complet */}
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          {canStartTour(tour.status, stops.length) && (
+          {peutEcrire && canStartTour(tour.status, stops.length) && (
             <Button variant="primary" className="min-h-11" onClick={handleStartTour} disabled={lifecycleBusy}>
               {lifecycleBusy ? '…' : 'Démarrer la tournée'}
             </Button>
           )}
-          {canFinishTour(tour.status) && (
+          {peutEcrire && canFinishTour(tour.status) && (
             <Button variant="primary" className="min-h-11" onClick={handleFinishTour} disabled={lifecycleBusy}>
               {lifecycleBusy ? '…' : 'Terminer la tournée'}
             </Button>
@@ -270,7 +280,7 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
               <ExternalLink size={15} /> Itinéraire complet
             </a>
           )}
-          {peutSupprimerTournee(tour.status, stops) && (
+          {peutEcrire && peutSupprimerTournee(tour.status, stops) && (
             <Button variant="ghost" className="min-h-11 ml-auto text-[var(--danger)]"
               onClick={() => setConfirmSuppr(true)} disabled={lifecycleBusy}>
               <Trash2 size={15} /> Supprimer la tournée
@@ -286,24 +296,14 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
             type="checkbox"
             checked={eviterPeages}
             onChange={e => handleEviterPeages(e.target.checked)}
-            disabled={peagesBusy}
+            disabled={peagesBusy || !peutEcrire}
             className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer"
           />
           <span className="text-sm text-[var(--text)]">
             Éviter les péages
-            <span className="block text-xs text-[var(--text-muted)]">
-              S'applique aux liens Maps et Waze de cette tournée, pas à l'ordre des arrêts.
-            </span>
           </span>
         </label>
 
-        {/* Deux limites qu'il vaut mieux lire ici que decouvrir en route. */}
-        {stops.length > 1 && (
-          <p className="text-xs text-[var(--text-disabled)]">
-            Les flèches imposent ton ordre. Relancer l'optimisation le remplacera.
-            {stops.some(s => s.retrait_a_faire) && " Les retraits ne figurent pas dans « Itinéraire complet » : ils n'ont pas de coordonnées, seulement une adresse."}
-          </p>
-        )}
 
         {/* PLAN DE CHARGEMENT — l'inverse de l'ordre de livraison.
             Repliable : il sert une fois, au dépôt, avant de partir. */}
@@ -321,10 +321,6 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
             </button>
             {planOuvert && (
               <div className="px-3 pb-3">
-                <p className="text-xs text-[var(--text-muted)] mb-2">
-                  Un fourgon se vide par une seule porte : ce qu'on charge en premier finit au
-                  fond. Le premier client livré se charge donc en dernier, contre la porte.
-                </p>
                 {/* Le poids total, la ou on decide si tout rentre. */}
                 {libellePoids(poidsTotal(stops)) && (
                   <p className="text-sm font-medium text-[var(--text)] mb-2">
@@ -443,7 +439,7 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                     Cochee a la main et jamais deduite — une adresse de retrait
                     renseignee ne dit pas si la marchandise est encore la-bas
                     ou deja chargee au depot. */}
-                {!delivered && s.pickup_address && (
+                {peutEcrire && !delivered && s.pickup_address && (
                   <label className="flex items-center gap-2 pl-10 cursor-pointer">
                     <input type="checkbox" checked={s.retrait_a_faire}
                       onChange={() => basculerRetrait(s)}
@@ -459,12 +455,12 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                   {/* Ordre impose a la main. Une re-optimisation l'ecrasera :
                       c'est voulu, sinon « optimiser » ne voudrait plus rien
                       dire. L'en-tete de la liste le rappelle. */}
-                  {!delivered && stops.length > 1 && (
+                  {peutEcrire && !delivered && stops.length > 1 && (
                     <span className="flex items-center gap-1">
                       <button onClick={() => deplacer(s.id, 'haut')}
                         disabled={ordreBusy || i === 0}
                         aria-label="Monter cet arrêt"
-                        className="p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
+                        className="min-w-10 min-h-10 inline-flex items-center justify-center rounded-[var(--r-md)] text-[var(--text-muted)]
                           hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
                           disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                         <ArrowUp size={15} />
@@ -472,7 +468,7 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                       <button onClick={() => deplacer(s.id, 'bas')}
                         disabled={ordreBusy || i === stops.length - 1}
                         aria-label="Descendre cet arrêt"
-                        className="p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
+                        className="min-w-10 min-h-10 inline-flex items-center justify-center rounded-[var(--r-md)] text-[var(--text-muted)]
                           hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
                           disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                         <ArrowDown size={15} />
@@ -492,16 +488,16 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
                       </a>
                     </>
                   )}
-                  {peutRetirerArret(tour.status, s) && (
+                  {peutEcrire && peutRetirerArret(tour.status, s) && (
                     <button type="button" onClick={() => setARetirer(s)} disabled={stopBusy === s.id}
                       aria-label="Retirer cette course de la tournée" title="Retirer de la tournée"
-                      className="p-2 rounded-[var(--r-md)] text-[var(--text-muted)]
+                      className="min-w-10 min-h-10 inline-flex items-center justify-center rounded-[var(--r-md)] text-[var(--text-muted)]
                         hover:text-[var(--danger)] hover:bg-[var(--bg-card-hover)]
                         disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                       <X size={15} />
                     </button>
                   )}
-                  {!delivered && canTransition(s.statut, 'livree') && (
+                  {peutEcrire && !delivered && tour.status !== 'terminee' && canTransition(s.statut, 'livree') && (
                     <Button variant="primary" className="min-h-10 ml-auto"
                       onClick={() => handleMarkDelivered(s)} disabled={stopBusy === s.id}>
                       <Check size={15} /> {stopBusy === s.id ? '…' : 'Livré'}
@@ -517,7 +513,7 @@ function TourCardBase({ tour, stops, vehicleLabel, driverLabel, color, onChanged
             Durée = conduite + 5 min par arrêt + attente des créneaux. Heures prévues : estimations.
           </p>
         )}
-      </div>
+      </div>}
 
       <ConfirmDialog
         open={confirmFinish}
