@@ -84,3 +84,11 @@ describe('appliquer à une page lue', () => {
     expect(a).toMatchObject({ commune: 'OSTWALD', rue: 'rue a', lat: null, rue_connue: false, ref_rang: null });
   });
 });
+
+import { cle as cleAbrev } from './referentiel.ts'
+describe('abréviations de la feuille', () => {
+  it('« rue du Mal de Lattre de Tassigny » = Maréchal', () => {
+    expect(cleAbrev('rue du mal de lattre de tassigny')).toBe(cleAbrev('Rue du Maréchal de Lattre de Tassigny'))
+    expect(cleAbrev('rue du Gal de Gaulle')).toBe(cleAbrev('Rue du Général de Gaulle'))
+  })
+})
