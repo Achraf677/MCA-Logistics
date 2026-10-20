@@ -27,6 +27,8 @@ import { decalerJour, borneAujourdhui } from './espace.logic'
 import { libelleDateCourte } from './mescourses.logic'
 import { compteursTournee, libelleAdresse, libelleCompteurs } from './tourneeColis.logic'
 import { ArretTournee, BarreProchain } from './ArretTournee'
+import { FeuilleCloture } from './FeuilleCloture'
+import { PhotosSynthese } from './PhotosSynthese'
 import { Carte, MessageErreur, GardeFiche, champCls, boutonPrimaireCls, boutonSecondaireCls } from './EspaceCommun'
 
 const CarteTournee = lazy(() => import('../../shared/ui/CarteTournee'))
@@ -263,6 +265,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   onOuvrirJournee?: () => void
 }) {
   const { toast } = useToast()
+  const { companyId: societe } = useProfile()
   const [vue, setVue] = useState<'liste' | 'carte'>(() => (lirePref(CLE_VUE) === 'carte' ? 'carte' : 'liste'))
   const [calcul, setCalcul] = useState<null | 'tout' | 'restants' | 'suivre'>(null)
   const [moi, setMoi] = useState<{ lat: number; lng: number } | null>(null)
@@ -526,6 +529,8 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
               {new Date(tournee.cloturee_le).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}
             </p>
           )}
+          <p className="text-sm font-semibold text-[var(--text)] mt-1">Photos de la synthèse</p>
+          <PhotosSynthese tourneeId={tournee.id} companyId={societe} modifiable={false} />
           {tournee.client_id && onOuvrirJournee && (
             <button type="button" onClick={onOuvrirJournee} className={boutonSecondaireCls}>Voir ma journée de colis</button>
           )}
@@ -547,9 +552,10 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
       <ConfirmDialog open={confirmerReset} title="Réinitialiser la tournée ?"
         message="Ton ordre est remplacé par le meilleur ordre calculé, village par village."
         confirmLabel="Réinitialiser" onConfirm={() => { setConfirmerReset(false); calculer('tout') }} onCancel={() => setConfirmerReset(false)} />
-      <ConfirmDialog open={cloture} title="Terminer ma tournée ?" message={messageCloture}
-        confirmLabel="Terminer" loading={clotureEnCours}
-        onConfirm={terminer} onCancel={() => setCloture(false)} />
+      {cloture && (
+        <FeuilleCloture tourneeId={tournee.id} companyId={societe} resume={messageCloture} enCours={clotureEnCours}
+          onTerminer={terminer} onFermer={() => setCloture(false)} />
+      )}
     </>
   )
 }

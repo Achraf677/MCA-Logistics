@@ -14,9 +14,10 @@ import {
   LIBELLE_STATUT_TOURNEE, avancementPct, compteursTournee, type ArretColis, type TourneeColis,
 } from '../../shared/lib/tourneesColis'
 import { toLocalISO } from '../../shared/lib/dates'
+import type { DocumentRow } from '../../shared/lib/documents.types'
 import {
   arretsDesTournees, listerTourneesColis, membresPourTournee, nomsClients, supprimerTourneeColis,
-  calculerItineraire, rouvrirTournee, positionsLivreurs, trouverScan, type PositionLivreur,
+  calculerItineraire, rouvrirTournee, positionsLivreurs, trouverScan, photosSynthese, urlPhotoArret, type PositionLivreur,
 } from '../../shared/lib/tourneesColis.queries'
 import { ilYA, libelleDistance, modeOrdre, positionAncienne, prochainDansOrdre } from '../../shared/lib/tourneesColisRoute'
 import { colorForIndex } from './tours.palette'
@@ -37,6 +38,7 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
   const peutSupprimer = can('planning.tournees', 'delete')
   const [tournees, setTournees] = useState<TourneeColis[]>([])
   const [arrets, setArrets] = useState<ArretColis[]>([])
+  const [syntheses, setSyntheses] = useState<Map<string, DocumentRow[]>>(new Map())
   const [erreur, setErreur] = useState<string | null>(null)
   const [charge, setCharge] = useState(false)
   const [scanOuvert, setScanOuvert] = useState(false)
@@ -68,6 +70,11 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
     setErreur(null)
     setTournees(t.data)
     setArrets(a.data)
+    const ph = await photosSynthese(t.data.map(x => x.id))
+    if (n !== demande.current) return
+    const m = new Map<string, DocumentRow[]>()
+    for (const d of ph.data) if (d.entity_id) m.set(d.entity_id, [...(m.get(d.entity_id) ?? []), d])
+    setSyntheses(m)
   }, [date])
 
   useEffect(() => { recharger() }, [recharger])
@@ -247,6 +254,12 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
                     {c.colisRetour > 0 && <span className="text-[var(--danger)]">{c.colisRetour} en retour</span>}
                     {c.collectes > 0 && <span>Collectes {c.collectesTraitees} / {c.collectes}</span>}
                     {t.trajet && <span>{libelleDistance(t.trajet.km_total * 1000)}{modeOrdre(t) === 'manuel' ? ' · ordre manuel' : ''}</span>}
+                    {(syntheses.get(t.id) ?? []).map((d, i) => (
+                      <button key={d.id} type="button" className="underline text-[var(--text)]"
+                        onClick={async () => { const u = await urlPhotoArret(d); if (u) window.open(u, '_blank', 'noopener'); else toast('Photo introuvable', 'error') }}>
+                        Synthèse {i + 1}
+                      </button>
+                    ))}
                     {pos && (
                       <span className={`inline-flex items-center gap-1 ${positionAncienne(pos.maj_le, maintenant) ? '' : 'text-[var(--success)]'}`}>
                         <Radio size={11} /> position {ilYA(pos.maj_le, maintenant)}

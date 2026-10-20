@@ -5,7 +5,7 @@
 import imageCompression from 'browser-image-compression'
 import { supabase } from '../../app/providers'
 import { lireErreurEdge } from './erreurEdge'
-import { uploadDocument, getDownloadUrl } from './documents.queries'
+import { uploadDocument, getDownloadUrl, deleteDocument } from './documents.queries'
 import type { DocumentRow } from './documents.types'
 import { journeeDepuisArrets } from './tourneesColisRoute'
 import {
@@ -418,6 +418,27 @@ export async function ajouterPhotoArret(file: File, companyId: string, arretId: 
 
 export function urlPhotoArret(doc: DocumentRow) {
   return getDownloadUrl(doc)
+}
+
+// ── Photos de la synthèse de fin de tournée ─────────────────────────────────
+
+/** Photos de la synthèse (documents `entity_type = 'tournee_colis'`), par tournée. */
+export async function photosSynthese(ids: string[]) {
+  if (ids.length === 0) return { data: [] as DocumentRow[], error: null }
+  const { data, error } = await supabase.from('documents').select('*')
+    .eq('entity_type', 'tournee_colis').in('entity_id', ids).order('created_at', { ascending: true })
+  return { data: (data ?? []) as DocumentRow[], error: erreurClaire(error) }
+}
+
+export async function ajouterPhotoSynthese(file: File, companyId: string, tourneeId: string) {
+  const { data, error } = await uploadDocument(file, companyId, {
+    entity_type: 'tournee_colis', entity_id: tourneeId, category: 'POD', notes: 'synthese',
+  })
+  return { data, error: error ? erreurClaire(error) : null }
+}
+
+export function retirerPhotoSynthese(doc: DocumentRow) {
+  return deleteDocument(doc)
 }
 
 /**
