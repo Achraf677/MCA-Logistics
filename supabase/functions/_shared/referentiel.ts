@@ -55,6 +55,8 @@ export interface Referentiel {
   souple: Map<string, RueRef>
   /** Premier rang du fichier par commune (rue inconnue : rangée en tête de village). */
   premierRang: Map<string, number>
+  /** Rues de chaque commune (clé de commune → rues), pour le rapprochement approché. */
+  rues: Map<string, RueRef[]>
 }
 
 export function indexer(rues: RueRef[]): Referentiel {
@@ -62,7 +64,10 @@ export function indexer(rues: RueRef[]): Referentiel {
   const exact = new Map<string, RueRef>()
   const souple = new Map<string, RueRef>()
   const premierRang = new Map<string, number>()
+  const parCommune = new Map<string, RueRef[]>()
   for (const r of rues) {
+    const l = parCommune.get(r.commune_cle) ?? []
+    l.push(r); parCommune.set(r.commune_cle, l)
     if (!noms.has(r.commune_cle)) noms.set(r.commune_cle, r.commune)
     const k = `${r.commune_cle}|${r.rue_cle}`
     if (!exact.has(k)) exact.set(k, r)
@@ -72,7 +77,7 @@ export function indexer(rues: RueRef[]): Referentiel {
   }
   const communes = [...noms.entries()].map(([c, nom]) => ({ cle: c, colle: colle(nom), nom }))
     .sort((a, b) => b.colle.length - a.colle.length)
-  return { communes, exact, souple, premierRang }
+  return { communes, exact, souple, premierRang, rues: parCommune }
 }
 
 /** Commune du référentiel contenue dans un texte (secteur, bandeau). */
@@ -86,6 +91,109 @@ export function trouverRue(ref: Referentiel, commune: string, rue: string | null
   if (!rue) return null
   const c = cle(commune)
   return ref.exact.get(`${c}|${cle(rue)}`) ?? ref.souple.get(`${c}|${cleSouple(rue)}`) ?? null
+}
+
+/** Distance d'édition (Levenshtein) entre deux chaînes courtes. */
+export function distanceEdition(a: string, b: string): number {
+  const m = a.length; const n = b.length
+  if (!m) return n
+  if (!n) return m
+  let prev = Array.from({ length: n + 1 }, (_, j) => j)
+  for (let i = 1; i <= m; i++) {
+    const cur = [i]
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1))
+    prev = cur
+  }
+  return prev[n]
+}
+
+/**
+ * Rue lue avec une faute (« rue des carriers », « rue du mal de latte de tassigny ») : la rue de la commune
+ * dont le nom est le plus proche (≤ 20 % d'écart, au moins 1 lettre), à condition qu'elle soit seule à ce niveau.
+ */
+export function trouverRueProche(ref: Referentiel, commune: string, rue: string | null | undefined): RueRef | null {
+  const lue = colle(rue)
+  if (lue.length < 5) return null
+  let meilleur: RueRef | null = null; let dMeilleur = Infinity; let egalite = false
+  for (const r of ref.rues.get(cle(commune)) ?? []) {
+    const nom = colle(r.rue)
+    const d = Math.min(distanceEdition(lue, nom), distanceEdition(cleSouple(rue).replace(/ /g, ''), cleSouple(r.rue).replace(/ /g, '')))
+    if (d < dMeilleur) { meilleur = r; dMeilleur = d; egalite = false } else if (d === dMeilleur) egalite = true
+  }
+  const tolerance = Math.max(1, Math.floor(lue.length * 0.2))
+  return meilleur && !egalite && dMeilleur <= tolerance ? meilleur : null
+}
+
+const norm = (n: string | null | undefined) => String(n ?? '').toUpperCase().replace(/\s+/g, '')
+
+/**
+ * Rue illisible : on la déduit de sa PLACE sur la feuille (les rues d'une feuille suivent l'ordre habituel du
+ * fichier) et de ses numéros. Candidates = rues dont le rang est compris entre la rue reconnue d'avant et celle
+ * d'après ; retenue = celle qui possède le plus de numéros lus (au moins un, sans égalité).
+ */
+export function trouverRueParPlace(
+  ref: Referentiel, commune: string, numeros: Array<string | null>, rangAvant: number | null, rangApres: number | null,
+): RueRef | null {
+  const cands = (ref.rues.get(cle(commune)) ?? []).filter(r => r.rang != null
+    && (rangAvant == null || (r.rang as number) > rangAvant) && (rangApres == null || (r.rang as number) < rangApres))
+  const lus = numeros.map(norm).filter(Boolean)
+  if (!cands.length || !lus.length) return null
+  const notes = cands.map(r => ({ r, n: lus.filter(x => r.numeros[x] != null || (r.relais ?? []).map(norm).includes(x)).length }))
+    .sort((a, b) => b.n - a.n)
+  return notes[0].n >= 1 && (notes.length === 1 || notes[0].n > notes[1].n) ? notes[0].r : null
+}
+
+/**
+ * Numéro mal lu (4 pour A, 8 pour B, 0 pour D) : si le numéro lu n'existe pas dans la rue mais que sa variante
+ * existe, c'est la variante. Sinon le numéro lu est gardé.
+ */
+export function corrigerNumero(r: RueRef, numero: string | null | undefined): string | null {
+  const n = norm(numero)
+  if (!n || r.numeros[n] != null || Object.keys(r.numeros).length === 0) return numero ?? null
+  const dernier = n.slice(-1)
+  const lettre = ({ '4': 'A', '8': 'B', '0': 'D' } as Record<string, string>)[dernier]
+  if (lettre && r.numeros[n.slice(0, -1) + lettre] != null) return n.slice(0, -1) + lettre
+  return numero ?? null
+}
+
+/** Part des numéros lus (non vides) qui existent dans la rue ; null si on ne peut pas juger (rue sans liste de numéros, aucun numéro lu). */
+function appartenance(r: RueRef | null, numeros: Array<string | null>): number | null {
+  const lus = numeros.map(norm).filter(Boolean)
+  if (!r || !lus.length || Object.keys(r.numeros).length === 0) return null
+  const connus = new Set(Object.keys(r.numeros).map(norm))
+  const relais = (r.relais ?? []).map(norm)
+  return lus.filter(n => connus.has(n) || relais.includes(n)).length / lus.length
+}
+
+/**
+ * Photo penchée : les chiffres d'une ligne sont lus en face de la rue voisine (la rue d'au-dessus ou d'en dessous).
+ * Un bloc d'arrêts consécutifs dont les numéros n'existent presque pas dans sa rue (< 60 %) mais existent TOUS dans
+ * une seule des rues voisines (2 de chaque côté au plus) est rattaché à cette rue. Sans certitude, rien ne bouge.
+ * Modifie `rues` en place.
+ */
+export function recalerParNumeros(numeros: Array<string | null>, communes: Array<string | null>, rues: Array<RueRef | null>): void {
+  // Blocs : arrêts consécutifs de la même rue.
+  const blocs: Array<{ de: number; a: number }> = []
+  for (let i = 0; i < rues.length;) {
+    let j = i
+    while (j + 1 < rues.length && rues[j + 1] === rues[i] && communes[j + 1] === communes[i] && rues[i]) j++
+    blocs.push({ de: i, a: j }); i = j + 1
+  }
+  const origine = blocs.map(b => rues[b.de])
+  blocs.forEach((b, k) => {
+    const propre = origine[k]
+    const nums = numeros.slice(b.de, b.a + 1)
+    const self = appartenance(propre, nums)
+    if (!propre || self == null || self >= 0.6) return
+    const candidats = new Set<RueRef>()
+    for (let d = -2; d <= 2; d++) {
+      const r = origine[k + d]
+      if (d !== 0 && r && r !== propre && communes[blocs[k + d]?.de] === communes[b.de]) candidats.add(r)
+    }
+    const notes = [...candidats].map(r => ({ r, m: appartenance(r, nums) ?? 0 })).filter(x => x.m >= 0.999).sort((x, y) => y.m - x.m)
+    // Une seule rue voisine convient (sinon : ambigu, on ne touche à rien).
+    if (notes.length === 1) for (let i = b.de; i <= b.a; i++) rues[i] = notes[0].r
+  })
 }
 
 /** Numéro → position : exact, sinon voisin du même côté (écart ≤ 20), sinon milieu de la rue. */
@@ -159,15 +267,45 @@ function sansMotifCommune(motif: string | null | undefined): string | null {
  */
 export function appliquerReferentiel<T extends ArretALire>(arrets: T[], ref: Referentiel, communePrecedente: string | null = null): Array<T & Enrichi> {
   let precedente = communePrecedente
-  return arrets.map(a => {
-    const commune = trouverCommune(ref, a.secteur) ?? trouverCommune(ref, a.commune) ?? (a.commune ? null : precedente) ?? a.commune
-    if (commune) precedente = commune
-    const r = commune ? trouverRue(ref, commune, a.rue) : null
-    const pos = r ? localiserNumero(r, a.numero) : null
-    const type = a.type === 'c' && r && estRelais(r, a.numero) ? 'rc' : a.type
+  const communes = arrets.map(a => {
+    const c = trouverCommune(ref, a.secteur) ?? trouverCommune(ref, a.commune) ?? (a.commune ? null : precedente) ?? a.commune
+    if (c) precedente = c
+    return c
+  })
+  // 1. Rue : nom officiel (accents, abréviations), puis nom approché (« carriers » → Carrières).
+  const rues: Array<RueRef | null> = arrets.map((a, i) => {
+    const c = communes[i]
+    return c ? (trouverRue(ref, c, a.rue) ?? trouverRueProche(ref, c, a.rue)) : null
+  })
+  // 2. Rue encore inconnue : déduite de sa place sur la feuille (ordre habituel) et de ses numéros.
+  for (let i = 0; i < arrets.length;) {
+    const c = communes[i]
+    if (rues[i] || !c || !arrets[i].rue) { i++; continue }
+    let j = i
+    while (j + 1 < arrets.length && !rues[j + 1] && communes[j + 1] === c && cle(arrets[j + 1].rue) === cle(arrets[i].rue)) j++
+    let avant: number | null = null; let apres: number | null = null
+    for (let k = i - 1; k >= 0; k--) if (rues[k] && communes[k] === c && rues[k]!.rang != null) { avant = rues[k]!.rang; break }
+    for (let k = j + 1; k < arrets.length; k++) if (rues[k] && communes[k] === c && rues[k]!.rang != null) { apres = rues[k]!.rang; break }
+    const numeros = arrets.slice(i, j + 1).map(a => a.numero)
+    const r = trouverRueParPlace(ref, c, numeros, avant, apres)
+    // Au moins la moitié des numéros lus doivent exister dans la rue retenue.
+    if (r) {
+      const lus = numeros.map(norm).filter(Boolean)
+      if (lus.filter(x => r.numeros[x] != null).length * 2 >= lus.length) for (let k = i; k <= j; k++) rues[k] = r
+    }
+    i = j + 1
+  }
+  recalerParNumeros(arrets.map(a => a.numero ?? null), communes, rues)
+  return arrets.map((a, i) => {
+    const commune = communes[i]
+    const r = rues[i]
+    const numero = r ? corrigerNumero(r, a.numero) : (a.numero ?? null)
+    const pos = r ? localiserNumero(r, numero) : null
+    const type = a.type === 'c' && r && estRelais(r, numero) ? 'rc' : a.type
     const motif = commune && a.motif ? sansMotifCommune(a.motif) : (a.motif ?? null)
     return {
       ...a,
+      numero,
       commune: r?.commune ?? commune,
       rue: r?.rue ?? a.rue,
       type,

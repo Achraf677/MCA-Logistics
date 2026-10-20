@@ -32,8 +32,16 @@ RÈGLES, pour CHAQUE ligne du tableau, de haut en bas (une entrée de "lignes" p
   - préfixe RC = point relais : « RC13(21) » ;
   - numéro imprimé en clair dans un petit carré NOIR (case inversée) = collecte, à noter « [C]11 » ;
   - cellule vide = "" ; chiffre illisible = « ? » à sa place (ex. « 1? »).
+- « RC » (deux petites lettres collées devant le numéro) = point relais : « RC141(6) » = relais n° 141, 6 colis ; « RC4(4) » = relais n° 4, 4 colis ; « RC4A(4) » = relais n° 4A, 4 colis. Ne transforme jamais « RC4A » en « 85A » ni « RC4 » en « 4 ».
+- COLLECTE = numéro en BLANC sur fond NOIR (rectangle foncé dans la case N°). Un numéro seulement en GRAS (« 41E », « 19B ») n'est PAS une collecte.
+- Une lettre collée au numéro (3A, 5B, 14B, 19B, 41E, 1B) est une LETTRE : « 3A » n'est pas « 34 », « 1B » n'est pas « 18 ».
+- Un petit « (2) » après un numéro est le nombre de colis de ce numéro, pas un autre numéro : « 2(2) » = n° 2, 2 colis.
 - "crbt" : la colonne CRBT/taxes si elle est remplie, sinon null.
 - Une case illisible vaut null. Mieux vaut null qu'une valeur plausible et fausse.
+
+PHOTO PENCHÉE : le tableau est souvent photographié de biais, donc les chiffres d'une ligne (Nb Colis, Nb PGEO, N°) peuvent se trouver plus HAUT que le nom de la rue. Suis les TRAITS horizontaux du tableau (une ligne = l'espace entre deux traits), pas la hauteur du texte. Vérifie chaque ligne avec le contrôle ci-dessous : si les numéros ne font pas le bon nombre de colis, décale-les vers la ligne voisine qui correspond.
+
+UNE ENTRÉE PAR RUE IMPRIMÉE : ne fusionne jamais les numéros de deux rues, ne saute aucune rue. Dans chaque zone, il y a autant de noms de rue que de cases N° : compte-les avant de répondre.
 
 ALIGNEMENT (photo de biais) : dans chaque secteur il y a autant de noms de rue que de lignes de chiffres ; associe la n-ième rue à la n-ième ligne de chiffres, sans décaler.
 
