@@ -1,8 +1,7 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
-  Check, Store, Package, PackagePlus, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw,
+  Check, Store, Package, PackagePlus, House, Clock, Undo2, Minus, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw,
 } from 'lucide-react'
-import { Badge } from '../../shared/ui/Badge'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { LIBELLE_STATUT_ARRET, LIBELLE_TYPE_ARRET, type ArretColis, type StatutArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
@@ -16,7 +15,41 @@ import { champCls } from './EspaceCommun'
 import { HorairesRelais } from './HorairesRelais'
 import { SelecteurColis } from './SelecteurColis'
 
-const COULEUR_FAMILLE = { livre: 'success', attente: 'warning', retour: 'danger', neutre: 'muted' } as const
+type FamilleArret = 'livre' | 'attente' | 'retour' | 'neutre'
+
+/** Teinte de fond d'une ligne selon son résultat : on voit d'un coup d'œil ce qui est fait, en attente, en retour. */
+const TEINTE_FAMILLE = {
+  livre: 'color-mix(in srgb, var(--success) 14%, var(--bg-card))',
+  attente: 'color-mix(in srgb, var(--warning) 14%, var(--bg-card))',
+  retour: 'color-mix(in srgb, var(--danger) 14%, var(--bg-card))',
+  neutre: 'var(--bg-card)',
+} as const
+
+const ICONE_FAMILLE = { livre: Check, attente: Clock, retour: Undo2, neutre: Minus } as const
+
+/** Type d'arrêt en pastille pleine : domicile bleu, point relais violet, collecte jaune. */
+export function PastilleType({ type, petit = false }: { type: ArretColis['type']; petit?: boolean }) {
+  const Icone = type === 'rc' ? Store : type === 'col' ? PackagePlus : House
+  return (
+    <span style={{ background: COULEUR_CATEGORIE[type] }}
+      className={`shrink-0 inline-flex items-center gap-1 rounded-full font-bold leading-none ${
+        type === 'col' ? 'text-black' : 'text-white'} ${petit ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-sm'}`}>
+      <Icone size={petit ? 12 : 14} aria-hidden /> {LIBELLE_TYPE_ARRET[type]}
+    </span>
+  )
+}
+
+/** Résultat de l'arrêt en pastille pleine : vert livré, orange en attente, rouge en retour. */
+function PastilleStatut({ famille, children }: { famille: FamilleArret; children: ReactNode }) {
+  const Icone = ICONE_FAMILLE[famille]
+  const fond = { livre: 'var(--success)', attente: 'var(--warning)', retour: 'var(--danger)', neutre: 'var(--text-muted)' }[famille]
+  return (
+    <span style={{ background: fond }} className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-bold leading-none ${
+      famille === 'attente' || famille === 'livre' ? 'text-black' : 'text-white'}`}>
+      <Icone size={14} aria-hidden /> {children}
+    </span>
+  )
+}
 
 /** Lien « Y aller » vers l'application de navigation choisie (Moi › préférences). */
 function lienYAller(a: Pick<ArretColis, 'lat' | 'lng' | 'numero' | 'rue' | 'cp' | 'commune'>): string | null {
@@ -172,7 +205,7 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-xl font-bold text-[var(--text)] break-words">{libelleAdresse(arret)}</p>
-            <p className="text-base text-[var(--text-muted)]">{arret.commune}{arret.type !== 'c' ? ` · ${LIBELLE_TYPE_ARRET[arret.type]}` : ''}</p>
+            <p className="flex flex-wrap items-center gap-2 text-base text-[var(--text-muted)]">{arret.commune} <PastilleType type={arret.type} /></p>
             <HorairesRelais arret={arret} />
           </div>
           <PastilleColis n={arret.quantite} grand />
@@ -279,10 +312,9 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
             <div className="flex-1 min-w-0">
               <p className="text-lg font-bold leading-tight text-[var(--text)] truncate">{libelleAdresse(arret)}</p>
               <p className="text-sm text-[var(--text-muted)] truncate">
-                {arret.commune}
-                {arret.type !== 'c' && <strong style={{ color: COULEUR_CATEGORIE[arret.type] }}> · {LIBELLE_TYPE_ARRET[arret.type]}</strong>}
-                {arret.note ? ` · ${arret.note}` : ''}
+                {arret.commune}{arret.note ? ` · ${arret.note}` : ''}
               </p>
+              <span className="mt-0.5 inline-flex"><PastilleType type={arret.type} petit /></span>
               <HorairesRelais arret={arret} />
             </div>
             <PastilleColis n={arret.quantite} grand />
@@ -350,9 +382,9 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
   const numero = numeroAffiche(arret, modeOrdre(tournee))
 
   return (
-    <li id={`arret-${arret.id}`} style={{ borderLeftColor: COULEUR_CATEGORIE[arret.type] }}
-      className={`flex items-stretch gap-2 rounded-[var(--r-lg)] border border-l-[6px] bg-[var(--bg-card)] ${
-      glisse ? 'border-[var(--brand)] shadow-lg' : arret.statut ? 'border-[var(--border)] opacity-80' : 'border-[var(--border-strong)]'}`}>
+    <li id={`arret-${arret.id}`} style={{ borderLeftColor: COULEUR_CATEGORIE[arret.type], background: famille ? TEINTE_FAMILLE[famille] : undefined }}
+      className={`flex items-stretch gap-2 rounded-[var(--r-lg)] border border-l-[6px] ${famille ? '' : 'bg-[var(--bg-card)]'} ${
+      glisse ? 'border-[var(--brand)] shadow-lg' : arret.statut ? 'border-[var(--border)]' : 'border-[var(--border-strong)]'}`}>
       {poignee && !verrouillee ? (
         <button type="button" {...poignee} aria-label="Glisser pour changer l'ordre"
           className="w-10 shrink-0 inline-flex flex-col items-center justify-center text-[var(--text-muted)] touch-none cursor-grab">
@@ -367,17 +399,13 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
         <span className="block text-base font-semibold text-[var(--text)] break-words">{libelleAdresse(arret)}</span>
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--text-muted)]">
           <PastilleColis n={arret.quantite} />
-          {arret.type !== 'c' && (
-            <span className="inline-flex items-center gap-1 font-semibold" style={{ color: COULEUR_CATEGORIE[arret.type] }}>
-              {arret.type === 'rc' ? <Store size={14} /> : <PackagePlus size={14} />} {LIBELLE_TYPE_ARRET[arret.type]}
-            </span>
-          )}
+          <PastilleType type={arret.type} />
           {arret.statut && famille && (
-            <Badge color={COULEUR_FAMILLE[famille]}>
+            <PastilleStatut famille={famille}>
               {LIBELLE_STATUT_ARRET[arret.statut]}
               {famille === 'livre' && arret.colis_remis != null && arret.colis_remis < arret.quantite
                 ? ` ${arret.colis_remis}/${arret.quantite}` : ''}
-            </Badge>
+            </PastilleStatut>
           )}
           {photos.length > 0 && <span className="inline-flex items-center gap-1"><Camera size={13} /> {photos.length}</span>}
           {arret.note && <span className="inline-flex items-center gap-1"><MessageSquare size={13} /> {arret.note}</span>}
