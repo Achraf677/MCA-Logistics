@@ -41,7 +41,7 @@
   drive-migrate-to-storage ; alertes (sans justificatif).
 - **charges** : charges, fournisseurs, tresorerie, `shared` rapprochement / aRapprocher / alertes ;
   Edge pennylane-sync, lire-facture, lire-releve, suggest-categorie-ia.
-- **tours** : tournees, mescourses ; Edge optimize-tours (écrit aussi `deliveries.driver_id` /
+- **tours** : tournees, mescourses ; Edge optimize-tours (matrice ORS + `planifExpress` + tracé IGN, sans Vroom ; écrit aussi `deliveries.driver_id` /
   `vehicle_id` des courses réparties). `optimize-tour` n'a plus d'appelant (revue 04a, 04/10/2026).
   Lots T3 / T4 : `tours.heure_depart` (écrit par optimize-tours, lu par TourCard et pour proposer
   le départ), `tours.started_at` (posé par le trigger `tours_started_at` au passage `en_cours`,
