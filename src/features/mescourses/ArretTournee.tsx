@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
-  Check, Store, PackagePlus, MessageSquare, Navigation, Camera, GripVertical, Minus, Plus, X, RotateCcw,
+  Check, Store, PackagePlus, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw,
 } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { useToast } from '../../shared/ui/useToast'
@@ -14,6 +14,7 @@ import { lireAppNavigation } from '../../shared/lib/prefChauffeur'
 import { statutsProposes, libelleAdresse, patchStatut, familleStatut, issueRapide } from './tourneeColis.logic'
 import { champCls } from './EspaceCommun'
 import { HorairesRelais } from './HorairesRelais'
+import { SelecteurColis } from './SelecteurColis'
 
 const COULEUR_FAMILLE = { livre: 'success', attente: 'warning', retour: 'danger', neutre: 'muted' } as const
 
@@ -81,6 +82,62 @@ function useValidation(geste: (s: StatutArretColis | null) => Promise<boolean>) 
   return { enAttente: fin != null, reste, demander, annuler }
 }
 
+/** Nombre de colis de l'arrêt, bien visible : un arrêt à plusieurs colis saute aux yeux. */
+export function PastilleColis({ n, grand = false }: { n: number; grand?: boolean }) {
+  const plusieurs = n > 1
+  return (
+    <span className={`shrink-0 inline-flex items-center justify-center gap-1 rounded-full font-bold tabular-nums ${
+      grand ? 'px-3 py-1 text-xl' : 'px-2.5 py-0.5 text-base'} ${
+      plusieurs ? 'bg-[var(--brand)] text-white' : 'border border-[var(--border-strong)] text-[var(--text-muted)]'}`}
+      aria-label={`${n} colis`}>
+      {n} <span className={grand ? 'text-base font-semibold' : 'text-sm font-semibold'}>colis</span>
+    </span>
+  )
+}
+
+/**
+ * Confirmation d'un arrêt à plusieurs colis : une case par colis, toutes cochées ; on décoche ceux
+ * qui ne sont pas remis. Cette feuille EST la double validation (pas de compte à rebours en plus).
+ * Les colis non cochés comptent « en attente » (même règle qu'un livré partiel).
+ */
+function ConfirmationColis({ arret, libelle, occupe, onValider, onFermer }: {
+  arret: ArretColis
+  libelle: string
+  occupe: boolean
+  onValider: (n: number) => Promise<boolean>
+  onFermer: () => void
+}) {
+  const [n, setN] = useState(arret.quantite)
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col justify-end" role="dialog" aria-modal="true" aria-label={`${libelle} : combien de colis`}>
+      <button type="button" aria-label="Fermer" onClick={onFermer} className="absolute inset-0 bg-black/60" />
+      <div className="relative flex flex-col gap-3 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]
+        rounded-t-[var(--r-xl,1.25rem)] bg-[var(--bg-elevated)] border-t border-[var(--border-strong)]">
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xl font-bold text-[var(--text)] break-words">{libelleAdresse(arret)}</p>
+            <p className="text-base text-[var(--text-muted)]">{arret.commune}</p>
+          </div>
+          <PastilleColis n={arret.quantite} grand />
+        </div>
+        <p className="text-base font-semibold text-[var(--text)]">Combien de colis remis ?</p>
+        <SelecteurColis total={arret.quantite} valeur={n} onChange={setN} />
+        <button type="button" disabled={occupe || n < 1}
+          onClick={async () => { if (await onValider(n)) onFermer() }}
+          className={`${GROS} bg-[var(--success)] text-black`}>
+          <Check size={24} /> {libelle} · {n} sur {arret.quantite}
+        </button>
+        {n < arret.quantite && n > 0 && (
+          <p className="text-sm text-[var(--warning)] text-center">{arret.quantite - n} colis restent en attente</p>
+        )}
+        <button type="button" onClick={onFermer} className="min-h-12 inline-flex items-center justify-center text-base text-[var(--text-muted)] underline">
+          Annuler
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /**
  * Fiche d'un arrêt (feuille qui monte du bas, à portée du pouce) : l'action principale en très
  * gros, les autres issues en gros boutons, puis colis partiels, note, photo, Y aller.
@@ -97,7 +154,7 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
   const { companyId } = useProfile()
   const { occupe, fait, ecrire, geste } = useGestes(arret, tournee, onGeste)
   const { autres } = statutsProposes(arret.type)
-  const [remis, setRemis] = useState(arret.colis_remis ?? Math.max(0, arret.quantite - 1))
+  const [remis, setRemis] = useState(arret.colis_remis ?? arret.quantite)
   const [note, setNote] = useState(arret.note ?? '')
   const photoRef = useRef<HTMLInputElement>(null)
   const yAller = lienYAller(arret)
@@ -127,9 +184,10 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">
             <p className="text-xl font-bold text-[var(--text)] break-words">{libelleAdresse(arret)}</p>
-            <p className="text-base text-[var(--text-muted)]">{arret.commune} · {arret.quantite} colis{arret.type !== 'c' ? ` · ${LIBELLE_TYPE_ARRET[arret.type]}` : ''}</p>
+            <p className="text-base text-[var(--text-muted)]">{arret.commune}{arret.type !== 'c' ? ` · ${LIBELLE_TYPE_ARRET[arret.type]}` : ''}</p>
             <HorairesRelais arret={arret} />
           </div>
+          <PastilleColis n={arret.quantite} grand />
           <button type="button" onClick={onFermer} aria-label="Fermer"
             className="size-12 shrink-0 inline-flex items-center justify-center rounded-full border border-[var(--border)] text-[var(--text)]">
             <X size={22} />
@@ -142,20 +200,11 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
         </button>
 
         {arret.quantite > 1 && (
-          <div className="flex items-center gap-2 p-2 rounded-[var(--r-lg)] border border-[var(--border)]">
-            <button type="button" aria-label="Un colis de moins" disabled={remis <= 0}
-              onClick={() => setRemis(r => Math.max(0, r - 1))}
-              className="size-14 shrink-0 inline-flex items-center justify-center rounded-[var(--r-lg)] border border-[var(--border)] text-[var(--text)]">
-              <Minus size={22} />
-            </button>
-            <button type="button" disabled={occupe} onClick={() => faire(fait, remis)}
-              className={`${MOYEN} flex-1 border-[var(--success)] text-[var(--success)]`}>
+          <div className="flex flex-col gap-2 p-2 rounded-[var(--r-lg)] border border-[var(--border)]">
+            <SelecteurColis total={arret.quantite} valeur={remis} onChange={setRemis} />
+            <button type="button" disabled={occupe || remis < 1} onClick={() => faire(fait, remis)}
+              className={`${MOYEN} border-[var(--success)] text-[var(--success)]`}>
               Remis {remis} sur {arret.quantite}
-            </button>
-            <button type="button" aria-label="Un colis de plus" disabled={remis >= arret.quantite}
-              onClick={() => setRemis(r => Math.min(arret.quantite, r + 1))}
-              className="size-14 shrink-0 inline-flex items-center justify-center rounded-[var(--r-lg)] border border-[var(--border)] text-[var(--text)]">
-              <Plus size={22} />
             </button>
           </div>
         )}
@@ -229,6 +278,7 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
   const { occupe, fait, geste } = useGestes(arret, tournee, onGeste)
   const validation = useValidation(geste)
   const [fiche, setFiche] = useState(false)
+  const [confirmer, setConfirmer] = useState(false)
   const rapide = issueRapide(arret.type)
   const yAller = lienYAller(arret)
 
@@ -241,12 +291,13 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
             <div className="flex-1 min-w-0">
               <p className="text-lg font-bold leading-tight text-[var(--text)] truncate">{libelleAdresse(arret)}</p>
               <p className="text-sm text-[var(--text-muted)] truncate">
-                {arret.commune} · {arret.quantite} colis
+                {arret.commune}
                 {arret.type !== 'c' && <strong style={{ color: COULEUR_CATEGORIE[arret.type] }}> · {LIBELLE_TYPE_ARRET[arret.type]}</strong>}
                 {arret.note ? ` · ${arret.note}` : ''}
               </p>
               <HorairesRelais arret={arret} />
             </div>
+            <PastilleColis n={arret.quantite} grand />
             {yAller && (
               <a href={yAller} target="_blank" rel="noopener noreferrer"
                 className="min-h-12 px-4 shrink-0 inline-flex items-center gap-2 rounded-[var(--r-lg)] border border-[var(--border)] text-base font-semibold text-[var(--text)]">
@@ -269,8 +320,8 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
             </div>
           ) : (
             <div className="flex gap-2">
-              <button type="button" disabled={occupe} onClick={() => validation.demander(fait)} className={`${GROS} flex-[3] bg-[var(--success)] text-black`}>
-                <Check size={24} /> {LIBELLE_FAIT[arret.type]}
+              <button type="button" disabled={occupe} onClick={() => (arret.quantite > 1 ? setConfirmer(true) : validation.demander(fait))} className={`${GROS} flex-[3] bg-[var(--success)] text-black`}>
+                <Check size={24} /> {LIBELLE_FAIT[arret.type]}{arret.quantite > 1 ? ` · ${arret.quantite} colis` : ''}
               </button>
               <button type="button" disabled={occupe} onClick={() => geste(rapide)}
                 className={`${GROS} flex-[2] border border-[var(--warning)] text-[var(--warning)] text-base`}>
@@ -285,6 +336,7 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
         </div>
       </div>
       {fiche && <FicheArret arret={arret} tournee={tournee} onGeste={onGeste} photos={photos} onPhoto={onPhoto} onFermer={() => setFiche(false)} />}
+      {confirmer && <ConfirmationColis arret={arret} libelle={LIBELLE_FAIT[arret.type]} occupe={occupe} onValider={n => geste(fait, n)} onFermer={() => setConfirmer(false)} />}
     </>
   )
 }
@@ -305,6 +357,7 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
   glisse?: boolean
 }) {
   const [fiche, setFiche] = useState(false)
+  const [confirmer, setConfirmer] = useState(false)
   const { occupe, fait, geste } = useGestes(arret, tournee, onGeste)
   const validation = useValidation(geste)
   const famille = familleStatut(arret.statut)
@@ -327,7 +380,7 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
         className="flex-1 min-w-0 min-h-16 py-2 text-left">
         <span className="block text-base font-semibold text-[var(--text)] break-words">{libelleAdresse(arret)}</span>
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--text-muted)]">
-          <span>{arret.quantite} colis</span>
+          <PastilleColis n={arret.quantite} />
           {arret.type !== 'c' && (
             <span className="inline-flex items-center gap-1 font-semibold" style={{ color: COULEUR_CATEGORIE[arret.type] }}>
               {arret.type === 'rc' ? <Store size={14} /> : <PackagePlus size={14} />} {LIBELLE_TYPE_ARRET[arret.type]}
@@ -350,13 +403,16 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
           <X size={20} /> Annuler {Math.ceil(validation.reste / 1000)}
         </button>
       ) : (
-        <button type="button" onClick={() => validation.demander(fait)} disabled={occupe}
+        <button type="button" onClick={() => (arret.quantite > 1 ? setConfirmer(true) : validation.demander(fait))} disabled={occupe}
           className="w-24 shrink-0 m-1.5 inline-flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] bg-[var(--success)] text-black text-sm font-bold disabled:opacity-40 active:scale-[0.97]">
           <Check size={20} /> {arret.type === 'col' ? 'Collecté' : arret.type === 'rc' ? 'Remis' : 'Livré'}
         </button>
       ))}
       {fiche && !verrouillee && (
         <FicheArret arret={arret} tournee={tournee} onGeste={onGeste} photos={photos} onPhoto={onPhoto} onFermer={() => setFiche(false)} />
+      )}
+      {confirmer && !verrouillee && (
+        <ConfirmationColis arret={arret} libelle={LIBELLE_FAIT[arret.type]} occupe={occupe} onValider={n => geste(fait, n)} onFermer={() => setConfirmer(false)} />
       )}
       {fiche && verrouillee && (
         <FichePhotos photos={photos} note={arret.note} onFermer={() => setFiche(false)} />
