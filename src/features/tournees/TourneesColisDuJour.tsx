@@ -232,7 +232,7 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
           <p className="text-sm text-[var(--text-muted)]">Aucune feuille de route scannée ce jour.</p>
         ) : (
           <ul className="flex flex-col divide-y divide-[var(--border)]">
-            {lignes.map(({ t, c, pct, couleur, pos }) => (
+            {lignes.map(({ t, c, pct, couleur, pos, arrets: siens }) => (
               <li key={t.id} className="flex items-center gap-3 py-2">
                 {carte && <span className="w-3 h-3 rounded-full shrink-0" style={{ background: couleur }} aria-hidden />}
                 <div className="flex-1 min-w-0 flex flex-col gap-1">
@@ -252,6 +252,9 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
                     <span className="text-[var(--success)]">{c.colisLivres} livrés</span>
                     {c.colisAttente > 0 && <span className="text-[var(--warning)]">{c.colisAttente} en attente</span>}
                     {c.colisRetour > 0 && <span className="text-[var(--danger)]">{c.colisRetour} en retour</span>}
+                    {siens.some(a => !a.statut && a.en_pause_le) && (
+                      <span className="text-[var(--warning)]">{siens.filter(a => !a.statut && a.en_pause_le).length} en pause</span>
+                    )}
                     {c.collectes > 0 && <span>Collectes {c.collectesTraitees} / {c.collectes}</span>}
                     {t.trajet && <span>{libelleDistance(t.trajet.km_total * 1000)}{modeOrdre(t) === 'manuel' ? ' · ordre manuel' : ''}</span>}
                     {(syntheses.get(t.id) ?? []).map((d, i) => (

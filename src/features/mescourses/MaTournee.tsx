@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   ChevronLeft, ChevronRight, ScanText, Trash2, ClipboardList, List, Map as IconeCarte, Undo2, LocateFixed,
-  RefreshCw, ArrowDownUp, ArrowUp, ArrowDown, ChevronsUp, MapPinOff, Search, MapPin, Radio, Flag, ChevronDown, AlertTriangle,
+  RefreshCw, ArrowDownUp, ArrowUp, ArrowDown, ChevronsUp, MapPinOff, Search, MapPin, Radio, Flag, ChevronDown, AlertTriangle, Pause,
 } from 'lucide-react'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -14,7 +14,7 @@ import { toLocalISO } from '../../shared/lib/dates'
 import { LIBELLE_STATUT_ARRET, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
 import {
   arretsAPlacer, bandeauOrdre, deplacer, doitEnvoyerPosition, grouperEnSuite, libelleDistance, modeOrdre,
-  nonTraites, ordreInverse, ordreManuel, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
+  arretsDansOrdre, nonTraites, ordreInverse, ordreManuel, arretsEnPause, inclureEnPause, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
 } from '../../shared/lib/tourneesColisRoute'
 import {
   listerTourneesColis, arretsDesTournees, supprimerTourneeColis, nomsClients, calculerItineraire,
@@ -26,7 +26,7 @@ import type { EtatFiche, MaFiche } from './mescourses.types'
 import { decalerJour, borneAujourdhui } from './espace.logic'
 import { libelleDateCourte } from './mescourses.logic'
 import { compteursTournee, libelleAdresse, libelleCompteurs } from './tourneeColis.logic'
-import { ArretTournee, BarreProchain } from './ArretTournee'
+import { ArretTournee, ArretEnPauseCompact, BarreProchain } from './ArretTournee'
 import { FeuilleCloture } from './FeuilleCloture'
 import { PhotosSynthese } from './PhotosSynthese'
 import { Carte, MessageErreur, GardeFiche, champCls, boutonPrimaireCls, boutonSecondaireCls } from './EspaceCommun'
@@ -338,9 +338,13 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     return { aFaire: glisse.ordre.map(id => par.get(id)!).filter(Boolean), traites: s.traites }
   }, [arrets, mode, prochain?.id, glisse])
   const groupes = useMemo(() => grouperEnSuite(ordreAffiche.aFaire), [ordreAffiche.aFaire])
+  const enPause = useMemo(() => arretsEnPause(arrets, mode), [arrets, mode])
 
   /** Ordre choisi à la main (glisser, village déplacé, tournée inversée) : on l'enregistre, puis le trajet suit. */
-  const appliquerOrdre = async (aFaireIds: string[]) => {
+  const appliquerOrdre = async (aFaireVisibles: string[]) => {
+    // Les arrêts en pause sont cachés de la liste mais gardent leur place dans l'ordre.
+    const aFaireIds = inclureEnPause(
+      arretsDansOrdre(arrets, mode).filter(a => !a.statut).map(a => ({ id: a.id, enPause: !!a.en_pause_le })), aFaireVisibles)
     const tous = ordreManuel(arrets, mode, aFaireIds)
     const place = new Map(tous.map((id, i) => [id, i + 1]))
     onArrets(arrets.map(a => ({ ...a, ordre: place.get(a.id) ?? null })))
@@ -408,7 +412,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
 
   const nt = nonTraites(arrets)
   const messageCloture = `${c.colisLivres} colis livrés · ${c.colisAttente} en attente · ${c.colisRetour} en retour.`
-    + (nt ? ` Attention : ${nt} arrêt${nt > 1 ? 's' : ''} pas encore traité${nt > 1 ? 's' : ''} (compté${nt > 1 ? 's' : ''} en litige).` : '')
+    + (nt ? ` Attention : ${nt} arrêt${nt > 1 ? 's' : ''} pas encore traité${nt > 1 ? 's' : ''}${enPause.length ? ` dont ${enPause.length} en pause` : ''} (compté${nt > 1 ? 's' : ''} en litige).` : '')
     + ' Ensuite, plus rien n’est modifiable (le bureau peut rouvrir).'
 
   return (
@@ -444,6 +448,19 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         )}
         {!verrouillee && bandeau.avertissement && (
           <p className="flex items-start gap-1.5 text-sm text-[var(--warning)]"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {bandeau.avertissement}</p>
+        )}
+        {!verrouillee && enPause.length > 0 && (
+          <section className="flex flex-col gap-1.5 max-h-[35vh] overflow-y-auto" aria-label="Arrêts en pause">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-[var(--warning)]">
+              <Pause size={16} /> En pause <span className="tabular-nums">({enPause.length})</span>
+            </h3>
+            <ul className="flex flex-col gap-1.5">
+              {enPause.map(a => (
+                <ArretEnPauseCompact key={a.id} arret={a} tournee={tournee} onGeste={onGeste}
+                  photos={photos.get(a.id)} onPhoto={surPhoto} />
+              ))}
+            </ul>
+          </section>
         )}
       </div>
 

@@ -99,6 +99,8 @@ export interface ArretColis {
   statut_le: string | null
   statut_par: string | null
   note: string | null
+  /** Mis en pause par le livreur (affiché en haut, hors liste) ; null = pas en pause. N'agit que sur l'affichage. */
+  en_pause_le?: string | null
   /** Place dans l'ordre de passage (route ou manuel) ; null = pas placé. `rang` reste la feuille. */
   ordre?: number | null
   /** Minutes depuis le départ jusqu'à cet arrêt (dernier calcul). */

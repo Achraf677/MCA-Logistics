@@ -31,9 +31,19 @@ export function arretsDansOrdre(arrets: ArretColis[], mode: OrdreMode): ArretCol
   return [...arrets].sort((a, b) => (a.ordre ?? Number.MAX_SAFE_INTEGER) - (b.ordre ?? Number.MAX_SAFE_INTEGER) || a.rang - b.rang)
 }
 
-/** Premier arrêt non traité dans l'ordre affiché. */
+/** Arrêt mis en pause par le livreur et pas encore traité. */
+export function estEnPause(a: Pick<ArretColis, 'statut' | 'en_pause_le'>): boolean {
+  return !a.statut && !!a.en_pause_le
+}
+
+/** Premier arrêt non traité et pas en pause dans l'ordre affiché. */
 export function prochainDansOrdre(arrets: ArretColis[], mode: OrdreMode): ArretColis | null {
-  return arretsDansOrdre(arrets, mode).find(a => !a.statut) ?? null
+  return arretsDansOrdre(arrets, mode).find(a => !a.statut && !a.en_pause_le) ?? null
+}
+
+/** Arrêts en pause, dans l'ordre de la tournée (affichés en haut de l'écran). */
+export function arretsEnPause(arrets: ArretColis[], mode: OrdreMode): ArretColis[] {
+  return arretsDansOrdre(arrets, mode).filter(estEnPause)
 }
 
 /** Numéro affiché sur la liste et la carte : rang de la feuille, ou place dans l'ordre. */
@@ -62,7 +72,7 @@ export function grouperEnSuite(ordonnes: ArretColis[]): Groupe[] {
 /** Liste du livreur : à faire groupés par commune dans l'ordre, traités à part (repliés en bas). */
 export function sectionsListe(arrets: ArretColis[], mode: OrdreMode): { aFaire: Groupe[]; traites: ArretColis[] } {
   const o = arretsDansOrdre(arrets, mode)
-  return { aFaire: grouperEnSuite(o.filter(a => !a.statut)), traites: o.filter(a => !!a.statut) }
+  return { aFaire: grouperEnSuite(o.filter(a => !a.statut && !a.en_pause_le)), traites: o.filter(a => !!a.statut) }
 }
 
 /** Arrêts sans position (à placer sur la carte), non traités. */
@@ -82,6 +92,24 @@ export function deplacer<T>(liste: T[], de: number, vers: number): T[] {
 /** « Commencer par la fin » : les arrêts pas encore traités, dans l'ordre inverse de l'ordre affiché. */
 export function ordreInverse(arrets: ArretColis[], mode: OrdreMode): string[] {
   return arretsDansOrdre(arrets, mode).filter(a => !a.statut).map(a => a.id).reverse()
+}
+
+/**
+ * Les arrêts en pause sont cachés de la liste mais gardent leur place dans l'ordre : quand on réordonne les
+ * arrêts visibles, chaque arrêt en pause est remis juste après celui qui le précédait (ou en tête). Pur.
+ */
+export function inclureEnPause(ancienOrdre: Array<{ id: string; enPause: boolean }>, nouveauVisible: string[]): string[] {
+  const sortie = [...nouveauVisible]
+  let ancre: string | null = null
+  for (const a of ancienOrdre) {
+    if (!a.enPause) { ancre = a.id; continue }
+    if (sortie.includes(a.id)) continue
+    const i = ancre == null ? -1 : sortie.indexOf(ancre)
+    // Plusieurs arrêts en pause à la suite gardent leur ordre (chacun s'ancre sur le précédent).
+    sortie.splice(i + 1, 0, a.id)
+    ancre = a.id
+  }
+  return sortie
 }
 
 /** Ordre manuel complet à écrire : les traités gardent leur place (devant), puis les à-faire dans l'ordre choisi. */
