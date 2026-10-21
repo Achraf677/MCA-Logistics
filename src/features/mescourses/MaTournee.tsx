@@ -26,7 +26,7 @@ import type { EtatFiche, MaFiche } from './mescourses.types'
 import { decalerJour, borneAujourdhui } from './espace.logic'
 import { libelleDateCourte } from './mescourses.logic'
 import { compteursTournee, libelleAdresse, libelleCompteurs } from './tourneeColis.logic'
-import { ArretTournee, BarreProchain } from './ArretTournee'
+import { ArretTournee, ArretEnPauseCompact, BarreProchain } from './ArretTournee'
 import { FeuilleCloture } from './FeuilleCloture'
 import { PhotosSynthese } from './PhotosSynthese'
 import { Carte, MessageErreur, GardeFiche, champCls, boutonPrimaireCls, boutonSecondaireCls } from './EspaceCommun'
@@ -449,25 +449,23 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         {!verrouillee && bandeau.avertissement && (
           <p className="flex items-start gap-1.5 text-sm text-[var(--warning)]"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {bandeau.avertissement}</p>
         )}
+        {!verrouillee && enPause.length > 0 && (
+          <section className="flex flex-col gap-1.5 max-h-[35vh] overflow-y-auto" aria-label="Arrêts en pause">
+            <h3 className="flex items-center gap-2 text-sm font-bold text-[var(--warning)]">
+              <Pause size={16} /> En pause <span className="tabular-nums">({enPause.length})</span>
+            </h3>
+            <ul className="flex flex-col gap-1.5">
+              {enPause.map(a => (
+                <ArretEnPauseCompact key={a.id} arret={a} tournee={tournee} onGeste={onGeste}
+                  photos={photos.get(a.id)} onPhoto={surPhoto} />
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
 
       {!verrouillee && aPlacer.length > 0 && (
         <APlacer arrets={aPlacer} onSurCarte={a => { setAPlacerSur(a); changerVue('carte') }} onPlacer={placer} />
-      )}
-
-      {!verrouillee && enPause.length > 0 && (
-        <section className="flex flex-col gap-2 p-2 rounded-[var(--r-lg)] border-2 border-[var(--warning)]" aria-label="Arrêts en pause">
-          <h3 className="flex items-center gap-2 px-1 text-base font-bold text-[var(--warning)]">
-            <Pause size={18} /> En pause <span className="tabular-nums">({enPause.length})</span>
-            <span className="flex-1 text-right text-xs font-normal text-[var(--text-muted)]">à reprendre quand c'est possible</span>
-          </h3>
-          <ul className="flex flex-col gap-2">
-            {enPause.map(a => (
-              <ArretTournee key={a.id} arret={a} tournee={tournee} verrouillee={verrouillee} onGeste={onGeste}
-                photos={photos.get(a.id)} onPhoto={surPhoto} />
-            ))}
-          </ul>
-        </section>
       )}
 
       {vue === 'carte' ? (

@@ -473,6 +473,38 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
   )
 }
 
+/**
+ * Arrêt en pause, version compacte pour le bandeau du haut (toujours visible, même en bas de liste) :
+ * une ligne avec l'adresse et « Reprendre » ; un appui sur l'adresse ouvre la fiche (Livré, autres issues).
+ */
+export function ArretEnPauseCompact({ arret, tournee, onGeste, photos = [], onPhoto }: {
+  arret: ArretColis
+  tournee: TourneeColis
+  onGeste: (a: ArretColis) => void
+  photos?: DocumentRow[]
+  onPhoto?: (arretId: string, doc: DocumentRow) => void
+}) {
+  const [fiche, setFiche] = useState(false)
+  const { occupe, pause } = useGestes(arret, tournee, onGeste)
+  return (
+    <li className="flex items-stretch gap-2 rounded-[var(--r-md)] border border-[var(--warning)]"
+      style={{ borderLeftWidth: 6, borderLeftColor: COULEUR_CATEGORIE[arret.type], background: 'color-mix(in srgb, var(--warning) 10%, var(--bg-card))' }}>
+      <button type="button" onClick={() => setFiche(true)} className="flex-1 min-w-0 min-h-12 py-1.5 pl-2 text-left">
+        <span className="block text-base font-semibold text-[var(--text)] truncate">{libelleAdresse(arret)}</span>
+        <span className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+          <span className="truncate">{arret.commune}</span>
+          <PastilleColis n={arret.quantite} />
+        </span>
+      </button>
+      <button type="button" onClick={() => pause(false)} disabled={occupe}
+        className="w-28 shrink-0 m-1 inline-flex items-center justify-center gap-1.5 rounded-[var(--r-md)] border-2 border-[var(--warning)] text-[var(--warning)] text-sm font-bold disabled:opacity-40 active:scale-[0.97]">
+        <Play size={18} /> Reprendre
+      </button>
+      {fiche && <FicheArret arret={arret} tournee={tournee} onGeste={onGeste} photos={photos} onPhoto={onPhoto} onFermer={() => setFiche(false)} />}
+    </li>
+  )
+}
+
 /** Tournée terminée : seulement les photos et la note, rien à modifier. */
 function FichePhotos({ photos, note, onFermer }: { photos: DocumentRow[]; note: string | null; onFermer: () => void }) {
   const { toast } = useToast()
