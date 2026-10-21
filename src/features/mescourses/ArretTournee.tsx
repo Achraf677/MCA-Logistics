@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
-  Check, Store, Package, PackagePlus, House, Clock, Undo2, Minus, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw,
+  Check, Store, Package, PackagePlus, House, Clock, Undo2, Minus, Pause, Play, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw,
 } from 'lucide-react'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
@@ -84,8 +84,11 @@ function useGestes(arret: ArretColis, tournee: TourneeColis, onGeste: (a: ArretC
     onGeste(data)
     return true
   }
-  const geste = (s: StatutArretColis | null, colis?: number | null) => ecrire(patchStatut(arret, s, colis))
-  return { occupe, fait, ecrire, geste }
+  // Un geste de résultat (livré, avisé…) sort l'arrêt de la pause.
+  const geste = (s: StatutArretColis | null, colis?: number | null) => ecrire({ ...patchStatut(arret, s, colis), en_pause_le: null })
+  /** Met l'arrêt en pause (affiché en haut) ou le reprend. */
+  const pause = (v: boolean) => ecrire({ en_pause_le: v ? new Date().toISOString() : null })
+  return { occupe, fait, ecrire, geste, pause }
 }
 
 /**
@@ -173,7 +176,7 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
 }) {
   const { toast } = useToast()
   const { companyId } = useProfile()
-  const { occupe, fait, ecrire, geste } = useGestes(arret, tournee, onGeste)
+  const { occupe, fait, ecrire, geste, pause } = useGestes(arret, tournee, onGeste)
   const { autres } = statutsProposes(arret.type)
   const [remis, setRemis] = useState(arret.colis_remis ?? arret.quantite)
   const [note, setNote] = useState(arret.note ?? '')
@@ -228,6 +231,13 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
               Remis {remis} sur {arret.quantite}
             </button>
           </div>
+        )}
+
+        {!arret.statut && (
+          <button type="button" disabled={occupe} onClick={async () => { if (await pause(!arret.en_pause_le)) onFermer() }}
+            className={`${MOYEN} ${arret.en_pause_le ? 'border-[var(--success)] text-[var(--success)]' : 'border-[var(--warning)] text-[var(--warning)]'}`}>
+            {arret.en_pause_le ? <><Play size={20} /> Reprendre cet arrêt</> : <><Pause size={20} /> Mettre en pause</>}
+          </button>
         )}
 
         <div className="grid grid-cols-2 gap-2">
@@ -296,7 +306,7 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
   photos?: DocumentRow[]
   onPhoto?: (arretId: string, doc: DocumentRow) => void
 }) {
-  const { occupe, fait, geste } = useGestes(arret, tournee, onGeste)
+  const { occupe, fait, geste, pause } = useGestes(arret, tournee, onGeste)
   const validation = useValidation(geste)
   const [fiche, setFiche] = useState(false)
   const [confirmer, setConfirmer] = useState(false)
@@ -345,6 +355,10 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
                 className={`${GROS} flex-[2] border border-[var(--warning)] text-[var(--warning)] text-base`}>
                 {LIBELLE_STATUT_ARRET[rapide]}
               </button>
+              <button type="button" disabled={occupe} onClick={() => pause(true)} aria-label="Mettre en pause"
+                className={`${MOYEN} min-h-16 w-16 px-0 flex-col gap-0 text-xs border-[var(--warning)] text-[var(--warning)]`}>
+                <Pause size={22} /> Pause
+              </button>
               <button type="button" onClick={() => setFiche(true)} aria-label="Autres choix"
                 className={`${MOYEN} min-h-16 border-[var(--border)] text-[var(--text)]`}>
                 Autre
@@ -376,15 +390,16 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
 }) {
   const [fiche, setFiche] = useState(false)
   const [confirmer, setConfirmer] = useState(false)
-  const { occupe, fait, geste } = useGestes(arret, tournee, onGeste)
+  const { occupe, fait, geste, pause } = useGestes(arret, tournee, onGeste)
   const validation = useValidation(geste)
+  const enPause = !arret.statut && !!arret.en_pause_le
   const famille = familleStatut(arret.statut)
   const numero = numeroAffiche(arret, modeOrdre(tournee))
 
   return (
-    <li id={`arret-${arret.id}`} style={{ borderLeftColor: COULEUR_CATEGORIE[arret.type], background: famille ? TEINTE_FAMILLE[famille] : undefined }}
+    <li id={`arret-${arret.id}`} style={{ borderLeftColor: COULEUR_CATEGORIE[arret.type], background: famille ? TEINTE_FAMILLE[famille] : enPause ? 'color-mix(in srgb, var(--warning) 10%, var(--bg-card))' : undefined }}
       className={`flex items-stretch gap-2 rounded-[var(--r-lg)] border border-l-[6px] ${famille ? '' : 'bg-[var(--bg-card)]'} ${
-      glisse ? 'border-[var(--brand)] shadow-lg' : arret.statut ? 'border-[var(--border)]' : 'border-[var(--border-strong)]'}`}>
+      glisse ? 'border-[var(--brand)] shadow-lg' : enPause ? 'border-[var(--warning)]' : arret.statut ? 'border-[var(--border)]' : 'border-[var(--border-strong)]'}`}>
       {poignee && !verrouillee ? (
         <button type="button" {...poignee} aria-label="Glisser pour changer l'ordre"
           className="w-10 shrink-0 inline-flex flex-col items-center justify-center text-[var(--text-muted)] touch-none cursor-grab">
@@ -400,6 +415,11 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--text-muted)]">
           <PastilleColis n={arret.quantite} />
           <PastilleType type={arret.type} />
+          {enPause && (
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-bold leading-none bg-[var(--warning)] text-black">
+              <Pause size={14} aria-hidden /> En pause
+            </span>
+          )}
           {arret.statut && famille && (
             <PastilleStatut famille={famille}>
               {LIBELLE_STATUT_ARRET[arret.statut]}
@@ -411,7 +431,19 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
           {arret.note && <span className="inline-flex items-center gap-1"><MessageSquare size={13} /> {arret.note}</span>}
         </span>
       </button>
-      {!verrouillee && !arret.statut && (validation.armee ? (
+      {!verrouillee && enPause && (
+        <button type="button" onClick={() => pause(false)} disabled={occupe}
+          className="w-28 shrink-0 m-1.5 inline-flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] border-2 border-[var(--warning)] text-[var(--warning)] text-sm font-bold disabled:opacity-40 active:scale-[0.97]">
+          <Play size={20} /> Reprendre
+        </button>
+      )}
+      {!verrouillee && !arret.statut && !enPause && !validation.armee && (
+        <button type="button" onClick={() => pause(true)} disabled={occupe} aria-label="Mettre en pause"
+          className="w-14 shrink-0 my-1.5 inline-flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] border border-[var(--border-strong)] text-[var(--text-muted)] text-xs font-semibold disabled:opacity-40 active:scale-[0.97]">
+          <Pause size={18} /> Pause
+        </button>
+      )}
+      {!verrouillee && !arret.statut && !enPause && (validation.armee ? (
         <div className="shrink-0 m-1.5 flex gap-1.5">
           <button type="button" onClick={validation.annuler} aria-label="Annuler"
             className="w-12 inline-flex items-center justify-center rounded-[var(--r-md)] border-2 border-[var(--danger)] text-[var(--danger)] active:scale-[0.97]">

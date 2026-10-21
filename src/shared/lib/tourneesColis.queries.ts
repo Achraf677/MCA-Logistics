@@ -14,7 +14,7 @@ import {
 } from './tourneesColis'
 
 const COLS_TOURNEE = '*, team_members!member_id(full_name), clients!client_id(name)'
-const COLS_ARRET = 'id, tournee_id, company_id, rang, commune, cp, rue, numero, type, quantite, colis_remis, lat, lng, geo_precision, statut, statut_le, statut_par, note, ordre, eta_min, rang_habituel'
+const COLS_ARRET = 'id, tournee_id, company_id, rang, commune, cp, rue, numero, type, quantite, colis_remis, lat, lng, geo_precision, statut, statut_le, statut_par, note, en_pause_le, ordre, eta_min, rang_habituel'
 
 const REFUS = "Enregistrement refusé : la tournée est peut-être clôturée, ou ton compte n'a pas ce droit."
 
@@ -280,7 +280,7 @@ export async function creerTourneeColis(p: {
  */
 export async function majArret(
   arret: Pick<ArretColis, 'id' | 'tournee_id'>,
-  patch: { statut?: StatutArretColis | null; colis_remis?: number | null; note?: string | null },
+  patch: { statut?: StatutArretColis | null; colis_remis?: number | null; note?: string | null; en_pause_le?: string | null },
   tournee: { statut: StatutTourneeColis },
 ): Promise<{ data: ArretColis | null; error: Error | null }> {
   const { data, error } = await supabase.from('tournees_colis_arrets').update(patch)

@@ -3,6 +3,7 @@ import {
   arretsDansOrdre, prochainDansOrdre, sectionsListe, arretsAPlacer, deplacer, ordreInverse, ordreManuel, libelleDuree, libelleDistance,
   bandeauOrdre, heurePassage, pointsCarte, couperTrace, doitEnvoyerPosition, ilYA, positionAncienne,
   journeeDepuisArrets, nonTraites, modeOrdre, sansCalcul, idsOrdreHabituel, avancementParCategorie,
+  arretsEnPause, estEnPause, inclureEnPause,
 } from './tourneesColisRoute'
 import type { ArretColis, TrajetTournee } from './tourneesColis'
 
@@ -176,5 +177,28 @@ describe('ordreInverse (commencer par la fin)', () => {
     const place = new Map(ordreManuel(liste, 'route', une).map((id, i) => [id, i + 1]))
     const apres = liste.map(a => ({ ...a, ordre: place.get(a.id) ?? null }))
     expect(ordreInverse(apres, 'manuel')).toEqual(['1', '2', '3'])
+  })
+})
+
+describe('arrêts en pause', () => {
+  const p = (id: string, ordre: number, extra: Partial<ArretColis> = {}) => a({ id, ordre, ...extra })
+  const liste = [p('1', 1), p('2', 2, { en_pause_le: '2026-10-21T08:00:00Z' }), p('3', 3), p('4', 4, { statut: 'livre', en_pause_le: '2026-10-21T07:00:00Z' })]
+  it('le prochain arrêt saute la pause ; un arrêt traité n’est plus « en pause »', () => {
+    expect(prochainDansOrdre(liste, 'route')?.id).toBe('1')
+    expect(prochainDansOrdre([liste[1], liste[2]], 'route')?.id).toBe('3')
+    expect(arretsEnPause(liste, 'route').map(x => x.id)).toEqual(['2'])
+    expect(estEnPause(liste[3])).toBe(false)
+  })
+  it('la liste « à faire » cache la pause, qui reste comptée comme non traitée', () => {
+    const s = sectionsListe(liste, 'route')
+    expect(s.aFaire.flatMap(g => g.arrets).map(x => x.id)).toEqual(['1', '3'])
+    expect(s.traites.map(x => x.id)).toEqual(['4'])
+  })
+  it('réordonner les arrêts visibles : la pause garde sa place (après son prédécesseur)', () => {
+    const ancien = [{ id: '1', enPause: false }, { id: '2', enPause: true }, { id: '3', enPause: false }, { id: '5', enPause: false }]
+    expect(inclureEnPause(ancien, ['5', '3', '1'])).toEqual(['5', '3', '1', '2'])
+    // Pause en tête : elle reste en tête ; deux pauses à la suite gardent leur ordre.
+    expect(inclureEnPause([{ id: '2', enPause: true }, { id: '1', enPause: false }, { id: '3', enPause: false }], ['3', '1'])).toEqual(['2', '3', '1'])
+    expect(inclureEnPause([{ id: '1', enPause: false }, { id: '2', enPause: true }, { id: '4', enPause: true }, { id: '3', enPause: false }], ['3', '1'])).toEqual(['3', '1', '2', '4'])
   })
 })
