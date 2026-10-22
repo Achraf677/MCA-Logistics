@@ -107,7 +107,7 @@ function Etape({ icone, label, valeur }: { icone: ReactNode; label: string; vale
 function Puce({ icone, texte, accent }: { icone: ReactNode; texte: string | null | undefined; accent?: boolean }) {
   if (!texte?.trim()) return null
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-pill)] text-[var(--fs-xs)]
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-pill)] text-[var(--fs-xs)] font-semibold
       border ${accent
         ? 'border-[var(--brand)]/40 bg-[var(--brand-soft)] text-[var(--text)] font-semibold'
         : 'border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-muted)]'}`}>
