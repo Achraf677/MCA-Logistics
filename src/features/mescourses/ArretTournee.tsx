@@ -410,11 +410,14 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
       className={`flex items-stretch gap-2 rounded-[var(--r-lg)] border border-l-[6px] ${famille ? '' : 'bg-[var(--bg-card)]'} ${
       glisse ? 'border-[var(--brand)] shadow-lg' : enPause ? 'border-[var(--warning)]' : arret.statut ? 'border-[var(--border)]' : 'border-[var(--border-strong)]'}`}>
       {poignee && !verrouillee ? (
-        <button type="button" {...poignee} aria-label="Glisser pour changer l'ordre"
-          className="w-10 shrink-0 inline-flex flex-col items-center justify-center text-[var(--text-muted)] touch-none cursor-grab">
-          <GripVertical size={18} />
+        // Seule la petite poignée (les 6 points) déplace l'arrêt : le reste de la colonne laisse défiler.
+        <span className="w-10 shrink-0 flex flex-col items-center justify-center gap-0.5 text-[var(--text-muted)]">
+          <button type="button" {...poignee} aria-label="Glisser pour changer l'ordre"
+            className="h-9 w-9 inline-flex items-center justify-center rounded-[var(--r-md)] border border-[var(--border)] touch-none cursor-grab">
+            <GripVertical size={18} />
+          </button>
           <span className="text-xs font-semibold tabular-nums">{numero ?? '–'}</span>
-        </button>
+        </span>
       ) : (
         <span className="w-9 shrink-0 inline-flex items-center justify-center text-xs font-semibold tabular-nums text-[var(--text-muted)]">{numero ?? '–'}</span>
       )}
