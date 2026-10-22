@@ -1,6 +1,6 @@
 # 04 — Planning (Tournées · Planning)
 
-Fait foi pour la section. Mis à jour le 19/10/2026 (refonte de l'onglet Planning).
+Fait foi pour la section. Mis à jour le 22/10/2026 (refonte de l'onglet Planning du 19/10 ; Tournées de colis du jour : voir `04a-tournees.md`).
 
 ## 1. Rôle
 - Écran du bureau : qui roule, avec quoi, quelles courses. Le chauffeur a Mes courses.
