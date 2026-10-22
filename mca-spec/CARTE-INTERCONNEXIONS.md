@@ -144,7 +144,7 @@
 - pennylane-quote : devis · pennylane-clients-sync : clients · pennylane-sync,
   suggest-categorie-ia : charges · pennylane-payment-check, qonto-sync : tresorerie
 - lire-facture : carburant, entretiens · lire-releve : carburant
-- lire-feuille-route (TC1, **déployée le 18/10/2026, v1**) : `shared/lib/tourneesColis.queries#lirePageFeuille`, appelée par
+- lire-feuille-route (TC1, **v7 déployée le 22/10/2026**) : `shared/lib/tourneesColis.queries#lirePageFeuille`, appelée par
   `shared/ui/ScanFeuilleRoute` (Mes courses › Ma tournée, Tournées). N'écrit rien ; importe
   `_shared/mistral`, `_shared/feuilleRoute`, `_shared/geocodeArret`, `_shared/auth`, `cors`, `http`.
   v2 (18/10/2026) : lit aussi `adresse_remettant` dans l'en-tête (départ par défaut).
@@ -152,11 +152,11 @@
   `commune_precedente` ; renvoie `rue_connue`, `ref_rang`, `ref_rang_commune` ; ajoute
   d'office les numéros manquants (`_shared/feuilleRoute#lignesEnArrets`).
 - optimiser-tournee-colis (22/10/2026 **v15** : lit `zone`, `ordonnerZones` = zones de Brumath dans l'ordre 1 → 7 ; lots 2-5, **déployée le 18/10/2026, v2**, verify_jwt ; tracé par
-  l'itinéraire IGN `data.geopf.fr/navigation/itineraire`, ORS en secours) :
+  l'itinéraire IGN `data.geopf.fr/navigation/itineraire` ; aucun secours : erreur claire, ordre actuel intact) :
   `tourneesColis.queries#calculerItineraire`, appelée par Ma tournée (calcul, recalcul depuis
   ma position) et Tournées › bloc tournées de colis. Tourne avec la session de l'appelant
-  (RLS, aucune clé de service). ORS matrice (blocs ≤ 3 500) + itinéraires (≤ 50 points),
-  repli vol d'oiseau × 1,3 ; solveur `_shared/tourneeRoute.ts` (exact ≤ 10 points, sinon
+  (RLS, aucune clé de service). ORS (api.heigit.org) matrice (blocs ≤ 3 500) + itinéraires (≤ 50 points),
+  trous de matrice bouchés par le vol d'oiseau ; solveur `_shared/tourneeRoute.ts` (exact ≤ 10 points, sinon
   plus proche voisin + 2-opt + Or-opt ; 150 points en ~12 ms). Lit `companies.depot_lat/lng`
   et `companies.depart_colis_lat/lng` (départ des tournées de colis, Paramètres › Société,
   prioritaire ; v3), `_shared/geocode` (adresse du remettant).
@@ -215,5 +215,9 @@
   front (photos, création, annulation, terminer) + Edge `scanner-feuille-route` (résultats, clé de service) ;
   lecteurs : `ScanFeuilleRoute`, `useScanOuvert` (pastille + carte « Aujourd'hui »), `MaTournee`,
   `TourneesColisDuJour`. `_shared/lireFeuilleCore.ts` = lecture d'une page (aussi `lire-feuille-route`).
+- Pause d'un arrêt (21/10/2026) : `tournees_colis_arrets.en_pause_le` écrit par `majArret` (salarié sur SA tournée,
+  bureau) ; lu par `tourneesColisRoute` (liste, bandeau « En pause », clôture) et le bloc bureau ; n'agit pas sur l'ordre.
+- Photos de synthèse (20/10/2026) : `documents` `entity_type = 'tournee_colis'` (policies insert / delete salarié sur SA
+  tournée non clôturée) ; écrites par `FeuilleCloture` / `PhotosSynthese`, lues au bureau (liens « Synthèse n »).
 - `optimiser-tournee-colis` mode `suivre` : lit `ordre` des arrêts, écrit `trajet` + `eta_min` (jamais `ordre`).
 - Planning (19/10/2026) : lit aussi `tournees_colis` / `tournees_colis_arrets` via `shared/lib/tourneesColis.queries` (droit `planning.tournees`) ; écrit `deliveries.driver_id` / `date` seulement.

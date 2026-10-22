@@ -1,6 +1,6 @@
 # 04a — Tournées (section Planning)
 
-> Cartographie du 04/10/2026, établie à partir du code ET de la base (rien modifié).
+> Cartographie du 04/10/2026, établie à partir du code ET de la base ; mise à jour le 22/10/2026 (calcul maison, refonte du 20/10, tournées de colis du jour).
 > Complète `04-planning.md` (section entière) : ce fichier fait foi pour l'onglet Tournées.
 > Plan § 13 de CLAUDE.md. À mettre à jour à chaque PR qui touche l'onglet.
 
@@ -41,7 +41,7 @@
 
 ## 4. Gestes et écritures
 - Répartir & optimiser → Edge `optimize-tours` : détache TOUTES les courses des tournées de ces
-  véhicules ce jour-là + le lot coché, appelle OpenRouteService (Vroom), crée / met à jour
+  véhicules ce jour-là + le lot coché, calcule les routes (matrice OpenRouteService via api.heigit.org + planificateur maison, voir « Calcul des tournées express » plus bas), crée / met à jour
   `tours` (statut `optimisee`, km, durée, tracé), écrit sur chaque course `tour_id`,
   `stop_order`, `arrival_time` (départ fixe 08:00), **`vehicle_id` et `driver_id`** ; supprime les
   tournées devenues vides. Refus 409 si une tournée est déjà en cours / terminée.
@@ -194,11 +194,25 @@
   (pas de coordonnées stockées) ; « urgent » = priorité (servi si tout ne rentre pas), pas
   « en premier » : pour imposer une heure, mettre un créneau.
 
-### Tournées de colis du jour (lot TC1, 17/10/2026, PR à tester)
-- Bloc en tête de la colonne de droite : une ligne par feuille de route scannée (salarié,
-  client, statut, barre d'avancement, arrêts et colis traités / total, livrés / attente /
-  retour, collectes) ; supprimer (droit `planning.tournees : delete`).
-- « Scanner pour un salarié » (droit `planning.tournees : update`) : tiroir, choix du salarié,
-  même scanner que Mes courses (`shared/ui/ScanFeuilleRoute`), à la date choisie.
-- Ces tournées ne passent PAS par l'optimiseur ni par `tours` / `deliveries`.
+### Calcul des tournées express (20/10/2026, remplace Vroom)
+- `optimize-tours` : matrice de routes réelle (ORS, `_shared/routesOrs.ts`) + planificateur maison
+  (`_shared/planifExpress.ts` : créneaux durs avec attente, urgent prioritaire, retrait avant livraison, au plus
+  ceil(N/V) courses par véhicule, insertion + recherche locale + ruine/recrée) + tracé IGN. Mêmes entrées / sorties
+  qu'avant, aucun secours : en cas d'échec, erreur claire et rien n'est modifié. Quota ORS : 1 à 4 appels de matrice
+  par répartition (500 / jour). `vroom.ts` ne sert plus qu'à construire le problème et lire la route.
+- Refonte de l'écran (20/10) : barre de jour + tuiles comme Planning, mobile Préparer / Tournées, erreurs en bandeau +
+  Réessayer, rechargement sans perdre l'ordre ni la sélection, chiffres effacés quand l'ordre change, carte Plan IGN.
 
+### Tournées de colis du jour (messagerie) — état au 22/10/2026
+- Bloc en tête de la colonne de droite : une ligne par feuille de route scannée (salarié, client, statut, barre
+  d'avancement, arrêts et colis traités / total, livrés / attente / retour, « n en pause », collectes, km, liens
+  « Synthèse n » = photos de fin de tournée, position partagée « il y a 2 min »).
+- Icônes par ligne : **liste des arrêts** (À faire / En attente / En retour / Tous, recherche, crayon = corriger
+  village / rue / numéro / zone, « Ajouter » une adresse, bandeau « Recalculer » ensuite), calculer l'itinéraire,
+  rouvrir (tournée clôturée), supprimer (droit `planning.tournees : delete`).
+- « Carte du jour » : une couleur par salarié, avancement, km, filtre, camions ; une seule tournée = villages /
+  zones en couleur (contour, route, légende).
+- « Scanner pour un salarié » (droit `planning.tournees : update`) : tiroir, choix du salarié, même scanner que
+  Mes courses (`shared/ui/ScanFeuilleRoute`), à la date choisie.
+- Ces tournées ne passent PAS par l'optimiseur express ni par `tours` / `deliveries` : calcul par l'Edge
+  `optimiser-tournee-colis` (village par village, zones de Brumath de 1 à 7). Détail salarié : `01-mes-courses.md`.

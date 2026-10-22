@@ -3,6 +3,7 @@
 > Document de référence (lecture seule) — généré à partir du code réel de `src/features/*`,
 > `src/app/routes.tsx`, `src/app/Shell.tsx` et `src/features.config.ts`.
 > Aucun changement fonctionnel. Sert de base à l'assistant conversationnel global (étape 1).
+> **Photo de l'étape 1, non tenue à jour** (ex. Calendrier fondu dans Planning le 19/10/2026, Tournées de colis absentes) : l'état réel = `CLAUDE.md` § 11 et `mca-spec/revue/`.
 
 ## Modèle de rôles & permissions
 
