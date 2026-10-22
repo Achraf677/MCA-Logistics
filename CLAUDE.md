@@ -179,6 +179,8 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - **Fiches de saisie** (modèle : fiche livraison) : tiroir large 2 colonnes PC / 1 mobile, blocs
   titrés, barre d'actions fixe en bas, validation progressive (seul le strict minimum bloque,
   le reste en bandeau « Il manque pour… »), valeurs par défaut lues ailleurs (client, paramètres).
+  Look commun (22/10/2026) : `Bloc` = surface propre + titre net (`shared/ui/FicheSaisie`), champs `.field` un cran plus clair
+  que le bloc, libellés lisibles (jamais en capitales), prestation en contrôle segmenté, suivi en frise horizontale.
 - ⚠️ `text-[var(--fs-*)]` = compilé en `color:` par Tailwind v4 → **interdit** dans du code neuf
   (`text-xs`, `text-sm`, `text-[length:var(--fs-xs)]`). ~700 usages anciens : correctif global à décider.
 - `.glass` sans backdrop-filter sur ce qui défile (perf).

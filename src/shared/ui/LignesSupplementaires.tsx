@@ -24,7 +24,7 @@ function Input({ value, onChange, placeholder, disabled }: {
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
+      <label className="text-xs font-medium text-[var(--text-muted)]">{label}</label>
       {children}
     </div>
   )
@@ -78,7 +78,7 @@ export function ExtraLinesEditor({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
+        <span className="text-xs font-medium text-[var(--text-muted)]">
           Lignes supplémentaires
         </span>
         {!disabled && (

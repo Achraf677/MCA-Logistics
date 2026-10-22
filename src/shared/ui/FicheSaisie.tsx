@@ -7,11 +7,11 @@ import type { Prestation } from '../lib/prestations'
 // Briques communes des fiches de saisie (fiche livraison, devis) : mêmes blocs,
 // même choix du client, même choix de prestation — un seul exemplaire.
 
-/** Champ d'une fiche (libellé en petites capitales, erreur sous le champ). */
+/** Champ d'une fiche (libellé lisible, erreur sous le champ). */
 export function Champ({ label, children, error }: { label: string; children: ReactNode; error?: string }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-medium text-[var(--text-muted)]">
         {label}
       </label>
       {children}
@@ -20,11 +20,24 @@ export function Champ({ label, children, error }: { label: string; children: Rea
   )
 }
 
-/** Bloc titré d'une fiche. */
-export function Bloc({ titre, children }: { titre: string; children: ReactNode }) {
+/** Bloc titré d'une fiche : surface propre, titre net, liseré de marque. */
+export function Bloc({ titre, children, icone, droite }: {
+  titre: string
+  children: ReactNode
+  icone?: ReactNode
+  /** Geste ou info à droite du titre. */
+  droite?: ReactNode
+}) {
   return (
-    <section className="rounded-[var(--r-lg)] border border-[var(--border)] p-3.5 flex flex-col gap-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">{titre}</h3>
+    <section className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)] p-4 flex flex-col gap-3.5">
+      <header className="flex items-center justify-between gap-2">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]">
+          {icone ? <span className="text-[var(--brand)]">{icone}</span>
+            : <span className="h-4 w-[3px] rounded-full bg-[var(--brand)]" aria-hidden="true" />}
+          {titre}
+        </h3>
+        {droite}
+      </header>
       {children}
     </section>
   )
@@ -99,16 +112,16 @@ export function ChoixPrestation({ value, onChange, disabled, avecVide = false }:
 }) {
   return (
     <>
-      <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Prestation">
+      <div className="flex flex-wrap gap-1 p-1 rounded-[var(--r-lg)] bg-[color-mix(in_srgb,var(--text)_6%,transparent)] w-fit max-w-full" role="radiogroup" aria-label="Prestation">
         {PRESTATIONS.map(p => (
           <button key={p} type="button" role="radio" aria-checked={value === p}
             disabled={disabled}
             onClick={() => onChange(p)}
             title={PRESTATION_AIDES[p]}
-            className={`h-8 px-3 rounded-[var(--r-pill)] border text-xs transition-colors disabled:opacity-60
+            className={`h-8 px-3.5 rounded-[var(--r-md)] text-xs transition-colors disabled:opacity-60
               ${value === p
-                ? 'bg-[var(--brand)] border-[var(--brand)] text-white font-medium'
-                : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--brand)] hover:text-[var(--text)]'}`}>
+                ? 'bg-[var(--brand)] text-white font-semibold shadow-sm'
+                : 'text-[var(--text-muted)] hover:bg-[color-mix(in_srgb,var(--text)_8%,transparent)] hover:text-[var(--text)]'}`}>
             {PRESTATION_LABELS[p]}
           </button>
         ))}

@@ -577,7 +577,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
 
           {blocs.retrait && (
             <div className="flex flex-wrap items-center gap-3 px-1">
-              <span className="text-xs uppercase tracking-wide font-medium text-[var(--text-muted)]">Trajet</span>
+              <span className="text-xs font-medium text-[var(--text-muted)]">Trajet</span>
               {calcLoading && <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />}
               <div className="flex items-center gap-2 ml-auto">
                 <span className="text-xs text-[var(--text-muted)]">km</span>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { Trash2, Loader2, Camera, Mail, Copy, RefreshCw, Zap, AlertTriangle, MapPin } from 'lucide-react'
+import { Trash2, Loader2, Camera, Mail, Check, Copy, RefreshCw, Zap, AlertTriangle, MapPin } from 'lucide-react'
 import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { ApercuFacture } from './ApercuFacture'
 import { ColisDesJournees } from './ColisDesJournees'
@@ -1010,7 +1010,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                     <ColisDesJournees clientId={form.client_id} date={form.date} valeur={nbColis}
                       onReprendre={n => set('nb_colis', String(n))} />
                   )}
-                  <div className="flex items-baseline justify-between gap-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] px-3 py-2">
+                  <div className="flex items-baseline justify-between gap-3 rounded-[var(--r-md)] bg-[color-mix(in_srgb,var(--text)_5%,var(--bg-card))] border border-[var(--border)] px-3 py-2">
                     <span className="text-sm text-[var(--text-muted)]">
                       {resumeMessagerie(nbColis, prixColisCts) ?? 'Colis × prix au colis'}
                     </span>
@@ -1092,7 +1092,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
 
               {blocs.retrait && (
                 <div className="flex flex-wrap items-center gap-3 px-1">
-                  <span className="text-xs uppercase tracking-wide font-medium text-[var(--text-muted)]">Trajet</span>
+                  <span className="text-xs font-medium text-[var(--text-muted)]">Trajet</span>
                   {calcLoading
                     ? <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />
                     : <span className="text-sm text-[var(--text)]">{trajetTxt || '—'}</span>}
@@ -1226,7 +1226,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
 
           {/* Ce qui manque, par étape : n'empêche pas d'enregistrer (sauf client / date). */}
           {!ro && (manques.partir.length + manques.facturer.length) > 0 && (
-            <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 flex flex-col gap-1 text-xs">
+            <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--text)_5%,var(--bg-card))] px-3 py-2 flex flex-col gap-1 text-xs">
               <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
                 <AlertTriangle size={13} className="text-[var(--warning)]" /> Il manque
               </span>
@@ -1264,29 +1264,31 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       {/* ── Onglet Preuves & documents ──────────────────────────────────────── */}
       {tab === 'preuves' && (
         <div className="flex flex-col gap-4">
-          <div className="max-w-[48rem] flex flex-col gap-6">
-            <section className="flex flex-col gap-2">
-              <h3 className="text-sm font-semibold text-[var(--text)]">Preuve de livraison</h3>
+          <div className="grid gap-4 lg:grid-cols-2 items-start">
+            <Bloc titre="Preuve de livraison" icone={<Camera size={15} />}>
               <PodTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
-            </section>
-            <section className="flex flex-col gap-2 pt-4 border-t border-[var(--border)]">
-              <h3 className="text-sm font-semibold text-[var(--text)]">Fichiers</h3>
+            </Bloc>
+            <Bloc titre="Fichiers">
               <DocumentsPanel entityType="delivery" entityId={delivery?.id ?? null} />
-            </section>
+            </Bloc>
           </div>
         </div>
       )}
 
       {/* ── Onglet Facturation : suivi, facture, envoi ──────────────────────── */}
       {tab === 'montant' && delivery && (
-        <div className="grid gap-6 lg:grid-cols-2 items-start">
-          <SuiviTab
-            delivery={delivery}
-            transitioning={transitioning}
-            onTransition={handleTransition}
-            onRevenirALivree={handleRevenirALivree}
-          />
-          <EtatFacture delivery={delivery} extraLines={extraLines} />
+        <div className="grid gap-4 lg:grid-cols-2 items-start">
+          <Bloc titre="Suivi et actions">
+            <SuiviTab
+              delivery={delivery}
+              transitioning={transitioning}
+              onTransition={handleTransition}
+              onRevenirALivree={handleRevenirALivree}
+            />
+          </Bloc>
+          <Bloc titre="Facture">
+            <EtatFacture delivery={delivery} extraLines={extraLines} />
+          </Bloc>
         </div>
       )}
 
@@ -1379,7 +1381,7 @@ function EtatFacture({ delivery, extraLines }: { delivery: DeliveryRow; extraLin
   })
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-[var(--r-lg)] border border-[var(--border)] divide-y divide-[var(--border)] overflow-hidden">
+      <div className="flex flex-col divide-y divide-[var(--border-soft)] [&>div]:!px-0">
         <InfoRow label="Prix HT"><span className="font-mono">{recap.ht_cts ? formatMoney(recap.ht_cts) : '—'}</span></InfoRow>
         {extraLines.length > 0 && (
           <InfoRow label={`Suppléments (${extraLines.length}) — HT`}><span className="font-mono">{formatMoney(recap.extras_ht_cts)}</span></InfoRow>
@@ -1388,7 +1390,7 @@ function EtatFacture({ delivery, extraLines }: { delivery: DeliveryRow; extraLin
           <span className="font-mono">{formatMoney((recap.tva_cts ?? 0) + recap.extras_tva_cts)}</span>
         </InfoRow>
         <InfoRow label="Total TTC">
-          <span className="font-mono font-semibold text-[var(--text)]">
+          <span className="font-mono text-lg font-semibold text-[var(--text)]">
             {recap.ttc_total_cts != null ? formatMoney(recap.ttc_total_cts) : '—'}
           </span>
         </InfoRow>
@@ -1430,7 +1432,7 @@ function EtatPennylane({ delivery }: { delivery: DeliveryRow | null }) {
   )
 }
 
-const textareaCls = `w-full px-3 py-2 rounded-[var(--r-md)] bg-[var(--bg)]
+const textareaCls = `w-full px-3 py-2 rounded-[var(--r-md)] bg-[color-mix(in_srgb,var(--text)_5%,var(--bg-card))]
   border border-[var(--border)] text-[var(--text)] text-sm
   leading-relaxed resize-y focus:outline-none focus:border-[var(--brand)]
   transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
@@ -1690,49 +1692,40 @@ function SuiviTab({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-col py-1">
+      <ol className="flex items-start pt-1" aria-label="Suivi de la course">
         {STATUS_TIMELINE.map((s, i) => {
           const reached   = currentIdx >= 0 && i <= currentIdx
           const isCurrent = delivery.statut === s
+          const date = s === 'facturee' ? delivery.invoiced_at : s === 'payee' ? delivery.paid_at : null
           return (
-            <div key={s} className="flex items-start gap-3">
-              <div className="flex flex-col items-center pt-0.5">
-                <div className={`w-3 h-3 rounded-full flex-shrink-0
-                  ${isCurrent
-                    ? 'bg-[var(--brand)] ring-2 ring-[var(--brand)]/30'
-                    : reached ? 'bg-[var(--brand)]' : 'bg-[var(--border)]'}`} />
-                {i < STATUS_TIMELINE.length - 1 && (
-                  <div className={`w-0.5 h-8 mt-0.5
-                    ${reached && i < currentIdx ? 'bg-[var(--brand)]/40' : 'bg-[var(--border)]'}`} />
-                )}
-              </div>
-              <div className="pb-4">
-                <span className={`text-sm font-medium
-                  ${reached ? 'text-[var(--text)]' : 'text-[var(--text-disabled)]'}`}>
-                  {STATUS_LABELS[s]}
-                </span>
-                {isCurrent && <span className="ml-2 text-xs text-[var(--brand)]">← actuel</span>}
-                {s === 'facturee' && delivery.invoiced_at && (
-                  <span className="ml-2 text-xs text-[var(--text-muted)]">
-                    {new Date(delivery.invoiced_at).toLocaleDateString('fr-FR')}
-                  </span>
-                )}
-                {s === 'payee' && delivery.paid_at && (
-                  <span className="ml-2 text-xs text-[var(--text-muted)]">
-                    {new Date(delivery.paid_at).toLocaleDateString('fr-FR')}
-                  </span>
-                )}
-              </div>
-            </div>
+            <li key={s} className="relative flex-1 min-w-0 flex flex-col items-center gap-1.5 text-center">
+              {i > 0 && (
+                <span aria-hidden="true"
+                  className={`absolute top-[0.6875rem] right-1/2 w-full h-0.5 ${reached ? 'bg-[var(--brand)]' : 'bg-[var(--border)]'}`} />
+              )}
+              <span className={`relative z-10 grid place-items-center h-6 w-6 rounded-full border-2 transition-colors
+                ${isCurrent
+                  ? 'bg-[var(--brand)] border-[var(--brand)] text-white ring-4 ring-[var(--brand)]/20'
+                  : reached ? 'bg-[var(--brand)] border-[var(--brand)] text-white'
+                  : 'bg-[var(--bg-card)] border-[var(--border-strong)] text-transparent'}`}>
+                <Check size={13} strokeWidth={3} />
+              </span>
+              <span className={`text-xs font-medium truncate max-w-full ${reached ? 'text-[var(--text)]' : 'text-[var(--text-disabled)]'}`}>
+                {STATUS_LABELS[s]}
+              </span>
+              {date && (
+                <span className="text-[0.6875rem] text-[var(--text-muted)]">{new Date(date).toLocaleDateString('fr-FR')}</span>
+              )}
+            </li>
           )
         })}
         {delivery.statut === 'annulee' && (
-          <div className="mt-1 flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-[var(--danger)]" />
+          <li className="flex flex-col items-center gap-1.5 pl-3">
+            <span className="h-6 w-6 rounded-full bg-[var(--danger)]" />
             <Badge color="danger">Annulée</Badge>
-          </div>
+          </li>
         )}
-      </div>
+      </ol>
 
       {/* Course bloquée : pas d'« Encaisser » sur une course sans facture —
           il faut d'abord la remettre à « Livrée » et la refacturer. */}
@@ -2011,7 +2004,7 @@ function PodTab({
         </div>
 
         {/* Méta */}
-        <div className="flex flex-col gap-2 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] p-3">
+        <div className="flex flex-col gap-2 rounded-[var(--r-md)] bg-[color-mix(in_srgb,var(--text)_5%,var(--bg-card))] border border-[var(--border)] p-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-[var(--text-muted)]">Réceptionnaire</span>
             <span className="font-medium text-[var(--text)]">{recipientSaved}</span>
@@ -2074,7 +2067,7 @@ function PodTab({
       </Field>
 
       <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
+        <label className="text-xs font-medium text-[var(--text-muted)]">
           Photo de preuve
         </label>
         <input
@@ -2088,7 +2081,7 @@ function PodTab({
         />
         <label htmlFor="pod-file-add"
           className={`flex items-center gap-2 h-9 px-3 rounded-[var(--r-md)]
-            border border-[var(--border)] bg-[var(--bg)] text-sm
+            border border-[var(--border)] bg-[color-mix(in_srgb,var(--text)_5%,var(--bg-card))] text-sm
             text-[var(--text-muted)] cursor-pointer hover:border-[var(--brand)] transition-colors
             ${(uploading || isReadOnly) ? 'opacity-50 pointer-events-none' : ''}`}>
           {uploading

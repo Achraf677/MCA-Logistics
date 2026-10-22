@@ -213,13 +213,12 @@ body::before {
 @layer components {
   .field {
     width: 100%;
-    height: calc(36rem / 14);
+    height: calc(38rem / 14);
     padding: 0 calc(12rem / 14);
     border-radius: var(--r-md);
-    border: 1px solid var(--border);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--bg-deep) 55%, transparent), transparent 60%),
-      var(--bg);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 80%, transparent);
+    /* Champ un cran plus clair que le bloc qui le porte : on voit où écrire. */
+    background: color-mix(in srgb, var(--text) 5%, var(--bg-card));
     color: var(--text);
     font-family: inherit;
     font-size: var(--fs-body);
