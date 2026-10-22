@@ -28,7 +28,6 @@ Permissions : rôles president / dg / chauffeur / comptable. Le front ne bloque 
 6) FINANCE (/finance) — Sous-onglets :
    - Trésorerie (/finance?tab=tresorerie) — solde Qonto + relevé. « Synchroniser Qonto » puis « Vérifier les paiements ».
    - Charges (/finance?tab=charges) — dépenses par catégorie, HT/TVA/TTC auto. « Nouvelle charge », export CSV.
-   - Encaissement (/finance?tab=encaissement) — paiements clients, rattachables à une livraison facturée. « Saisir un paiement », export CSV.
 
 7) ÉQUIPE (/equipe-hub) — Sous-onglets :
    - Membres (/equipe-hub?tab=membres) — membres (rôles, contrats, salaires, validités permis B/visite médicale), masse salariale. « Nouveau ».

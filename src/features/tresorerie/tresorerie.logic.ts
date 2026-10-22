@@ -41,3 +41,26 @@ export function formatTxDate(iso: string | null): string {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('fr-FR')
 }
+
+export type FiltreSens = 'tous' | 'entrees' | 'sorties'
+
+/** Entrées / sorties (positifs) d'un lot de mouvements. */
+export function totauxMouvements(txs: Array<Pick<QontoTx, 'amount_cts' | 'side'>>): { entreesCts: number; sortiesCts: number } {
+  let entreesCts = 0, sortiesCts = 0
+  for (const t of txs) {
+    if (t.side === 'credit') entreesCts += Math.abs(t.amount_cts)
+    else sortiesCts += Math.abs(t.amount_cts)
+  }
+  return { entreesCts, sortiesCts }
+}
+
+/** Recherche (libellé, type d'opération) et sens ; l'ordre d'entrée est gardé. */
+export function filtrerMouvements(txs: QontoTx[], sens: FiltreSens, q: string): QontoTx[] {
+  const mot = q.trim().toLowerCase()
+  return txs.filter(t => {
+    if (sens === 'entrees' && t.side !== 'credit') return false
+    if (sens === 'sorties' && t.side !== 'debit') return false
+    if (!mot) return true
+    return `${t.label ?? ''} ${operationTypeLabel(t.operation_type)}`.toLowerCase().includes(mot)
+  })
+}

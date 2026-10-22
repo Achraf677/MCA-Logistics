@@ -138,7 +138,7 @@ export function joursRestants(iso: string | null | undefined, today: Date): numb
 }
 
 function ttc(r: FactureImpayeeRow): number {
-  // Le dû = ligne principale + suppléments (comme Relances et Encaissement).
+  // Le dû = ligne principale + suppléments .
   return deliveryTotalTtcCts({ amount_ttc_cts: r.amount_ttc_cts ?? r.montant_ttc_cts ?? 0, extra_lines: r.extra_lines, autoliquidation: r.autoliquidation })
 }
 
@@ -163,7 +163,7 @@ function detectEncoursRetard(rows: FactureImpayeeRow[], today: Date): AlerteMeti
     domaine: 'encaissement',
     label: `${count} facture${count > 1 ? 's' : ''} client en retard de paiement`,
     count, severite: 'rouge', montantCts,
-    lien: '/encaissement',
+    lien: '/livraisons',
   }
 }
 
@@ -309,16 +309,6 @@ function detectLivraisonsSansJustif(
 /** Alertes issues des compteurs de rapprochement (source existante aRapprocher). */
 function fromARapprocher(c: ARapprocherCounts): AlerteMetier[] {
   const out: AlerteMetier[] = []
-  if (c.tresorerie > 0) out.push({
-    id: 'tresorerie', domaine: 'tresorerie',
-    label: `${c.tresorerie} mouvement${c.tresorerie > 1 ? 's' : ''} bancaire${c.tresorerie > 1 ? 's' : ''} à rapprocher`,
-    count: c.tresorerie, severite: 'orange', lien: '/tresorerie?filtre=a_rapprocher',
-  })
-  if (c.encaissements > 0) out.push({
-    id: 'encaissements', domaine: 'encaissement',
-    label: `${c.encaissements} encaissement${c.encaissements > 1 ? 's' : ''} à identifier`,
-    count: c.encaissements, severite: 'orange', lien: '/tresorerie?filtre=a_rapprocher',
-  })
   if (c.categorisation > 0) out.push({
     id: 'categorisation', domaine: 'charges',
     label: `${c.categorisation} charge${c.categorisation > 1 ? 's' : ''} à catégoriser`,

@@ -1,32 +1,5 @@
-// Compteurs d'éléments « à rapprocher » — logique pure, testable.
-//
-// Modèle (rappel) — voir src/shared/lib/rapprochementQonto.ts pour la
-// classification 1-à-1. Ici on agrège sur une liste :
-//
-//   (a) Trésorerie  = débits Qonto sans rapprochement
-//                     side='debit' AND charge_id IS NULL AND justif_type IS NULL
-//   (b) Charges     = charges NON liées à une qonto_transactions.charge_id ET
-//                     dont montant_ttc_cts correspond à un débit (a). C'est le
-//                     miroir de (a) — même « stock » d'actions, angle « charge ».
-//                     Définition conservatrice : évite de compter les charges
-//                     cash / pré-Qonto qui ne seront jamais rapprochées.
-//   (c) Encaissements = crédits Qonto non identifiés
-//                       side='credit' AND justif_type IS NULL
-//
-// Le total dans le badge = (a) + (c). (b) est affiché en détail mais NON
-// additionné (doublon de (a)).
-
-import { targetCouvertureCts, type AllocationPick } from './allocations'
-
-/** Forme minimale d'une qonto_transaction lue par ces compteurs. */
-export interface TxPick {
-  /** Requis quand on croise avec charge_allocations (target_id = qonto_transactions.id). */
-  id?: string
-  side: 'debit' | 'credit'
-  amount_cts: number
-  charge_id: string | null
-  justif_type: string | null
-}
+// Compteurs « à traiter » côté Charges — logique pure, testable. (Le rapprochement bancaire par ligne
+// a été retiré le 22/10/2026 : plus de compteurs Trésorerie / Encaissements.)
 
 /** Forme minimale d'une charge lue par ces compteurs. */
 export interface ChargePick {
@@ -62,94 +35,17 @@ export interface ChargePick {
   est_immobilisation?: boolean
 }
 
-/** Une charge est "candidate au rapprochement Qonto" uniquement si elle a été
- *  payée par Qonto. Les autres canaux (note de frais, cash, jetons prépayés,
- *  autre) n'auront JAMAIS de mouvement bancaire à rapprocher — inutile de les
- *  compter. Legacy sans `mode_paiement` renseigné = considéré 'qonto'. */
-function isChargeQonto(c: ChargePick): boolean {
-  return c.mode_paiement == null || c.mode_paiement === 'qonto'
-}
-
 export interface ARapprocherCounts {
-  /** Débits Qonto sans rapprochement. */
-  tresorerie: number
-  /** Charges candidates au rapprochement (miroir de tresorerie, angle charge). */
-  charges: number
-  /** Crédits Qonto non identifiés. */
-  encaissements: number
-  /** Charges sans category_id (indépendant du rapprochement Qonto). */
+  /** Charges sans category_id. */
   categorisation: number
   /** Charges dont la facture a été supprimée côté Pennylane (action attendue). */
   pennylane_supprimees: number
   /** Charges qui n'existent QUE dans le site — jamais vues chez Pennylane. */
   hors_pennylane: number
-  /** Avoirs fournisseur (montant_ttc_cts < 0) — à vérifier, ne se rapprochent
-   *  jamais comme un débit Qonto. Purement informatif, PAS additionné au total. */
+  /** Avoirs fournisseur (montant_ttc_cts < 0) — à vérifier. Informatif, PAS additionné au total. */
   avoirs: number
-  /**
-   * Total à rapprocher affiché sur le badge = tresorerie + encaissements +
-   * categorisation + pennylane_supprimees + hors_pennylane. `charges` (miroir
-   * de tresorerie) et `avoirs` (informatif) ne sont PAS additionnés.
-   */
+  /** Total affiché sur le badge = categorisation + pennylane_supprimees + hors_pennylane. */
   total: number
-}
-
-/** Débits sans rapprochement — angle transaction. Un débit est "à rapprocher"
- *  s'il n'a ni charge_id direct, ni justif_type, ET si aucune allocation ne
- *  couvre encore son montant (targetCouvertureCts > 0). Rétrocompat : sans
- *  `allocations`, comportement identique à avant. */
-export function countTresorerie(txs: TxPick[], allocations: AllocationPick[] = []): number {
-  const qontoAllocs = allocations.filter(a => a.target_table === 'qonto_transactions')
-  return txs.filter(t => {
-    if (t.side !== 'debit') return false
-    if (t.charge_id) return false
-    if (t.justif_type) return false
-    // Si le débit est déjà entièrement alloué via charge_allocations, il sort.
-    // Sans allocations = 0 conso = reste = amount_cts > 0 → toujours compté.
-    if (!t.id) return true
-    return targetCouvertureCts(t.amount_cts, qontoAllocs, t.id) > 0
-  }).length
-}
-
-/** Crédits sans classification — angle transaction. */
-export function countEncaissements(txs: TxPick[]): number {
-  return txs.filter(t => t.side === 'credit' && !t.justif_type).length
-}
-
-/**
- * Charges candidates au rapprochement — angle charge :
- * - dont le RESTE DÛ (montant TTC − débits déjà rattachés) est encore > 0
- * - et dont ce reste tombe exactement sur un débit non rapproché
- *
- * On raisonne en reste dû et non en « liée / pas liée » : une facture réglée en
- * plusieurs fois (assurance annuelle prélevée mensuellement) reste à rapprocher
- * tant qu'elle n'est pas soldée. Même règle que l'écran Trésorerie, pour que le
- * compteur et l'écran ne racontent jamais deux histoires différentes.
- *
- * Renvoyer le nombre de charges (pas de débits) — l'utilisateur voit combien
- * de factures achat attendent d'être rattachées à un mouvement bancaire.
- */
-export function countChargesArapprocher(txs: TxPick[], charges: ChargePick[]): number {
-  const imputeParCharge = new Map<string, number>()
-  for (const t of txs) {
-    if (!t.charge_id || t.side !== 'debit') continue
-    const n = Number(t.amount_cts)
-    if (!Number.isFinite(n) || n <= 0) continue
-    imputeParCharge.set(t.charge_id, (imputeParCharge.get(t.charge_id) ?? 0) + n)
-  }
-
-  const unreconciledDebitAmounts = new Set(
-    txs.filter(t => t.side === 'debit' && !t.charge_id && !t.justif_type)
-       .map(t => t.amount_cts),
-  )
-
-  return charges.filter(c => {
-    if (c.montant_ttc_cts == null || c.montant_ttc_cts < 0) return false // avoirs exclus
-    if (!isChargeQonto(c)) return false                                  // canaux hors Qonto
-    if (c.est_immobilisation) return false                               // pas « à rapprocher »
-    const reste = c.montant_ttc_cts - (imputeParCharge.get(c.id) ?? 0)
-    return reste > 0 && unreconciledDebitAmounts.has(reste)
-  }).length
 }
 
 /** Charges dont `category_id` est explicitement null — indépendant du
@@ -219,29 +115,14 @@ export function countChargesAvoirs(charges: ChargePick[]): number {
   return charges.filter(c => c.montant_ttc_cts != null && c.montant_ttc_cts < 0).length
 }
 
-/** Aggrégation complète — utilisée par le badge Dashboard + la cloche.
- *  `allocations` est optionnel (rétrocompat) : sans lui, comportement identique
- *  au pré-charge_allocations. */
-export function countARapprocher(
-  txs: TxPick[],
-  charges: ChargePick[],
-  allocations: AllocationPick[] = [],
-  aujourdhui: Date = new Date(),
-): ARapprocherCounts {
-  const tresorerie = countTresorerie(txs, allocations)
-  const encaissements = countEncaissements(txs)
+/** Agrégation complète — badge Dashboard + cloche. */
+export function countARapprocher(charges: ChargePick[], aujourdhui: Date = new Date()): ARapprocherCounts {
   const categorisation = countChargesNonCategorisees(charges)
   const pennylane_supprimees = countChargesPennylaneSupprimees(charges)
   const avoirs = countChargesAvoirs(charges)
   const hors_pennylane = countChargesHorsPennylane(charges, aujourdhui)
   return {
-    tresorerie,
-    charges: countChargesArapprocher(txs, charges),
-    encaissements,
-    categorisation,
-    pennylane_supprimees,
-    hors_pennylane,
-    avoirs,
-    total: tresorerie + encaissements + categorisation + pennylane_supprimees + hors_pennylane,
+    categorisation, pennylane_supprimees, hors_pennylane, avoirs,
+    total: categorisation + pennylane_supprimees + hors_pennylane,
   }
 }

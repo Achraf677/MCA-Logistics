@@ -7,8 +7,7 @@ import type { ARapprocherCounts } from './aRapprocher'
 const TODAY = new Date(2026, 6, 21) // 2026-07-21 (mois 0-indexé)
 
 const emptyRapprocher: ARapprocherCounts = {
-  tresorerie: 0, charges: 0, encaissements: 0, categorisation: 0,
-  pennylane_supprimees: 0, hors_pennylane: 0, avoirs: 0, total: 0,
+  categorisation: 0, pennylane_supprimees: 0, hors_pennylane: 0, avoirs: 0, total: 0,
 }
 
 describe('helpers dates', () => {
@@ -151,10 +150,9 @@ describe('notes de frais non remboursées', () => {
 describe('rapprochement (aRapprocher) intégré', () => {
   it('mappe les compteurs en alertes typées', () => {
     const a = buildAlertes({
-      aRapprocher: { ...emptyRapprocher, tresorerie: 2, encaissements: 1, categorisation: 3, pennylane_supprimees: 1, total: 7 },
+      aRapprocher: { ...emptyRapprocher, categorisation: 3, pennylane_supprimees: 1, total: 4 },
     }, TODAY)
-    expect(a.find(x => x.id === 'tresorerie')?.severite).toBe('orange')
-    expect(a.find(x => x.id === 'encaissements')?.severite).toBe('orange')
+    expect(a.find(x => x.id === 'tresorerie')).toBeUndefined()
     expect(a.find(x => x.id === 'categorisation')?.severite).toBe('info')
     expect(a.find(x => x.id === 'pennylane-supprimees')?.severite).toBe('rouge')
   })
@@ -173,14 +171,14 @@ describe('rapprochement (aRapprocher) intégré', () => {
 describe('tri + résumé', () => {
   it('rouge avant orange avant info', () => {
     const a = buildAlertes({
-      aRapprocher: { ...emptyRapprocher, categorisation: 1, tresorerie: 1, pennylane_supprimees: 1, total: 3 },
+      aRapprocher: { ...emptyRapprocher, categorisation: 1, pennylane_supprimees: 1, hors_pennylane: 1, total: 3 },
     }, TODAY)
     expect(a.map(x => x.severite)).toEqual(['rouge', 'orange', 'info'])
   })
 
   it('badge = rouge + orange (info exclu)', () => {
     const a = buildAlertes({
-      aRapprocher: { ...emptyRapprocher, categorisation: 5, tresorerie: 1, pennylane_supprimees: 1, total: 7 },
+      aRapprocher: { ...emptyRapprocher, categorisation: 5, pennylane_supprimees: 1, hors_pennylane: 1, total: 7 },
     }, TODAY)
     const r = resumeAlertes(a)
     expect(r.rouge).toBe(1)

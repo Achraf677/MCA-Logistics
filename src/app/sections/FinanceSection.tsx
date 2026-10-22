@@ -3,11 +3,9 @@ import { TabbedSection } from '../../shared/ui/TabbedSection'
 // Sous-vues : pages métier EXISTANTES, réutilisées telles quelles (non modifiées).
 import { Tresorerie } from '../../features/tresorerie/Tresorerie'
 import { Charges } from '../../features/charges/Charges'
-import { Encaissement } from '../../features/encaissement/Encaissement'
-import { Relances } from '../../features/relances/Relances'
 
 /**
- * Domaine FINANCE — page à sous-onglets regroupant 5 pages existantes.
+ * Domaine FINANCE — page à sous-onglets regroupant les pages Finance (Encaissement et Relances retirés le 22/10/2026).
  * Le Shell parent affiche la chrome (sidebar/topbar « Finance ») ; chaque sous-vue
  * monte son propre Shell qui se rend en mode « imbriqué » (contenu + actions only).
  */
@@ -18,8 +16,6 @@ export function FinanceSection() {
         tabs={[
           { key: 'tresorerie',   label: 'Trésorerie',   element: <Tresorerie />,   permKey: 'finance.tresorerie'  },
           { key: 'charges',      label: 'Charges',      element: <Charges />,      permKey: 'finance.charges'     },
-          { key: 'encaissement', label: 'Encaissement', element: <Encaissement />, permKey: 'finance.encaissement' },
-          { key: 'relances',     label: 'Relances',     element: <Relances />,     permKey: 'finance.relances'    },
         ]}
       />
     </Shell>
