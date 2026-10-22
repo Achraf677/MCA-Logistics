@@ -51,7 +51,7 @@
   `pickup_order` (séquence unique retraits + livraisons, celle de Mes courses), `arrival_time`.
   Règles pures : `_shared/vroom.ts`. « Mon ordre » et les flèches de TourCard écrivent la même
   séquence (`tournees.logic#positionsDansLOrdre`) et effacent `arrival_time`.
-- **tournees_colis / tournees_colis_arrets** (lot TC1, migration
+- **tournees_colis / tournees_colis_arrets** (colonne `zone` ajoutée le 22/10/2026 : lue par l'Edge `optimiser-tournee-colis` (un bloc par zone), `shared/lib/tourneesColisRoute#infosGroupes` (couleurs liste / carte), `shared/ui/FeuilleAdresse` + liste bureau `tournees/ListeTourneeColis` (insert / update d'arrêts par le salarié sur SA tournée ou le bureau) ; lot TC1, migration
   `20261017090000_tournees_colis`, **en prod depuis le 18/10/2026**) : feuille de route de messagerie scannée et ses arrêts. Écrits
   par `shared/lib/tourneesColis.queries` depuis Mes courses › Ma tournée (salarié : SES tournées,
   non clôturées) et Tournées › bloc « Tournées de colis du jour » (bureau, droit
@@ -78,6 +78,10 @@
   `_shared/referentiel.ts`. Écrite : par la fonction `apprendre_position_arret` (security
   definer, appelée par `tourneesColis.queries#placerArret` : un arrêt placé à la main apprend
   son numéro), sinon président / `planning.tournees`. RLS : lecture société.
+  **Zones (22/10/2026)** : colonnes `zone` (zone unique de la rue) et `zones` (toutes ses zones, fichier Excel
+  « Tournée Brumath et villages 23 », 161 rues) ; écrites par la fonction `appliquer_zones_tournee` (security
+  definer : apprend la zone lue sur une feuille pour les rues absentes du fichier, remplit `tournees_colis_arrets.zone`),
+  appelée par `tourneesColis.queries#appliquerZones` (création de tournée, avant chaque recalcul, après une correction d'adresse).
 - **positions_livreurs** (lot 3) : dernière position du livreur (une ligne par fiche, pas
   d'historique), écrite par Ma tournée si le salarié active « Partager ma position » (toutes
   les ~30 s, effacée à l'arrêt du partage et à la clôture) ; lue par Tournées › « Carte du
@@ -147,7 +151,7 @@
   v3 (18/10/2026) : lit `referentiel_rues` (+ `_shared/referentiel`) ; reçoit
   `commune_precedente` ; renvoie `rue_connue`, `ref_rang`, `ref_rang_commune` ; ajoute
   d'office les numéros manquants (`_shared/feuilleRoute#lignesEnArrets`).
-- optimiser-tournee-colis (lots 2-5, **déployée le 18/10/2026, v2**, verify_jwt ; tracé par
+- optimiser-tournee-colis (22/10/2026 **v15** : lit `zone`, `ordonnerZones` = zones de Brumath dans l'ordre 1 → 7 ; lots 2-5, **déployée le 18/10/2026, v2**, verify_jwt ; tracé par
   l'itinéraire IGN `data.geopf.fr/navigation/itineraire`, ORS en secours) :
   `tourneesColis.queries#calculerItineraire`, appelée par Ma tournée (calcul, recalcul depuis
   ma position) et Tournées › bloc tournées de colis. Tourne avec la session de l'appelant
