@@ -8,12 +8,12 @@
 // prochain arrêt plus gros, « ×n » quand plusieurs arrêts au même point. Tracé restant plein,
 // tracé fait estompé. « Ma position » (livreur) reste sur le téléphone : rien n'est envoyé ici.
 import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { MapContainer, TileLayer, Polyline, Marker, Circle, CircleMarker, Tooltip, useMap, useMapEvents } from 'react-leaflet'
+import { MapContainer, TileLayer, Polyline, Polygon, Marker, Circle, CircleMarker, Tooltip, useMap, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import polyline from '@mapbox/polyline'
 import 'leaflet/dist/leaflet.css'
-import { LocateFixed, Maximize2, X } from 'lucide-react'
-import { couperTrace, pointsCarte, type EtatMarqueur, type PointCarte } from '../lib/tourneesColisRoute'
+import { Layers, LocateFixed, Maximize2, X } from 'lucide-react'
+import { arretsDansOrdre, contourGroupe, couperTrace, infosGroupes, pointsCarte, tracerParGroupe, type EtatMarqueur, type InfoGroupe, type PointCarte } from '../lib/tourneesColisRoute'
 import type { ArretColis, OrdreMode, TrajetTournee } from '../lib/tourneesColis'
 
 const TUILES = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2'
@@ -35,8 +35,9 @@ const PICTO = {
 
 /** Cache des icônes : une par (numéro × état × options), jamais reconstruite à chaque rendu. */
 const cacheIcones = new Map<string, L.DivIcon>()
-function icone(p: PointCarte, couleur: string | null): L.DivIcon {
-  const fond = p.horsOrdre ? '#9ca3af' : couleur && p.etat === 'a_faire' ? couleur : COULEUR_ETAT[p.etat]
+function icone(p: PointCarte, couleur: string | null, couleurGroupe: string | null = null): L.DivIcon {
+  const teinte = couleur ?? couleurGroupe
+  const fond = p.horsOrdre ? '#9ca3af' : teinte && p.etat === 'a_faire' ? teinte : COULEUR_ETAT[p.etat]
   const taille = p.prochain ? 2.75 : 2
   // Taille en px à partir de la racine réelle (14 px grand écran, 11 px petit PC).
   const racine = parseFloat(getComputedStyle(document.documentElement).fontSize) || 14
@@ -163,6 +164,7 @@ function CarteTournee({ couches, hauteur = 'h-[60vh] min-h-[22rem]', maPosition,
     return () => navigator.geolocation.clearWatch(id)
   }, [maPosition])
 
+  const [zonesVisibles, setZonesVisibles] = useState(true)
   const calques = useMemo(() => couches.map(c => {
     const points = pointsCarte(c.arrets, c.mode, c.prochainId)
     // Ordre manuel : le tracé calculé ne suit plus les numéros, on ne le montre pas.
@@ -170,8 +172,16 @@ function CarteTournee({ couches, hauteur = 'h-[60vh] min-h-[22rem]', maPosition,
     const prochain = c.arrets.find(a => a.id === c.prochainId)
     const toutFait = c.arrets.length > 0 && c.arrets.every(a => !!a.statut)
     const trace = couperTrace(ligne, prochain?.lat != null && prochain.lng != null ? { lat: prochain.lat, lng: prochain.lng } : null, toutFait)
-    return { ...c, points, trace }
+    // Une seule tournée à l'écran : village / zone en couleur (marqueurs, contour, route).
+    const groupes = couches.length === 1 ? infosGroupes(c.arrets, c.mode) : null
+    const contours = groupes ? [...groupes.values()].map(g => ({
+      g, points: contourGroupe(points.filter(p => p.groupe === g.cle)),
+    })).filter(x => x.points.length > 2) : []
+    const restants = c.arrets.filter(a => !a.statut)
+    const reste = groupes && groupes.size > 1 ? tracerParGroupe(trace.reste, arretsDansOrdre(restants, c.mode)) : []
+    return { ...c, points, trace, groupes, contours, reste }
   }), [couches])
+  const legende = useMemo<InfoGroupe[]>(() => (calques.length === 1 && calques[0].groupes && calques[0].groupes.size > 1 ? [...calques[0].groupes.values()] : []), [calques])
 
   const tous = useMemo<[number, number][]>(() => {
     const pts: [number, number][] = []
@@ -203,9 +213,19 @@ function CarteTournee({ couches, hauteur = 'h-[60vh] min-h-[22rem]', maPosition,
           <Polyline key={`${c.id}-fait`} positions={c.trace.fait}
             pathOptions={{ color: c.couleur ?? '#6b7280', weight: 4, opacity: 0.35, dashArray: '6 8' }} />
         ))}
-        {calques.map(c => c.trace.reste.length > 1 && (
-          <Polyline key={`${c.id}-reste`} positions={c.trace.reste}
-            pathOptions={{ color: c.couleur ?? '#2563eb', weight: 5, opacity: 0.85 }} />
+        {zonesVisibles && calques.flatMap(c => c.contours.map(x => (
+          <Polygon key={`${c.id}-zone-${x.g.cle}`} positions={x.points} interactive={false}
+            pathOptions={{ color: x.g.couleur, weight: 2, opacity: 0.7, dashArray: '4 6', fillColor: x.g.couleur, fillOpacity: 0.14 }} />
+        )))}
+        {calques.map(c => c.trace.reste.length > 1 && (c.reste.length && zonesVisibles
+          ? c.reste.map((t, i) => (
+            <Polyline key={`${c.id}-reste-${i}`} positions={t.points}
+              pathOptions={{ color: c.groupes?.get(t.cle)?.couleur ?? '#2563eb', weight: 6, opacity: 0.9 }} />
+          ))
+          : (
+            <Polyline key={`${c.id}-reste`} positions={c.trace.reste}
+              pathOptions={{ color: c.couleur ?? '#2563eb', weight: 5, opacity: 0.85 }} />
+          )
         ))}
         {departs.map(d => (
           <Marker key={`dep-${d.lat}-${d.lng}`} position={[d.lat, d.lng]} icon={ICONE_DEPART} zIndexOffset={-1000}>
@@ -213,7 +233,7 @@ function CarteTournee({ couches, hauteur = 'h-[60vh] min-h-[22rem]', maPosition,
           </Marker>
         ))}
         {calques.flatMap(c => c.points.map(p => (
-          <Marker key={`${c.id}-${p.cle}`} position={[p.lat, p.lng]} icon={icone(p, c.couleur)}
+          <Marker key={`${c.id}-${p.cle}`} position={[p.lat, p.lng]} icon={icone(p, c.couleur, zonesVisibles ? (c.groupes?.get(p.groupe)?.couleur ?? null) : null)}
             zIndexOffset={p.prochain ? 1000 : p.etat === 'a_faire' ? -(p.numero ?? 999) : -2000}
             eventHandlers={{ click: () => onPoint?.(p, c.id) }} />
         )))}
@@ -242,11 +262,29 @@ function CarteTournee({ couches, hauteur = 'h-[60vh] min-h-[22rem]', maPosition,
             <LocateFixed size={20} />
           </button>
         )}
+        {legende.length > 0 && (
+          <button type="button" className={`${boutonCarte} ${zonesVisibles ? 'border-[var(--brand)]' : ''}`} onClick={() => setZonesVisibles(v => !v)}
+            aria-pressed={zonesVisibles} aria-label="Villages et zones en couleur" title="Villages et zones en couleur">
+            <Layers size={20} />
+          </button>
+        )}
         <button type="button" className={boutonCarte} onClick={() => setCadrage(n => n + 1)}
           aria-label="Voir toute la tournée" title="Voir toute la tournée">
           <Maximize2 size={20} />
         </button>
       </div>
+
+      {zonesVisibles && legende.length > 0 && !panneau && (
+        <ul className="absolute left-2 bottom-2 z-[500] max-h-[45%] overflow-y-auto flex flex-col gap-1 p-1.5 rounded-[var(--r-md)] bg-[var(--bg-card)]/95 border border-[var(--border)] shadow text-xs text-[var(--text)]">
+          {legende.map(g => (
+            <li key={g.cle} className="flex items-center gap-1.5">
+              <span className="size-3 shrink-0 rounded-sm" style={{ background: g.couleur }} />
+              <span className="truncate max-w-[10rem]">{g.libelle}</span>
+              <span className="tabular-nums text-[var(--text-muted)]">{g.nb}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {maPosition && gpsRefus && !moi && (
         <p className="absolute left-2 top-2 z-[500] max-w-[70%] px-2 py-1 rounded-[var(--r-md)] bg-[var(--bg-card)] text-xs text-[var(--text-muted)] border border-[var(--border)]">

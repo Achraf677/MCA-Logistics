@@ -271,6 +271,7 @@ export async function creerTourneeColis(p: {
     await supabase.from('tournees_colis').delete().eq('id', id)
     return { id: null, error: erreurClaire(e2) }
   }
+  await appliquerZones(id)
   return { id, error: null }
 }
 
@@ -553,4 +554,13 @@ export async function modifierAdresseArret(arret: ArretColis, adresse: AdresseSa
   if (error) return { data: null, error: erreurClaire(error) }
   const l = (data ?? [])[0] as unknown as ArretColis | undefined
   return l ? { data: l, error: null } : { data: null, error: new Error(REFUS) }
+}
+
+/**
+ * Zones de Brumath : apprend la zone de chaque rue lue sur la feuille, puis remplit les arrêts sans zone
+ * (tournée créée avant, ligne mal lue, adresse ajoutée). Sans effet si rien n'est connu ; jamais bloquant.
+ */
+export async function appliquerZones(tourneeId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('appliquer_zones_tournee', { p_tournee: tourneeId })
+  return error ? 0 : Number(data) || 0
 }

@@ -3,7 +3,7 @@ import {
   arretsDansOrdre, prochainDansOrdre, sectionsListe, arretsAPlacer, deplacer, ordreInverse, ordreManuel, libelleDuree, libelleDistance,
   bandeauOrdre, heurePassage, pointsCarte, couperTrace, doitEnvoyerPosition, ilYA, positionAncienne,
   journeeDepuisArrets, nonTraites, modeOrdre, sansCalcul, idsOrdreHabituel, avancementParCategorie,
-  arretsEnPause, estEnPause, inclureEnPause,
+  arretsEnPause, estEnPause, inclureEnPause, grouperEnSuite, infosGroupes, contourGroupe, tracerParGroupe,
 } from './tourneesColisRoute'
 import type { ArretColis, TrajetTournee } from './tourneesColis'
 
@@ -200,5 +200,34 @@ describe('arrêts en pause', () => {
     // Pause en tête : elle reste en tête ; deux pauses à la suite gardent leur ordre.
     expect(inclureEnPause([{ id: '2', enPause: true }, { id: '1', enPause: false }, { id: '3', enPause: false }], ['3', '1'])).toEqual(['2', '3', '1'])
     expect(inclureEnPause([{ id: '1', enPause: false }, { id: '2', enPause: true }, { id: '4', enPause: true }, { id: '3', enPause: false }], ['3', '1'])).toEqual(['3', '1', '2', '4'])
+  })
+})
+
+describe('groupes village / zone', () => {
+  const mk = (id: string, commune: string, zone: string | null, ordre: number, lat = 48.7, lng = 7.7): ArretColis =>
+    ({ id, commune, zone, ordre, rang: ordre, cp: '67170', lat, lng, statut: null, en_pause_le: null } as unknown as ArretColis)
+
+  it('une zone de Brumath = un groupe, même commune', () => {
+    const g = grouperEnSuite([mk('1', 'BRUMATH', 'ZONE 1', 1), mk('2', 'BRUMATH', 'ZONE 1', 2), mk('3', 'BRUMATH', 'ZONE 2', 3), mk('4', 'BRUMATH', null, 4)])
+    expect(g.map(x => [x.zone, x.arrets.length])).toEqual([['ZONE 1', 2], ['ZONE 2', 1], [null, 1]])
+  })
+  it('couleurs : une par groupe, dans l\'ordre, libellés lisibles', () => {
+    const i = infosGroupes([mk('1', 'Kriegsheim', null, 1), mk('2', 'Brumath', 'ZONE 3', 2), mk('3', 'Kriegsheim', null, 3)], 'route')
+    expect([...i.values()].map(x => [x.libelle, x.nb])).toEqual([['Kriegsheim', 2], ['Brumath · Zone 3', 1]])
+    expect(new Set([...i.values()].map(x => x.couleur)).size).toBe(2)
+  })
+  it('contour : entoure tous les points, élargi', () => {
+    const c = contourGroupe([{ lat: 48.7, lng: 7.7 }, { lat: 48.71, lng: 7.71 }, { lat: 48.7, lng: 7.71 }])
+    expect(c.length).toBeGreaterThanOrEqual(3)
+    expect(Math.min(...c.map(p => p[0]))).toBeLessThan(48.7)
+    expect(Math.max(...c.map(p => p[1]))).toBeGreaterThan(7.71)
+    expect(contourGroupe([])).toEqual([])
+  })
+  it('tracé coupé par groupe : tronçons dans l\'ordre, couleurs de l\'arrêt rejoint', () => {
+    const ligne: Array<[number, number]> = Array.from({ length: 21 }, (_, i) => [48.7, 7.7 + i * 0.001])
+    const t = tracerParGroupe(ligne, [mk('a', 'X', null, 1, 48.7, 7.705), mk('b', 'X', null, 2, 48.7, 7.71), mk('c', 'Y', null, 3, 48.7, 7.72)])
+    expect(t.map(x => x.cle)).toEqual(['x', 'y'])
+    expect(t[0].points[0]).toEqual(ligne[0])
+    expect(t[1].points[t[1].points.length - 1]).toEqual(ligne[20])
   })
 })

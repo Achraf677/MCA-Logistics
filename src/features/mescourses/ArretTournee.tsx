@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
-  Check, Store, Package, PackagePlus, House, Clock, Undo2, Minus, Pause, Play, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw,
+  Check, Pencil, Store, Package, PackagePlus, House, Clock, Undo2, Minus, Pause, Play, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw,
 } from 'lucide-react'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
@@ -14,6 +14,7 @@ import { statutsProposes, libelleAdresse, patchStatut, familleStatut, issueRapid
 import { champCls } from './EspaceCommun'
 import { HorairesRelais } from './HorairesRelais'
 import { SelecteurColis } from './SelecteurColis'
+import { useModifierAdresse } from './AdresseContexte'
 
 type FamilleArret = 'livre' | 'attente' | 'retour' | 'neutre'
 
@@ -177,6 +178,7 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
   const { toast } = useToast()
   const { companyId } = useProfile()
   const { occupe, fait, ecrire, geste, pause } = useGestes(arret, tournee, onGeste)
+  const modifierAdresse = useModifierAdresse()
   const { autres } = statutsProposes(arret.type)
   const [remis, setRemis] = useState(arret.colis_remis ?? arret.quantite)
   const [note, setNote] = useState(arret.note ?? '')
@@ -212,6 +214,12 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
             <HorairesRelais arret={arret} />
           </div>
           <PastilleColis n={arret.quantite} grand />
+          {modifierAdresse && !arret.statut && (
+            <button type="button" onClick={() => { onFermer(); modifierAdresse(arret) }} aria-label="Modifier l'adresse" title="Modifier l'adresse"
+              className="size-12 shrink-0 inline-flex items-center justify-center rounded-full border border-[var(--border)] text-[var(--text)]">
+              <Pencil size={20} />
+            </button>
+          )}
           <button type="button" onClick={onFermer} aria-label="Fermer"
             className="size-12 shrink-0 inline-flex items-center justify-center rounded-full border border-[var(--border)] text-[var(--text)]">
             <X size={22} />
@@ -390,6 +398,7 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
 }) {
   const [fiche, setFiche] = useState(false)
   const [confirmer, setConfirmer] = useState(false)
+  const modifierAdresse = useModifierAdresse()
   const { occupe, fait, geste, pause } = useGestes(arret, tournee, onGeste)
   const validation = useValidation(geste)
   const enPause = !arret.statut && !!arret.en_pause_le
@@ -431,6 +440,12 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
           {arret.note && <span className="inline-flex items-center gap-1"><MessageSquare size={13} /> {arret.note}</span>}
         </span>
       </button>
+      {!verrouillee && !arret.statut && modifierAdresse && (
+        <button type="button" onClick={() => modifierAdresse(arret)} aria-label="Modifier l'adresse" title="Modifier l'adresse"
+          className="w-9 shrink-0 self-center h-11 inline-flex items-center justify-center rounded-[var(--r-md)] text-[var(--text-muted)] active:scale-[0.95]">
+          <Pencil size={16} />
+        </button>
+      )}
       {!verrouillee && enPause && (
         <button type="button" onClick={() => pause(false)} disabled={occupe}
           className="w-28 shrink-0 m-1.5 inline-flex flex-col items-center justify-center gap-0.5 rounded-[var(--r-md)] border-2 border-[var(--warning)] text-[var(--warning)] text-sm font-bold disabled:opacity-40 active:scale-[0.97]">

@@ -3,23 +3,23 @@ import { Search, Plus, Pencil, X } from 'lucide-react'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { LIBELLE_TYPE_ARRET, type ArretColis, type TourneeColis, type TypeArretColis } from '../../shared/lib/tourneesColis'
-import { ajouterArret, communesTraitees, modifierAdresseArret, ruesDeCommune } from '../../shared/lib/tourneesColis.queries'
+import { ajouterArret, appliquerZones, communesTraitees, modifierAdresseArret, ruesDeCommune } from '../../shared/lib/tourneesColis.queries'
 import { libelleAdresse } from './tourneeColis.logic'
 import { champCls, boutonPrimaireCls } from './EspaceCommun'
 import { analyserSaisie, cpDeLaCommune, normaliser, rechercherArrets, zoneDeLaRue } from './rechercheAdresse.logic'
 
 /** Barre fine tout en haut : chercher un arrêt de la tournée, en ouvrir la fiche, corriger ou ajouter une adresse. */
-export function RechercheAdresse({ tournee, arrets, verrouillee, onOuvrir, onAjoute, onModifie }: {
+export function RechercheAdresse({ tournee, arrets, verrouillee, onOuvrir, onAjoute, onModifier }: {
   tournee: TourneeColis
   arrets: ArretColis[]
   verrouillee: boolean
   onOuvrir: (a: ArretColis) => void
   onAjoute: (a: ArretColis) => void
-  onModifie: (a: ArretColis) => void
+  onModifier: (a: ArretColis) => void
 }) {
   const [q, setQ] = useState('')
   const [ouvert, setOuvert] = useState(false)
-  const [feuille, setFeuille] = useState<{ arret: ArretColis | null; saisie: string } | null>(null)
+  const [feuille, setFeuille] = useState<{ saisie: string } | null>(null)
   const racine = useRef<HTMLDivElement>(null)
   const resultats = useMemo(() => rechercherArrets(arrets, q), [arrets, q])
 
@@ -44,7 +44,7 @@ export function RechercheAdresse({ tournee, arrets, verrouillee, onOuvrir, onAjo
             className="size-7 shrink-0 inline-flex items-center justify-center rounded-full text-[var(--text-muted)]"><X size={16} /></button>
         )}
         {!verrouillee && (
-          <button type="button" aria-label="Ajouter une adresse" onClick={() => setFeuille({ arret: null, saisie: q })}
+          <button type="button" aria-label="Ajouter une adresse" onClick={() => setFeuille({ saisie: q })}
             className="size-7 shrink-0 inline-flex items-center justify-center rounded-full bg-[var(--brand)] text-black"><Plus size={16} /></button>
         )}
       </div>
@@ -60,7 +60,7 @@ export function RechercheAdresse({ tournee, arrets, verrouillee, onOuvrir, onAjo
                 </span>
               </button>
               {!verrouillee && !a.statut && (
-                <button type="button" aria-label="Modifier l'adresse" onClick={() => { setFeuille({ arret: a, saisie: '' }); setOuvert(false) }}
+                <button type="button" aria-label="Modifier l'adresse" onClick={() => { onModifier(a); setOuvert(false) }}
                   className="w-11 shrink-0 inline-flex items-center justify-center text-[var(--text-muted)]"><Pencil size={16} /></button>
               )}
             </li>
@@ -68,7 +68,7 @@ export function RechercheAdresse({ tournee, arrets, verrouillee, onOuvrir, onAjo
           {!resultats.length && <li className="px-3 py-2 text-sm text-[var(--text-muted)]">Rien dans la tournée.</li>}
           {!verrouillee && (
             <li>
-              <button type="button" onClick={() => { setFeuille({ arret: null, saisie: q }); setOuvert(false) }}
+              <button type="button" onClick={() => { setFeuille({ saisie: q }); setOuvert(false) }}
                 className="w-full px-3 py-2.5 inline-flex items-center gap-2 text-left text-base font-semibold text-[var(--brand)]">
                 <Plus size={16} /> Ajouter « {q.trim()} »
               </button>
@@ -78,19 +78,20 @@ export function RechercheAdresse({ tournee, arrets, verrouillee, onOuvrir, onAjo
       )}
 
       {feuille && (
-        <FeuilleAdresse tournee={tournee} arrets={arrets} arret={feuille.arret} saisie={feuille.saisie}
+        <FeuilleAdresse tournee={tournee} arrets={arrets} arret={null} saisie={feuille.saisie}
           onFermer={() => setFeuille(null)}
-          onFait={(a, ajout) => { setFeuille(null); setQ(''); setOuvert(false); (ajout ? onAjoute : onModifie)(a) }} />
+          onFait={a => { setFeuille(null); setQ(''); setOuvert(false); onAjoute(a) }} />
       )}
     </div>
   )
 }
 
-function FeuilleAdresse({ tournee, arrets, arret, saisie, onFermer, onFait }: {
+/** Ajout (arret = null) ou correction d'une adresse ; servie par la recherche et par le crayon des arrêts. */
+export function FeuilleAdresse({ tournee, arrets, arret, saisie = '', onFermer, onFait }: {
   tournee: TourneeColis
   arrets: ArretColis[]
   arret: ArretColis | null
-  saisie: string
+  saisie?: string
   onFermer: () => void
   onFait: (a: ArretColis, ajout: boolean) => void
 }) {
@@ -105,6 +106,8 @@ function FeuilleAdresse({ tournee, arrets, arret, saisie, onFermer, onFait }: {
   const [type, setType] = useState<TypeArretColis>(arret?.type ?? 'c')
   const [quantite, setQuantite] = useState(arret?.quantite ?? 1)
   const [occupe, setOccupe] = useState(false)
+  const zonesTournee = useMemo(() => [...new Set(arrets.map(a => a.zone).filter((z): z is string => !!z))].sort((x, y) => x.localeCompare(y, 'fr', { numeric: true })), [arrets])
+  const [zone, setZone] = useState<string | null>(arret?.zone ?? null)
 
   const chargerRues = (c: string) => { setRues([]); if (c) ruesDeCommune(c).then(setRues) }
   useEffect(() => {
@@ -114,15 +117,17 @@ function FeuilleAdresse({ tournee, arrets, arret, saisie, onFermer, onFait }: {
   // Commune de l'arrêt éditée mais absente de la liste du référentiel : on la garde en tête de liste.
   const choix = useMemo(() => (commune && !communes.some(c => normaliser(c) === normaliser(commune)) ? [commune, ...communes] : communes), [communes, commune])
 
+  const zoneVisible = zonesTournee.length > 0 && normaliser(commune) === normaliser(arrets.find(a => a.zone)?.commune)
   const valide = commune.trim() !== '' && rue.trim() !== ''
   const enregistrer = async () => {
     if (!valide || occupe || !companyId) return
     setOccupe(true)
     const adresse = { commune, cp: cpDeLaCommune(arrets, commune), rue, numero }
-    const zone = zoneDeLaRue(arrets, commune, rue)
     const r = arret
-      ? await modifierAdresseArret(arret, adresse, normaliser(arret.commune) === normaliser(commune) ? (zone ?? arret.zone ?? null) : zone)
-      : await ajouterArret({ tourneeId: tournee.id, companyId, adresse, type, quantite, zone })
+      ? await modifierAdresseArret(arret, adresse, zoneVisible ? zone : null)
+      : await ajouterArret({ tourneeId: tournee.id, companyId, adresse, type, quantite, zone: zoneVisible ? zone : null })
+    // La zone choisie à la main est retenue pour la rue (elle servira aux prochaines feuilles).
+    if (r.data?.zone) await appliquerZones(tournee.id)
     setOccupe(false)
     if (r.error || !r.data) { toast(r.error?.message ?? 'Adresse non enregistrée', 'error'); return }
     if (r.data.lat == null) toast('Adresse enregistrée mais position introuvable : place-la sur la carte', 'error')
@@ -140,7 +145,7 @@ function FeuilleAdresse({ tournee, arrets, arret, saisie, onFermer, onFait }: {
             className="size-12 shrink-0 inline-flex items-center justify-center rounded-full border border-[var(--border)] text-[var(--text)]"><X size={22} /></button>
         </div>
         <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--text-muted)]">Village
-          <select value={commune} onChange={e => { setCommune(e.target.value); chargerRues(e.target.value) }} className={champCls}>
+          <select value={commune} onChange={e => { setCommune(e.target.value); chargerRues(e.target.value); setZone(zoneDeLaRue(arrets, e.target.value, rue)) }} className={champCls}>
             <option value="">Choisir un village</option>
             {choix.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -150,11 +155,19 @@ function FeuilleAdresse({ tournee, arrets, arret, saisie, onFermer, onFait }: {
             <input value={numero} onChange={e => setNumero(e.target.value)} className={champCls} inputMode="text" autoComplete="off" />
           </label>
           <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--text-muted)]">Rue
-            <input value={rue} onChange={e => setRue(e.target.value)} list="rues-commune" className={champCls} autoComplete="off"
+            <input value={rue} onChange={e => { setRue(e.target.value); const z = zoneDeLaRue(arrets, commune, e.target.value); if (z) setZone(z) }} list="rues-commune" className={champCls} autoComplete="off"
               placeholder={commune ? 'Rue (propositions du village)' : "Choisis d'abord le village"} />
             <datalist id="rues-commune">{rues.map(r => <option key={r} value={r} />)}</datalist>
           </label>
         </div>
+        {zoneVisible && (
+          <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--text-muted)]">Zone
+            <select value={zone ?? ''} onChange={e => setZone(e.target.value || null)} className={champCls}>
+              <option value="">Aucune zone</option>
+              {zonesTournee.map(z => <option key={z} value={z}>{z.charAt(0)}{z.slice(1).toLowerCase()}</option>)}
+            </select>
+          </label>
+        )}
         {!arret && (
           <div className="grid grid-cols-[1fr_6rem] gap-2">
             <label className="flex flex-col gap-1 text-sm font-semibold text-[var(--text-muted)]">Type
