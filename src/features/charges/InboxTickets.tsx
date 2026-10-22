@@ -100,7 +100,7 @@ export function InboxTickets({ onChanged, onCreerCharge, rafraichir = 0 }: {
         <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">
           Justificatifs reçus de l’équipe
         </span>
-        <span className="px-2 py-0.5 rounded-full bg-[var(--brand)] text-white text-xs font-semibold">
+        <span className="px-2 py-0.5 rounded-[var(--r-pill)] border border-[var(--brand)]/35 bg-[var(--brand)]/15 text-[var(--brand)] text-xs font-semibold">
           {tickets.length}
         </span>
         <label className="ml-auto inline-flex items-center gap-2 text-sm text-[var(--text)] cursor-pointer">

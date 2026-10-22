@@ -428,7 +428,7 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
           <PastilleColis n={arret.quantite} />
           <PastilleType type={arret.type} />
           {enPause && (
-            <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-bold leading-none bg-[var(--warning)] text-black">
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-bold leading-none border border-[var(--warning)]/40 bg-[var(--warning)]/20 text-[var(--warning)]">
               <Pause size={14} aria-hidden /> En pause
             </span>
           )}
