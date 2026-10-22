@@ -1,5 +1,6 @@
 import imageCompression from 'browser-image-compression'
 import { supabase } from '../../app/providers'
+import { lireErreurEdge } from './erreurEdge'
 
 const BUCKET = 'documents'
 const MAX_BYTES = 20 * 1024 * 1024
@@ -27,6 +28,10 @@ export interface TicketInbox {
   motif_refus?: string | null
   /** Note de frais remboursée le (migration 20261022130000). */
   rembourse_le?: string | null
+  /** Envoi du justificatif validé vers Pennylane (migration 20261022140000). */
+  pennylane_envoye_le?: string | null
+  pennylane_id?: string | null
+  pennylane_erreur?: string | null
 }
 
 /** Détails d'une dépense déclarée avec son justificatif. */
@@ -212,4 +217,17 @@ export async function refuserDepense(id: string, motif: string) {
   return supabase.from('receipts_inbox')
     .update({ statut: 'ignore', motif_refus: motif, traite_at: new Date().toISOString() })
     .eq('id', id)
+}
+
+/**
+ * Envoie un justificatif VALIDÉ dans la liste « à traiter » de Pennylane (Edge `pennylane-justificatif`).
+ * Le résultat (envoyé le … ou erreur) est gardé sur le ticket par l'Edge ; ici on renvoie juste le message.
+ */
+export async function envoyerVersPennylane(ticketId: string, forcer = false): Promise<{ ok: boolean; message: string | null }> {
+  const { data, error } = await supabase.functions.invoke('pennylane-justificatif', { body: { ticket_id: ticketId, forcer } })
+  if (error || !data?.ok) {
+    const echec = await lireErreurEdge(data, error)
+    return { ok: false, message: echec?.message ?? "Envoi impossible" }
+  }
+  return { ok: true, message: null }
 }

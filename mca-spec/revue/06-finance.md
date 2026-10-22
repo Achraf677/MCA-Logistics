@@ -21,6 +21,11 @@
 - Charges : **moyen de paiement obligatoire** (plus de valeur par défaut « Qonto »).
 - Cloche : « tickets à traiter » ouvre Justificatifs.
 
+## 2c. Envoi vers Pennylane (22/10/2026)
+- « Valider » envoie le justificatif dans la liste « à traiter » de Pennylane : Edge `pennylane-justificatif` (POST `/file_attachments` puis `/supplier_invoices/import` avec `file_attachment_id`), suivi sur le ticket (`receipts_inbox.pennylane_envoye_le` / `pennylane_id` / `pennylane_erreur`, migration `20261022140000` appliquée). Échec = le ticket reste validé, le tiroir affiche l'erreur + « Envoyer à Pennylane ».
+- ⚠️ Contrat Pennylane non vérifié en vrai (doc injoignable depuis l'environnement) : si Pennylane refuse, l'erreur affichée dit quels champs manquent → ajuster l'Edge.
+- « Créer la charge » ne l'envoie PAS (sinon doublon : la synchro ramènerait la facture Pennylane en charge). Une dépense envoyée à Pennylane revient comme charge par la synchro habituelle.
+
 ## 3. Reste (F2b → F4, décisions du 22/10/2026)
 - Charges : plusieurs catégories par charge avec HT et TVA par ligne (aujourd'hui la ventilation existe en TTC, après enregistrement : `charge_allocations`), ventilation automatique par IA (le président valide), TVA repas 100 % déductible.
 - Transfert vers Pennylane (cartes ET notes de frais) : à étudier en détail à la fin.

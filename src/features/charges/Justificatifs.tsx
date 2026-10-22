@@ -20,7 +20,7 @@ import { getCategories } from '../../shared/lib/categories.queries'
 import { indexerFichierExistant } from '../../shared/lib/documents.queries'
 import { grouperParMois } from '../../shared/lib/mois'
 import {
-  classerTicket, corrigerTicket, listerTickets, marquerRembourse, refuserDepense, urlTicket, type TicketInbox,
+  classerTicket, corrigerTicket, envoyerVersPennylane, listerTickets, marquerRembourse, refuserDepense, urlTicket, type TicketInbox,
 } from '../../shared/lib/receiptsInbox.queries'
 import type { ChargeCategoryRow } from '../../shared/types/categories'
 import { DrawerCharge } from './DrawerCharge'
@@ -110,7 +110,28 @@ export function Justificatifs() {
   const valider = (t: TicketInbox) => {
     const manques = manquesValidation(t)
     if (manques.length) { toast(`Validation impossible : ${manques.join(', ').toLowerCase()} manquant. Renseigne-le puis enregistre.`, 'error'); return }
-    return agir(() => classerTicket(t.id, 'traite'), 'Justificatif validé', true)
+    return validerEtEnvoyer(t)
+  }
+
+  /** Valide, puis envoie dans « à traiter » de Pennylane. Si l'envoi échoue, le justificatif reste validé : « Renvoyer ». */
+  const validerEtEnvoyer = async (t: TicketInbox) => {
+    setBusy(true)
+    const { error } = await classerTicket(t.id, 'traite')
+    if (error) { setBusy(false); toast(error.message, 'error'); return }
+    const envoi = await envoyerVersPennylane(t.id)
+    setBusy(false)
+    if (envoi.ok) toast('Justificatif validé et envoyé dans « à traiter » de Pennylane')
+    else toast(`Validé, mais l'envoi à Pennylane a échoué : ${envoi.message}`, 'error')
+    await charger()
+  }
+
+  const renvoyer = async (t: TicketInbox) => {
+    setBusy(true)
+    const envoi = await envoyerVersPennylane(t.id, true)
+    setBusy(false)
+    if (envoi.ok) toast('Envoyé dans « à traiter » de Pennylane')
+    else toast(`Envoi à Pennylane échoué : ${envoi.message}`, 'error')
+    await charger()
   }
 
   const tableau = (liste: TicketInbox[]) => (
@@ -234,6 +255,7 @@ export function Justificatifs() {
             onFichier={() => void ouvrirFichier(ouvert)}
             onEnregistrer={maj => void agir(() => corrigerTicket(ouvert.id, maj), 'Justificatif corrigé')}
             onValider={() => void valider(ouvert)}
+            onRenvoyer={() => void renvoyer(ouvert)}
             onCreerCharge={() => setSource(ouvert)}
             onRefuser={motif => void agir(() => refuserDepense(ouvert.id, motif), 'Dépense refusée : le déclarant voit le motif', true)}
             onRembourser={date => void agir(() => marquerRembourse(ouvert.id, date), date ? 'Remboursée : le salarié le voit' : 'Remboursement annulé')} />
@@ -279,7 +301,7 @@ function Paiement({ moyen }: { moyen: string | null | undefined }) {
 }
 
 /** Tiroir d'un justificatif : photo, détails modifiables, suivi, et la barre d'actions en bas. */
-function FicheJustificatif({ t, nom, peutEcrire, busy, onFichier, onEnregistrer, onValider, onCreerCharge, onRefuser, onRembourser }: {
+function FicheJustificatif({ t, nom, peutEcrire, busy, onFichier, onEnregistrer, onValider, onRenvoyer, onCreerCharge, onRefuser, onRembourser }: {
   t: TicketInbox
   nom: string
   peutEcrire: boolean
@@ -287,6 +309,7 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, onFichier, onEnregistrer,
   onFichier: () => void
   onEnregistrer: (maj: { montant_ttc_cts: number | null; date_depense: string | null; categorie: string | null; moyen_paiement: string | null }) => void
   onValider: () => void
+  onRenvoyer: () => void
   onCreerCharge: () => void
   onRefuser: (motif: string) => void
   onRembourser: (date: string | null) => void
@@ -371,6 +394,20 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, onFichier, onEnregistrer,
         </dl>
       </Bloc>
 
+      {t.statut === 'traite' && (
+        <Bloc titre="Pennylane">
+          {t.pennylane_envoye_le ? (
+            <p className="text-sm text-[var(--text)]">Envoyé dans « à traiter » le {new Date(t.pennylane_envoye_le).toLocaleString('fr-FR')}.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-[var(--warning)]">Pas encore envoyé à Pennylane.</p>
+              {t.pennylane_erreur && <p className="text-xs text-[var(--danger)] break-words">Dernière erreur : {t.pennylane_erreur}</p>}
+              {peutEcrire && <div><Button variant="secondary" size="compact" onClick={onRenvoyer} disabled={busy}>Envoyer à Pennylane</Button></div>}
+            </div>
+          )}
+        </Bloc>
+      )}
+
       {peutEcrire && (
         <div className="sticky bottom-0 -mx-5 -mb-5 mt-auto border-t border-[var(--border)] bg-[var(--bg-elevated)] px-5 py-3 flex flex-col gap-3">
           {refus && (
@@ -386,7 +423,7 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, onFichier, onEnregistrer,
               {t.statut === 'a_traiter' && (
                 <>
                   <Button variant="primary" onClick={onCreerCharge} disabled={busy}><FilePlus2 size={15} /> Créer la charge</Button>
-                  <Button variant="secondary" onClick={onValider} disabled={busy || modifie}><Check size={15} /> Valider</Button>
+                  <Button variant="secondary" onClick={onValider} disabled={busy || modifie}><Check size={15} /> Valider et envoyer à Pennylane</Button>
                   <Button variant="ghost" className="ml-auto text-[var(--danger)]" onClick={() => setRefus(true)} disabled={busy}><X size={15} /> Refuser</Button>
                 </>
               )}
