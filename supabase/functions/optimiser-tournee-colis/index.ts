@@ -28,7 +28,7 @@ import { ExternalApiError, fetchJson } from '../_shared/http.ts'
 import { geocode } from '../_shared/geocode.ts'
 import {
   ARRET_S, IGN_MAX_POINTS, blocsMatrice, completerMatrices, decoderPolyligne, distanceParcours, encoderPolyligne,
-  matriceCouts, noeudsDansOrdre, passages, passagesDepuisEtapes, penaliserChangementsVillage, regrouperNoeuds, resoudre, troncons, type Matrices, type Point,
+  matriceCouts, noeudsDansOrdre, passages, passagesDepuisEtapes, penaliserChangementsVillage, ordonnerZones, regrouperNoeuds, resoudre, troncons, type Matrices, type Point,
 } from '../_shared/tourneeRoute.ts'
 
 // Adresse officielle depuis le 28/04/2026 (l'ancienne api.openrouteservice.org n'a plus que 10 % du quota
@@ -265,8 +265,10 @@ Deno.serve(async (req: Request) => {
   // ~0,8 s de calcul au plus (les fonctions Supabase coupent vers 2 s de calcul).
   // On optimise la DISTANCE par la route (le plus court), village par village (chaque village
   // en un seul bloc : décision du 19/10/2026), pas le temps ni le vol d'oiseau.
-  const couts = penaliserChangementsVillage(matriceCouts(m), [null, ...noeuds.map(n => n.commune)])
-  const ordre = resoudre(couts, 0, idx, arrivee, { limiteMs: 800 })
+  const cles = [null, ...noeuds.map(n => n.commune)]
+  const couts = penaliserChangementsVillage(matriceCouts(m), cles)
+  // Zones de Brumath : dans l'ordre du fichier d'origine (zone 1 d'abord, zone 7 à la fin).
+  const ordre = ordonnerZones(resoudre(couts, 0, idx, arrivee, { limiteMs: 800 }), cles)
   const pass = passages(m, 0, ordre)
   const kmTotal = distanceParcours(m, 0, ordre, arrivee) / 1000
   const kmFeuille = distanceParcours(m, 0, idx, arrivee) / 1000
