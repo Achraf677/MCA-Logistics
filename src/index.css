@@ -150,23 +150,11 @@ body::before {
      plus un aplat noir. Ils dérivent lentement (transform seul, couche
      dédiée : aucun repaint, voir l'animation ci-dessous). */
   background-image:
-    radial-gradient(64rem 40rem at 34% 12%, color-mix(in srgb, var(--brand) 24%, transparent), transparent 66%),
-    radial-gradient(56rem 36rem at 86% 26%, color-mix(in srgb, var(--gold) 16%, transparent), transparent 66%),
-    radial-gradient(62rem 40rem at 44% 92%, color-mix(in srgb, var(--accent-violet) 16%, transparent), transparent 68%);
+    radial-gradient(64rem 40rem at 34% 12%, color-mix(in srgb, var(--brand) 30%, transparent), transparent 66%),
+    radial-gradient(56rem 36rem at 86% 26%, color-mix(in srgb, var(--gold) 20%, transparent), transparent 66%),
+    radial-gradient(62rem 40rem at 44% 92%, color-mix(in srgb, var(--accent-violet) 22%, transparent), transparent 68%);
   animation: ambiance 38s ease-in-out infinite alternate;
   will-change: transform;
-}
-/* Fine trame de points, visible surtout en haut de l'écran, qui s'efface vers le bas. */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text) 16%, transparent) 1.2px, transparent 0);
-  background-size: 1.75rem 1.75rem;
-  -webkit-mask-image: radial-gradient(ellipse 85% 70% at 50% 0%, #000 0%, transparent 78%);
-  mask-image: radial-gradient(ellipse 85% 70% at 50% 0%, #000 0%, transparent 78%);
 }
 @keyframes ambiance {
   from { transform: translate3d(0, 0, 0) scale(1); }
