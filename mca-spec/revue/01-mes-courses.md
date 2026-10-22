@@ -1,5 +1,8 @@
 # 01 — Mes courses
 
+
+> 22/10/2026 : l'ancien écran des courses express (OngletCourses, étapes terrain, signalement de problème, ordre des arrêts du jour) est SUPPRIMÉ. Mes courses = Aujourd'hui (récap colis) · Ma tournée · Dépenses · Moi. Tout ce qui décrit l'express plus bas est historique.
+
 > Un fichier = un onglet. Il fait foi sur CE qu'est l'onglet (cartographie), CE qu'on en
 > pense (critique) et CE qui reste à faire (lots). À tenir à jour à chaque PR sur l'onglet.
 > Dernière mise à jour : 22/10/2026 (Ma tournée : zones de Brumath, recherche d'adresse, pause, clôture avec photos).

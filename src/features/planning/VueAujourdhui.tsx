@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import type { DragEvent, ReactNode } from 'react'
 import {
   AlertTriangle, CalendarClock, CheckCircle2, ChevronDown, Clock, PackageCheck, Route as RouteIcon, UserX,
@@ -26,10 +27,10 @@ function Tuile({ n, libelle }: { n: number; libelle: string }) {
   )
 }
 
-function Bloc({ titre, icone, alerte = false, children }: { titre: string; icone: ReactNode; alerte?: boolean; children: ReactNode }) {
+function Bloc({ titre, icone, alerte = false, action, children }: { titre: string; icone: ReactNode; alerte?: boolean; action?: ReactNode; children: ReactNode }) {
   return (
     <section className={`rounded-[var(--r-lg)] border p-2.5 flex flex-col gap-1.5 min-w-0 ${alerte ? 'border-[var(--danger)]/40' : 'border-[var(--border)]'}`}>
-      <h3 className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)]">{icone}{titre}</h3>
+      <h3 className="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-muted)]">{icone}{titre}{action && <span className="ml-auto">{action}</span>}</h3>
       <div className="flex flex-col gap-1 max-h-[8.5rem] overflow-auto">{children}</div>
     </section>
   )
@@ -119,26 +120,32 @@ export function VueAujourdhui({
             </Bloc>
           )}
           {(colis?.length ?? 0) > 0 && (
-            <Bloc titre="Tournées de colis" icone={<PackageCheck size={13} />}>
-              {colis!.map(t => {
-                const pct = t.arrets > 0 ? Math.round((t.arretsTraites / t.arrets) * 100) : 0
-                return (
-                  <div key={t.id} className="flex flex-col gap-0.5 text-xs">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="truncate font-medium text-[var(--text)]">{t.nom}</span>
-                      <span className="ml-auto shrink-0 text-[var(--text-muted)]">{LIB_TOURNEE[t.statut]}</span>
+            <Bloc titre={`Tournées de colis (${colis!.length})`} icone={<PackageCheck size={13} />}
+              action={<Link to={`/planning-hub?tab=tournees&date=${jour}`} className="font-semibold text-[var(--brand)] hover:underline">Ouvrir →</Link>}>
+              <Link to={`/planning-hub?tab=tournees&date=${jour}`}
+                className="flex flex-col gap-1.5 rounded-[var(--r-md)] hover:bg-[var(--bg-card-hover)] -m-1 p-1 transition-colors"
+                title="Ouvrir les tournées de ce jour">
+                {colis!.map(t => {
+                  const pct = t.arrets > 0 ? Math.round((t.arretsTraites / t.arrets) * 100) : 0
+                  return (
+                    <div key={t.id} className="flex flex-col gap-0.5 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="truncate font-medium text-[var(--text)]">{t.nom}</span>
+                        <span className="ml-auto shrink-0 text-[var(--text-muted)]">{LIB_TOURNEE[t.statut]}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+                        <div className="h-full bg-[var(--success)]" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="flex items-center gap-2 text-[var(--text-muted)]">
+                        <span>{t.arretsTraites}/{t.arrets} arrêts · {t.colisLivres} livrés</span>
+                        {t.colisAttente > 0 && <span className="text-[var(--warning)]">{t.colisAttente} en attente</span>}
+                        {t.colisRetour > 0 && <span className="text-[var(--danger)]">{t.colisRetour} retours</span>}
+                        {t.km != null && <span className="ml-auto inline-flex items-center gap-0.5"><RouteIcon size={10} />{Math.round(t.km)} km</span>}
+                      </div>
                     </div>
-                    <div className="h-1.5 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
-                      <div className="h-full bg-[var(--success)]" style={{ width: `${pct}%` }} />
-                    </div>
-                    <div className="flex items-center gap-2 text-[var(--text-muted)]">
-                      <span>{t.arretsTraites}/{t.arrets} arrêts · {t.colisLivres} livrés</span>
-                      {t.colisRetour > 0 && <span className="text-[var(--danger)]">{t.colisRetour} retours</span>}
-                      {t.km != null && <span className="ml-auto inline-flex items-center gap-0.5"><RouteIcon size={10} />{Math.round(t.km)} km</span>}
-                    </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </Link>
             </Bloc>
           )}
         </div>

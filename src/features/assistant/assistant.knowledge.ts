@@ -12,7 +12,7 @@ Permissions : rôles president / dg / chauffeur / comptable. Le front ne bloque 
 2) LIVRAISONS (/livraisons) — entrée à part entière. Cœur métier : créer/éditer une course, machine à états (planifiée→en cours→livrée→facturée→payée, ou annulée), facturation Pennylane. « Nouvelle livraison » (Détail puis Montant) ; onglet « Montant & Suivi » pour Démarrer/Marquer livrée/Facturer/Encaisser/Annuler. Suppression réservée président. Resync Pennylane + export CSV.
 
 3) PLANNING (/planning-hub) — vues temporelles. Sous-onglets :
-   - Tournées (/planning-hub?tab=tournees) — composer/optimiser les tournées d'une journée, multi-véhicule (cocher véhicules+chauffeurs+livraisons géocodées, « Répartir & optimiser »), Naviguer/Waze, marquer Livré, Démarrer/Terminer, carte d'ensemble.
+   - Tournées (/planning-hub?tab=tournees) — tournées de colis d'un jour (une par feuille de route scannée) : tuiles cliquables (colis livrés, en attente, en retour, km), filtres salarié / recherche, carte du jour avec positions, tiroir par tournée (arrêts à corriger, photos de la feuille de route, synthèse), export CSV, « Scanner pour un salarié ». Plus de tournées express.
    - Planning (/planning-hub?tab=planning) — vue hebdomadaire des livraisons (hors annulées).
    - Planning, vue Mois (/planning-hub?tab=planning&vue=mois) — mois : courses et échéances flotte / équipe (ancien Calendrier).
 

@@ -233,10 +233,34 @@ export async function resultatScan(scanId: string, numeros?: number[]) {
   }
 }
 
-/** Tournée créée : le scan est fini, les photos sont effacées. */
-export async function terminerScan(scanId: string, tourneeId: string) {
+/** « data:image/jpeg;base64,… » → fichier (pour le ranger comme document). */
+function fichierDepuisDataUrl(dataUrl: string, nom: string): File | null {
+  const m = /^data:([^;]+);base64,(.*)$/.exec(dataUrl)
+  if (!m) return null
+  const bin = atob(m[2])
+  const octets = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) octets[i] = bin.charCodeAt(i)
+  return new File([octets], nom, { type: m[1] })
+}
+
+/**
+ * Tournée créée : le scan est fini. Les photos de la feuille ne sont PAS jetées : chaque page est rangée
+ * comme document de la tournée (`notes = 'feuille'`, gardée à vie, visible du salarié et du bureau), puis la page
+ * de travail est effacée. Si un envoi échoue, les pages de travail restent (rien n'est perdu).
+ */
+export async function terminerScan(scanId: string, tourneeId: string, companyId: string) {
   await supabase.from('scans_feuille_route').update({ statut: 'termine', tournee_id: tourneeId }).eq('id', scanId)
-  await supabase.from('scans_feuille_route_pages').delete().eq('scan_id', scanId)
+  const { data } = await supabase.from('scans_feuille_route_pages').select('numero, image').eq('scan_id', scanId).order('numero')
+  let tout = true
+  for (const p of (data ?? []) as Array<{ numero: number; image: string | null }>) {
+    const f = p.image ? fichierDepuisDataUrl(p.image, `feuille-de-route-page-${p.numero}.jpg`) : null
+    if (!f) continue
+    const { error } = await uploadDocument(f, companyId, {
+      entity_type: 'tournee_colis', entity_id: tourneeId, category: 'POD', notes: 'feuille',
+    })
+    if (error) tout = false
+  }
+  if (tout) await supabase.from('scans_feuille_route_pages').delete().eq('scan_id', scanId)
 }
 
 /** Scan abandonné : la lecture s'arrête (côté serveur) et les photos sont effacées. */
@@ -423,8 +447,19 @@ export function urlPhotoArret(doc: DocumentRow) {
 
 // ── Photos de la synthèse de fin de tournée ─────────────────────────────────
 
-/** Photos de la synthèse (documents `entity_type = 'tournee_colis'`), par tournée. */
+/** Photos de la synthèse (documents `entity_type = 'tournee_colis'`, hors pages de la feuille), par tournée. */
 export async function photosSynthese(ids: string[]) {
+  const r = await documentsTournee(ids)
+  return { ...r, data: r.data.filter(d => d.notes !== 'feuille') }
+}
+
+/** Pages de la feuille de route scannée (conservées à vie), dans l'ordre des pages. */
+export async function feuillesDeRoute(ids: string[]) {
+  const r = await documentsTournee(ids)
+  return { ...r, data: r.data.filter(d => d.notes === 'feuille') }
+}
+
+async function documentsTournee(ids: string[]) {
   if (ids.length === 0) return { data: [] as DocumentRow[], error: null }
   const { data, error } = await supabase.from('documents').select('*')
     .eq('entity_type', 'tournee_colis').in('entity_id', ids).order('created_at', { ascending: true })

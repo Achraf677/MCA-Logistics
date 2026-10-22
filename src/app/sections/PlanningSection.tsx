@@ -6,7 +6,7 @@ import { Tournees } from '../../features/tournees/Tournees'
 import { Planning } from '../../features/planning/Planning'
 
 /**
- * Domaine PLANNING — Tournées (composer / optimiser) et Planning (semaine par
+ * Domaine PLANNING — Tournées (tournées de colis du jour) et Planning (semaine par
  * chauffeur, par jour, et mois : l'ancien Calendrier, fondu le 01/10/2026).
  * Vit sur /planning-hub (path distinct de l'ancien onglet /planning, qui redirige
  * vers /planning-hub?tab=planning — pas de boucle, section ≠ path redirigé).
