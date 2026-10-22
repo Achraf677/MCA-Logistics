@@ -38,7 +38,7 @@ const PARALLELE_ECRITURES = 10
 
 interface Arret {
   id: string; rang: number; numero: string | null; lat: number | null; lng: number | null
-  statut: string | null; ordre: number | null; commune: string | null
+  statut: string | null; ordre: number | null; commune: string | null; zone: string | null
 }
 
 function pointValide(p: unknown): p is Point {
@@ -161,7 +161,7 @@ Deno.serve(async (req: Request) => {
   if (t.statut === 'cloturee') return jsonResponse({ ok: false, error: 'Tournée clôturée : rien à recalculer.' }, 409)
 
   const { data: lus, error: eA } = await db.from('tournees_colis_arrets')
-    .select('id, rang, numero, lat, lng, statut, ordre, commune').eq('tournee_id', tourneeId).order('rang')
+    .select('id, rang, numero, lat, lng, statut, ordre, commune, zone').eq('tournee_id', tourneeId).order('rang')
   if (eA) return jsonResponse({ ok: false, error: eA.message }, 400)
   const arrets = (lus ?? []) as Arret[]
 
@@ -197,7 +197,8 @@ Deno.serve(async (req: Request) => {
   // ── Nœuds à ordonner ──
   const traites = mode !== 'tout' ? arrets.filter(a => a.statut != null) : []
   const aOrdonner = mode !== 'tout' ? arrets.filter(a => a.statut == null) : arrets
-  const noeuds = regrouperNoeuds(aOrdonner)
+  // Brumath : chaque zone de la feuille compte comme un village (un seul bloc par zone).
+  const noeuds = regrouperNoeuds(aOrdonner.map(a => (a.commune && a.zone ? { ...a, commune: `${a.commune} ${a.zone}` } : a)))
   const aPlacer = aOrdonner.filter(a => a.lat == null || a.lng == null).length
   if (!noeuds.length) {
     return jsonResponse({ ok: false, error: aPlacer ? 'Aucun arrêt localisé : place-les sur la carte d’abord.' : 'Plus rien à ordonner.' }, 422)

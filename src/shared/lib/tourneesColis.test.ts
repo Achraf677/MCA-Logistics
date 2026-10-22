@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  zoneDeSecteur,
   familleStatut, colisRemis, compteursTournee, avancementPct, statutApresGeste, arretsDepuisLecture,
   manquesApercu, ordreHabituel, totauxApercu, modifierArretLu, lignesArrets, fusionnerEntetes, arretVide,
   pageDepuisLecture, pagesManquantes, pagesEnDouble, ordonnerParPage, retirerPhoto,
@@ -178,5 +179,15 @@ describe('pages de la feuille', () => {
   it('retirer une photo : ses arrêts partent, les suivantes remontent', () => {
     const v = (page: number, rue: string) => ({ ...arretVide(page), rue })
     expect(retirerPhoto([v(1, 'A'), v(2, 'B'), v(3, 'C')], 2).map(a => [a.page, a.rue])).toEqual([[1, 'A'], [2, 'C']])
+  })
+})
+
+describe('zoneDeSecteur', () => {
+  it('zones de Brumath, sinon rien', () => {
+    expect(zoneDeSecteur('631 - ZONE 2')).toBe('ZONE 2')
+    expect(zoneDeSecteur('630 - ZONE 1 (Brumath)')).toBe('ZONE 1')
+    expect(zoneDeSecteur('(HC) 610 - KRIEGSHEIM')).toBeNull()
+    expect(zoneDeSecteur('(HC) 0 - District inconnu')).toBeNull()
+    expect(zoneDeSecteur(null)).toBeNull()
   })
 })

@@ -26,7 +26,8 @@ import type { EtatFiche, MaFiche } from './mescourses.types'
 import { decalerJour, borneAujourdhui } from './espace.logic'
 import { libelleDateCourte } from './mescourses.logic'
 import { compteursTournee, libelleAdresse, libelleCompteurs } from './tourneeColis.logic'
-import { ArretTournee, ArretEnPauseCompact, BarreProchain } from './ArretTournee'
+import { ArretTournee, ArretEnPauseCompact, BarreProchain, FicheArret } from './ArretTournee'
+import { RechercheAdresse } from './RechercheAdresse'
 import { FeuilleCloture } from './FeuilleCloture'
 import { PhotosSynthese } from './PhotosSynthese'
 import { Carte, MessageErreur, GardeFiche, champCls, boutonPrimaireCls, boutonSecondaireCls } from './EspaceCommun'
@@ -328,6 +329,16 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     toast(sansCalcul(mode) ? 'Arrêt placé' : "Arrêt placé : recalcule l'itinéraire pour l'intégrer", 'success')
   }
 
+  // ── Recherche d'adresse : fiche d'un arrêt trouvé, ajout / correction d'une adresse ──
+  const [ficheRecherche, setFicheRecherche] = useState<string | null>(null)
+  /** Une adresse ajoutée ou corrigée change l'itinéraire : on le recalcule (l'ordre manuel est gardé, seul le trajet suit). */
+  const apresAdresse = (ajout: boolean) => {
+    toast(ajout ? 'Adresse ajoutée à la tournée' : 'Adresse corrigée', 'success')
+    if (sansCalcul(mode)) { onRecharger(); return }
+    if (mode === 'manuel') { if (ajout) onRecharger(); else calculer('suivre'); return }
+    calculer(c.arretsTraites + c.collectesTraitees > 0 ? 'restants' : 'tout')
+  }
+
   // ── Ordre manuel : glisser-déposer par la poignée ──
   const [glisse, setGlisse] = useState<{ id: string; ordre: string[]; depart: string[] } | null>(null)
   const ordreAffiche = useMemo(() => {
@@ -419,6 +430,10 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     <>
       {/* Bandeau du haut, collé pendant le défilement : avancement, puis tous les gestes avec leur nom. */}
       <div className="sticky top-0 z-10 flex flex-col gap-2 py-2 bg-[var(--bg)] border-b border-[var(--border)]">
+        <RechercheAdresse tournee={tournee} arrets={arrets} verrouillee={verrouillee}
+          onOuvrir={a => setFicheRecherche(a.id)}
+          onAjoute={() => apresAdresse(true)}
+          onModifie={a => { onArrets([a]); apresAdresse(false) }} />
         <p className="flex items-baseline gap-x-3 flex-wrap text-xl font-bold tabular-nums text-[var(--text)]">
           <span>{lib.arrets} <span className="text-sm font-medium text-[var(--text-muted)]">arrêts</span></span>
           {tournee.trajet && !sansCalcul(mode) && <span>{libelleDistance(tournee.trajet.km_total * 1000)}</span>}
@@ -573,6 +588,10 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         <FeuilleCloture tourneeId={tournee.id} companyId={societe} resume={messageCloture} enCours={clotureEnCours}
           onTerminer={terminer} onFermer={() => setCloture(false)} />
       )}
+      {ficheRecherche && (() => {
+        const a = arrets.find(x => x.id === ficheRecherche)
+        return a ? <FicheArret arret={a} tournee={tournee} onGeste={onGeste} photos={photos.get(a.id)} onPhoto={surPhoto} onFermer={() => setFicheRecherche(null)} /> : null
+      })()}
     </>
   )
 }
