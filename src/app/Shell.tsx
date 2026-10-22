@@ -4,7 +4,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, CalendarDays, Truck,
   Users, Wallet, UserCheck, Settings,
-  Menu, X, LogOut, Route,
+  Menu, X, LogOut, Route, Search,
 } from 'lucide-react'
 import { features } from '../features.config'
 import { ActionBar } from '../shared/actions/ActionBar'
@@ -67,15 +67,27 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
             <NavLink
               to={item.path}
               className={() =>
-                `flex items-center gap-2.5 px-3 py-2.5 rounded-[var(--r-md)] text-[length:var(--fs-sm)] transition-colors ${
+                `group relative flex items-center gap-3 px-3 py-2.5 rounded-[var(--r-lg)] text-[length:var(--fs-sm)] transition-colors ${
                   isItemActive(item)
-                    ? 'bg-[var(--brand-soft)] text-[var(--brand)] font-medium'
-                    : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]'
+                    ? 'text-[var(--text)] font-medium'
+                    : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[color-mix(in_srgb,var(--text)_5%,transparent)]'
                 }`
               }
+              style={isItemActive(item)
+                ? { background: 'linear-gradient(90deg, color-mix(in srgb, var(--brand) 24%, transparent), color-mix(in srgb, var(--brand) 4%, transparent))' }
+                : undefined}
               title={collapsed ? item.label : undefined}
             >
-              <item.icon size={15} className="shrink-0" />
+              {isItemActive(item) && (
+                <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full" style={{ background: 'linear-gradient(180deg, var(--gold), var(--brand))', boxShadow: '0 0 0.75rem var(--brand)' }} />
+              )}
+              <span className={`inline-grid place-items-center h-8 w-8 shrink-0 rounded-[var(--r-md)] transition-colors ${
+                isItemActive(item)
+                  ? 'bg-[var(--brand)] text-white shadow-[0_0.25rem_1rem_-0.25rem_var(--brand)]'
+                  : 'bg-[color-mix(in_srgb,var(--text)_6%,transparent)] group-hover:text-[var(--brand)]'
+              }`}>
+                <item.icon size={16} />
+              </span>
               {!collapsed && <span>{item.label}</span>}
             </NavLink>
           </li>
@@ -96,6 +108,12 @@ interface ShellProps {
 // rendu à l'intérieur d'un Shell parent n'affiche QUE son contenu (+ ses actions),
 // pas une 2e sidebar/topbar. Les pages métier restent inchangées.
 const ShellNestContext = createContext(false)
+
+/* Cadre du site (barre du haut + barre latérale) : même langage que les cartes —
+   fond translucide qui laisse passer les halos, filet dégradé marque → or. */
+const CADRE_FOND = 'bg-[color-mix(in_srgb,var(--bg-elevated)_70%,transparent)]'
+const FILET_BAS = "after:content-[''] after:absolute after:inset-x-0 after:-bottom-px after:h-px after:pointer-events-none after:opacity-60 after:bg-[linear-gradient(90deg,var(--brand),transparent_50%,var(--gold))]"
+const BARRE_HAUT = `relative flex items-center h-[var(--topbar-h)] px-4 gap-3 ${CADRE_FOND} border-b border-[var(--border-soft)] shrink-0 ${FILET_BAS}`
 
 export function Shell({ children, pageTitle, actions = [], onAction }: ShellProps) {
   const nested = useContext(ShellNestContext)
@@ -138,7 +156,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
   if (salarie) {
     return (
       <div className="flex flex-col h-full min-w-0">
-        <header className="flex items-center h-[var(--topbar-h)] px-4 gap-3 bg-[var(--bg-elevated)] border-b border-[var(--border)] shrink-0">
+        <header className={BARRE_HAUT}>
           <h1 className="font-display font-semibold text-[length:var(--fs-h2)] text-[var(--text)] truncate min-w-0">
             {pageTitle}
           </h1>
@@ -184,7 +202,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
       {/* Sidebar */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-30 flex flex-col bg-[var(--bg-elevated)] border-r border-[var(--border)]
+          fixed inset-y-0 left-0 z-30 flex flex-col bg-[var(--bg-elevated)] lg:bg-[color-mix(in_srgb,var(--bg-elevated)_70%,transparent)] border-r border-[var(--border-soft)]
           transition-[transform,width] duration-[var(--dur-3)] ease-[var(--ease-out)]
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           lg:relative lg:translate-x-0
@@ -196,7 +214,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
           {!collapsed && (
             <div className="flex items-center gap-3 min-w-0">
               <span className="inline-grid place-items-center w-10 h-10 rounded-[var(--r-lg)] shrink-0 font-display font-bold text-white text-[calc(16rem/14)]"
-                    style={{ background: 'linear-gradient(135deg, var(--brand), var(--brand-deep))' }}>M</span>
+                    style={{ background: 'linear-gradient(135deg, var(--gold), var(--brand) 55%, var(--brand-deep))', boxShadow: '0 0.4rem 1.25rem -0.4rem var(--brand)' }}>M</span>
               <div className="flex flex-col min-w-0">
                 <span className="font-display font-bold text-[length:var(--fs-h3)] text-[var(--text)] leading-tight">MCA Logistics</span>
                 <span className="text-[length:var(--fs-xs)] text-[var(--text-muted)] leading-tight">Pilotage interne</span>
@@ -222,10 +240,10 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
         <SidebarNav collapsed={collapsed} />
 
         {/* Bas de sidebar : carte utilisateur */}
-        <div className="shrink-0 border-t border-[var(--border)] p-3">
+        <div className="shrink-0 p-3">
           {!collapsed && profile ? (
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-full grid place-items-center text-white font-display font-semibold text-[length:var(--fs-sm)] shrink-0"
+            <div className="flex items-center gap-2.5 rounded-[var(--r-lg)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-card)_80%,transparent)] p-2.5">
+              <div className="w-9 h-9 rounded-full grid place-items-center text-white font-display font-semibold text-[length:var(--fs-sm)] shrink-0 ring-2 ring-[color-mix(in_srgb,var(--brand)_45%,transparent)]"
                    style={{ background: 'var(--grad)' }}>
                 {initiales}
               </div>
@@ -258,7 +276,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
       {/* Zone principale */}
       <div className="flex flex-col flex-1 min-w-0">
         {/* Topbar */}
-        <header className="flex items-center h-[var(--topbar-h)] px-4 gap-3 bg-[var(--bg-elevated)] border-b border-[var(--border)] shrink-0">
+        <header className={BARRE_HAUT}>
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -271,13 +289,14 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
               {pageTitle}
             </h1>
           </div>
-          <div className="flex-1 max-w-[30rem] mx-4 hidden md:block">
+          <div className="relative flex-1 max-w-[30rem] mx-4 hidden md:block">
+            <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-disabled)]" />
             <input
               value={q}
               onChange={e => setQ(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && q.trim()) navigate('/livraisons?q=' + encodeURIComponent(q.trim())) }}
               placeholder="Rechercher une livraison, un client…"
-              className="w-full h-9 rounded-[var(--r-pill)] bg-[var(--bg-card)] border border-[var(--border)] px-4 text-[length:var(--fs-sm)] text-[var(--text)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--brand)] transition-colors"
+              className="w-full h-9 rounded-[var(--r-pill)] bg-[color-mix(in_srgb,var(--bg-card)_70%,transparent)] border border-[var(--border)] pl-10 pr-4 text-[length:var(--fs-sm)] text-[var(--text)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--brand)] transition-colors"
             />
           </div>
           <div className="flex items-center gap-2 ml-auto shrink-0">
@@ -286,7 +305,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
             <AlertesBell />
             {profile && (
               <div
-                className="w-9 h-9 rounded-full grid place-items-center text-white font-display font-semibold text-[length:var(--fs-sm)] shrink-0"
+                className="w-9 h-9 rounded-full grid place-items-center text-white font-display font-semibold text-[length:var(--fs-sm)] shrink-0 ring-2 ring-[color-mix(in_srgb,var(--brand)_45%,transparent)]"
                 style={{ background: 'var(--grad)' }}
                 title={profile.full_name}
               >
