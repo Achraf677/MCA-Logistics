@@ -33,7 +33,8 @@ RÈGLES, pour CHAQUE ligne du tableau, de haut en bas (une entrée de "lignes" p
   - numéro imprimé en clair dans un petit carré NOIR (case inversée) = collecte, à noter « [C]11 » ;
   - cellule vide = "" ; chiffre illisible = « ? » à sa place (ex. « 1? »).
 - « RC » (deux petites lettres collées devant le numéro) = point relais : « RC141(6) » = relais n° 141, 6 colis ; « RC4(4) » = relais n° 4, 4 colis ; « RC4A(4) » = relais n° 4A, 4 colis. Ne transforme jamais « RC4A » en « 85A » ni « RC4 » en « 4 ».
-- COLLECTE = numéro en BLANC sur fond NOIR (rectangle foncé dans la case N°). Un numéro seulement en GRAS (« 41E », « 19B ») n'est PAS une collecte.
+- COLLECTE = un numéro ENCADRÉ / surligné en NOIR avec le numéro de l'adresse écrit à l'intérieur (blanc sur fond noir), même s'il est seul au milieu d'une liste (« 6, [C]10, 25 », « [C]28A », « [C]1, 6, 12 ») : note-le « [C] » devant son numéro. Un numéro seulement en GRAS (« 41E », « 19B ») n'est PAS une collecte.
+- RELAIS = « RC » + numéro + nombre de colis du relais entre parenthèses : « RC141(8) » = relais n° 141, 8 colis ; « RC4(22) » = relais n° 4, 22 colis.
 - Une lettre collée au numéro (3A, 5B, 14B, 19B, 41E, 1B) est une LETTRE : « 3A » n'est pas « 34 », « 1B » n'est pas « 18 ».
 - Un petit « (2) » après un numéro est le nombre de colis de ce numéro, pas un autre numéro : « 2(2) » = n° 2, 2 colis.
 - "crbt" : la colonne CRBT/taxes si elle est remplie, sinon null.
