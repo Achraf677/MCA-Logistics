@@ -20,7 +20,7 @@ const charge = (over: Partial<ChargeRow> = {}): ChargeRow => ({
   label: 'Charge', category_id: null, montant_ht_cts: 10000, tva_rate: 20,
   tva_cts: 2000, montant_ttc_cts: 12000, pennylane_id: null, pennylane_synced_at: null,
   receipt_url: null, notes: null, mode_paiement: 'qonto', avance_par: null,
-  rembourse_le: null, pennylane_deleted_at: null, est_immobilisation: false,
+  rembourse_le: null, pennylane_deleted_at: null, est_immobilisation: false, passee_en_od: false,
   created_at: '2026-06-04T00:00:00Z', updated_at: '2026-06-04T00:00:00Z',
   suppliers: null, charge_categories: null,
   ...over,

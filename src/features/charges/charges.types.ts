@@ -31,6 +31,8 @@ export interface Charge {
    *  pas une charge d'exploitation — exclue de tous les totaux/compteurs,
    *  conservée en base pour la traçabilité Pennylane/Qonto. */
   est_immobilisation: boolean
+  /** Migration 20261022120000. true = passée en OD chez le comptable (avoir…) : pas de facture Pennylane, pas d'alerte « hors Pennylane ». */
+  passee_en_od: boolean
   created_at: string
   updated_at: string
 }
@@ -47,12 +49,13 @@ export type ChargeInsert = Omit<Charge,
   // Champs optionnels à l'insert (défaut DB pour mode_paiement, NULL pour les autres,
   // false pour est_immobilisation — une charge saisie à la main n'est jamais
   // une immobilisation par défaut).
-  | 'mode_paiement' | 'avance_par' | 'rembourse_le' | 'est_immobilisation'
+  | 'mode_paiement' | 'avance_par' | 'rembourse_le' | 'est_immobilisation' | 'passee_en_od'
 > & {
   mode_paiement?: ChargeModePaiement
   avance_par?: string | null
   rembourse_le?: string | null
   est_immobilisation?: boolean
+  passee_en_od?: boolean
 }
 export type ChargeUpdate = Partial<Omit<Charge, 'id' | 'company_id' | 'created_at'>>
 

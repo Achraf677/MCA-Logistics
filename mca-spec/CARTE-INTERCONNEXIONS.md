@@ -13,14 +13,14 @@
     remise dans la tournée du jour — lot P3), planning (écrit `driver_id`, `date` par
     glisser-déposer / action groupée ; détache de sa tournée : tour_id, stop_order, arrival_time
     à null ; vue Mois via livraisons.queries#getDeliveries),
-    dashboard, encaissement, relances, alertes, clients (encours), equipe, heures, devis
+    dashboard, alertes, clients (encours), equipe, heures, devis
     (crée une course depuis un devis), copilote / assistant (création IA) ;
   - shared : `alertesEngine.queries` (à facturer, sans justificatif, retards), `pod.queries` ;
   - Edge : pennylane-invoice (écrit `facturee`, n° facture, sync_error), pennylane-register-payment
     (`payee`), pennylane-payment-check, send-client-email (email_sent_at), geocode,
     (plus d'optimize-tour(s) : 410, 22/10/2026).
 - **clients** : clients (écrit), livraisons (tarif, délai, TVA intra), devis,
-  encaissement, tresorerie, copilote / assistant ; Edge pennylane-invoice, pennylane-quote,
+  copilote / assistant ; Edge pennylane-invoice, pennylane-quote,
   pennylane-clients-sync (écrit).
   - colonnes « défauts des courses » (lot B : `pays`, `retrait_*`, `chauffeur_habituel_id`,
     `vehicule_habituel_id`, `prestation_defaut`, `reference_obligatoire`, `supplements`) :
@@ -39,7 +39,7 @@
 - **documents** (+ Storage `documents`) : `shared/lib/documents.queries` (tous les panneaux
   Documents), mescourses (photos), parametres ; Edge send-client-email (facture seule : plus de lettre de voiture),
   drive-migrate-to-storage ; alertes (sans justificatif).
-- **charges** : charges, fournisseurs, tresorerie, `shared` rapprochement / aRapprocher / alertes ;
+- **charges** : charges, fournisseurs, tresorerie, `shared` aRapprocher (catégorisation, Pennylane) / alertes ;
   Edge pennylane-sync, lire-facture, lire-releve, suggest-categorie-ia.
 - **tours** (22/10/2026) : plus AUCUN lecteur ni écrivain côté site (composeur express retiré avec la refonte Planning). Table et colonnes gardées en base (`tours`, `deliveries.tour_id` / `stop_order` / `pickup_order` / `arrival_time`) ; Edge `optimize-tours` et `optimize-tour` = 410. Fichiers supprimés : `tournees/{Tournees (ancien),TourCard,ToursOverviewMap,DialogueHeuresTournee,tournees.queries,tournees.types}`, `_shared/{routesOrs,planifExpress,vroom}`, l'express de Mes courses (`MesCourses` : OngletCourses, étapes terrain, PanneauProbleme), `shared/lib/{arretsJour,messageClient,tourneeStatuts}`.
 - **tournees_colis / tournees_colis_arrets** (colonne `zone` ajoutée le 22/10/2026 : lue par l'Edge `optimiser-tournee-colis` (un bloc par zone), `shared/lib/tourneesColisRoute#infosGroupes` (couleurs liste / carte), `shared/ui/FeuilleAdresse` + liste bureau `tournees/ListeTourneeColis` (insert / update d'arrêts par le salarié sur SA tournée ou le bureau) ; lot TC1, migration
@@ -98,7 +98,7 @@
     pennylane-invoice, qui ÉCRIT `quotes.statut = facture` + `pennylane_invoice_id` (devis
     `accepte` seulement). `envoi_verrou` et `sync_error` : écrits par pennylane-quote (envoi),
     `sync_error` lu par le tiroir devis. L'action `convert` de pennylane-quote est refusée.
-- **qonto_transactions** : tresorerie, encaissement, aRapprocher ; Edge qonto-sync.
+- **qonto_transactions** : tresorerie (lecture seule, depuis le 22/10/2026 : plus de rapprochement par ligne, `charge_id` / `justif_type` plus écrits par le site) ; Edge qonto-sync. Colonnes gardées en base.
 - **fuel_logs** : carburant, vehicules, `shared/produitsVehicule.queries`.
 - **vehicle_maintenances** : entretiens, vehicules, alertes, planning (vue Mois, `next_due_date` du dernier
   entretien par véhicule et type).
@@ -123,7 +123,7 @@
 - `creneau_*`, `urgent` : fiche, Mes courses (pastille, créneau de l'arrêt).
 - `arrival_time` : écrit par les tournées ; lu par Mes courses, liste, dashboard.
 - `amount_ht_cts / tva_cts / amount_ttc_cts / extra_lines / autoliquidation` : fiche,
-  liste, aperçu facture, Edge pennylane-invoice, encaissement, dashboard, relances, clients.
+  liste, aperçu facture, Edge pennylane-invoice, dashboard, clients.
 - `justif_non_requis`, `pod_captured_at`, `lv_pdf_url` : alerte « sans justificatif »
   (`shared/lib/livraisonsSansJustif`), facturation (avertissement), relevé de messagerie (true).
 - `probleme_*` : Mes courses (écrit), liste (filtre Échecs), alertes, dashboard.
@@ -213,3 +213,6 @@
   tournée non clôturée) ; écrites par `FeuilleCloture` / `PhotosSynthese`, lues au bureau (liens « Synthèse n »).
 - `optimiser-tournee-colis` mode `suivre` : lit `ordre` des arrêts, écrit `trajet` + `eta_min` (jamais `ordre`).
 - Planning (19/10/2026) : lit aussi `tournees_colis` / `tournees_colis_arrets` via `shared/lib/tourneesColis.queries` (droit `planning.tournees`) ; écrit `deliveries.driver_id` / `date` seulement.
+
+- **Finance (22/10/2026)** : onglets Encaissement et Relances SUPPRIMÉS (code + routes + droits du catalogue ; lignes `user_permissions` gardées). Alerte « factures en retard de paiement » → `/livraisons`. `aRapprocher` = charges seulement (catégorisation, supprimées Pennylane, hors Pennylane, avoirs) ; plus de compteurs trésorerie / encaissements. Listes Finance groupées par mois : `shared/lib/mois` + `shared/ui/GroupeMois`.
+- **charges.passee_en_od** (22/10/2026) : écrit par `DrawerCharge` ; lu par `aRapprocher#estChargeHorsPennylane` (alerte cloche + bandeau Charges) et le badge « OD » de `Charges`.

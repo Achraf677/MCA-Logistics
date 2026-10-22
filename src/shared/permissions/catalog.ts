@@ -22,8 +22,6 @@ export const PERMISSION_CATALOG: PermResource[] = [
   // Finance
   { section: 'Finance',     key: 'finance.tresorerie',    label: 'Trésorerie' },
   { section: 'Finance',     key: 'finance.charges',       label: 'Charges' },
-  { section: 'Finance',     key: 'finance.encaissement',  label: 'Encaissement' },
-  { section: 'Finance',     key: 'finance.relances',      label: 'Relances' },
   // Équipe
   { section: 'Équipe',      key: 'equipe.membres',        label: 'Membres' },
   { section: 'Équipe',      key: 'equipe.heures',         label: 'Heures' },

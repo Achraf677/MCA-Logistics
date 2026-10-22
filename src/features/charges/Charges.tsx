@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CreditCard, Receipt, Euro, Wallet, Lock, Sparkles, AlertTriangle } from 'lucide-react'
+import { CreditCard, Receipt, Euro, Lock, Sparkles, AlertTriangle } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -17,8 +17,8 @@ import { useSync } from '../../app/SyncProvider'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatCents, categoryColor, kpiSummary } from './charges.logic'
 import { getCategories } from '../../shared/lib/categories.queries'
-import { listAllocationsCategoriesForCharges } from '../../shared/lib/allocations.queries'
-import { TotauxParCategorie } from '../../shared/ui/TotauxParCategorie'
+import { GroupeMois } from '../../shared/ui/GroupeMois'
+import { grouperParMois, moisOuvertParDefaut } from '../../shared/lib/mois'
 import { InboxTickets } from './InboxTickets'
 import { classerTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import { indexerFichierExistant } from '../../shared/lib/documents.queries'
@@ -50,9 +50,6 @@ export function Charges() {
   const { syncState, syncIfStale } = useSync()
   // Suppression Pennylane : charge en attente de confirmation "Supprimer de l'app".
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
-  // Ventilations des charges affichees, pour repartir une facture entre
-  // plusieurs categories (lave-glace + AdBlue sur une meme facture).
-  const [allocations, setAllocations] = useState<Array<{ charge_id: string; category_id: string | null; amount_cts: number }>>([])
   const [deletingFlagged, setDeletingFlagged] = useState(false)
   // Filtre spécial via URL (?filtre=pennylane_supprimees) — clic depuis la cloche.
   const [searchParams, setSearchParams] = useSearchParams()
@@ -89,24 +86,12 @@ export function Charges() {
     const { data, error } = await getCharges(filters)
     if (error) {
       setError(error.message)
-      setRows([]); setAllocations([])
+      setRows([])
     } else {
-      const charges = (data ?? []) as unknown as ChargeRow[]
-      setRows(charges)
-      // Une seule requete pour toutes les ventilations du lot affiche : en faire
-      // une par charge ferait des dizaines d'aller-retours a chaque chargement.
-      const { data: allocs } = await listAllocationsCategoriesForCharges(charges.map(c => c.id))
-      setAllocations(allocs)
+      setRows((data ?? []) as unknown as ChargeRow[])
     }
     setLoading(false)
   }, [filters])
-
-  // id -> nom, pour afficher « AdBlue » plutot qu'un identifiant. Memoise :
-  // recreer la Map a chaque rendu ferait recalculer les totaux pour rien.
-  const nomsParCategorie = useMemo(
-    () => new Map(categories.map(c => [c.id, c.name])),
-    [categories],
-  )
 
   useEffect(() => { syncIfStale('charges') }, [syncIfStale])
   useEffect(() => { load() }, [load, syncState.charges.lastSyncAt])
@@ -197,6 +182,10 @@ export function Charges() {
     : filtreHorsPennylane
       ? rows.filter(estHorsPennylane)
       : rows
+  const groupes = useMemo(() => grouperParMois([...displayRows].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')), r => r.date), [displayRows])
+  const moisOuvert = moisOuvertParDefaut(groupes.map(g => g.cle), maintenant)
+  // Un filtre (période, catégorie, liste spéciale) ouvre tous les mois : on cherche, on ne feuillette pas.
+  const toutOuvrir = hasFilters || filtreSupprimees || filtreHorsPennylane
   const nbSupprimees = rows.filter(r => r.pennylane_deleted_at != null).length
   const nbHorsPennylane = rows.filter(estHorsPennylane).length
 
@@ -225,21 +214,19 @@ export function Charges() {
 
   return (
     <Shell pageTitle="Charges" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
-      {/* KPIs */}
+      {/* KPIs (tout en HT) */}
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">
-          {[0,1,2].map(i => <Skeleton key={i} className="h-20" />)}
+        <div className="grid grid-cols-2 gap-5 mb-6 [&>*]:min-w-0">
+          {[0,1].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 stagger [&>*]:min-w-0">
+        <div className="grid grid-cols-2 gap-5 mb-6 stagger [&>*]:min-w-0">
           <KpiCard label="Charges"   value={kpis.nb} tone="info" icon={<Receipt size={18} />} />
           <KpiCard label="Total HT"  value={formatCents(kpis.totalHtCts)} tone="warning" icon={<Euro size={18} />}
             sub={kpis.nbAvoirs > 0
               ? `dont ${kpis.nbAvoirs} avoir${kpis.nbAvoirs > 1 ? 's' : ''} ${formatCents(kpis.avoirsHtCts)}`
               : undefined}
           />
-          <KpiCard label="Total TTC" value={formatCents(kpis.totalTtcCts)} tone="warning" icon={<Wallet size={18} />}
-            sub="somme réellement débitée" />
         </div>
       )}
 
@@ -249,21 +236,6 @@ export function Charges() {
         rafraichir={ticketsVersion}
         onCreerCharge={t => { setSelected(null); setTicketSource(t); setDrawerOpen(true) }}
       />
-
-      {/* Répartition par catégorie — répond à « combien d'AdBlue ai-je acheté ».
-          Suit les filtres de la liste : changer la période change la répartition. */}
-      {!loading && rows.length > 0 && (
-        <div className="mb-6 glass rounded-[var(--r-xl)] px-4 py-4">
-          <span className="block mb-3 text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
-            Dépenses par catégorie
-          </span>
-          <TotauxParCategorie
-            charges={rows}
-            allocations={allocations}
-            nomsParCategorie={nomsParCategorie}
-          />
-        </div>
-      )}
 
       {/* Filtres */}
       <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
@@ -366,19 +338,27 @@ export function Charges() {
             : undefined}
         />
       ) : (
-        <>
+        <div className="flex flex-col gap-3">
+          {groupes.map(g => {
+            const totalHt = g.rows.reduce((t, r) => t + r.montant_ht_cts, 0)
+            return (
+              <GroupeMois key={`${g.cle}-${toutOuvrir}`} titre={g.libelle} ouvertDefaut={toutOuvrir || g.cle === moisOuvert}
+                resume={<>
+                  <span>{g.rows.length} charge{g.rows.length > 1 ? 's' : ''}</span>
+                  <span className="font-mono font-semibold text-[var(--text)]">{formatCents(totalHt)} HT</span>
+                </>}>
           {/* Desktop */}
           <div className="hidden md:block overflow-x-auto panel rounded-[var(--r-xl)]">
             <table className="w-full text-[var(--fs-sm)]">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['Date', 'Fournisseur', 'Libellé', 'Catégorie', 'Montant HT', 'TVA', 'Total TTC', 'Facture', ''].map(h => (
+                  {['Date', 'Fournisseur', 'Libellé', 'Catégorie', 'Montant HT', 'TVA', 'Facture', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {displayRows.map((row, i) => {
+                {g.rows.map((row, i) => {
                   const isPennylane = !!row.pennylane_id
                   const isAvoir = row.montant_ht_cts < 0
                   return (
@@ -399,6 +379,7 @@ export function Charges() {
                         <div className="flex items-center gap-2">
                           <span title={row.label} className="font-medium text-[var(--text)] truncate">{row.label}</span>
                           {row.est_immobilisation && <Badge color="purple">Immobilisation</Badge>}
+                          {row.passee_en_od && <Badge color="muted">OD</Badge>}
                           {row.mode_paiement === 'note_de_frais' && !row.rembourse_le && (
                             <Badge color="warning">À rembourser</Badge>
                           )}
@@ -492,9 +473,6 @@ export function Charges() {
                         </div>
                       </td>
                       <td className="px-4 py-3 font-mono">{row.tva_cts != null ? formatCents(Math.abs(row.tva_cts)) : '—'}</td>
-                      <td className="px-4 py-3 font-mono font-semibold text-[var(--text)]">
-                        {row.montant_ttc_cts ? formatCents(Math.abs(row.montant_ttc_cts)) : '—'}
-                      </td>
                       <td className="px-4 py-3">
                         <FacturePdfLink pennylane_id={row.pennylane_id} receipt_url={row.receipt_url} />
                         {!row.receipt_url && !row.pennylane_id && <span className="text-[var(--text-disabled)]">—</span>}
@@ -518,7 +496,7 @@ export function Charges() {
 
           {/* Mobile */}
           <div className="md:hidden flex flex-col gap-3">
-            {displayRows.map(row => {
+            {g.rows.map(row => {
               const isPennylane = !!row.pennylane_id
               const isAvoir = row.montant_ht_cts < 0
               const cat = row.charge_categories
@@ -552,6 +530,7 @@ export function Charges() {
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span title={row.label} className="font-medium text-[var(--text)] truncate">{row.label}</span>
                       {row.est_immobilisation && <Badge color="purple">Immobilisation</Badge>}
+                          {row.passee_en_od && <Badge color="muted">OD</Badge>}
                       {row.mode_paiement === 'note_de_frais' && !row.rembourse_le && (
                         <Badge color="warning">À rembourser</Badge>
                       )}
@@ -641,7 +620,10 @@ export function Charges() {
               )
             })}
           </div>
-        </>
+              </GroupeMois>
+            )
+          })}
+        </div>
       )}
 
       <DrawerCharge

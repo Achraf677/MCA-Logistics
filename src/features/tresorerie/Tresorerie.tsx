@@ -1,598 +1,134 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useSearchParams } from 'react-router-dom'
-import { ChevronDown, Wallet } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { ArrowDownLeft, ArrowUpRight, Search, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
+import { GroupeMois } from '../../shared/ui/GroupeMois'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
-import { LinkedChargeCard } from '../../shared/ui/LinkedChargeCard'
-import { SelecteurCharge } from '../../shared/ui/SelecteurCharge'
-import { PanneauVentilation } from '../../shared/ui/PanneauVentilation'
 import { formatMoney } from '../../shared/lib/money'
-import {
-  getMatchingChargesForDebit,
-  getChargesOuvertes,
-  resteDuParCharge, classifyDebit, suggestJustifType,
-  classifyCredit, suggestCreditTag,
-} from '../../shared/lib/rapprochementQonto'
-import type { JustifType, CreditTag } from '../../shared/lib/rapprochementQonto'
-import {
-  getLatestSnapshot, getTransactions,
-  getChargesForRapprochement, linkChargeToTransaction, unlinkChargeFromTransaction,
-  setJustifType, clearJustifType, getTeamMemberNames, getClientNames,
-} from './tresorerie.queries'
-import {
-  amountColorClass, formatSignedAmount, operationTypeLabel, formatTxDate,
-} from './tresorerie.logic'
-import { useToast } from '../../shared/ui/useToast'
-import { useProfile } from '../../app/providers'
+import { grouperParMois, moisOuvertParDefaut } from '../../shared/lib/mois'
 import { useSync } from '../../app/SyncProvider'
+import { getLatestSnapshot, getTransactions } from './tresorerie.queries'
+import {
+  amountColorClass, filtrerMouvements, formatSignedAmount, formatTxDate, operationTypeLabel, totauxMouvements,
+  type FiltreSens,
+} from './tresorerie.logic'
 import type { TreasurySnapshot, QontoTx } from './tresorerie.types'
-import type { ChargePick } from '../../shared/types/charges'
 
-const JUSTIF_TYPE_LABELS: Record<JustifType, string> = {
-  cca:            'CCA',
-  frais_bancaire: 'Frais bancaire',
-  hors_activite:  'Hors activité',
-  client:         'Client',
-  remboursement:  'Remboursement',
-  autre:          'Autre',
-}
+const SENS: Array<{ cle: FiltreSens; libelle: string }> = [
+  { cle: 'tous', libelle: 'Tous' },
+  { cle: 'entrees', libelle: 'Entrées' },
+  { cle: 'sorties', libelle: 'Sorties' },
+]
 
-const ALL_DEBIT_TYPES: JustifType[] = ['cca', 'frais_bancaire', 'hors_activite']
-const CREDIT_TAGS: CreditTag[]      = ['client', 'cca', 'remboursement', 'autre']
-
+/**
+ * Trésorerie : le solde Qonto et le relevé, mois par mois (lecture seule). Plus de rapprochement par ligne
+ * (décision du 22/10/2026) : les justificatifs se gèrent dans Charges.
+ */
 export function Tresorerie() {
-  const { toast } = useToast()
-  const { profile } = useProfile()
-
-  const [snapshot, setSnapshot]       = useState<TreasurySnapshot | null>(null)
-  const [txs, setTxs]                 = useState<QontoTx[]>([])
-  const [charges, setCharges]         = useState<ChargePick[]>([])
-  const [memberNames, setMemberNames] = useState<string[]>([])
-  const [clientNames, setClientNames] = useState<string[]>([])
-  const [loading, setLoading]         = useState(true)
-  const [error, setError]             = useState<string | null>(null)
-  const [expandedTx, setExpandedTx]   = useState<string | null>(null)
-  const [rapprochOpen, setRapprochOpen] = useState<string | null>(null)
-  // Mouvements encore à traiter (débits à rapprocher/sans justificatif, crédits
-  // non identifiés) — filtre client sur la liste déjà chargée. Pré-coché quand
-  // on arrive via le lien de la cloche/dashboard (?filtre=a_rapprocher).
-  const [searchParams] = useSearchParams()
-  const [filtreARapprocher, setFiltreARapprocher] = useState(
-    () => searchParams.get('filtre') === 'a_rapprocher',
-  )
-  // Ventilation ouverte (qonto_id) — panneau replié par défaut pour ne pas
-  // charger charge_allocations à chaque expand.
-  const [ventilationTx, setVentilationTx] = useState<string | null>(null)
+  const [snapshot, setSnapshot] = useState<TreasurySnapshot | null>(null)
+  const [txs, setTxs] = useState<QontoTx[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [sens, setSens] = useState<FiltreSens>('tous')
+  const [q, setQ] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
-    const [snapRes, txRes, chargesData, names, cNames] = await Promise.all([
-      getLatestSnapshot(),
-      getTransactions(),
-      getChargesForRapprochement(),
-      getTeamMemberNames(),
-      getClientNames(),
-    ])
+    const [snapRes, txRes] = await Promise.all([getLatestSnapshot(), getTransactions()])
     if (snapRes.error) setError(snapRes.error.message)
     else setSnapshot(snapRes.data ?? null)
     if (txRes.error) setError(txRes.error.message)
     else setTxs(txRes.data ?? [])
-    setCharges(chargesData)
-    setMemberNames(names)
-    setClientNames(cNames)
     setLoading(false)
   }, [])
 
   const { syncState, syncIfStale } = useSync()
   useEffect(() => { syncIfStale('qonto'); syncIfStale('paiements') }, [syncIfStale])
-  useEffect(() => { load() }, [load, syncState.qonto.lastSyncAt, syncState.paiements.lastSyncAt])
+  useEffect(() => { void load() }, [load, syncState.qonto.lastSyncAt, syncState.paiements.lastSyncAt])
 
-  // ── Dérivés rapprochement ──────────────────────────────────────────────────
-  const associeNames = [
-    ...(profile?.full_name ? [profile.full_name] : []),
-    ...memberNames,
-  ].filter((n, i, arr) => arr.indexOf(n) === i)
-
-  // Reste dû de chaque charge, débits déjà rattachés déduits. Une facture réglée
-  // en plusieurs fois reste proposable tant qu'elle n'est pas soldée.
-  const resteParCharge = resteDuParCharge(charges, txs)
-
-  const debits = txs.filter(t => t.side === 'debit')
-  const debitsSansJustif = debits.filter(t => {
-    const m = getMatchingChargesForDebit(t.amount_cts, charges, resteParCharge, t.settled_at)
-    return classifyDebit(t.charge_id, t.justif_type ?? null, m.length) === 'sans_justificatif'
-  })
-  const totalSansJustifCts = debitsSansJustif.reduce((s, t) => s + t.amount_cts, 0)
-
-  const credits = txs.filter(t => t.side === 'credit')
-  const creditsNonIdentifies = credits.filter(t => classifyCredit(t.justif_type ?? null) === 'non_identifie')
-  const totalCreditsNonIdentifiesCts = creditsNonIdentifies.reduce((s, t) => s + t.amount_cts, 0)
-
-  // Un mouvement est « à rapprocher » : débit sans justificatif ni charge liée,
-  // ou crédit dont la nature n'est pas encore identifiée. Même classification
-  // que les badges affichés par ligne, pour ne jamais raconter deux histoires.
-  const estARapprocher = (tx: QontoTx): boolean => {
-    if (tx.side === 'debit') {
-      const matches = getMatchingChargesForDebit(tx.amount_cts, charges, resteParCharge, tx.settled_at)
-      const status = classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length)
-      return status === 'a_rapprocher' || status === 'sans_justificatif'
-    }
-    return classifyCredit(tx.justif_type ?? null) === 'non_identifie'
-  }
-  const txsARapprocher = txs.filter(estARapprocher)
-  const displayTxs = filtreARapprocher ? txsARapprocher : txs
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
-  const handleLink = async (charge: ChargePick) => {
-    if (!rapprochOpen) return
-    const { error } = await linkChargeToTransaction(rapprochOpen, charge.id)
-    if (error) { toast(error.message, 'error'); return }
-    setRapprochOpen(null)
-    await load()
-    toast('Rapprochement enregistré')
-  }
-
-  const handleDetach = async (qontoId: string) => {
-    const { error } = await unlinkChargeFromTransaction(qontoId)
-    if (error) { toast(error.message, 'error'); return }
-    await load()
-    toast('Rapprochement supprimé')
-  }
-
-  const handleSetJustifType = async (qontoId: string, type: JustifType) => {
-    const { error } = await setJustifType(qontoId, type)
-    if (error) { toast(error.message, 'error'); return }
-    await load()
-    toast(`Marqué : ${JUSTIF_TYPE_LABELS[type]}`)
-  }
-
-  const handleClearJustifType = async (qontoId: string) => {
-    const { error } = await clearJustifType(qontoId)
-    if (error) { toast(error.message, 'error'); return }
-    await load()
-    toast('Tag retiré')
-  }
-
-  const toggleExpand = (qontoId: string) =>
-    setExpandedTx(prev => prev === qontoId ? null : qontoId)
-
-  const txEnCours = rapprochOpen ? txs.find(t => t.qonto_id === rapprochOpen) ?? null : null
-  const chargesDisponibles: ChargePick[] = txEnCours
-    ? getMatchingChargesForDebit(txEnCours.amount_cts, charges, resteParCharge, txEnCours.settled_at)
-    : []
-
-  // Toutes les factures encore ouvertes — pour le mode "Autre montant", qui sert
-  // aussi aux échéances intermédiaires d'un règlement fractionné.
-  const allNonLinked: ChargePick[] = getChargesOuvertes(
-    charges, resteParCharge, txEnCours?.settled_at,
-  )
-
-  // ── Sous-composant accordéon (partagé desktop/mobile) ─────────────────────
-  const renderAccordeonContent = (tx: QontoTx, matches: ChargePick[]) => {
-    const status = classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length)
-    const linked = tx.charge_id ? charges.find(c => c.id === tx.charge_id) ?? null : null
-    const suggestion = suggestJustifType(tx.label, tx.operation_type, associeNames)
-
-    if (status === 'justifie_charge' && linked) {
-      // Le solde restant remplace l'ancienne mention « montant net (avoir/partiel) » :
-      // un débit inférieur au total de la facture n'est plus une anomalie mais le
-      // cas normal d'un règlement en plusieurs fois.
-      return (
-        <div className="space-y-1.5">
-          <LinkedChargeCard
-            charge={linked}
-            onDetach={() => handleDetach(tx.qonto_id)}
-            resteCts={resteParCharge.get(linked.id) ?? null}
-          />
-        </div>
-      )
-    }
-
-    if (status === 'justifie_type') {
-      return (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge color="muted">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>
-          <button
-            onClick={e => { e.stopPropagation(); handleClearJustifType(tx.qonto_id) }}
-            className="text-[var(--fs-xs)] text-[var(--text-muted)] underline hover:text-[var(--text)] transition-colors"
-          >
-            Retirer
-          </button>
-        </div>
-      )
-    }
-
-    // a_rapprocher ou sans_justificatif
-    return (
-      <div className="space-y-2.5">
-        {/* Rapprocher si charges disponibles */}
-        {matches.length > 0 && (
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-              {matches.length} charge{matches.length > 1 ? 's' : ''} au même montant
-            </span>
-            <Button
-              variant="secondary"
-              size="compact"
-              onClick={e => { e.stopPropagation(); setRapprochOpen(tx.qonto_id) }}
-            >
-              Rapprocher ({matches.length})
-            </Button>
-          </div>
-        )}
-
-        {/* Suggestion auto */}
-        {suggestion && (
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Suggéré :</span>
-            <button
-              onClick={e => { e.stopPropagation(); handleSetJustifType(tx.qonto_id, suggestion) }}
-              className="px-2.5 py-0.5 text-[var(--fs-xs)] font-semibold rounded-[var(--r-pill)] bg-[var(--brand-soft,#eff6ff)] text-[var(--brand)] border border-[var(--brand)] hover:bg-[var(--brand)] hover:text-white transition-colors"
-            >
-              {JUSTIF_TYPE_LABELS[suggestion]}
-            </button>
-          </div>
-        )}
-
-        {/* Sélecteur manuel */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Marquer :</span>
-          {ALL_DEBIT_TYPES.map(t => (
-            <button
-              key={t}
-              onClick={e => { e.stopPropagation(); handleSetJustifType(tx.qonto_id, t) }}
-              className="px-2 py-0.5 text-[var(--fs-xs)] rounded border border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--brand)] hover:text-[var(--text)] transition-colors"
-            >
-              {JUSTIF_TYPE_LABELS[t]}
-            </button>
-          ))}
-        </div>
-
-        {/* Bouton de secours si aucun solde de facture ne tombe sur ce montant */}
-        {matches.length === 0 && (
-          <div className="flex items-center gap-3 flex-wrap">
-            <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-              Aucune facture dont le solde tombe sur {formatMoney(tx.amount_cts)} —
-              un règlement partiel reste possible.
-            </p>
-            <Button
-              variant="secondary"
-              size="compact"
-              onClick={e => { e.stopPropagation(); setRapprochOpen(tx.qonto_id) }}
-            >
-              Lier une facture →
-            </Button>
-          </div>
-        )}
-
-        {/* Ventilation partielle — 1 débit couvert par N charges catégorisées.
-            Complémentaire du rapprochement 1-clic (qui reste le chemin rapide). */}
-        <div onClick={e => e.stopPropagation()}>
-          {ventilationTx === tx.qonto_id ? (
-            <div className="pt-2 border-t border-[var(--border)] space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
-                  Ventilation partielle
-                </span>
-                <button
-                  onClick={() => setVentilationTx(null)}
-                  className="text-[var(--fs-xs)] text-[var(--text-muted)] underline hover:text-[var(--text)]"
-                >
-                  Replier
-                </button>
-              </div>
-              <PanneauVentilation
-                targetTable="qonto_transactions"
-                targetId={tx.id}
-                targetAmountCts={tx.amount_cts}
-                fetchCharges={() => Promise.resolve(
-                  getChargesOuvertes(charges, resteParCharge)
-                )}
-                onChanged={load}
-              />
-            </div>
-          ) : (
-            <button
-              onClick={() => setVentilationTx(tx.qonto_id)}
-              className="text-[var(--fs-xs)] text-[var(--brand)] hover:underline"
-            >
-              Ventiler ce débit sur plusieurs charges →
-            </button>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // ── Accordéon crédits ─────────────────────────────────────────────────────
-  const renderCreditAccordeonContent = (tx: QontoTx) => {
-    const status     = classifyCredit(tx.justif_type ?? null)
-    const suggestion = suggestCreditTag(tx.label, tx.operation_type, clientNames, associeNames)
-
-    if (status === 'identifie') {
-      return (
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge color="success">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>
-          <button
-            onClick={e => { e.stopPropagation(); handleClearJustifType(tx.qonto_id) }}
-            className="text-[var(--fs-xs)] text-[var(--text-muted)] underline hover:text-[var(--text)] transition-colors"
-          >
-            Retirer
-          </button>
-        </div>
-      )
-    }
-
-    return (
-      <div className="space-y-2.5">
-        {suggestion && (
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Suggéré :</span>
-            <button
-              onClick={e => { e.stopPropagation(); handleSetJustifType(tx.qonto_id, suggestion) }}
-              className="px-2.5 py-0.5 text-[var(--fs-xs)] font-semibold rounded-[var(--r-pill)] bg-[var(--brand-soft,#eff6ff)] text-[var(--brand)] border border-[var(--brand)] hover:bg-[var(--brand)] hover:text-white transition-colors"
-            >
-              {JUSTIF_TYPE_LABELS[suggestion]}
-            </button>
-          </div>
-        )}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Marquer :</span>
-          {CREDIT_TAGS.map(t => (
-            <button
-              key={t}
-              onClick={e => { e.stopPropagation(); handleSetJustifType(tx.qonto_id, t) }}
-              className="px-2 py-0.5 text-[var(--fs-xs)] rounded border border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--brand)] hover:text-[var(--text)] transition-colors"
-            >
-              {JUSTIF_TYPE_LABELS[t]}
-            </button>
-          ))}
-        </div>
-      </div>
-    )
-  }
+  const visibles = useMemo(() => filtrerMouvements(txs, sens, q), [txs, sens, q])
+  const groupes = useMemo(() => grouperParMois(visibles, t => t.settled_at), [visibles])
+  const ouvert = useMemo(() => moisOuvertParDefaut(groupes.map(g => g.cle), new Date()), [groupes])
+  const moisCourant = groupes.find(g => g.cle === ouvert)
+  const totauxMois = useMemo(() => totauxMouvements(moisCourant?.rows ?? []), [moisCourant])
+  const recherche = q.trim() !== '' || sens !== 'tous'
 
   return (
     <Shell pageTitle="Trésorerie">
-      {/* KPIs */}
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 [&>*]:min-w-0">
-          {[0, 1, 2].map(i => <Skeleton key={i} className="h-20" />)}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
+          {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-5 mb-6 stagger [&>*]:min-w-0">
-          <KpiCard label="Solde actuel"   value={snapshot ? formatMoney(snapshot.balance_cts) : '—'} accent />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
+          <KpiCard label="Solde actuel" value={snapshot ? formatMoney(snapshot.balance_cts) : '—'} accent />
           <KpiCard label="Solde autorisé" value={snapshot ? formatMoney(snapshot.authorized_balance_cts) : '—'} />
-          <KpiCard label="Transactions"   value={txs.length} />
+          <KpiCard label={`Entrées${moisCourant ? ` · ${moisCourant.libelle.split(' ')[0].toLowerCase()}` : ''}`}
+            value={formatMoney(totauxMois.entreesCts)} tone="success" icon={<ArrowDownLeft size={18} />} />
+          <KpiCard label={`Sorties${moisCourant ? ` · ${moisCourant.libelle.split(' ')[0].toLowerCase()}` : ''}`}
+            value={formatMoney(totauxMois.sortiesCts)} tone="danger" icon={<ArrowUpRight size={18} />} />
         </div>
       )}
 
-      {/* Stats discrètes */}
-      {!loading && (debitsSansJustif.length > 0 || creditsNonIdentifies.length > 0) && (
-        <div className="flex flex-col gap-1 mb-3">
-          {debitsSansJustif.length > 0 && (
-            <div className="flex items-center gap-2 text-[var(--fs-xs)] text-[var(--text-muted)]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--warn)] shrink-0" />
-              <span>
-                Débits sans justificatif : <strong className="text-[var(--text)]">{debitsSansJustif.length}</strong>
-                <span className="mx-1">·</span>
-                <strong className="text-[var(--text)]">{formatMoney(totalSansJustifCts)}</strong>
-              </span>
-            </div>
-          )}
-          {creditsNonIdentifies.length > 0 && (
-            <div className="flex items-center gap-2 text-[var(--fs-xs)] text-[var(--text-muted)]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--info,#3b82f6)] shrink-0" />
-              <span>
-                Crédits non identifiés : <strong className="text-[var(--text)]">{creditsNonIdentifies.length}</strong>
-                <span className="mx-1">·</span>
-                <strong className="text-[var(--text)]">{formatMoney(totalCreditsNonIdentifiesCts)}</strong>
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Filtres */}
       {!loading && txs.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
-          <Button
-            variant={filtreARapprocher ? 'primary' : 'secondary'}
-            size="compact"
-            onClick={() => setFiltreARapprocher(v => !v)}
-          >
-            À rapprocher uniquement{txsARapprocher.length > 0 ? ` (${txsARapprocher.length})` : ''}
-          </Button>
-          {filtreARapprocher && (
-            <Button variant="ghost" size="compact" onClick={() => setFiltreARapprocher(false)}>
-              Réinitialiser
-            </Button>
-          )}
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <div className="relative flex-1 min-w-[12rem] max-w-md">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-disabled)] pointer-events-none" />
+            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Libellé, type d'opération…"
+              aria-label="Rechercher un mouvement" className="field !pl-9" />
+          </div>
+          <div role="group" aria-label="Sens" className="inline-flex rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] p-0.5">
+            {SENS.map(s => (
+              <button key={s.cle} type="button" aria-pressed={sens === s.cle} onClick={() => setSens(s.cle)}
+                className={`px-3 py-1.5 rounded-[var(--r-sm)] text-xs font-semibold ${sens === s.cle ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+                {s.libelle}
+              </button>
+            ))}
+          </div>
+          {recherche && <span className="text-xs text-[var(--text-muted)]">{visibles.length} sur {txs.length} mouvements</span>}
         </div>
       )}
 
-      {/* Contenu */}
       {loading ? (
         <SkeletonTable rows={6} />
       ) : error ? (
         <div className="flex flex-col items-center py-16 gap-3">
-          <p className="text-[var(--danger)] text-[var(--fs-sm)]">{error}</p>
-          <Button variant="secondary" onClick={load}>Réessayer</Button>
+          <p className="text-[var(--danger)] text-sm">{error}</p>
+          <Button variant="secondary" onClick={() => void load()}>Réessayer</Button>
         </div>
       ) : txs.length === 0 ? (
-        <EmptyState
-          icon={<Wallet size={48} />}
-          title="Aucune donnée"
-          description="Aucune donnée — clique sur Synchroniser Qonto."
-        />
-      ) : displayTxs.length === 0 ? (
-        <EmptyState
-          icon={<Wallet size={48} />}
-          title="Rien à rapprocher"
-          description="Tous les mouvements sont justifiés ou identifiés."
-        />
+        <EmptyState icon={<Wallet size={48} />} title="Aucune donnée" description="Aucune donnée — clique sur Synchroniser Qonto." />
+      ) : visibles.length === 0 ? (
+        <EmptyState icon={<Wallet size={48} />} title="Aucun mouvement" description="Aucun mouvement ne correspond à ces filtres." />
       ) : (
-        <>
-          {/* Desktop */}
-          <div className="hidden md:block overflow-x-auto panel rounded-[var(--r-xl)]">
-            <table className="w-full text-[var(--fs-sm)]">
-              <thead>
-                <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['Date', 'Libellé', 'Type', 'Montant', 'État'].map(h => (
-                    <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
+        <div className="flex flex-col gap-3">
+          {groupes.map(g => {
+            const t = totauxMouvements(g.rows)
+            return (
+              <GroupeMois key={`${g.cle}-${recherche}`} titre={g.libelle} ouvertDefaut={recherche || g.cle === ouvert}
+                resume={<>
+                  <span>{g.rows.length} mouvement{g.rows.length > 1 ? 's' : ''}</span>
+                  <span className="text-[var(--success)]">+{formatMoney(t.entreesCts)}</span>
+                  <span className="text-[var(--danger)]">−{formatMoney(t.sortiesCts)}</span>
+                </>}>
+                <ul className="divide-y divide-[var(--border)]">
+                  {g.rows.map(tx => (
+                    <li key={tx.qonto_id} className="flex items-center gap-3 px-4 py-2.5">
+                      <span className="w-16 shrink-0 font-mono text-xs text-[var(--text-muted)]">{formatTxDate(tx.settled_at).slice(0, 5)}</span>
+                      <span className="flex-1 min-w-0 truncate font-medium text-[var(--text)]" title={tx.label ?? ''}>{tx.label ?? '—'}</span>
+                      <span className="hidden sm:block shrink-0"><Badge color="muted">{operationTypeLabel(tx.operation_type)}</Badge></span>
+                      <span className={`shrink-0 font-mono font-semibold tabular-nums ${amountColorClass(tx.side)}`}>{formatSignedAmount(tx)}</span>
+                    </li>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
-                {displayTxs.map((tx, i) => {
-                  const isDebit   = tx.side === 'debit'
-                  const isCredit  = tx.side === 'credit'
-                  const expanded  = expandedTx === tx.qonto_id
-                  const matches   = isDebit
-                    ? getMatchingChargesForDebit(tx.amount_cts, charges, resteParCharge, tx.settled_at)
-                    : []
-                  const debitStatus  = isDebit  ? classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length) : null
-                  const creditStatus = isCredit ? classifyCredit(tx.justif_type ?? null) : null
-                  const rowBg        = i % 2 === 0 ? '' : 'bg-[var(--bg-card)]/40'
-
-                  return (
-                    <>
-                      <tr
-                        key={tx.qonto_id}
-                        onClick={() => toggleExpand(tx.qonto_id)}
-                        className={`border-t border-[var(--border)] transition-colors cursor-pointer hover:bg-[var(--bg-card-hover)]
-                          ${expanded ? 'bg-[var(--bg-elevated)]' : rowBg}`}
-                      >
-                        <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
-                          {formatTxDate(tx.settled_at)}
-                        </td>
-                        <td className="px-4 py-3 font-medium text-[var(--text)]">
-                          <div className="flex items-center gap-2">
-                            <ChevronDown
-                              size={13}
-                              className={`text-[var(--text-muted)] shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
-                            />
-                            {tx.label ?? '—'}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge color="muted">{operationTypeLabel(tx.operation_type)}</Badge>
-                        </td>
-                        <td className={`px-4 py-3 text-right font-mono font-semibold ${amountColorClass(tx.side)}`}>
-                          {formatSignedAmount(tx)}
-                        </td>
-                        <td className="px-4 py-3">
-                          {debitStatus === 'justifie_charge'   && <Badge color="success">Justifié</Badge>}
-                          {debitStatus === 'justifie_type'     && <Badge color="muted">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
-                          {debitStatus === 'a_rapprocher'      && <Badge color="info">À rapprocher</Badge>}
-                          {debitStatus === 'sans_justificatif' && <Badge color="warning">Justificatif manquant</Badge>}
-                          {creditStatus === 'identifie'        && <Badge color="success">Identifié · {JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
-                          {creditStatus === 'non_identifie'    && <Badge color="warning">Non identifié</Badge>}
-                        </td>
-                      </tr>
-
-                      {isDebit && expanded && (
-                        <tr key={`${tx.qonto_id}-acc`} className="border-t border-[var(--border)]">
-                          <td colSpan={5} className="p-0">
-                            <div className="px-6 py-4 bg-[var(--bg-elevated)]">
-                              {renderAccordeonContent(tx, matches)}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                      {isCredit && expanded && (
-                        <tr key={`${tx.qonto_id}-acc`} className="border-t border-[var(--border)]">
-                          <td colSpan={5} className="p-0">
-                            <div className="px-6 py-4 bg-[var(--bg-elevated)]">
-                              {renderCreditAccordeonContent(tx)}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile */}
-          <div className="md:hidden flex flex-col gap-3">
-            {displayTxs.map(tx => {
-              const isDebit   = tx.side === 'debit'
-              const isCredit  = tx.side === 'credit'
-              const expanded  = expandedTx === tx.qonto_id
-              const matches   = isDebit
-                ? getMatchingChargesForDebit(tx.amount_cts, charges, resteParCharge, tx.settled_at)
-                : []
-              const debitStatus  = isDebit  ? classifyDebit(tx.charge_id, tx.justif_type ?? null, matches.length) : null
-              const creditStatus = isCredit ? classifyCredit(tx.justif_type ?? null) : null
-
-              return (
-                <div
-                  key={tx.qonto_id}
-                  className="bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] overflow-hidden"
-                >
-                  <div
-                    onClick={() => toggleExpand(tx.qonto_id)}
-                    className="p-4 cursor-pointer"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <ChevronDown
-                          size={13}
-                          className={`text-[var(--text-muted)] shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
-                        />
-                        <span className="font-medium text-[var(--text)] truncate">{tx.label ?? '—'}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <Badge color="muted">{operationTypeLabel(tx.operation_type)}</Badge>
-                        {debitStatus === 'justifie_charge'   && <Badge color="success">Justifié</Badge>}
-                        {debitStatus === 'justifie_type'     && <Badge color="muted">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
-                        {debitStatus === 'a_rapprocher'      && <Badge color="info">À rapprocher</Badge>}
-                        {debitStatus === 'sans_justificatif' && <Badge color="warning">Manquant</Badge>}
-                        {creditStatus === 'identifie'        && <Badge color="success">{JUSTIF_TYPE_LABELS[tx.justif_type as JustifType]}</Badge>}
-                        {creditStatus === 'non_identifie'    && <Badge color="warning">Non identifié</Badge>}
-                      </div>
-                    </div>
-                    <div className="flex items-end justify-between gap-2">
-                      <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">{formatTxDate(tx.settled_at)}</span>
-                      <span className={`font-mono font-semibold ${amountColorClass(tx.side)}`}>
-                        {formatSignedAmount(tx)}
-                      </span>
-                    </div>
-                  </div>
-
-                  {isDebit && expanded && (
-                    <div className="px-4 pb-4 pt-3 border-t border-[var(--border)] bg-[var(--bg-elevated)]">
-                      {renderAccordeonContent(tx, matches)}
-                    </div>
-                  )}
-                  {isCredit && expanded && (
-                    <div className="px-4 pb-4 pt-3 border-t border-[var(--border)] bg-[var(--bg-elevated)]">
-                      {renderCreditAccordeonContent(tx)}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </>
+                </ul>
+              </GroupeMois>
+            )
+          })}
+        </div>
       )}
-
-      {/* Sélecteur de rapprochement */}
-      <SelecteurCharge
-        open={rapprochOpen !== null}
-        onClose={() => setRapprochOpen(null)}
-        onSelect={handleLink}
-        fetchCharges={() => Promise.resolve(chargesDisponibles)}
-        fetchAllCharges={() => Promise.resolve(allNonLinked)}
-        resteParCharge={resteParCharge}
-      />
     </Shell>
   )
 }

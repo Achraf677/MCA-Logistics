@@ -102,10 +102,8 @@ export function AppRoutes() {
       {/* Domaine Finance à sous-onglets ; anciennes routes → redirection (liens préservés) */}
       <Route path="/finance"       element={guard(features.finance,      <FinanceSection />)} />
       <Route path="/charges"    element={<VersOnglet section="/finance" tab="charges" />} />
-      <Route path="/encaissement" element={<VersOnglet section="/finance" tab="encaissement" />} />
       <Route path="/tresorerie" element={<VersOnglet section="/finance" tab="tresorerie" />} />
       <Route path="/tva"        element={<VersOnglet section="/finance" tab="tva" />} />
-      <Route path="/relances"   element={<VersOnglet section="/finance" tab="relances" />} />
       <Route path="/devis"      element={<VersOnglet section="/livraisons" tab="devis" />} />
       {/* Domaine Équipe à sous-onglets (path /equipe-hub) ; anciennes routes → redirection.
           /equipe redirige vers /equipe-hub?tab=membres : pas de boucle (section ≠ path redirigé). */}

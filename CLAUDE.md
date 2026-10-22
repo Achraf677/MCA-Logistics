@@ -217,7 +217,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
    Le détail technique va dans la PR et dans ce fichier, pas dans le message.
 
 ## 11. État actuel (22/10/2026)
-- 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis) · **Finance** (Trésorerie, Charges, Encaissement, TVA, Relances) ·
+- 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis) · **Finance** (Trésorerie, Charges ; Encaissement / Relances retirés le 22/10/2026) ·
   **Flotte** (Véhicules, Carburant, Entretiens) · **Planning** (Tournées, Planning : vues Jour / Semaine / Mois, refonte du 19/10/2026 ; l'ancien Calendrier y est fondu) · **Tiers**
   (Clients, Fournisseurs) · **Équipe** (Équipe, Heures) · **Système** (Paramètres, Admins). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
   Les specs `mca-spec/tabs/` n'en couvrent qu'une partie : vérifier le code.
@@ -405,7 +405,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
 - Refonte par onglet (22/10/2026) : plan et décisions dans `mca-spec/DECISIONS-2026-10-22.md`. Faits : zoom, Mes courses
   retiré du menu bureau, Flotte allégée, Pilotage, fond / cadre, Livraisons (Modèles + LV retirés, tuiles fusionnées,
-  Preuves sur une page, Devis harmonisé). Planning / Tournées : fait le 22/10/2026 (voir § 11). Reste : Finance, Équipe, Tiers, Système, reste de Flotte. Edge `send-client-email` (v6), `assistant-chat` (v26) et `optimize-tours` (v23) déployées le 22/10/2026.
+  Preuves sur une page, Devis harmonisé). Planning / Tournées : fait le 22/10/2026 (voir § 11). Finance lot F1 (`mca-spec/revue/06-finance.md`) : Encaissement + Relances retirés, Trésorerie lecture seule, Charges par mois en HT ; reste F2 (multi-catégories, ventilation, Justificatifs, Pennylane). Reste aussi : Équipe, Tiers, Système, reste de Flotte. Edge `send-client-email` (v6), `assistant-chat` (v26) et `optimize-tours` (v23) déployées le 22/10/2026.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)
 - Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation → PR +
