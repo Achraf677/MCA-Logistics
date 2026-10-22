@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   regrouperNoeuds, blocsMatrice, troncons, resoudre, coutParcours, passages, matricesVolOiseau,
-  completerMatrices, matriceCouts, noeudsDansOrdre, passagesDepuisEtapes, polirParFenetres, penaliserChangementsVillage, encoderPolyligne, decoderPolyligne, distanceM, type ArretAPlacer,
+  completerMatrices, ordonnerZones, rangZone, matriceCouts, noeudsDansOrdre, passagesDepuisEtapes, polirParFenetres, penaliserChangementsVillage, encoderPolyligne, decoderPolyligne, distanceM, type ArretAPlacer,
 } from './tourneeRoute.ts';
 
 const arret = (id: string, lat: number | null, lng: number | null, numero: string | null = null, rang = 1): ArretAPlacer =>
@@ -230,5 +230,20 @@ describe('noeudsDansOrdre / passagesDepuisEtapes (ordre changé à la main)', ()
       { noeud: 1, etaMin: 2, distanceM: 1000 },
       { noeud: 2, etaMin: 4, distanceM: 1500 },
     ])
+  })
+})
+
+describe('zones de Brumath dans l\'ordre du fichier', () => {
+  const cles = [null, 'Brumath ZONE 3', 'Brumath ZONE 3', 'Kriegsheim', 'Brumath ZONE 1', 'Brumath ZONE 2', 'Brumath ZONE 2']
+  it('rang de zone', () => {
+    expect(rangZone('Brumath ZONE 3')).toBe(3)
+    expect(rangZone('Kriegsheim')).toBeNull()
+    expect(rangZone(null)).toBeNull()
+  })
+  it('zones 1 → 2 → 3, le village garde sa place, chaque bloc garde son ordre', () => {
+    expect(ordonnerZones([1, 2, 3, 4, 5, 6], cles)).toEqual([4, 3, 5, 6, 1, 2])
+  })
+  it('sans zone : rien ne change', () => {
+    expect(ordonnerZones([3, 1, 2], [null, 'A', 'B', 'C'])).toEqual([3, 1, 2])
   })
 })

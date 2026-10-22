@@ -10,11 +10,11 @@ import type { DocumentRow } from './documents.types'
 import { journeeDepuisArrets } from './tourneesColisRoute'
 import {
   arretsDepuisLecture, lignesArrets, ordreHabituel, pageDepuisLecture, statutApresGeste, type PageLue,
-  type ArretColis, type ArretLu, type EnteteFeuille, type StatutArretColis, type StatutTourneeColis, type TourneeColis,
+  type ArretColis, type ArretLu, type EnteteFeuille, type StatutArretColis, type StatutTourneeColis, type TourneeColis, type TypeArretColis,
 } from './tourneesColis'
 
 const COLS_TOURNEE = '*, team_members!member_id(full_name), clients!client_id(name)'
-const COLS_ARRET = 'id, tournee_id, company_id, rang, commune, cp, rue, numero, type, quantite, colis_remis, lat, lng, geo_precision, statut, statut_le, statut_par, note, en_pause_le, ordre, eta_min, rang_habituel'
+const COLS_ARRET = 'id, tournee_id, company_id, rang, commune, cp, rue, numero, type, quantite, colis_remis, lat, lng, geo_precision, statut, statut_le, statut_par, note, en_pause_le, ordre, eta_min, rang_habituel, zone'
 
 const REFUS = "Enregistrement refusé : la tournée est peut-être clôturée, ou ton compte n'a pas ce droit."
 
@@ -271,6 +271,7 @@ export async function creerTourneeColis(p: {
     await supabase.from('tournees_colis').delete().eq('id', id)
     return { id: null, error: erreurClaire(e2) }
   }
+  await appliquerZones(id)
   return { id, error: null }
 }
 
@@ -503,4 +504,63 @@ export function horairesRelaisPoste(ids: string[], jour: string): Promise<Record
     horairesPoste.set(cle, p)
   }
   return p
+}
+
+
+// ── Ajouter / modifier une adresse en cours de tournée ──
+
+/** Villages traités = ceux du référentiel de la société (jamais une liste écrite à la main). */
+export async function communesTraitees(): Promise<string[]> {
+  const { data } = await supabase.from('referentiel_rues').select('commune').order('commune').limit(2000)
+  return [...new Set(((data ?? []) as Array<{ commune: string }>).map(r => r.commune))]
+}
+
+export async function ruesDeCommune(commune: string): Promise<string[]> {
+  const { data } = await supabase.from('referentiel_rues').select('rue').eq('commune', commune).order('rue').limit(500)
+  return ((data ?? []) as Array<{ rue: string }>).map(r => r.rue)
+}
+
+interface AdresseSaisie { commune: string; cp: string | null; rue: string; numero: string }
+
+async function positionAdresse(a: AdresseSaisie) {
+  const pos = await chercherAdresse(`${a.numero ? `${a.numero} ` : ''}${a.rue}, ${a.cp ?? ''} ${a.commune}`.replace(/\s+/g, ' ').trim())
+  return pos ? { lat: pos.lat, lng: pos.lng, geo_precision: (a.numero ? 'numero' : 'rue') as 'numero' | 'rue' } : { lat: null, lng: null, geo_precision: null }
+}
+
+/** Nouvel arrêt à la fin de la feuille (rang) ; sans place dans l'ordre : le calcul l'intègre. */
+export async function ajouterArret(p: {
+  tourneeId: string; companyId: string; adresse: AdresseSaisie; type: TypeArretColis; quantite: number; zone: string | null
+}): Promise<{ data: ArretColis | null; error: Error | null }> {
+  const { data: dernier } = await supabase.from('tournees_colis_arrets').select('rang').eq('tournee_id', p.tourneeId)
+    .order('rang', { ascending: false }).limit(1)
+  const rang = ((dernier ?? [])[0] as { rang: number } | undefined)?.rang ?? 0
+  const { data, error } = await supabase.from('tournees_colis_arrets').insert({
+    tournee_id: p.tourneeId, company_id: p.companyId, rang: rang + 1,
+    commune: p.adresse.commune, cp: p.adresse.cp, rue: p.adresse.rue.trim() || 'Rue illisible', numero: p.adresse.numero.trim() || null,
+    type: p.type, quantite: Math.max(1, Math.min(999, Math.round(p.quantite) || 1)), zone: p.zone,
+    ...(await positionAdresse(p.adresse)),
+  }).select(COLS_ARRET)
+  if (error) return { data: null, error: erreurClaire(error) }
+  const l = (data ?? [])[0] as unknown as ArretColis | undefined
+  return l ? { data: l, error: null } : { data: null, error: new Error(REFUS) }
+}
+
+/** Corrige l'adresse d'un arrêt : la position est relue ; la zone saute si la commune change. */
+export async function modifierAdresseArret(arret: ArretColis, adresse: AdresseSaisie, zone: string | null) {
+  const { data, error } = await supabase.from('tournees_colis_arrets').update({
+    commune: adresse.commune, cp: adresse.cp, rue: adresse.rue.trim() || arret.rue, numero: adresse.numero.trim() || null, zone,
+    ...(await positionAdresse(adresse)),
+  }).eq('id', arret.id).select(COLS_ARRET)
+  if (error) return { data: null, error: erreurClaire(error) }
+  const l = (data ?? [])[0] as unknown as ArretColis | undefined
+  return l ? { data: l, error: null } : { data: null, error: new Error(REFUS) }
+}
+
+/**
+ * Zones de Brumath : apprend la zone de chaque rue lue sur la feuille, puis remplit les arrêts sans zone
+ * (tournée créée avant, ligne mal lue, adresse ajoutée). Sans effet si rien n'est connu ; jamais bloquant.
+ */
+export async function appliquerZones(tourneeId: string): Promise<number> {
+  const { data, error } = await supabase.rpc('appliquer_zones_tournee', { p_tournee: tourneeId })
+  return error ? 0 : Number(data) || 0
 }

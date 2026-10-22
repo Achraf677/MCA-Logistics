@@ -107,6 +107,14 @@ export interface ArretColis {
   eta_min?: number | null
   /** Place dans l'ordre habituel du livreur (référentiel), posée à la création. */
   rang_habituel?: number | null
+  /** Zone de la feuille de Brumath (« ZONE 3 ») : traitée comme un village pour l'ordre. */
+  zone?: string | null
+}
+
+/** « 631 - ZONE 2 », « ZONE 1 (Brumath) » → « ZONE 2 », « ZONE 1 » ; autre secteur → null. */
+export function zoneDeSecteur(secteur: string | null | undefined): string | null {
+  const m = /zone\s*(\d+)/i.exec(secteur ?? '')
+  return m ? `ZONE ${Number(m[1])}` : null
 }
 
 /** Arrêt lu sur la feuille (Edge `lire-feuille-route`), corrigé dans l'aperçu avant création. */
@@ -374,6 +382,7 @@ export function lignesArrets(arrets: ArretLu[], tourneeId: string, companyId: st
     type: a.type, quantite: a.quantite, note: a.note?.trim() || null,
     lat: a.lat, lng: a.lng, geo_precision: a.geo_precision,
     rang_habituel: habituel ? habituel[i] : null, ordre: habituel ? habituel[i] : null,
+    zone: zoneDeSecteur(a.secteur),
   }))
 }
 

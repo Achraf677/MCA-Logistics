@@ -14,19 +14,22 @@ import { toLocalISO } from '../../shared/lib/dates'
 import { LIBELLE_STATUT_ARRET, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
 import {
   arretsAPlacer, bandeauOrdre, deplacer, doitEnvoyerPosition, grouperEnSuite, libelleDistance, modeOrdre,
-  arretsDansOrdre, nonTraites, ordreInverse, ordreManuel, arretsEnPause, inclureEnPause, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
+  arretsDansOrdre, nonTraites, ordreInverse, ordreManuel, arretsEnPause, inclureEnPause, infosGroupes, libelleGroupe, cleGroupe, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
 } from '../../shared/lib/tourneesColisRoute'
 import {
   listerTourneesColis, arretsDesTournees, supprimerTourneeColis, nomsClients, calculerItineraire,
   majArret, ecrireOrdre, trouverScan, placerArret, chercherAdresse, photosArrets, cloturerTournee, envoyerPosition,
-  effacerPosition,
+  effacerPosition, appliquerZones,
 } from '../../shared/lib/tourneesColis.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import type { EtatFiche, MaFiche } from './mescourses.types'
 import { decalerJour, borneAujourdhui } from './espace.logic'
 import { libelleDateCourte } from './mescourses.logic'
 import { compteursTournee, libelleAdresse, libelleCompteurs } from './tourneeColis.logic'
-import { ArretTournee, ArretEnPauseCompact, BarreProchain } from './ArretTournee'
+import { ArretTournee, ArretEnPauseCompact, BarreProchain, FicheArret } from './ArretTournee'
+import { RechercheAdresse } from './RechercheAdresse'
+import { FeuilleAdresse } from '../../shared/ui/FeuilleAdresse'
+import { ContexteAdresse } from './AdresseContexte'
 import { FeuilleCloture } from './FeuilleCloture'
 import { PhotosSynthese } from './PhotosSynthese'
 import { Carte, MessageErreur, GardeFiche, champCls, boutonPrimaireCls, boutonSecondaireCls } from './EspaceCommun'
@@ -307,6 +310,8 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
 
   const calculer = async (m: 'tout' | 'restants' | 'suivre') => {
     setCalcul(m)
+    // Les zones de Brumath connues du référentiel sont remplies avant le calcul (un bloc par zone).
+    if (m !== 'suivre') await appliquerZones(tournee.id)
     const depart = m === 'restants' ? (moi ?? await positionUneFois()) : null
     if (m === 'restants' && !depart) {
       setCalcul(null)
@@ -328,6 +333,17 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     toast(sansCalcul(mode) ? 'Arrêt placé' : "Arrêt placé : recalcule l'itinéraire pour l'intégrer", 'success')
   }
 
+  // ── Recherche d'adresse : fiche d'un arrêt trouvé, ajout / correction d'une adresse ──
+  const [ficheRecherche, setFicheRecherche] = useState<string | null>(null)
+  const [adresseAModifier, setAdresseAModifier] = useState<ArretColis | null>(null)
+  /** Une adresse ajoutée ou corrigée change l'itinéraire : on le recalcule (l'ordre manuel est gardé, seul le trajet suit). */
+  const apresAdresse = (ajout: boolean) => {
+    toast(ajout ? 'Adresse ajoutée à la tournée' : 'Adresse corrigée', 'success')
+    if (sansCalcul(mode)) { onRecharger(); return }
+    if (mode === 'manuel') { if (ajout) onRecharger(); else calculer('suivre'); return }
+    calculer(c.arretsTraites + c.collectesTraitees > 0 ? 'restants' : 'tout')
+  }
+
   // ── Ordre manuel : glisser-déposer par la poignée ──
   const [glisse, setGlisse] = useState<{ id: string; ordre: string[]; depart: string[] } | null>(null)
   const ordreAffiche = useMemo(() => {
@@ -338,6 +354,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     return { aFaire: glisse.ordre.map(id => par.get(id)!).filter(Boolean), traites: s.traites }
   }, [arrets, mode, prochain?.id, glisse])
   const groupes = useMemo(() => grouperEnSuite(ordreAffiche.aFaire), [ordreAffiche.aFaire])
+  const infos = useMemo(() => infosGroupes(arrets, mode), [arrets, mode])
   const enPause = useMemo(() => arretsEnPause(arrets, mode), [arrets, mode])
 
   /** Ordre choisi à la main (glisser, village déplacé, tournée inversée) : on l'enregistre, puis le trajet suit. */
@@ -416,9 +433,13 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     + ' Ensuite, plus rien n’est modifiable (le bureau peut rouvrir).'
 
   return (
-    <>
+    <ContexteAdresse.Provider value={verrouillee ? null : setAdresseAModifier}>
       {/* Bandeau du haut, collé pendant le défilement : avancement, puis tous les gestes avec leur nom. */}
       <div className="sticky top-0 z-10 flex flex-col gap-2 py-2 bg-[var(--bg)] border-b border-[var(--border)]">
+        <RechercheAdresse tournee={tournee} arrets={arrets} verrouillee={verrouillee}
+          onOuvrir={a => setFicheRecherche(a.id)}
+          onAjoute={() => apresAdresse(true)}
+          onModifier={setAdresseAModifier} />
         <p className="flex items-baseline gap-x-3 flex-wrap text-xl font-bold tabular-nums text-[var(--text)]">
           <span>{lib.arrets} <span className="text-sm font-medium text-[var(--text-muted)]">arrêts</span></span>
           {tournee.trajet && !sansCalcul(mode) && <span>{libelleDistance(tournee.trajet.km_total * 1000)}</span>}
@@ -430,7 +451,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
           ))}
           {!verrouillee && (
             <>
-              <BtnHaut icone={RefreshCw} libelle="Réinitialiser" titre="Réinitialiser : recalculer le meilleur ordre" tourne={calcul === 'tout'}
+              <BtnHaut icone={RefreshCw} libelle="Recalculer" titre="Recalculer le meilleur ordre (village par village, zone par zone)" tourne={calcul === 'tout'}
                 disabled={calcul != null} onClick={() => (mode === 'manuel' ? setConfirmerReset(true) : calculer('tout'))} />
               <BtnHaut icone={ArrowDownUp} libelle="Par la fin" titre="Commencer par la fin : inverser la tournée"
                 disabled={calcul != null || groupesComplets.length < 2} onClick={inverser} />
@@ -443,7 +464,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         </div>
         {!verrouillee && horsOrdre > 0 && (
           <p className="text-sm text-[var(--warning)]">
-            {horsOrdre} arrêt{horsOrdre > 1 ? 's' : ''} hors itinéraire : touche « Réinitialiser ».
+            {horsOrdre} arrêt{horsOrdre > 1 ? 's' : ''} hors itinéraire : touche « Recalculer ».
           </p>
         )}
         {!verrouillee && bandeau.avertissement && (
@@ -495,21 +516,22 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         <>
           {groupes.map(g => (
             <section key={g.cle} className="flex flex-col gap-2">
-              <h3 className="flex items-center gap-2 px-1 text-sm font-semibold text-[var(--text)]">
-                <span className="flex-1 min-w-0 truncate">{g.commune}{g.cp ? ` ${g.cp}` : ''}</span>
+              <h3 className="flex items-center gap-2 px-2 py-1 rounded-[var(--r-md)] text-sm font-semibold text-[var(--text)] border-l-[6px]"
+                style={{ borderLeftColor: infos.get(cleGroupe(g))?.couleur, background: `color-mix(in srgb, ${infos.get(cleGroupe(g))?.couleur ?? 'transparent'} 14%, transparent)` }}>
+                <span className="flex-1 min-w-0 truncate">{libelleGroupe(g.commune, g.zone)}{g.cp ? ` ${g.cp}` : ''}</span>
                 <span className="text-xs font-normal tabular-nums text-[var(--text-muted)]">{g.arrets.length} à faire</span>
                 {!verrouillee && !glisse && groupesComplets.length > 1 && (() => {
                   const i = groupesComplets.findIndex(x => x.arrets.some(a => a.id === g.arrets[0].id))
                   return (
                     <span className="flex gap-1">
-                      <BoutonIcone icone={ChevronsUp} libelle={`Passer ${g.commune} en premier`} disabled={calcul != null || i <= 0} onClick={() => deplacerVillage(g.arrets[0].id, 'premier')} />
-                      <BoutonIcone icone={ArrowUp} libelle={`Monter ${g.commune}`} disabled={calcul != null || i <= 0} onClick={() => deplacerVillage(g.arrets[0].id, 'haut')} />
-                      <BoutonIcone icone={ArrowDown} libelle={`Descendre ${g.commune}`} disabled={calcul != null || i < 0 || i >= groupesComplets.length - 1} onClick={() => deplacerVillage(g.arrets[0].id, 'bas')} />
+                      <BoutonIcone icone={ChevronsUp} libelle={`Passer ${libelleGroupe(g.commune, g.zone)} en premier`} disabled={calcul != null || i <= 0} onClick={() => deplacerVillage(g.arrets[0].id, 'premier')} />
+                      <BoutonIcone icone={ArrowUp} libelle={`Monter ${libelleGroupe(g.commune, g.zone)}`} disabled={calcul != null || i <= 0} onClick={() => deplacerVillage(g.arrets[0].id, 'haut')} />
+                      <BoutonIcone icone={ArrowDown} libelle={`Descendre ${libelleGroupe(g.commune, g.zone)}`} disabled={calcul != null || i < 0 || i >= groupesComplets.length - 1} onClick={() => deplacerVillage(g.arrets[0].id, 'bas')} />
                     </span>
                   )
                 })()}
               </h3>
-              <ul className="flex flex-col gap-2">
+              <ul className="flex flex-col gap-2 pl-2 border-l-[3px]" style={{ borderLeftColor: infos.get(cleGroupe(g))?.couleur }}>
                 {g.arrets.map(a => (
                   <ArretTournee key={a.id} arret={a} tournee={tournee} verrouillee={verrouillee} onGeste={onGeste}
                     photos={photos.get(a.id)} onPhoto={surPhoto} poignee={poignee(a.id)} glisse={glisse?.id === a.id} />
@@ -566,14 +588,22 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         </>
       )}
 
-      <ConfirmDialog open={confirmerReset} title="Réinitialiser la tournée ?"
-        message="Ton ordre est remplacé par le meilleur ordre calculé, village par village."
-        confirmLabel="Réinitialiser" onConfirm={() => { setConfirmerReset(false); calculer('tout') }} onCancel={() => setConfirmerReset(false)} />
+      <ConfirmDialog open={confirmerReset} title="Recalculer la tournée ?"
+        message="Ton ordre est remplacé par le meilleur ordre calculé, village par village (zone par zone à Brumath)."
+        confirmLabel="Recalculer" onConfirm={() => { setConfirmerReset(false); calculer('tout') }} onCancel={() => setConfirmerReset(false)} />
       {cloture && (
         <FeuilleCloture tourneeId={tournee.id} companyId={societe} resume={messageCloture} enCours={clotureEnCours}
           onTerminer={terminer} onFermer={() => setCloture(false)} />
       )}
-    </>
+      {ficheRecherche && (() => {
+        const a = arrets.find(x => x.id === ficheRecherche)
+        return a ? <FicheArret arret={a} tournee={tournee} onGeste={onGeste} photos={photos.get(a.id)} onPhoto={surPhoto} onFermer={() => setFicheRecherche(null)} /> : null
+      })()}
+      {adresseAModifier && (
+        <FeuilleAdresse tournee={tournee} arrets={arrets} arret={adresseAModifier} onFermer={() => setAdresseAModifier(null)}
+          onFait={a => { setAdresseAModifier(null); onArrets([a]); apresAdresse(false) }} />
+      )}
+    </ContexteAdresse.Provider>
   )
 }
 

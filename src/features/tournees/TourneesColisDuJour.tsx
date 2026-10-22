@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ScanText, Trash2, ClipboardList, Map as IconeCarte, Route, RotateCcw, Radio } from 'lucide-react'
+import { ScanText, Trash2, ClipboardList, ListChecks, Map as IconeCarte, Route, RotateCcw, Radio } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
@@ -7,6 +7,8 @@ import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Drawer } from '../../shared/ui/Drawer'
 import { Field } from '../../shared/ui/Field'
 import { ScanFeuilleRoute } from '../../shared/ui/ScanFeuilleRoute'
+import { FeuilleAdresse } from '../../shared/ui/FeuilleAdresse'
+import { ListeTourneeColis } from './ListeTourneeColis'
 import { useToast } from '../../shared/ui/useToast'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { usePermissions } from '../../shared/permissions/usePermissions'
@@ -56,6 +58,11 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
   const [aRouvrir, setARouvrir] = useState<TourneeColis | null>(null)
   const [aCalculer, setACalculer] = useState<TourneeColis | null>(null)
   const [maintenant, setMaintenant] = useState(() => Date.now())
+  // Liste des arrêts d'une tournée (vérifier / corriger les adresses d'après la feuille de route).
+  const [listeDe, setListeDe] = useState<string | null>(null)
+  const [adresseEdit, setAdresseEdit] = useState<ArretColis | null>(null)
+  const [adresseAjout, setAdresseAjout] = useState(false)
+  const [aRecalculerListe, setARecalculerListe] = useState(false)
 
   const demande = useRef(0)
   const recharger = useCallback(async () => {
@@ -139,6 +146,12 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
     setCalcul(null)
     if (error || !data) { toast(error?.message ?? 'Calcul impossible', 'error'); return }
     toast(data.message ?? `Itinéraire calculé : ${libelleDistance(data.km_total * 1000)}`, 'success')
+    recharger()
+  }
+
+  const apresAdresse = (ajout: boolean) => {
+    setAdresseEdit(null); setAdresseAjout(false); setARecalculerListe(true)
+    toast(ajout ? 'Adresse ajoutée : recalcule l’itinéraire' : 'Adresse corrigée : recalcule l’itinéraire', 'success')
     recharger()
   }
 
@@ -270,6 +283,8 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
                     )}
                   </span>
                 </div>
+                <BoutonIcone icone={ListChecks} taille="sm" libelle="Voir la liste et corriger les adresses"
+                  onClick={() => { setARecalculerListe(false); setListeDe(t.id) }} />
                 {peutScanner && t.statut !== 'cloturee' && (
                   <BoutonIcone icone={Route} taille="sm" libelle={calcul === t.id ? 'Calcul…' : "Calculer l'itinéraire"}
                     disabled={calcul != null} onClick={() => demanderCalcul(t)} />
@@ -304,6 +319,29 @@ export function TourneesColisDuJour({ companyId, date }: { companyId: string; da
           )}
         </div>
       </Drawer>
+
+      <Drawer open={listeDe != null} onClose={() => setListeDe(null)} width="max-w-[44rem]"
+        title={`Arrêts de ${tournees.find(t => t.id === listeDe)?.team_members?.full_name ?? 'la tournée'}`}>
+        {(() => {
+          const t = tournees.find(x => x.id === listeDe)
+          if (!t) return null
+          return (
+            <ListeTourneeColis tournee={t} arrets={arrets.filter(a => a.tournee_id === t.id)} peutModifier={peutScanner}
+              aRecalculer={aRecalculerListe} calcul={calcul === t.id}
+              onModifier={setAdresseEdit} onAjouter={() => setAdresseAjout(true)}
+              onRecalculer={async () => { await calculer(t); setARecalculerListe(false) }} />
+          )
+        })()}
+      </Drawer>
+      {(adresseEdit || adresseAjout) && (() => {
+        const t = tournees.find(x => x.id === (adresseEdit?.tournee_id ?? listeDe))
+        if (!t) return null
+        return (
+          <FeuilleAdresse tournee={t} arrets={arrets.filter(a => a.tournee_id === t.id)} arret={adresseEdit}
+            onFermer={() => { setAdresseEdit(null); setAdresseAjout(false) }}
+            onFait={(_a, ajout) => apresAdresse(ajout)} />
+        )
+      })()}
 
       <ConfirmDialog open={aSupprimer != null} title="Supprimer cette tournée de colis ?"
         message={`Feuille de ${aSupprimer?.team_members?.full_name ?? 'ce salarié'} : les arrêts et leurs statuts seront effacés.`}

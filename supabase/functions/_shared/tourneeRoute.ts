@@ -169,6 +169,34 @@ export function penaliserChangementsVillage(c: number[][], communes: (string | n
   return c.map((l, i) => l.map((v, j) => (cle[i] && cle[j] && cle[i] !== cle[j] ? v + penalite : v)))
 }
 
+const cleNorm = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+/** Numéro de zone d'une clé « Brumath ZONE 3 » (feuille de Brumath) ; null pour un village ordinaire. */
+export function rangZone(cle: string | null | undefined): number | null {
+  const m = /\bzone (\d+)$/.exec(cleNorm(cle ?? ''))
+  return m ? Number(m[1]) : null
+}
+
+/**
+ * Les zones de Brumath se font dans l'ordre du fichier d'origine : zone 1, 2, … jusqu'à la zone 7 (fin).
+ * `ordre` = indices de nœuds dans l'ordre trouvé ; `cles[i]` = village / zone du nœud i. Les blocs de zone
+ * gardent leur place dans la tournée mais se rangent par numéro ; chaque bloc garde son ordre interne.
+ */
+export function ordonnerZones(ordre: number[], cles: (string | null)[]): number[] {
+  const blocs: Array<{ cle: string | null; noeuds: number[] }> = []
+  for (const n of ordre) {
+    const cle = cles[n] ? cleNorm(cles[n]!) : null
+    const d = blocs[blocs.length - 1]
+    if (d && d.cle === cle) d.noeuds.push(n)
+    else blocs.push({ cle, noeuds: [n] })
+  }
+  const places = blocs.map((b, i) => (rangZone(b.cle) != null ? i : -1)).filter(i => i >= 0)
+  const tries = places.map(i => blocs[i]).sort((a, b) => rangZone(a.cle)! - rangZone(b.cle)!)
+  const out = [...blocs]
+  places.forEach((i, k) => { out[i] = tries[k] })
+  return out.flatMap(b => b.noeuds)
+}
+
 // ── 3. Solveur ──────────────────────────────────────────────────────────────
 
 /** Coût d'un parcours : départ → nœuds → arrivée (arrivée null = parcours ouvert). */
