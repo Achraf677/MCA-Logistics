@@ -58,7 +58,7 @@ export function MesDepenses() {
   useEffect(() => { recharger() }, [recharger])
 
   const aRembourser = totalARembourser(liste.map(t => ({
-    moyen_paiement: t.moyen_paiement ?? null, montant_ttc_cts: t.montant_ttc_cts ?? null, statut: t.statut,
+    moyen_paiement: t.moyen_paiement ?? null, montant_ttc_cts: t.montant_ttc_cts ?? null, statut: t.statut, rembourse_le: t.rembourse_le,
   })))
 
   const retirer = async () => {
@@ -159,6 +159,11 @@ function LigneDepense({ t, onOuvrir, onModifier, onRetirer }: {
         </span>
         {t.moyen_paiement && (
           <span className="text-xs text-[var(--text-muted)]">{LIBELLE_MOYEN[t.moyen_paiement as MoyenPaiement] ?? t.moyen_paiement}</span>
+        )}
+        {t.moyen_paiement === 'personnel' && statut === 'traite' && (
+          <span className={`text-xs font-semibold ${t.rembourse_le ? 'text-[var(--success)]' : 'text-[var(--warning)]'}`}>
+            {t.rembourse_le ? `Remboursée le ${libelleDateCourte(t.rembourse_le)}` : 'À te rembourser'}
+          </span>
         )}
         {statut === 'ignore' && t.motif_refus && (
           <span className="text-xs text-[var(--danger)]">Refusée : {t.motif_refus}</span>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { montantSaisiEnCts, manquesDepense, totalARembourser, libelleCategorie } from './depenses'
+import { montantSaisiEnCts, manquesDepense, totalARembourser, libelleCategorie, manquesValidation } from './depenses'
 
 describe('dépenses', () => {
   it('montant saisi', () => {
@@ -28,5 +28,16 @@ describe('dépenses', () => {
   it('libellé de catégorie', () => {
     expect(libelleCategorie('peage')).toBe('Péage')
     expect(libelleCategorie(null)).toBe('Non précisée')
+  })
+  it('une note de frais déjà remboursée n’est plus due', () => {
+    expect(totalARembourser([
+      { moyen_paiement: 'personnel', montant_ttc_cts: 1250, statut: 'traite', rembourse_le: '2026-10-20' },
+      { moyen_paiement: 'personnel', montant_ttc_cts: 800, statut: 'traite', rembourse_le: null },
+    ])).toBe(800)
+  })
+  it('validation refusée sans montant', () => {
+    expect(manquesValidation({ montant_ttc_cts: null })).toEqual(['Montant'])
+    expect(manquesValidation({ montant_ttc_cts: 0 })).toEqual(['Montant'])
+    expect(manquesValidation({ montant_ttc_cts: 1250 })).toEqual([])
   })
 })

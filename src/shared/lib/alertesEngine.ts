@@ -258,7 +258,7 @@ function detectTicketsInbox(count: number): AlerteMetier | null {
     domaine: 'charges',
     label: `${count} ticket${count > 1 ? 's' : ''} chauffeur à traiter`,
     count, severite: 'orange',
-    lien: '/finance?tab=charges',
+    lien: '/finance?tab=justificatifs',
   }
 }
 

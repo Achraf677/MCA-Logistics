@@ -405,7 +405,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
 - Refonte par onglet (22/10/2026) : plan et décisions dans `mca-spec/DECISIONS-2026-10-22.md`. Faits : zoom, Mes courses
   retiré du menu bureau, Flotte allégée, Pilotage, fond / cadre, Livraisons (Modèles + LV retirés, tuiles fusionnées,
-  Preuves sur une page, Devis harmonisé). Planning / Tournées : fait le 22/10/2026 (voir § 11). Finance lot F1 (`mca-spec/revue/06-finance.md`) : Encaissement + Relances retirés, Trésorerie lecture seule, Charges par mois en HT ; reste F2 (multi-catégories, ventilation, Justificatifs, Pennylane). Reste aussi : Équipe, Tiers, Système, reste de Flotte. Edge `send-client-email` (v6), `assistant-chat` (v26) et `optimize-tours` (v23) déployées le 22/10/2026.
+  Preuves sur une page, Devis harmonisé). Planning / Tournées : fait le 22/10/2026 (voir § 11). Finance lot F1 (`mca-spec/revue/06-finance.md`) : Encaissement + Relances retirés, Trésorerie lecture seule, Charges par mois en HT ; F2a fait (onglet Justificatifs, moyen de paiement obligatoire, `receipts_inbox.rembourse_le`, charge « passée en OD ») ; reste F2b (HT / TVA par ligne de ventilation, IA) et le transfert Pennylane. Reste aussi : Équipe, Tiers, Système, reste de Flotte. Edge `send-client-email` (v6), `assistant-chat` (v26) et `optimize-tours` (v23) déployées le 22/10/2026.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)
 - Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation → PR +

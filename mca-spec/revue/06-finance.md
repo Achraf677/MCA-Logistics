@@ -13,9 +13,15 @@
 
 - Charge « Passée en OD » (`charges.passee_en_od`, migration `20261022120000` appliquée) : un avoir saisi directement chez le comptable n'a pas de facture Pennylane → case dans la fiche charge, badge « OD » dans la liste, plus d'alerte « n'existe que dans le site » (`estChargeHorsPennylane`). Avoir E.LECLERC (retour mastic) marqué.
 
-## 3. Reste (F2 → F4, décisions du 22/10/2026)
-- Charges : plusieurs catégories par charge (HT par ligne, TVA par ligne), ventilation automatique par IA (le président valide), moyen de paiement obligatoire, TVA repas 100 % déductible.
-- Onglet Justificatifs (même droit que Charges ; « Validé » distinct, « Remboursé » vu du salarié, validation sans montant refusée).
+## 2b. Fait (F2a, 22/10/2026) — onglet Justificatifs
+- Onglet **Justificatifs** (même droit que Charges) : À traiter · Validés · À rembourser · Refusés, recherche, mois par mois (hors « À traiter »). Remplace le panneau de tickets qui était dans Charges.
+- Gestes : Voir · Créer la charge (formulaire prérempli : date, libellé, moyen de paiement) · Valider (**refusé sans montant**) · Corriger (montant, date, catégorie, payé avec : anciens tickets sans montant, un par un) · Refuser (motif lu par le salarié).
+- Notes de frais : « À rembourser » puis « Marquer remboursé » (`receipts_inbox.rembourse_le`, migration `20261022130000` appliquée) ; le salarié voit « Remboursée le … » dans Mes courses › Dépenses ; le total « à te rembourser » ne compte plus les remboursées. Statut « traité » renommé **Validé / Validée**.
+- Charges : **moyen de paiement obligatoire** (plus de valeur par défaut « Qonto »).
+- Cloche : « tickets à traiter » ouvre Justificatifs.
+
+## 3. Reste (F2b → F4, décisions du 22/10/2026)
+- Charges : plusieurs catégories par charge avec HT et TVA par ligne (aujourd'hui la ventilation existe en TTC, après enregistrement : `charge_allocations`), ventilation automatique par IA (le président valide), TVA repas 100 % déductible.
 - Transfert vers Pennylane (cartes ET notes de frais) : à étudier en détail à la fin.
 
 ## 4. Fichiers

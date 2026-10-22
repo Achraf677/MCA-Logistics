@@ -25,6 +25,8 @@ export interface TicketInbox {
   moyen_paiement?: string | null
   date_depense?: string | null
   motif_refus?: string | null
+  /** Note de frais remboursée le (migration 20261022130000). */
+  rembourse_le?: string | null
 }
 
 /** Détails d'une dépense déclarée avec son justificatif. */
@@ -115,6 +117,32 @@ export async function listerTicketsATraiter() {
     .eq('statut', 'a_traiter')
     .order('created_at', { ascending: false })
     .returns<TicketInbox[]>()
+}
+
+/** Tous les justificatifs, quel que soit leur statut (onglet Justificatifs), plus récents d'abord. */
+export async function listerTickets(limite = 500) {
+  return supabase
+    .from('receipts_inbox')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limite)
+    .returns<TicketInbox[]>()
+}
+
+/** Le bureau corrige une dépense (ancien ticket sans montant, mauvaise date…). */
+export async function corrigerTicket(id: string, maj: Partial<DetailsDepense> & { note?: string | null }) {
+  const { data, error } = await supabase.from('receipts_inbox').update(maj).eq('id', id).select('id')
+  if (error) return { error: new Error(error.message) }
+  if (!data || data.length === 0) return { error: new Error('Correction refusée : droit insuffisant.') }
+  return { error: null }
+}
+
+/** Note de frais remboursée (`date`) ou remise à « à rembourser » (`null`). */
+export async function marquerRembourse(id: string, date: string | null) {
+  const { data, error } = await supabase.from('receipts_inbox').update({ rembourse_le: date }).eq('id', id).select('id')
+  if (error) return { error: new Error(error.message) }
+  if (!data || data.length === 0) return { error: new Error('Enregistrement refusé : droit insuffisant.') }
+  return { error: null }
 }
 
 /** Compteur pour la pastille de notification. `head: true` = aucune ligne transférée. */
