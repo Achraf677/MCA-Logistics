@@ -45,3 +45,15 @@ export function filtrerJustificatifs<T extends JustifLigne & { uploaded_by?: str
     return `${t.note ?? ''} ${libelleCategorie(t.categorie)} ${nom}`.toLowerCase().includes(mot)
   })
 }
+
+export type TonEtat = 'warning' | 'success' | 'info' | 'danger'
+
+/** Un seul état affiché par justificatif (colonne « Statut » et en-tête du tiroir). */
+export function etatJustificatif(t: JustifLigne): { libelle: string; ton: TonEtat } {
+  if (t.statut === 'ignore') return { libelle: 'Refusé', ton: 'danger' }
+  if (t.statut === 'a_traiter') return { libelle: 'À traiter', ton: 'warning' }
+  if (t.moyen_paiement === 'personnel') {
+    return t.rembourse_le ? { libelle: 'Remboursé', ton: 'info' } : { libelle: 'À rembourser', ton: 'warning' }
+  }
+  return { libelle: 'Validé', ton: 'success' }
+}

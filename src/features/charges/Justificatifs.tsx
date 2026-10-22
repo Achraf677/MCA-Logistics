@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, CreditCard, ExternalLink, FilePlus2, Inbox, Pencil, Search, User, Wallet, X } from 'lucide-react'
+import { Check, ChevronRight, CreditCard, ExternalLink, FilePlus2, Inbox, Search, Wallet, X } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { useProfile } from '../../app/providers'
 import { Badge } from '../../shared/ui/Badge'
-import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { Button } from '../../shared/ui/Button'
+import { Drawer } from '../../shared/ui/Drawer'
 import { EmptyState } from '../../shared/ui/EmptyState'
-import { Field } from '../../shared/ui/Field'
+import { Bloc, Champ } from '../../shared/ui/FicheSaisie'
 import { GroupeMois } from '../../shared/ui/GroupeMois'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
@@ -16,7 +16,6 @@ import {
   CATEGORIES_DEPENSE, libelleCategorie, manquesValidation, montantSaisiEnCts, totalARembourser,
   type CategorieDepense,
 } from '../../shared/lib/depenses'
-import { dateCourte } from '../../shared/lib/dates'
 import { getCategories } from '../../shared/lib/categories.queries'
 import { indexerFichierExistant } from '../../shared/lib/documents.queries'
 import { grouperParMois } from '../../shared/lib/mois'
@@ -26,8 +25,9 @@ import {
 import type { ChargeCategoryRow } from '../../shared/types/categories'
 import { DrawerCharge } from './DrawerCharge'
 import { nomsDeclarants } from './charges.queries'
+import { jourFr } from './charges.logic'
 import {
-  compteursJustificatifs, filtrerJustificatifs, jourJustif, type FiltreJustif,
+  compteursJustificatifs, etatJustificatif, filtrerJustificatifs, jourJustif, type FiltreJustif,
 } from './justificatifs.logic'
 
 const FILTRES: Array<{ cle: FiltreJustif; libelle: string }> = [
@@ -42,11 +42,13 @@ const aujourdhuiLocal = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+const jourCourt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
+
 /**
  * Onglet Justificatifs (Finance) : tickets et dépenses envoyés par les salariés et associés.
- * À traiter → Valider (montant obligatoire), Créer la charge, Corriger (anciens tickets sans montant, un par un)
- * ou Refuser (motif lu par le déclarant). Notes de frais : « À rembourser » puis « Remboursé le … »,
- * que le salarié voit dans son espace. Même droit que Charges (`finance.charges`).
+ * La liste se LIT (tableau, un état par ligne) ; on AGIT dans le tiroir d'un justificatif : voir la photo,
+ * corriger (anciens tickets sans montant, un par un), valider (montant obligatoire), créer la charge, refuser
+ * (motif lu par le déclarant), marquer remboursé (le salarié le voit). Même droit que Charges (`finance.charges`).
  */
 export function Justificatifs() {
   const { toast } = useToast()
@@ -61,10 +63,8 @@ export function Justificatifs() {
   const [erreur, setErreur] = useState<string | null>(null)
   const [filtre, setFiltre] = useState<FiltreJustif>('a_traiter')
   const [q, setQ] = useState('')
-  const [busyId, setBusyId] = useState<string | null>(null)
-  const [refusId, setRefusId] = useState<string | null>(null)
-  const [motif, setMotif] = useState('')
-  const [correctionId, setCorrectionId] = useState<string | null>(null)
+  const [ouvertId, setOuvertId] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const [source, setSource] = useState<TicketInbox | null>(null)
 
   const charger = useCallback(async () => {
@@ -87,73 +87,93 @@ export function Justificatifs() {
   }))), [tickets])
   const visibles = useMemo(() => filtrerJustificatifs(tickets, filtre, q, noms), [tickets, filtre, q, noms])
   const parMois = useMemo(() => grouperParMois(visibles, t => jourJustif(t)), [visibles])
+  const nomDe = (t: TicketInbox) => (t.uploaded_by ? (noms[t.uploaded_by] ?? 'Déclarant inconnu') : 'Déclarant inconnu')
+  const ouvert = tickets.find(t => t.id === ouvertId) ?? null
 
-  const ouvrir = async (t: TicketInbox) => {
+  const ouvrirFichier = async (t: TicketInbox) => {
     const url = await urlTicket(t)
     if (!url) { toast('Fichier introuvable', 'error'); return }
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
-  const valider = async (t: TicketInbox) => {
+  const agir = async (action: () => Promise<{ error: { message: string } | null }>, succes: string, fermer = false) => {
+    setBusy(true)
+    const { error } = await action()
+    setBusy(false)
+    if (error) { toast(error.message, 'error'); return false }
+    toast(succes)
+    if (fermer) setOuvertId(null)
+    await charger()
+    return true
+  }
+
+  const valider = (t: TicketInbox) => {
     const manques = manquesValidation(t)
-    if (manques.length) {
-      toast(`Validation impossible : ${manques.join(', ').toLowerCase()} manquant. Corrige d'abord le justificatif.`, 'error')
-      setCorrectionId(t.id)
-      return
-    }
-    setBusyId(t.id)
-    const { error } = await classerTicket(t.id, 'traite')
-    setBusyId(null)
-    if (error) { toast(error.message, 'error'); return }
-    toast('Justificatif validé')
-    await charger()
+    if (manques.length) { toast(`Validation impossible : ${manques.join(', ').toLowerCase()} manquant. Renseigne-le puis enregistre.`, 'error'); return }
+    return agir(() => classerTicket(t.id, 'traite'), 'Justificatif validé', true)
   }
 
-  const refuser = async (t: TicketInbox) => {
-    if (motif.trim().length < 5) { toast('Motif du refus : 5 caractères minimum', 'error'); return }
-    setBusyId(t.id)
-    const { error } = await refuserDepense(t.id, motif.trim())
-    setBusyId(null)
-    if (error) { toast(`Refus non enregistré : ${error.message}`, 'error'); return }
-    toast('Dépense refusée : le déclarant voit le motif')
-    setRefusId(null); setMotif('')
-    await charger()
-  }
+  const tableau = (liste: TicketInbox[]) => (
+    <>
+      <table className="hidden md:table w-full text-sm">
+        <thead>
+          <tr className="text-left text-xs text-[var(--text-muted)] border-b border-[var(--border)]">
+            <th className="px-4 py-2 font-medium w-16">Date</th>
+            <th className="px-2 py-2 font-medium">Déclarant</th>
+            <th className="px-2 py-2 font-medium">Détail</th>
+            <th className="px-2 py-2 font-medium">Paiement</th>
+            <th className="px-2 py-2 font-medium text-right">Montant TTC</th>
+            <th className="px-2 py-2 font-medium w-36">Statut</th>
+            <th className="w-8" />
+          </tr>
+        </thead>
+        <tbody>
+          {liste.map(t => {
+            const etat = etatJustificatif(t)
+            return (
+              <tr key={t.id} onClick={() => setOuvertId(t.id)} tabIndex={0}
+                onKeyDown={e => { if (e.key === 'Enter') setOuvertId(t.id) }}
+                className="border-b border-[var(--border)] last:border-0 cursor-pointer hover:bg-[var(--bg-card-hover)] transition-colors">
+                <td className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]">{jourCourt(jourJustif(t))}</td>
+                <td className="px-2 py-3 text-[var(--text)] whitespace-nowrap">{nomDe(t)}</td>
+                <td className="px-2 py-3 max-w-[22rem]">
+                  <span className="block truncate text-[var(--text)]">{t.note || t.file_name}</span>
+                  {t.categorie && <span className="block text-xs text-[var(--text-muted)]">{libelleCategorie(t.categorie)}</span>}
+                </td>
+                <td className="px-2 py-3 whitespace-nowrap"><Paiement moyen={t.moyen_paiement} /></td>
+                <td className="px-2 py-3 text-right font-mono font-semibold tabular-nums whitespace-nowrap">
+                  {t.montant_ttc_cts != null ? formatMoney(t.montant_ttc_cts) : <span className="font-sans font-medium text-[var(--danger)]">Manquant</span>}
+                </td>
+                <td className="px-2 py-3"><Badge color={etat.ton}>{etat.libelle}</Badge></td>
+                <td className="pr-3 text-[var(--text-disabled)]"><ChevronRight size={16} /></td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
 
-  const rembourser = async (t: TicketInbox, date: string | null) => {
-    setBusyId(t.id)
-    const { error } = await marquerRembourse(t.id, date)
-    setBusyId(null)
-    if (error) { toast(error.message, 'error'); return }
-    toast(date ? 'Note de frais marquée remboursée : le salarié le voit' : 'Remboursement annulé')
-    await charger()
-  }
-
-  const corriger = async (t: TicketInbox, maj: { montant_ttc_cts: number | null; date_depense: string | null; categorie: string | null; moyen_paiement: string | null }) => {
-    setBusyId(t.id)
-    const { error } = await corrigerTicket(t.id, maj)
-    setBusyId(null)
-    if (error) { toast(error.message, 'error'); return }
-    toast('Justificatif corrigé')
-    setCorrectionId(null)
-    await charger()
-  }
-
-  const lignes = (liste: TicketInbox[]) => (
-    <ul className="divide-y divide-[var(--border)]">
-      {liste.map(t => (
-        <Ligne key={t.id} t={t} nom={t.uploaded_by ? (noms[t.uploaded_by] ?? 'Déclarant inconnu') : 'Déclarant inconnu'}
-          peutEcrire={peutEcrire} busy={busyId === t.id}
-          correction={correctionId === t.id} refus={refusId === t.id} motif={motif}
-          onMotif={setMotif} onVoir={() => void ouvrir(t)}
-          onCreerCharge={() => setSource(t)} onValider={() => void valider(t)}
-          onCorriger={() => setCorrectionId(correctionId === t.id ? null : t.id)}
-          onEnregistrerCorrection={maj => void corriger(t, maj)}
-          onRefuserOuvrir={() => { setRefusId(refusId === t.id ? null : t.id); setMotif('') }}
-          onRefuser={() => void refuser(t)} onAnnulerRefus={() => setRefusId(null)}
-          onRembourser={() => void rembourser(t, aujourdhuiLocal())} onAnnulerRemboursement={() => void rembourser(t, null)} />
-      ))}
-    </ul>
+      <ul className="md:hidden divide-y divide-[var(--border)]">
+        {liste.map(t => {
+          const etat = etatJustificatif(t)
+          return (
+            <li key={t.id}>
+              <button type="button" onClick={() => setOuvertId(t.id)} className="w-full text-left px-4 py-3 flex flex-col gap-1.5 hover:bg-[var(--bg-card-hover)]">
+                <span className="flex items-start gap-3">
+                  <span className="flex-1 min-w-0 truncate text-[var(--text)]">{t.note || t.file_name}</span>
+                  <span className="font-mono font-semibold tabular-nums text-[var(--text)] shrink-0">
+                    {t.montant_ttc_cts != null ? formatMoney(t.montant_ttc_cts) : <span className="font-sans text-[var(--danger)]">Manquant</span>}
+                  </span>
+                </span>
+                <span className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                  <span className="truncate">{nomDe(t)} · {jourCourt(jourJustif(t))}</span>
+                  <span className="ml-auto shrink-0"><Badge color={etat.ton}>{etat.libelle}</Badge></span>
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </>
   )
 
   return (
@@ -190,7 +210,7 @@ export function Justificatifs() {
               <EmptyState icon={<Inbox size={40} />} title="Rien ici"
                 description={tickets.length === 0 ? 'Aucun justificatif reçu pour le moment.' : 'Aucun justificatif dans ce filtre.'} />
             ) : filtre === 'a_traiter' ? (
-              <div className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)]">{lignes(visibles)}</div>
+              <div className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">{tableau(visibles)}</div>
             ) : (
               <div className="flex flex-col gap-3">
                 {parMois.map((g, i) => (
@@ -199,7 +219,7 @@ export function Justificatifs() {
                       <span>{g.rows.length} justificatif{g.rows.length > 1 ? 's' : ''}</span>
                       <span className="font-mono font-semibold text-[var(--text)]">{formatMoney(g.rows.reduce((s, t) => s + (t.montant_ttc_cts ?? 0), 0))}</span>
                     </>}>
-                    {lignes(g.rows)}
+                    {tableau(g.rows)}
                   </GroupeMois>
                 ))}
               </div>
@@ -207,6 +227,18 @@ export function Justificatifs() {
           </>
         )}
       </div>
+
+      <Drawer open={ouvert != null} onClose={() => setOuvertId(null)} width="max-w-[40rem]" title="Justificatif">
+        {ouvert && (
+          <FicheJustificatif key={ouvert.id} t={ouvert} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy}
+            onFichier={() => void ouvrirFichier(ouvert)}
+            onEnregistrer={maj => void agir(() => corrigerTicket(ouvert.id, maj), 'Justificatif corrigé')}
+            onValider={() => void valider(ouvert)}
+            onCreerCharge={() => setSource(ouvert)}
+            onRefuser={motif => void agir(() => refuserDepense(ouvert.id, motif), 'Dépense refusée : le déclarant voit le motif', true)}
+            onRembourser={date => void agir(() => marquerRembourse(ouvert.id, date), date ? 'Remboursée : le salarié le voit' : 'Remboursement annulé')} />
+        )}
+      </Drawer>
 
       <DrawerCharge
         open={source != null}
@@ -231,6 +263,7 @@ export function Justificatifs() {
           })
           await classerTicket(source.id, 'traite', chargeId)
           setSource(null)
+          setOuvertId(null)
           await charger()
         }}
       />
@@ -238,151 +271,136 @@ export function Justificatifs() {
   )
 }
 
-function Ligne({
-  t, nom, peutEcrire, busy, correction, refus, motif, onMotif, onVoir, onCreerCharge, onValider, onCorriger,
-  onEnregistrerCorrection, onRefuserOuvrir, onRefuser, onAnnulerRefus, onRembourser, onAnnulerRemboursement,
-}: {
+/** Moyen de paiement, sobre : pictogramme + libellé (pas de grosse pastille). */
+function Paiement({ moyen }: { moyen: string | null | undefined }) {
+  if (moyen === 'personnel') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><Wallet size={13} className="text-[var(--text-muted)]" /> Note de frais</span>
+  if (moyen === 'carte_societe') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> Carte société</span>
+  return <span className="text-[var(--text-disabled)]">Non précisé</span>
+}
+
+/** Tiroir d'un justificatif : photo, détails modifiables, suivi, et la barre d'actions en bas. */
+function FicheJustificatif({ t, nom, peutEcrire, busy, onFichier, onEnregistrer, onValider, onCreerCharge, onRefuser, onRembourser }: {
   t: TicketInbox
   nom: string
   peutEcrire: boolean
   busy: boolean
-  correction: boolean
-  refus: boolean
-  motif: string
-  onMotif: (v: string) => void
-  onVoir: () => void
-  onCreerCharge: () => void
-  onValider: () => void
-  onCorriger: () => void
-  onEnregistrerCorrection: (maj: { montant_ttc_cts: number | null; date_depense: string | null; categorie: string | null; moyen_paiement: string | null }) => void
-  onRefuserOuvrir: () => void
-  onRefuser: () => void
-  onAnnulerRefus: () => void
-  onRembourser: () => void
-  onAnnulerRemboursement: () => void
-}) {
-  const noteDeFrais = t.moyen_paiement === 'personnel'
-  const carte = t.moyen_paiement === 'carte_societe'
-  const jour = jourJustif(t)
-  const annee = new Date().getFullYear()
-  return (
-    <li className="px-4 py-3 flex flex-col gap-2">
-      <div className="flex items-center gap-3 flex-wrap">
-        {noteDeFrais ? (
-          <Badge color="warning"><span className="inline-flex items-center gap-1"><Wallet size={12} /> Note de frais</span></Badge>
-        ) : carte ? (
-          <Badge color="info"><span className="inline-flex items-center gap-1"><CreditCard size={12} /> Carte société</span></Badge>
-        ) : (
-          <span className="text-xs text-[var(--text-disabled)] shrink-0">Paiement non précisé</span>
-        )}
-
-        <div className="flex-1 min-w-[12rem]">
-          <p className="text-sm text-[var(--text)] truncate">
-            <span className={`font-semibold ${t.montant_ttc_cts == null ? 'text-[var(--danger)]' : ''}`}>
-              {t.montant_ttc_cts != null ? formatMoney(t.montant_ttc_cts) : 'Montant manquant'}
-            </span>
-            {t.categorie ? <> · {libelleCategorie(t.categorie)}</> : null} · {dateCourte(jour, annee)}
-            {t.note && <span className="text-[var(--text-muted)]"> · {t.note}</span>}
-          </p>
-          <p className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
-            <User size={11} /> {nom} · envoyé le {new Date(t.created_at).toLocaleString('fr-FR')}
-          </p>
-          {t.statut === 'ignore' && t.motif_refus && <p className="text-xs text-[var(--danger)]">Refusé : {t.motif_refus}</p>}
-        </div>
-
-        {/* Colonne « état » : toujours la même largeur, les pastilles s'empilent à droite */}
-        <div className="flex items-center justify-end gap-1.5 sm:w-64 sm:flex-nowrap flex-wrap whitespace-nowrap">
-          {t.statut === 'traite' && <Badge color="success">Validé</Badge>}
-          {t.statut === 'traite' && noteDeFrais && (
-            t.rembourse_le
-              ? <Badge color="info">Remboursé le {dateCourte(t.rembourse_le, annee)}</Badge>
-              : <Badge color="warning">À rembourser</Badge>
-          )}
-          {t.statut === 'ignore' && <Badge color="danger">Refusé</Badge>}
-        </div>
-
-        {/* Colonne « geste principal » : un seul bouton à la fois */}
-        <div className="flex items-center justify-end gap-2 sm:w-72">
-          {peutEcrire && t.statut === 'a_traiter' && (
-            <>
-              <Button variant="primary" size="compact" className="whitespace-nowrap" onClick={onCreerCharge} disabled={busy}><FilePlus2 size={13} /> Créer la charge</Button>
-              <Button variant="secondary" size="compact" className="whitespace-nowrap" onClick={onValider} disabled={busy}><Check size={13} /> Valider</Button>
-            </>
-          )}
-          {peutEcrire && t.statut === 'traite' && noteDeFrais && (
-            t.rembourse_le
-              ? <Button variant="ghost" size="compact" className="whitespace-nowrap" onClick={onAnnulerRemboursement} disabled={busy}>Annuler</Button>
-              : <Button variant="secondary" size="compact" className="whitespace-nowrap" onClick={onRembourser} disabled={busy}><Check size={13} /> Marquer remboursé</Button>
-          )}
-        </div>
-
-        {/* Colonne « outils » : pictogrammes */}
-        <div className="flex items-center justify-end gap-1 sm:w-24">
-          <BoutonIcone icone={ExternalLink} taille="sm" libelle="Voir le justificatif" onClick={onVoir} />
-          {peutEcrire && <BoutonIcone icone={Pencil} taille="sm" libelle="Corriger" actif={correction} disabled={busy} onClick={onCorriger} />}
-          {peutEcrire && t.statut === 'a_traiter' && (
-            <BoutonIcone icone={X} taille="sm" libelle="Refuser" actif={refus} disabled={busy} onClick={onRefuserOuvrir} />
-          )}
-        </div>
-      </div>
-
-      {correction && peutEcrire && <FormCorrection t={t} busy={busy} onEnregistrer={onEnregistrerCorrection} onAnnuler={onCorriger} />}
-
-      {refus && (
-        <div className="flex flex-wrap items-center gap-2 rounded-[var(--r-md)] border border-[var(--danger)]/40 bg-[var(--danger)]/5 p-2">
-          <input className="field flex-1 min-w-[14rem]" autoFocus value={motif}
-            placeholder="Motif lu par le déclarant (ex. ticket illisible, dépense personnelle)"
-            onChange={e => onMotif(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') onRefuser() }} />
-          <Button variant="primary" size="compact" disabled={busy || motif.trim().length < 5} onClick={onRefuser}>Refuser la dépense</Button>
-          <Button variant="secondary" size="compact" onClick={onAnnulerRefus}>Annuler</Button>
-        </div>
-      )}
-    </li>
-  )
-}
-
-/** Correction d'un justificatif par le bureau : montant, date, catégorie, moyen de paiement. */
-function FormCorrection({ t, busy, onEnregistrer, onAnnuler }: {
-  t: TicketInbox
-  busy: boolean
+  onFichier: () => void
   onEnregistrer: (maj: { montant_ttc_cts: number | null; date_depense: string | null; categorie: string | null; moyen_paiement: string | null }) => void
-  onAnnuler: () => void
+  onValider: () => void
+  onCreerCharge: () => void
+  onRefuser: (motif: string) => void
+  onRembourser: (date: string | null) => void
 }) {
   const [montant, setMontant] = useState(t.montant_ttc_cts != null ? (t.montant_ttc_cts / 100).toFixed(2).replace('.', ',') : '')
   const [date, setDate] = useState(t.date_depense ?? t.created_at.slice(0, 10))
   const [categorie, setCategorie] = useState<CategorieDepense | ''>((t.categorie as CategorieDepense | null) ?? '')
   const [moyen, setMoyen] = useState(t.moyen_paiement ?? '')
+  const [refus, setRefus] = useState(false)
+  const [motif, setMotif] = useState('')
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let annule = false
+    if (t.mime_type?.startsWith('image/')) urlTicket(t).then(u => { if (!annule) setUrl(u) })
+    return () => { annule = true }
+  }, [t])
+
   const cts = montantSaisiEnCts(montant)
   const invalide = Number.isNaN(cts)
+  const modifie = !invalide && (
+    cts !== (t.montant_ttc_cts ?? null) || date !== (t.date_depense ?? t.created_at.slice(0, 10))
+    || (categorie || null) !== (t.categorie ?? null) || (moyen || null) !== (t.moyen_paiement ?? null))
+  const etat = etatJustificatif(t)
+  const noteDeFrais = t.moyen_paiement === 'personnel'
+
   return (
-    <div className="grid gap-3 sm:grid-cols-4 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
-      <Field label="Montant TTC (€)">
-        <input className="field" inputMode="decimal" value={montant} onChange={e => setMontant(e.target.value)} placeholder="12,50" aria-invalid={invalide} />
-      </Field>
-      <Field label="Date">
-        <input className="field" type="date" value={date} onChange={e => setDate(e.target.value)} />
-      </Field>
-      <Field label="Catégorie">
-        <select className="field" value={categorie} onChange={e => setCategorie(e.target.value as CategorieDepense | '')}>
-          <option value="">Non précisée</option>
-          {CATEGORIES_DEPENSE.map(c => <option key={c.valeur} value={c.valeur}>{c.libelle}</option>)}
-        </select>
-      </Field>
-      <Field label="Payé avec">
-        <select className="field" value={moyen} onChange={e => setMoyen(e.target.value)}>
-          <option value="">Non précisé</option>
-          <option value="carte_societe">Carte de la société</option>
-          <option value="personnel">De sa poche (note de frais)</option>
-        </select>
-      </Field>
-      <div className="sm:col-span-4 flex gap-2">
-        <Button variant="primary" size="compact" disabled={busy || invalide}
-          onClick={() => onEnregistrer({ montant_ttc_cts: invalide ? null : cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null })}>
-          Enregistrer
-        </Button>
-        <Button variant="secondary" size="compact" onClick={onAnnuler}>Annuler</Button>
-        {invalide && <span className="text-xs text-[var(--danger)] self-center">Montant invalide (ex. 12,50)</span>}
+    <div className="flex flex-col gap-4 min-h-full">
+      <div className="flex items-center gap-2">
+        <Badge color={etat.ton}>{etat.libelle}</Badge>
+        <span className="text-sm text-[var(--text-muted)] truncate">{t.note || t.file_name}</span>
+        <button type="button" onClick={onFichier} className="ml-auto inline-flex items-center gap-1 text-xs text-[var(--brand)] hover:underline shrink-0">
+          <ExternalLink size={13} /> Ouvrir en grand
+        </button>
       </div>
+
+      {t.mime_type?.startsWith('image/') && (
+        <div className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-deep)] flex items-center justify-center h-72 overflow-hidden">
+          {url ? <img src={url} alt="Justificatif" className="max-h-full max-w-full object-contain" /> : <Skeleton className="w-full h-full" />}
+        </div>
+      )}
+
+      <Bloc titre="Détails">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Champ label="Montant TTC (€)" error={invalide ? 'Montant invalide (ex. 12,50)' : undefined}>
+            <input className="field" inputMode="decimal" value={montant} onChange={e => setMontant(e.target.value)} placeholder="12,50" disabled={!peutEcrire} aria-invalid={invalide} />
+          </Champ>
+          <Champ label="Date de la dépense">
+            <input className="field" type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!peutEcrire} />
+          </Champ>
+          <Champ label="Catégorie">
+            <select className="field" value={categorie} onChange={e => setCategorie(e.target.value as CategorieDepense | '')} disabled={!peutEcrire}>
+              <option value="">Non précisée</option>
+              {CATEGORIES_DEPENSE.map(c => <option key={c.valeur} value={c.valeur}>{c.libelle}</option>)}
+            </select>
+          </Champ>
+          <Champ label="Payé avec">
+            <select className="field" value={moyen} onChange={e => setMoyen(e.target.value)} disabled={!peutEcrire}>
+              <option value="">Non précisé</option>
+              <option value="carte_societe">Carte de la société</option>
+              <option value="personnel">De sa poche (note de frais)</option>
+            </select>
+          </Champ>
+        </div>
+        {peutEcrire && modifie && (
+          <div className="flex gap-2">
+            <Button variant="primary" size="compact" disabled={busy}
+              onClick={() => onEnregistrer({ montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null })}>
+              Enregistrer les modifications
+            </Button>
+          </div>
+        )}
+      </Bloc>
+
+      <Bloc titre="Suivi">
+        <dl className="grid grid-cols-[8rem_1fr] gap-y-2 text-sm">
+          <dt className="text-[var(--text-muted)]">Déclarant</dt><dd className="text-[var(--text)]">{nom}</dd>
+          <dt className="text-[var(--text-muted)]">Envoyé le</dt><dd className="text-[var(--text)]">{new Date(t.created_at).toLocaleString('fr-FR')}</dd>
+          {t.note && <><dt className="text-[var(--text-muted)]">Note</dt><dd className="text-[var(--text)]">{t.note}</dd></>}
+          {t.statut === 'ignore' && t.motif_refus && <><dt className="text-[var(--text-muted)]">Motif du refus</dt><dd className="text-[var(--danger)]">{t.motif_refus}</dd></>}
+          {t.rembourse_le && <><dt className="text-[var(--text-muted)]">Remboursé le</dt><dd className="text-[var(--text)]">{jourFr(t.rembourse_le)}</dd></>}
+        </dl>
+      </Bloc>
+
+      {peutEcrire && (
+        <div className="sticky bottom-0 -mx-5 -mb-5 mt-auto border-t border-[var(--border)] bg-[var(--bg-elevated)] px-5 py-3 flex flex-col gap-3">
+          {refus && (
+            <div className="flex flex-wrap items-center gap-2">
+              <input className="field flex-1 min-w-[14rem]" autoFocus value={motif} placeholder="Motif lu par le déclarant (ex. ticket illisible)"
+                onChange={e => setMotif(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && motif.trim().length >= 5) onRefuser(motif.trim()) }} />
+              <Button variant="primary" size="compact" disabled={busy || motif.trim().length < 5} onClick={() => onRefuser(motif.trim())}>Confirmer le refus</Button>
+              <Button variant="secondary" size="compact" onClick={() => setRefus(false)}>Annuler</Button>
+            </div>
+          )}
+          {!refus && (
+            <div className="flex flex-wrap items-center gap-2">
+              {t.statut === 'a_traiter' && (
+                <>
+                  <Button variant="primary" onClick={onCreerCharge} disabled={busy}><FilePlus2 size={15} /> Créer la charge</Button>
+                  <Button variant="secondary" onClick={onValider} disabled={busy || modifie}><Check size={15} /> Valider</Button>
+                  <Button variant="ghost" className="ml-auto text-[var(--danger)]" onClick={() => setRefus(true)} disabled={busy}><X size={15} /> Refuser</Button>
+                </>
+              )}
+              {t.statut === 'traite' && noteDeFrais && (
+                t.rembourse_le
+                  ? <Button variant="secondary" onClick={() => onRembourser(null)} disabled={busy}>Annuler le remboursement</Button>
+                  : <Button variant="primary" onClick={() => onRembourser(aujourdhuiLocal())} disabled={busy}><Check size={15} /> Marquer remboursé</Button>
+              )}
+              {t.statut === 'traite' && !noteDeFrais && <span className="text-sm text-[var(--text-muted)]">Justificatif validé.</span>}
+              {t.statut === 'ignore' && <span className="text-sm text-[var(--text-muted)]">Dépense refusée.</span>}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

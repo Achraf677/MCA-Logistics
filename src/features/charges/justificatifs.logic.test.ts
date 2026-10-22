@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compteursJustificatifs, filtrerJustificatifs, jourJustif, type JustifLigne } from './justificatifs.logic'
+import { compteursJustificatifs, etatJustificatif, filtrerJustificatifs, jourJustif, type JustifLigne } from './justificatifs.logic'
 
 const t = (o: Partial<JustifLigne> & { id?: string; uploaded_by?: string }): JustifLigne & { id?: string; uploaded_by?: string } =>
   ({ statut: 'a_traiter', created_at: '2026-10-20T08:00:00Z', ...o })
@@ -28,5 +28,12 @@ describe('justificatifs', () => {
   it('jour : date de dépense sinon jour d’envoi', () => {
     expect(jourJustif({ date_depense: '2026-10-18', created_at: '2026-10-20T08:00:00Z' })).toBe('2026-10-18')
     expect(jourJustif({ created_at: '2026-10-20T08:00:00Z' })).toBe('2026-10-20')
+  })
+  it('un seul état affiché', () => {
+    expect(etatJustificatif({ statut: 'a_traiter', created_at: 'x' }).libelle).toBe('À traiter')
+    expect(etatJustificatif({ statut: 'traite', moyen_paiement: 'personnel', created_at: 'x' }).libelle).toBe('À rembourser')
+    expect(etatJustificatif({ statut: 'traite', moyen_paiement: 'personnel', rembourse_le: '2026-10-21', created_at: 'x' }).libelle).toBe('Remboursé')
+    expect(etatJustificatif({ statut: 'traite', moyen_paiement: 'carte_societe', created_at: 'x' }).libelle).toBe('Validé')
+    expect(etatJustificatif({ statut: 'ignore', created_at: 'x' }).ton).toBe('danger')
   })
 })
