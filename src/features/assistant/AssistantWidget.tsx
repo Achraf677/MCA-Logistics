@@ -6,7 +6,7 @@ import type { PendingAction, ExtractedDelivery } from './AssistantContext'
 import { runAssistantTurn } from './assistant.queries'
 import {
   prepareCreateLivraison, prepareChangerStatutLivraison,
-  prepareCreateCharge, prepareCreateClient, prepareModifierClient, prepareCreatePlein, prepareCreateIncident,
+  prepareCreateCharge, prepareCreateClient, prepareModifierClient, prepareCreatePlein,
   prepareCreateFournisseur, prepareCreateVehicule, runGenererMail, runExtractDeliveries,
   runExtractDeliveriesFromText,
   prepareImportLivraisons, prepareModifierLivraison,
@@ -53,7 +53,6 @@ const ACTION_PREPARERS: Record<string, (args: unknown) => Promise<PrepareResult>
   modifier_client:          (a) => prepareModifierClient(a as never),
   modifier_livraison:       (a) => prepareModifierLivraison(a as never),
   create_plein:             (a) => prepareCreatePlein(a as never),
-  create_incident:          (a) => prepareCreateIncident(a as never),
   create_fournisseur:       (a) => prepareCreateFournisseur(a as never),
   create_vehicule:          (a) => prepareCreateVehicule(a as never),
 }

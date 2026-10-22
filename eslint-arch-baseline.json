@@ -3,8 +3,8 @@
   "allowed": {
     "assistant": [
       "alertes", "brouillons", "carburant", "charges", "clients", "copilote",
-      "entretiens", "equipe", "fournisseurs", "heures", "incidents",
-      "inspections", "livraisons", "tournees", "tresorerie", "tva", "vehicules"
+      "entretiens", "equipe", "fournisseurs", "heures",
+      "livraisons", "tournees", "tresorerie", "tva", "vehicules"
     ],
     "calendrier": ["livraisons"],
     "carburant": ["charges"],

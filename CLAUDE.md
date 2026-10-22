@@ -32,6 +32,9 @@
 - **Règle de réponse (demandée le 18/10/2026, pour TOUTES les conversations)** : simple, que des
   tirets, zéro phrase d'introduction ou de conclusion, mots de tous les jours (pas de jargon
   technique sans l'expliquer). L'utilisateur ne lit pas les longs messages.
+- **Réponses (rappel du 22/10/2026, toute la conversation)** : que des tirets, aucun blabla, aller vite.
+  Rapports d'agents présentés par tiret, simples mais détaillés ; l'utilisateur valide les plans par onglet
+  AVANT le code ; ensuite preview → « quoi tester » en tirets → validation → merge → onglet suivant.
 
 ## 2. Métier (à garder en tête sur CHAQUE écran)
 - **Express** : course unitaire retrait → livraison, souvent dans la journée, parfois urgente

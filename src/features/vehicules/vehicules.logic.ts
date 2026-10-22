@@ -79,3 +79,18 @@ export function isMaintenanceSoon(nextDueDate: string | null): boolean {
   const diff = (new Date(nextDueDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
   return diff <= 30
 }
+
+/** Export CSV de la liste affichée (séparateur « ; », une ligne par véhicule). */
+export function exportVehiculesCSV(vehicles: Vehicle[], today = new Date()): string {
+  const headers = ['Véhicule', 'Immat.', 'Marque', 'Modèle', 'Année', 'Carburant', 'Crit\'Air', 'PTAC (kg)',
+    'Km', 'Statut', 'Contrôle technique', 'Assurance', 'Révision', 'Échéances']
+  const statut: Record<Vehicle['status'], string> = { active: 'Actif', maintenance: 'En maintenance', inactive: 'Inactif' }
+  const lines = vehicles.map(v => [
+    v.label, v.plate, v.brand ?? '', v.model ?? '', v.year ?? '',
+    v.fuel_type ? FUEL_LABELS[v.fuel_type] ?? v.fuel_type : '', v.critair ?? '', v.ptac_kg ?? '',
+    v.mileage_km, statut[v.status],
+    v.ct_expiry ?? '', v.insurance_expiry ?? '', v.next_revision_date ?? '',
+    { ok: 'OK', soon: 'Proche', overdue: 'Dépassée', none: '' }[worstStatus(vehicleEcheances(v, today))],
+  ])
+  return [headers, ...lines].map(r => r.join(';')).join('\n')
+}

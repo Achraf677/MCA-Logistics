@@ -14,8 +14,6 @@ import type {
   CompanyAlertRow,
   DeliveryAlertRow,
   DriverAlertRow,
-  IncidentAlertRow,
-  InspectionAlertRow,
   MaintenanceAlertRow,
   VehicleAlertRow,
 } from './alertes.types'
@@ -207,29 +205,6 @@ function detectDeliveries(rows: DeliveryAlertRow[], today: Date, t: AlertThresho
   return out
 }
 
-function detectIncidents(rows: IncidentAlertRow[], today: Date, t: AlertThresholds): Alert[] {
-  const out: Alert[] = []
-  for (const inc of rows) {
-    if (inc.status !== 'ouvert' && inc.status !== 'en_cours') continue
-    const daysLeft = daysLeftUntil(inc.date, today)
-    // Âge de l'incident en jours (date passée → daysLeft négatif).
-    const ageDays = daysLeft === null ? 0 : Math.max(0, -daysLeft)
-    const severity: AlertSeverity = ageDays > t.incidentUrgentDays ? 'urgent' : 'warning'
-    const who = inc.vehicleLabel ? ` — ${inc.vehicleLabel}` : ''
-    out.push({
-      id: `incidents:${inc.id}:ouvert`,
-      category: 'incident',
-      severity,
-      title: `Incident non clos${who}`,
-      detail: `Ouvert le ${inc.date} (depuis ${ageDays} j)`,
-      dueDate: inc.date,
-      daysLeft,
-      ref: { table: 'incidents', id: inc.id },
-    })
-  }
-  return out
-}
-
 const COMPANY_FIELDS: Array<{ key: string; field: keyof CompanyAlertRow; label: string }> = [
   { key: 'transport_license', field: 'transport_license_expiry', label: 'Licence de transport (DREAL)' },
   { key: 'rc_pro',            field: 'rc_pro_expiry',            label: 'Assurance RC pro + marchandises' },
@@ -253,27 +228,6 @@ function detectCompany(company: CompanyAlertRow | null | undefined, today: Date,
       dueDate: date,
       daysLeft,
       ref: { table: 'companies', id: company.id },
-    })
-  }
-  return out
-}
-
-function detectInspections(rows: InspectionAlertRow[], today: Date): Alert[] {
-  const out: Alert[] = []
-  for (const ins of rows) {
-    if (ins.status !== 'defauts' && ins.status !== 'refuse') continue
-    const daysLeft = daysLeftUntil(ins.date, today)
-    const who = ins.vehicleLabel ? ` — ${ins.vehicleLabel}` : ''
-    const label = ins.status === 'refuse' ? 'refusée' : 'avec défauts'
-    out.push({
-      id: `inspections:${ins.id}:${ins.status}`,
-      category: 'inspection',
-      severity: 'urgent',
-      title: `Inspection ${label}${who}`,
-      detail: `Inspection du ${ins.date} : ${label}`,
-      dueDate: ins.date,
-      daysLeft,
-      ref: { table: 'inspections', id: ins.id },
     })
   }
   return out
@@ -334,8 +288,6 @@ export function detectAlerts(
     ...detectDrivers(input.drivers ?? [], today, thresholds),
     ...detectMaintenances(input.maintenances ?? [], today, thresholds),
     ...detectDeliveries(input.deliveries ?? [], today, thresholds),
-    ...detectIncidents(input.incidents ?? [], today, thresholds),
-    ...detectInspections(input.inspections ?? [], today),
     ...detectCompany(input.company, today, thresholds),
   ]
   return sortAlerts(dedupe(all))
@@ -343,7 +295,7 @@ export function detectAlerts(
 
 const EMPTY_SEVERITE: Record<AlertSeverity, number> = { info: 0, warning: 0, urgent: 0, critique: 0 }
 const EMPTY_CATEGORIE: Record<AlertCategory, number> = {
-  vehicule: 0, chauffeur: 0, entretien: 0, livraison: 0, facture: 0, incident: 0, inspection: 0, rh: 0, conformite: 0,
+  vehicule: 0, chauffeur: 0, entretien: 0, livraison: 0, facture: 0, rh: 0, conformite: 0,
 }
 
 /** Agrège les alertes par sévérité et par catégorie. */
