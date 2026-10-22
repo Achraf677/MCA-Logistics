@@ -213,8 +213,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
         <div className="flex items-center justify-between h-[var(--topbar-h)] px-3 border-b border-[var(--border)] shrink-0">
           {!collapsed && (
             <div className="flex items-center gap-3 min-w-0">
-              <span className="inline-grid place-items-center w-10 h-10 rounded-[var(--r-lg)] shrink-0 font-display font-bold text-white text-[calc(16rem/14)]"
-                    style={{ background: 'linear-gradient(135deg, var(--gold), var(--brand) 55%, var(--brand-deep))', boxShadow: '0 0.4rem 1.25rem -0.4rem var(--brand)' }}>M</span>
+              <span className="inline-grid place-items-center w-10 h-10 rounded-[var(--r-lg)] shrink-0 bg-white shadow-[0_0.2rem_0.8rem_-0.3rem_rgba(0,0,0,.4)]"><img src="/logo-mca.png" alt="MCA Logistics" className="w-9 h-9 object-contain" /></span>
               <div className="flex flex-col min-w-0">
                 <span className="font-display font-bold text-[length:var(--fs-h3)] text-[var(--text)] leading-tight">MCA Logistics</span>
                 <span className="text-[length:var(--fs-xs)] text-[var(--text-muted)] leading-tight">Pilotage interne</span>

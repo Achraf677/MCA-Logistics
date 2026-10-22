@@ -1,14 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { Camera, Check, PenLine, ChevronLeft, X } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
-import { SignaturePad, tryGeoloc } from '../../shared/ui/SignaturePad'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
 import { uploadDocument, deleteDocument } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import type { DocumentCategory } from '../../shared/lib/documents.types'
-import { ajouterSignature } from './mescourses.queries'
-import { messageEnvoiPhoto, traduireErreurEcriture } from './mescourses.logic'
+import { messageEnvoiPhoto } from './mescourses.logic'
 import { aUnePreuve } from './etapes.logic'
 
 type Role = 'expediteur' | 'destinataire'
@@ -18,20 +16,6 @@ interface Props {
   role: Role
   /** Nom déjà connu (saisi au bureau) : sert de valeur de départ. */
   nomConnu: string | null
-  /** Signature de la partie (expéditeur ou destinataire) déjà prise. */
-  dejaSignee: boolean
-  /**
-   * Faut-il aussi faire signer le TRANSPORTEUR sur cette étape ?
-   *
-   * La lettre de voiture porte trois signatures : l'expéditeur qui remet, le
-   * transporteur qui prend en charge, le destinataire qui reçoit. Celle du
-   * transporteur se donne au moment de la PRISE EN CHARGE — au chargement
-   * donc, et à la livraison seulement quand la course n'a pas d'étape de
-   * chargement (marchandise déjà dans le camion au départ du dépôt).
-   */
-  demanderTransporteur: boolean
-  /** Signature du transporteur déjà prise sur cette course. */
-  transporteurDejaSigne: boolean
   busy: boolean
   /** Valide l'étape. `null` = l'utilisateur passe sans preuve. */
   onValider: (nom: string | null, preuve: boolean) => void
@@ -41,7 +25,7 @@ interface Props {
 /**
  * Le parcours de terrain, UNE ETAPE A LA FOIS.
  *
- * Tout etait auparavant empile sur un seul panneau : photo, nom, signature et
+ * Tout etait auparavant empile sur un seul panneau : photo, nom et
  * validation ensemble. Sur un telephone tenu d'une main, au bord de la route,
  * cela fait un mur de boutons ou l'on ne sait pas par quoi commencer ni ce qui
  * reste a faire. Chaque geste a maintenant son ecran, et un compteur dit ou
@@ -49,36 +33,33 @@ interface Props {
  *
  * Le chargement et la livraison ne partagent que cette mecanique : ce sont
  * deux moments distincts, a deux endroits, devant deux personnes. Le titre, la
- * question posee, la categorie de la photo et la cle de signature different —
+ * question posee et la categorie de la photo different —
  * et les deux ne se melangent jamais dans un meme passage.
  */
 const CONFIG: Record<Role, {
   titre: string
   question: string
   categorie: DocumentCategory
-  labelSignature: string
   actionFinale: string
 }> = {
   expediteur: {
     titre: 'Chargement',
     question: 'Qui remet la marchandise ?',
     categorie: 'Chargement',
-    labelSignature: "Signature de l'expéditeur",
     actionFinale: 'Charger',
   },
   destinataire: {
     titre: 'Livraison',
     question: 'Qui réceptionne ?',
     categorie: 'POD',
-    labelSignature: 'Signature du destinataire',
     actionFinale: 'Livrer',
   },
 }
 
-type CleEtape = 'photo' | 'nom' | 'signature' | 'transporteur' | 'recap'
+type CleEtape = 'photo' | 'nom' | 'recap'
 
 export function EtapeTerrain({
-  courseId, role, nomConnu, dejaSignee, demanderTransporteur, transporteurDejaSigne,
+  courseId, role, nomConnu,
   busy, onValider, onAnnuler,
 }: Props) {
   const { toast } = useToast()
@@ -98,8 +79,6 @@ export function EtapeTerrain({
    */
   const [photos, setPhotos] = useState<Array<{ doc: DocumentRow; apercu: string }>>([])
   const [suppressionId, setSuppressionId] = useState<string | null>(null)
-  const [signee, setSignee]         = useState(dejaSignee)
-  const [signeeTransp, setSigneeTransp] = useState(transporteurDejaSigne)
   const [index, setIndex]           = useState(0)
   const photoRef = useRef<HTMLInputElement>(null)
 
@@ -116,15 +95,7 @@ export function EtapeTerrain({
   useEffect(() => { apercusRef.current = photos.map(p => p.apercu) }, [photos])
   useEffect(() => () => { apercusRef.current.forEach(URL.revokeObjectURL) }, [])
 
-  // La liste des etapes depend de la course : inutile de faire defiler une
-  // etape « transporteur » a quelqu'un qui a deja signe cette course.
-  const etapes: CleEtape[] = [
-    'photo',
-    'nom',
-    'signature',
-    ...(demanderTransporteur && !transporteurDejaSigne ? (['transporteur'] as CleEtape[]) : []),
-    'recap',
-  ]
+  const etapes: CleEtape[] = ['photo', 'nom', 'recap']
   const etape = etapes[Math.min(index, etapes.length - 1)]
   const dernier = index >= etapes.length - 1
 
@@ -172,30 +143,13 @@ export function EtapeTerrain({
   }
 
   /**
-   * Chaque signature est enregistree IMMEDIATEMENT, pas a la fin : si le
-   * telephone se verrouille juste apres, le trace est deja en base. Meme
-   * format que la lettre de voiture du bureau — PNG, horodatage, geoloc quand
-   * le navigateur l'autorise.
-   */
-  const signer = async (cle: 'expediteur' | 'destinataire' | 'transporteur', png: string) => {
-    const geo = await tryGeoloc()
-    const { error } = await ajouterSignature(courseId, cle, {
-      png, ts: new Date().toISOString(), ...(geo ? { geo } : {}),
-    })
-    if (error) { toast(traduireErreurEcriture(error), 'error'); return }
-    if (cle === 'transporteur') setSigneeTransp(true); else setSignee(true)
-    toast('Signature enregistrée')
-    suivant()
-  }
-
-  /**
-   * Valide l'étape en disant au parent s'il existe une preuve : un nom, une
-   * photo OU la signature de la partie. Sans nom, une livraison photographiée
-   * ou signée doit quand même être horodatée (`pod_captured_at`).
+   * Valide l'étape en disant au parent s'il existe une preuve : un nom ou une
+   * photo. Sans nom, une livraison photographiée doit quand même être
+   * horodatée (`pod_captured_at`).
    */
   const valider = () => {
     const n = nom.trim() || null
-    onValider(n, aUnePreuve({ nom: n, photos: photos.length, signee }))
+    onValider(n, aUnePreuve({ nom: n, photos: photos.length }))
   }
 
   return (
@@ -275,55 +229,12 @@ export function EtapeTerrain({
         </>
       )}
 
-      {etape === 'signature' && (
-        signee ? (
-          <>
-            <span className="inline-flex items-center gap-1.5 text-sm text-[var(--success)]">
-              <Check size={16} /> {cfg.labelSignature} enregistrée
-            </span>
-            <Button variant="primary" className="min-h-12" onClick={suivant} disabled={busy}>
-              Suivant
-            </Button>
-          </>
-        ) : (
-          <>
-            <SignaturePad label={cfg.labelSignature} height={140}
-                          onCommit={png => signer(role, png)} onClear={() => setSignee(false)} />
-            <BoutonPasser onClick={suivant} disabled={busy} />
-          </>
-        )
-      )}
-
-      {etape === 'transporteur' && (
-        signeeTransp ? (
-          <>
-            <span className="inline-flex items-center gap-1.5 text-sm text-[var(--success)]">
-              <Check size={16} /> Signature du transporteur enregistrée
-            </span>
-            <Button variant="primary" className="min-h-12" onClick={suivant} disabled={busy}>
-              Suivant
-            </Button>
-          </>
-        ) : (
-          <>
-            {/* Troisieme signature de la lettre de voiture : celle du
-                transporteur qui prend la marchandise en charge. */}
-            <SignaturePad label="Signature du transporteur" height={140}
-                          onCommit={png => signer('transporteur', png)}
-                          onClear={() => setSigneeTransp(false)} />
-            <BoutonPasser onClick={suivant} disabled={busy} />
-          </>
-        )
-      )}
-
       {etape === 'recap' && (
         <>
           <ul className="flex flex-col gap-1">
             <LigneRecap fait={photos.length > 0}
               texte={photos.length > 1 ? `${photos.length} photos` : 'Photo'} />
             <LigneRecap fait={!!nom.trim()} texte={nom.trim() || 'Nom non renseigné'} />
-            <LigneRecap fait={signee} texte={cfg.labelSignature} />
-            {demanderTransporteur && <LigneRecap fait={signeeTransp} texte="Signature du transporteur" />}
           </ul>
           <Button variant="primary" className="min-h-12"
                   onClick={valider} disabled={busy || photoEnvoi}>

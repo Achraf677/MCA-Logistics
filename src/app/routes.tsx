@@ -107,7 +107,6 @@ export function AppRoutes() {
       <Route path="/tva"        element={<VersOnglet section="/finance" tab="tva" />} />
       <Route path="/relances"   element={<VersOnglet section="/finance" tab="relances" />} />
       <Route path="/devis"      element={<VersOnglet section="/livraisons" tab="devis" />} />
-      <Route path="/modeles"    element={<VersOnglet section="/livraisons" tab="modeles" />} />
       {/* Domaine Équipe à sous-onglets (path /equipe-hub) ; anciennes routes → redirection.
           /equipe redirige vers /equipe-hub?tab=membres : pas de boucle (section ≠ path redirigé). */}
       <Route path="/equipe-hub"    element={guard(features.equipeHub,    <EquipeSection />)} />

@@ -1,13 +1,13 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
-import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { Trash2, Loader2, Camera, Plus, Mail, Copy, RefreshCw, Zap, AlertTriangle, MapPin } from 'lucide-react'
+import type { Dispatch, SetStateAction } from 'react'
+import { Trash2, Loader2, Camera, Mail, Check, Route, Copy, RefreshCw, Zap, AlertTriangle } from 'lucide-react'
 import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
-import { LettreVoitureTab } from './LettreVoitureTab'
 import { ApercuFacture } from './ApercuFacture'
 import { ColisDesJournees } from './ColisDesJournees'
 import { uploadDocument, listDocuments, getDownloadUrl } from '../../shared/lib/documents.queries'
 // Regle unique « sans justificatif » — la meme que l'alerte de la cloche.
 import { isLivraisonSansJustif } from '../../shared/lib/livraisonsSansJustif'
+import { aProblemeOuvert, libelleMotif } from '../../shared/lib/problemeTerrain'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { Drawer }      from '../../shared/ui/Drawer'
 import { Button }      from '../../shared/ui/Button'
@@ -19,7 +19,7 @@ import { ContactLinks } from '../../shared/ui/ContactLinks'
 import { useToast }    from '../../shared/ui/useToast'
 import { useProfile, supabase } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
-import { formatMoney, addTva, centimesToEuros } from '../../shared/lib/money'
+import { formatMoney, addTva } from '../../shared/lib/money'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import { autoliquidationParDefaut } from '../../shared/lib/pays'
 import { lireSupplements } from '../../shared/lib/supplements'
@@ -33,37 +33,35 @@ import {
   computeAmount,
   effectiveHtCts, effectiveTtcCts,
   tauxTvaInitial, montantsAEcrire, recapMontant, estFacturationBloquee,
-  isoLocal, trajet, PRESTATION_LABELS, blocsPrestation,
-  heureSaisie, libelleCreneau, libelleDuree, manquesFiche,
+  isoLocal, trajet, blocsPrestation,
+  heureSaisie, libelleDuree, manquesFiche,
   moisDe, finDeMois, libelleMois, resumeMessagerie,
 } from './livraisons.logic'
 import type { ClientTariff, Prestation } from './livraisons.logic'
 import {
   createDelivery, updateDelivery, transitionDelivery, deleteDelivery,
   getActiveClients, getActiveVehicles, getActiveDrivers, savePod,
-  listDeliveryTemplates, createDeliveryTemplate, sendClientEmail,
+  sendClientEmail,
   getClientLookup, revenirALivree,
 } from './livraisons.queries'
-import type { DeliveryTemplateLite } from './livraisons.queries'
 import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
 
 /**
  * 3 onglets en modification : la course (tout ce qui se saisit, prix compris),
- * les preuves (photo, lettre de voiture, fichiers) et la facturation (suivi).
- * Les anciennes clés ('documents', 'pod', 'lv') restent acceptées en entrée.
+ * les preuves (photo + fichiers, sur une seule page) et la facturation (suivi).
+ * Les anciennes clés ('documents', 'pod') restent acceptées en entrée.
  */
 type Tab = 'detail' | 'preuves' | 'montant'
-type SousPreuve = 'pod' | 'lv' | 'fichiers'
-type TabDemande = Tab | 'documents' | 'pod' | 'lv'
+type TabDemande = Tab | 'documents' | 'pod'
 
 interface Props {
   open: boolean
   onClose: () => void
   delivery?: DeliveryRow | null
   onSaved: () => void
-  /** Onglet pré-sélectionné à l'ouverture (ex 'lv' depuis la liste Bons de livraison). Défaut 'detail'. */
+  /** Onglet pré-sélectionné à l'ouverture (ex 'pod' pour ouvrir les preuves). Défaut 'detail'. */
   initialTab?: TabDemande
   /** Nouvelle course : date pré-remplie (AAAA-MM-JJ, ex. jour cliqué dans le Calendrier). Défaut : aujourd'hui. */
   dateInitiale?: string
@@ -110,7 +108,7 @@ const EMPTY_FORM = {
   description:      '',
   pickup_address:   '',
   delivery_address: '',
-  // Arrêts : qui remet / qui reçoit (colonnes de la lettre de voiture).
+  // Arrêts : qui remet / qui reçoit (expéditeur / destinataire).
   expediteur_nom:   '',
   expediteur_tel:   '',
   destinataire_nom: '',
@@ -151,12 +149,12 @@ const EMPTY_FORM = {
 type Form = typeof EMPTY_FORM
 
 /**
- * Champs que l'onglet « Lettre de voiture » écrit AUSSI, de son côté. Ils ne
- * sont renvoyés à l'enregistrement de la fiche que s'ils ont été modifiés ici :
- * sinon une saisie faite dans la LV serait écrasée par la valeur chargée à
+ * Champs que le chauffeur peut AUSSI renseigner depuis Mes courses. Ils ne sont
+ * renvoyés à l'enregistrement de la fiche que s'ils ont été modifiés ici :
+ * sinon une saisie faite sur le terrain serait écrasée par la valeur chargée à
  * l'ouverture.
  */
-const CHAMPS_PARTAGES_LV = [
+const CHAMPS_PARTAGES = [
   'expediteur_nom', 'expediteur_tel', 'destinataire_nom', 'destinataire_tel',
   'marchandise_desc', 'nb_colis', 'poids_kg_reel',
 ] as const
@@ -257,9 +255,8 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
   const isEdit   = !!delivery
 
   const [tab, setTab]           = useState<Tab>('detail')
-  const [sousPreuve, setSousPreuve] = useState<SousPreuve>('pod')
   const [form, setForm]         = useState<Form>(EMPTY_FORM)
-  /** Valeurs à l'ouverture : seuls les champs partagés avec la LV modifiés ici sont réécrits. */
+  /** Valeurs à l'ouverture : seuls les champs partagés avec Mes courses modifiés ici sont réécrits. */
   const formInitial = useRef<Form>(EMPTY_FORM)
   /** Même instantané, en état : lu au rendu (« modifications non enregistrées »). */
   const [instantane, setInstantane] = useState<Form>(EMPTY_FORM)
@@ -295,15 +292,6 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
   const [vehicles, setVehicles] = useState<Lookup[]>([])
   const [drivers,  setDrivers]  = useState<Lookup[]>([])
 
-  // Modèles de course — chargés uniquement en CRÉATION (pré-remplissage).
-  const [templates, setTemplates]     = useState<DeliveryTemplateLite[]>([])
-  const [templateId, setTemplateId]   = useState('')
-
-  // « Enregistrer comme modèle » — champ inline (libellé) + état de création.
-  const [saveAsTplOpen, setSaveAsTplOpen] = useState(false)
-  const [tplLabel, setTplLabel]           = useState('')
-  const [savingTpl, setSavingTpl]         = useState(false)
-
   // ── Référentiels ─────────────────────────────────────────────────────────────
 
   // Client de la course courante : s'il est INACTIF, il n'est pas dans la
@@ -332,78 +320,6 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
     )
     return () => { annule = true }
   }, [open, clientCourantId])
-
-  // ── Modèles de course (création uniquement) ────────────────────────────────────
-
-  useEffect(() => {
-    if (!open || delivery) { setTemplates([]); return }
-    setTemplateId('')
-    listDeliveryTemplates().then(({ data }) => setTemplates(data ?? []))
-  }, [open, delivery])
-
-  // Pré-remplit le formulaire depuis un modèle, sans toucher à la date ni au statut.
-  // PIÈGE TVA : le modèle stocke un TAUX (tva_rate, en %) ; le form attend un MONTANT
-  // de TVA en euros (tva_override). On convertit, puis setTvaTouched(true) pour figer.
-  const applyTemplate = (id: string) => {
-    setTemplateId(id)
-    if (!id) return
-    const t = templates.find(x => x.id === id)
-    if (!t) return
-    const tvaCts = t.amount_ht_cts != null && t.tva_rate != null
-      ? Math.round(t.amount_ht_cts * t.tva_rate / 100)
-      : null
-    setForm(p => ({
-      ...p,
-      client_id:        t.client_id ?? '',
-      vehicle_id:       t.vehicle_id ?? '',
-      driver_id:        t.driver_id ?? '',
-      description:      t.description ?? '',
-      pickup_address:   t.pickup_address ?? '',
-      delivery_address: t.delivery_address ?? '',
-      km:               t.km != null ? String(t.km) : '',
-      empty_km:         t.empty_km != null ? String(t.empty_km) : '',
-      pallets:          t.weight_kg != null ? String(t.weight_kg) : '',
-      manual_ht:        t.amount_ht_cts != null ? String(centimesToEuros(t.amount_ht_cts)) : '',
-      tva_override:     tvaCts != null ? String(centimesToEuros(tvaCts)) : '',
-    }))
-    setTvaTouched(true)
-  }
-
-  // Crée un modèle (delivery_templates) depuis les champs ACTUELS du form.
-  // PIÈGE TVA (inverse) : le form porte tva_override = MONTANT TVA (€) et manual_ht = HT (€) ;
-  // le modèle veut tva_rate = TAUX en %. On déduit le taux brut puis on le SNAPPE au taux légal.
-  const handleSaveAsTemplate = async () => {
-    const label = tplLabel.trim()
-    if (!label) { toast('Le libellé du modèle est requis', 'error'); return }
-    if (!companyId) { toast('Profil non chargé', 'error'); return }
-
-    const rawRate = (form.tva_override && parseFloat(form.manual_ht) > 0)
-      ? parseFloat(form.tva_override) / parseFloat(form.manual_ht) * 100 : 20
-    const tva_rate = Math.round(rawRate * 100) / 100
-
-    setSavingTpl(true)
-    const { error } = await createDeliveryTemplate({
-      company_id:       companyId,
-      label,
-      client_id:        form.client_id || null,
-      description:      form.description || null,
-      pickup_address:   form.pickup_address || null,
-      delivery_address: form.delivery_address || null,
-      amount_ht_cts:    form.manual_ht ? Math.round(parseFloat(form.manual_ht) * 100) : null,
-      tva_rate,
-      type:             deliveryProp?.type ?? null,
-      weight_kg:        form.pallets  ? Number(form.pallets)  : null,
-      km:               form.km       ? Number(form.km)       : null,
-      empty_km:         form.empty_km ? Number(form.empty_km) : null,
-      vehicle_id:       form.vehicle_id || null,
-      driver_id:        form.driver_id || null,
-    })
-    setSavingTpl(false)
-    if (error) { toast((error as Error).message ?? 'Erreur', 'error'); return }
-    toast(`Modèle « ${label} » enregistré`)
-    setSaveAsTplOpen(false)
-    setTplLabel('')
-  }
 
   // ── Initialisation formulaire ─────────────────────────────────────────────────
 
@@ -436,16 +352,8 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
     // Même lot de rendu que setForm : le recalcul auto de la TVA sait ainsi
     // si le formulaire affiché est déjà celui de CETTE course.
     setFormPour(deliveryProp?.id ?? 'nouvelle')
-    setSaveAsTplOpen(false)
-    setTplLabel('')
     const demande: TabDemande = initialTab
-    if (demande === 'lv' || demande === 'pod' || demande === 'documents') {
-      setTab('preuves')
-      setSousPreuve(demande === 'documents' ? 'fichiers' : demande)
-    } else {
-      setTab(demande)
-      setSousPreuve('pod')
-    }
+    setTab(demande === 'pod' || demande === 'documents' ? 'preuves' : demande)
   }, [deliveryProp, open, initialTab, dateInitiale])
 
   const set = (k: keyof Form, v: string) => setForm(p => ({ ...p, [k]: v }))
@@ -731,10 +639,10 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
         }
       }
 
-      // Champs partagés avec l'onglet Lettre de voiture : seulement s'ils ont
-      // bougé ici (voir CHAMPS_PARTAGES_LV).
+      // Champs partagés avec Mes courses : seulement s'ils ont
+      // bougé ici (voir CHAMPS_PARTAGES).
       const partages: Record<string, string | number | null> = {}
-      for (const k of CHAMPS_PARTAGES_LV) {
+      for (const k of CHAMPS_PARTAGES) {
         if (form[k] === formInitial.current[k]) continue
         partages[k] = k === 'nb_colis' || k === 'poids_kg_reel'
           ? (k === 'nb_colis' ? (nombreOuNull(form[k]) != null ? Math.round(nombreOuNull(form[k])!) : null) : nombreOuNull(form[k]))
@@ -984,16 +892,17 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
           <Badge color={STATUS_COLORS[delivery!.statut] ?? 'muted'}>
             {STATUS_LABELS[delivery!.statut] ?? delivery!.statut}
           </Badge>
-          <Badge color="muted">{PRESTATION_LABELS[prestation]}</Badge>
           {delivery!.urgent && <Badge color="danger">Urgent</Badge>}
+          {!blocs.releve && ['livree', 'facturee', 'payee'].includes(delivery!.statut) && (
+            delivery!.pod_captured_at
+              ? <Badge color="success">Preuve OK</Badge>
+              : delivery!.justif_non_requis ? null : <Badge color="warning">Sans preuve</Badge>
+          )}
           <span className="text-sm text-[var(--text)]">
             {blocs.releve
               ? `${libelleMois(delivery!.date)} · ${resumeMessagerie(delivery!.nb_colis, delivery!.prix_unitaire_cts) ?? ''}`
               : trajet(delivery!.pickup_address, delivery!.delivery_address).court}
           </span>
-          {delivery!.reference_client && (
-            <span className="text-xs text-[var(--text-muted)]">Réf. {delivery!.reference_client}</span>
-          )}
           {chauffeurNom && <span className="text-xs text-[var(--text-muted)]">{chauffeurNom}</span>}
           <span className="ml-auto flex items-center gap-3">
             {htAffiche > 0 && <span className="font-mono text-sm text-[var(--text)]">{formatMoney(htAffiche)} HT</span>}
@@ -1021,124 +930,122 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       {/* ── Onglet Course : la fiche unique ─────────────────────────────────── */}
       {tab === 'detail' && (
         <div className="flex flex-col gap-4">
-          {/* Pré-remplissage depuis un modèle — création uniquement, masqué si aucun modèle. */}
-          {!isEdit && templates.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[var(--text-muted)] shrink-0">Partir d'un modèle</span>
-              <select value={templateId} onChange={e => applyTemplate(e.target.value)} className={`${inputCls} max-w-[20rem]`}>
-                <option value="">— Aucun —</option>
-                {templates.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-              </select>
+          {/* Échec signalé par le chauffeur : la course reste ouverte, le bureau décide. */}
+          {isEdit && aProblemeOuvert({ statut: delivery!.statut, probleme_le: delivery!.probleme_le ?? null }) && (
+            <div className="flex items-start gap-3 rounded-[var(--r-lg)] border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-4 py-3">
+              <AlertTriangle size={18} className="text-[var(--danger)] shrink-0 mt-0.5" />
+              <div className="min-w-0 text-sm">
+                <p className="font-semibold text-[var(--danger)]">
+                  Échec signalé par le chauffeur : {libelleMotif(delivery!.probleme_motif)}
+                  {delivery!.probleme_le && (
+                    <span className="ml-2 font-normal text-xs text-[var(--text-muted)]">
+                      {new Date(delivery!.probleme_le).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  )}
+                </p>
+                {delivery!.probleme_note && <p className="text-[var(--text)] mt-0.5">{delivery!.probleme_note}</p>}
+                <p className="text-xs text-[var(--text-muted)] mt-1">
+                  La course reste ouverte : replanifie-la (change la date ou le chauffeur) ou annule-la dans l'onglet Facturation.
+                </p>
+              </div>
             </div>
           )}
 
-          <div className="grid gap-4 lg:grid-cols-2 items-start">
-            {/* Colonne 1 : l'ordre et les arrêts */}
-            <div className="flex flex-col gap-4 min-w-0">
-              <Bloc titre="Ordre">
-                <Field label="Prestation">
-                  <ChoixPrestation value={prestation} onChange={choisirPrestation} disabled={ro} />
-                </Field>
-
-                <Field label="Client *" error={tenteEnregistrer && !form.client_id ? 'Le client est requis' : undefined}>
-                  <ChoixClient clients={clients} value={form.client_id} disabled={ro}
-                    onChange={choisirClient} />
-                  {selectedClient && (
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-muted)]">
-                      {(selectedClient.phone || selectedClient.email) && (
-                        <ContactLinks phone={selectedClient.phone} email={selectedClient.email} />
-                      )}
-                      {/* LE DÉLAI DE PAIEMENT, visible dès la création : c'est en
-                          acceptant la course qu'on décide s'il est acceptable. */}
-                      <span>Paiement : {libelleDelaiPaiement(selectedClient)}</span>
-                    </div>
-                  )}
-                </Field>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Field label={selectedClient?.reference_obligatoire ? 'Référence client *' : 'Référence client'}>
-                    <Input value={form.reference_client} onChange={v => set('reference_client', v)}
-                      placeholder="ODT, n° de commande…" disabled={ro} />
-                  </Field>
-                  {blocs.releve ? (
-                    <Field label="Mois relevé *">
-                      <Input type="month" value={moisDe(form.date)} disabled={ro}
-                        onChange={v => v && set('date', finDeMois(v))} />
-                    </Field>
-                  ) : (
-                  <Field label="Date *" error={tenteEnregistrer && !form.date ? 'La date est requise' : undefined}>
-                    <div className="flex gap-2">
-                      <Input type="date" value={form.date} onChange={v => set('date', v)} disabled={ro} />
-                      <button type="button" disabled={ro}
-                        onClick={() => set('urgent', form.urgent ? '' : '1')}
-                        aria-pressed={!!form.urgent}
-                        title="Course urgente"
-                        className={`shrink-0 h-[calc(36rem/14)] px-2.5 rounded-[var(--r-md)] border text-xs flex items-center gap-1 transition-colors disabled:opacity-60
-                          ${form.urgent
-                            ? 'bg-[var(--danger)]/15 border-[var(--danger)] text-[var(--danger)] font-medium'
-                            : 'border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
-                        <Zap size={13} /> Urgent
-                      </button>
-                    </div>
-                  </Field>
-                  )}
-                </div>
-                {!isEdit && !blocs.releve && (
-                  <label className="flex items-start gap-2 cursor-pointer">
-                    <input type="checkbox" checked={!!form.deja_livree}
-                      onChange={e => set('deja_livree', e.target.checked ? '1' : '')}
-                      className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer" />
-                    <span className="text-sm text-[var(--text)]">
-                      Déjà livrée
-                      <span className="block text-xs text-[var(--text-muted)]">
-                        Course passée saisie après coup : elle est créée « Livrée », prête à facturer.
-                      </span>
-                    </span>
-                  </label>
+          {/* ① Ordre : une bande */}
+          <Bloc titre="Ordre"
+            droite={!blocs.releve && (
+              <button type="button" disabled={ro}
+                onClick={() => set('urgent', form.urgent ? '' : '1')}
+                aria-pressed={!!form.urgent}
+                title="Course urgente"
+                className={`h-8 px-3 rounded-[var(--r-pill)] border text-xs flex items-center gap-1.5 transition-colors disabled:opacity-60
+                  ${form.urgent
+                    ? 'bg-[var(--danger)]/15 border-[var(--danger)] text-[var(--danger)] font-medium'
+                    : 'border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+                <Zap size={13} /> Urgent
+              </button>
+            )}>
+            <Field label="Prestation">
+              <ChoixPrestation value={prestation} onChange={choisirPrestation} disabled={ro} />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.2fr)] items-start">
+              <Field label="Client *" error={tenteEnregistrer && !form.client_id ? 'Le client est requis' : undefined}>
+                <ChoixClient clients={clients} value={form.client_id} disabled={ro}
+                  onChange={choisirClient} />
+                {selectedClient && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-muted)]">
+                    {(selectedClient.phone || selectedClient.email) && (
+                      <ContactLinks phone={selectedClient.phone} email={selectedClient.email} />
+                    )}
+                    {/* LE DÉLAI DE PAIEMENT, visible dès la création : c'est en
+                        acceptant la course qu'on décide s'il est acceptable. */}
+                    <span>Paiement : {libelleDelaiPaiement(selectedClient)}</span>
+                  </div>
                 )}
-              </Bloc>
-
-              {blocs.releve && (
-                <Bloc titre={`Relevé ${form.date ? libelleMois(form.date) : ''}`}>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Colis livrés dans le mois">
-                      <Input type="number" value={form.nb_colis} onChange={v => set('nb_colis', v)}
-                        placeholder="0" min={0} step={1} disabled={ro} />
-                    </Field>
-                    <Field label="Prix au colis (€ HT)">
-                      <Input type="number" value={form.prix_colis} onChange={v => set('prix_colis', v)}
-                        placeholder="1,00" min={0} step={0.01} disabled={ro} />
-                    </Field>
-                  </div>
-                  {form.client_id && !ro && (
-                    <ColisDesJournees clientId={form.client_id} date={form.date} valeur={nbColis}
-                      onReprendre={n => set('nb_colis', String(n))} />
-                  )}
-                  <div className="flex items-baseline justify-between gap-3 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] px-3 py-2">
-                    <span className="text-sm text-[var(--text-muted)]">
-                      {resumeMessagerie(nbColis, prixColisCts) ?? 'Colis × prix au colis'}
-                    </span>
-                    <span className="font-mono text-sm font-semibold text-[var(--text)]">
-                      {computed ? `${formatMoney(computed.amount_ht_cts)} HT` : '—'}
-                    </span>
-                  </div>
-                  {selectedClient && selectedClient.tariff_mode !== 'colis' && (
-                    <span className="text-xs text-[var(--text-muted)]">
-                      Astuce : mettez ce client au tarif « Au colis » (fiche client) pour que le prix se remplisse tout seul.
-                    </span>
-                  )}
-                </Bloc>
+              </Field>
+              {blocs.releve ? (
+                <Field label="Mois relevé *">
+                  <Input type="month" value={moisDe(form.date)} disabled={ro}
+                    onChange={v => v && set('date', finDeMois(v))} />
+                </Field>
+              ) : (
+                <Field label="Date *" error={tenteEnregistrer && !form.date ? 'La date est requise' : undefined}>
+                  <Input type="date" value={form.date} onChange={v => set('date', v)} disabled={ro} />
+                </Field>
               )}
+              <Field label={selectedClient?.reference_obligatoire ? 'Référence client *' : 'Référence client'}>
+                <Input value={form.reference_client} onChange={v => set('reference_client', v)}
+                  placeholder="ODT, n° de commande…" disabled={ro} />
+              </Field>
+            </div>
+          </Bloc>
 
+          {blocs.releve && (
+            <Bloc titre={`Relevé ${form.date ? libelleMois(form.date) : ''}`}>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Colis livrés dans le mois">
+                  <Input type="number" value={form.nb_colis} onChange={v => set('nb_colis', v)}
+                    placeholder="0" min={0} step={1} disabled={ro} />
+                </Field>
+                <Field label="Prix au colis (€ HT)">
+                  <Input type="number" value={form.prix_colis} onChange={v => set('prix_colis', v)}
+                    placeholder="1,00" min={0} step={0.01} disabled={ro} />
+                </Field>
+              </div>
+              {form.client_id && !ro && (
+                <ColisDesJournees clientId={form.client_id} date={form.date} valeur={nbColis}
+                  onReprendre={n => set('nb_colis', String(n))} />
+              )}
+              <div className="flex items-baseline justify-between gap-3 rounded-[var(--r-md)] bg-[color-mix(in_srgb,var(--text)_5%,var(--bg-card))] border border-[var(--border)] px-3 py-2">
+                <span className="text-sm text-[var(--text-muted)]">
+                  {resumeMessagerie(nbColis, prixColisCts) ?? 'Colis × prix au colis'}
+                </span>
+                <span className="font-mono text-sm font-semibold text-[var(--text)]">
+                  {computed ? `${formatMoney(computed.amount_ht_cts)} HT` : '—'}
+                </span>
+              </div>
+              {selectedClient && selectedClient.tariff_mode !== 'colis' && (
+                <span className="text-xs text-[var(--text-muted)]">
+                  Astuce : mettez ce client au tarif « Au colis » (fiche client) pour que le prix se remplisse tout seul.
+                </span>
+              )}
+            </Bloc>
+          )}
+
+          {/* ② Retrait | Livraison côte à côte, trajet entre les deux */}
+          {(blocs.retrait || blocs.livraison) && (
+            <div className={`grid gap-4 items-stretch ${blocs.retrait && blocs.livraison ? 'lg:grid-cols-2' : ''}`}>
               {blocs.retrait && (
-                <Bloc titre="Retrait">
-                  <AddressAutocomplete
-                    value={form.pickup_address}
-                    placeholder="Rue, ville… (vide = départ du dépôt)"
-                    disabled={ro}
-                    onChange={v => set('pickup_address', v)}
-                    onSelect={s => set('pickup_address', s.address)}
-                  />
+                <Bloc titre="Retrait" droite={<span className="text-xs text-[var(--text-muted)]">vide = départ du dépôt</span>}>
+                  <Field label="Adresse de retrait">
+                    <AddressAutocomplete
+                      value={form.pickup_address}
+                      placeholder="Rue, ville…"
+                      disabled={ro}
+                      onChange={v => set('pickup_address', v)}
+                      onSelect={s => set('pickup_address', s.address)}
+                    />
+                  </Field>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Qui remet">
                       <Input value={form.expediteur_nom} onChange={v => set('expediteur_nom', v)}
@@ -1157,26 +1064,22 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
 
               {blocs.livraison && (
                 <Bloc titre={blocs.titreLivraison}>
-                  <AddressAutocomplete
-                    value={form.delivery_address}
-                    placeholder="Rue, ville…"
-                    disabled={ro}
-                    onChange={v => {
-                      set('delivery_address', v)
-                      // Saisie libre : on invalide les coordonnées tant qu'aucune suggestion n'est choisie.
-                      setDeliveryCoords({ lat: null, lng: null })
-                    }}
-                    onSelect={s => {
-                      set('delivery_address', s.address)
-                      setDeliveryCoords({ lat: s.lat, lng: s.lng })
-                    }}
-                  />
-                  {form.delivery_address.trim() && (
-                    <span className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
-                      <MapPin size={12} />
-                      {deliveryCoords.lat != null ? 'Adresse localisée' : 'Sera localisée à l’enregistrement'}
-                    </span>
-                  )}
+                  <Field label={prestation === 'mise_a_dispo' ? 'Adresse du lieu' : 'Adresse de livraison'}>
+                    <AddressAutocomplete
+                      value={form.delivery_address}
+                      placeholder="Rue, ville…"
+                      disabled={ro}
+                      onChange={v => {
+                        set('delivery_address', v)
+                        // Saisie libre : on invalide les coordonnées tant qu'aucune suggestion n'est choisie.
+                        setDeliveryCoords({ lat: null, lng: null })
+                      }}
+                      onSelect={s => {
+                        set('delivery_address', s.address)
+                        setDeliveryCoords({ lat: s.lat, lng: s.lng })
+                      }}
+                    />
+                  </Field>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label={prestation === 'mise_a_dispo' ? 'Contact sur place' : 'Qui reçoit'}>
                       <Input value={form.destinataire_nom} onChange={v => set('destinataire_nom', v)}
@@ -1193,167 +1096,147 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                     libelleFin={prestation === 'mise_a_dispo' ? 'Fin' : undefined} />
                 </Bloc>
               )}
-
-              {blocs.retrait && (
-                <div className="flex flex-wrap items-center gap-3 px-1">
-                  <span className="text-xs uppercase tracking-wide font-medium text-[var(--text-muted)]">Trajet</span>
-                  {calcLoading
-                    ? <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />
-                    : <span className="text-sm text-[var(--text)]">{trajetTxt || '—'}</span>}
-                  <div className="flex items-center gap-2 ml-auto">
-                    <span className="text-xs text-[var(--text-muted)]">km</span>
-                    <div className="w-[5.5rem]">
-                      <Input type="number" value={form.km} onChange={v => { set('km', v); setCalcError(null) }}
-                        placeholder="0" disabled={ro} />
-                    </div>
-                    {!ro && (
-                      <BoutonIcone icone={RefreshCw} libelle="Recalculer le trajet (IGN)" taille="sm"
-                        disabled={calcLoading}
-                        onClick={() => calculerTrajet(form.pickup_address.trim(), form.delivery_address.trim(), false)} />
-                    )}
-                  </div>
-                  {calcError && <span className="basis-full text-xs text-[var(--warning)]">{calcError}</span>}
-                </div>
-              )}
             </div>
+          )}
 
-            {/* Colonne 2 : marchandise, exécution & prix, consignes */}
-            <div className="flex flex-col gap-4 min-w-0">
-              {blocs.marchandise && (
-                <Bloc titre="Marchandise">
+          {blocs.retrait && (
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-[var(--r-pill)] border border-dashed border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--text)_4%,transparent)] px-4 py-1.5">
+              <Route size={15} className="text-[var(--text-muted)]" />
+              <span className="text-xs text-[var(--text-muted)]">Trajet</span>
+              {calcLoading
+                ? <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />
+                : <span className="text-sm font-semibold text-[var(--text)]">{trajetTxt || '—'}</span>}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-[var(--text-muted)]">km</span>
+                <div className="w-[5rem]">
+                  <Input type="number" value={form.km} onChange={v => { set('km', v); setCalcError(null) }}
+                    placeholder="0" disabled={ro} />
+                </div>
+                {!ro && (
+                  <BoutonIcone icone={RefreshCw} libelle="Recalculer le trajet (IGN)" taille="sm"
+                    disabled={calcLoading}
+                    onClick={() => calculerTrajet(form.pickup_address.trim(), form.delivery_address.trim(), false)} />
+                )}
+              </div>
+              {calcError && <span className="basis-full text-center text-xs text-[var(--warning)]">{calcError}</span>}
+            </div>
+          )}
+
+          {/* ③ Marchandise : une ligne */}
+          {blocs.marchandise && (
+            <Bloc titre="Marchandise">
+              <div className="grid gap-3 grid-cols-3 lg:grid-cols-[minmax(0,2fr)_1fr_1fr_1fr]">
+                <div className="col-span-3 lg:col-span-1">
                   <Field label="Nature">
                     <Input value={form.marchandise_desc} onChange={v => set('marchandise_desc', v)}
                       placeholder="Colis, palette, meuble, documents…" disabled={ro} />
                   </Field>
-                  <div className="grid grid-cols-3 gap-3">
-                    <Field label="Colis">
-                      <Input type="number" value={form.nb_colis} onChange={v => set('nb_colis', v)}
-                        placeholder="0" min={0} step={1} disabled={ro} />
-                    </Field>
-                    <Field label="Poids (kg)">
-                      <Input type="number" value={form.poids_kg_reel} onChange={v => set('poids_kg_reel', v)}
-                        placeholder="0" min={0} disabled={ro} />
-                    </Field>
-                    <Field label="Volume (m³)">
-                      <Input type="number" value={form.volume_m3} onChange={v => set('volume_m3', v)}
-                        placeholder="0" min={0} step={0.1} disabled={ro} />
-                    </Field>
-                  </div>
-                </Bloc>
-              )}
-
-              <Bloc titre={blocs.releve ? 'Facture' : 'Exécution & prix'}>
-                {blocs.execution && (
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Chauffeur">
-                      <select value={form.driver_id} onChange={e => set('driver_id', e.target.value)}
-                        disabled={ro} className={inputCls}>
-                        <option value="">— À affecter —</option>
-                        {drivers.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="Véhicule">
-                      <select value={form.vehicle_id} onChange={e => set('vehicle_id', e.target.value)}
-                        disabled={ro} className={inputCls}>
-                        <option value="">— À affecter —</option>
-                        {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
-                      </select>
-                    </Field>
-                  </div>
-                )}
-                <Field label="Libellé de facture">
-                  <Input value={form.description} onChange={v => set('description', v)}
-                    placeholder={blocs.releve
-                      ? `Vide = « Messagerie ${form.date ? libelleMois(form.date) : '…'} — colis livrés »`
-                      : `Vide = « Livraison du ${form.date ? new Date(`${form.date}T00:00:00`).toLocaleDateString('fr-FR') : '…'} »`}
-                    disabled={ro} />
-                  {form.reference_client.trim() && (
-                    <span className="text-xs text-[var(--text-muted)]">La référence client est ajoutée sur la facture.</span>
-                  )}
+                </div>
+                <Field label="Colis">
+                  <Input type="number" value={form.nb_colis} onChange={v => set('nb_colis', v)}
+                    placeholder="0" min={0} step={1} disabled={ro} />
                 </Field>
-                <MontantTab
-                  integre
-                  releve={blocs.releve}
-                  catalogue={selectedClient?.supplements ?? []}
-                  onTtcChange={!blocs.releve && (!selectedClient || selectedClient.tariff_mode === 'manuel' || selectedClient.tariff_mode === 'colis')
-                    ? saisirTtc : undefined}
-                  extraLines={extraLines}
-                  setExtraLines={setExtraLines}
-                  form={form}
-                  set={set}
-                  tvaTouched={tvaTouched}
-                  onTvaChange={v => { set('tva_override', v); setTvaTouched(true) }}
-                  onTvaRateChange={r => { set('tva_rate', String(r)); setTvaTouched(false) }}
-                  selectedClient={selectedClient}
-                  tvaIntraClient={selectedClient ? selectedClient.tva_intra : null}
-                  computed={computed}
-                  delivery={delivery}
-                  isReadOnly={isMontantReadOnly}
-                  saving={saving}
-                  onSave={handleSave}
-                  onClose={onClose}
-                />
-                <Field label="Échéance de paiement">
-                  <div className="flex items-center gap-2">
-                    <div className="w-[11rem]">
-                      <Input type="date" value={form.echeance_le} onChange={v => set('echeance_le', v)} disabled={ro} />
-                    </div>
-                    {form.echeance_le && !ro && (
-                      <button type="button" onClick={() => set('echeance_le', '')}
-                        className="text-xs text-[var(--text-muted)] hover:text-[var(--text)]">Revenir au délai du client</button>
-                    )}
-                  </div>
-                  <span className="text-xs text-[var(--text-muted)]">
-                    {form.echeance_le
-                      ? 'Échéance imposée pour cette facture (plafonnée à 30 jours après la facture, L441-11).'
-                      : `Vide = délai du client${selectedClient ? ` (${libelleDelaiPaiement(selectedClient)})` : ''}, 30 jours maximum après la facture.`}
-                  </span>
+                <Field label="Poids (kg)">
+                  <Input type="number" value={form.poids_kg_reel} onChange={v => set('poids_kg_reel', v)}
+                    placeholder="0" min={0} disabled={ro} />
                 </Field>
-              </Bloc>
+                <Field label="Volume (m³)">
+                  <Input type="number" value={form.volume_m3} onChange={v => set('volume_m3', v)}
+                    placeholder="0" min={0} step={0.1} disabled={ro} />
+                </Field>
+              </div>
+            </Bloc>
+          )}
 
-              <Bloc titre={blocs.releve ? 'Note' : 'Consignes'}>
-                {!blocs.releve && (
-                  <Field label="Consignes chauffeur (visibles dans Mes courses)">
-                    <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
-                      rows={3} disabled={ro} placeholder="Code, étage, appeler avant, 2 personnes…"
-                      className={`${textareaCls} min-h-[4.5rem]`} />
+          {/* ④ Exécution (équipe) | Prix et facture (argent) */}
+          <div className="grid gap-4 lg:grid-cols-2 items-stretch">
+            <Bloc titre={blocs.releve ? 'Notes' : 'Exécution'}>
+              {blocs.execution && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Chauffeur">
+                    <select value={form.driver_id} onChange={e => set('driver_id', e.target.value)}
+                      disabled={ro} className={inputCls}>
+                      <option value="">— À affecter —</option>
+                      {drivers.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+                    </select>
                   </Field>
-                )}
-                <Field label="Note interne (bureau seulement)">
-                  <textarea value={form.note_interne} onChange={e => set('note_interne', e.target.value)}
-                    rows={2} disabled={ro} placeholder="Prix négocié, contexte client…"
-                    className={`${textareaCls} min-h-[3.5rem]`} />
+                  <Field label="Véhicule">
+                    <select value={form.vehicle_id} onChange={e => set('vehicle_id', e.target.value)}
+                      disabled={ro} className={inputCls}>
+                      <option value="">— À affecter —</option>
+                      {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
+                    </select>
+                  </Field>
+                </div>
+              )}
+              {!blocs.releve && (
+                <Field label="Consignes chauffeur (visibles dans Mes courses)">
+                  <textarea value={form.notes} onChange={e => set('notes', e.target.value)}
+                    rows={3} disabled={ro} placeholder="Code, étage, appeler avant, 2 personnes…"
+                    className={`${textareaCls} min-h-[4.5rem]`} />
                 </Field>
-              </Bloc>
-            </div>
+              )}
+              <Field label="Note interne (bureau seulement)">
+                <textarea value={form.note_interne} onChange={e => set('note_interne', e.target.value)}
+                  rows={2} disabled={ro} placeholder="Prix négocié, contexte client…"
+                  className={`${textareaCls} min-h-[3.5rem]`} />
+              </Field>
+            </Bloc>
+
+            <Bloc titre={blocs.releve ? 'Facture' : 'Prix et facture'}>
+              <Field label="Libellé de facture">
+                <Input value={form.description} onChange={v => set('description', v)}
+                  placeholder={blocs.releve
+                    ? `Vide = « Messagerie ${form.date ? libelleMois(form.date) : '…'} — colis livrés »`
+                    : `Vide = « Livraison du ${form.date ? new Date(`${form.date}T00:00:00`).toLocaleDateString('fr-FR') : '…'} »`}
+                  disabled={ro} />
+              </Field>
+              <MontantTab
+                integre
+                releve={blocs.releve}
+                onTtcChange={!blocs.releve && (!selectedClient || selectedClient.tariff_mode === 'manuel' || selectedClient.tariff_mode === 'colis')
+                  ? saisirTtc : undefined}
+                extraLines={extraLines}
+                setExtraLines={setExtraLines}
+                form={form}
+                set={set}
+                tvaTouched={tvaTouched}
+                onTvaChange={v => { set('tva_override', v); setTvaTouched(true) }}
+                onTvaRateChange={r => { set('tva_rate', String(r)); setTvaTouched(false) }}
+                selectedClient={selectedClient}
+                tvaIntraClient={selectedClient ? selectedClient.tva_intra : null}
+                computed={computed}
+                delivery={delivery}
+                isReadOnly={isMontantReadOnly}
+                saving={saving}
+                onSave={handleSave}
+                onClose={onClose}
+              />
+              <Field label="Échéance de paiement">
+                <div className="flex items-center gap-2">
+                  <div className="w-[11rem]">
+                    <Input type="date" value={form.echeance_le} onChange={v => set('echeance_le', v)} disabled={ro} />
+                  </div>
+                  {form.echeance_le && !ro && (
+                    <button type="button" onClick={() => set('echeance_le', '')}
+                      className="text-xs text-[var(--text-muted)] hover:text-[var(--text)]">Revenir au délai du client</button>
+                  )}
+                </div>
+                <span className="text-xs text-[var(--text-muted)]">
+                  {form.echeance_le ? 'Échéance imposée (30 jours maximum après la facture).' : 'Vide = délai du client (30 jours maximum).'}
+                </span>
+              </Field>
+            </Bloc>
           </div>
 
           {/* Ce qui manque, par étape : n'empêche pas d'enregistrer (sauf client / date). */}
-          {!ro && (manques.partir.length + manques.lv.length + manques.facturer.length) > 0 && (
-            <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 flex flex-col gap-1 text-xs">
+          {!ro && (manques.partir.length + manques.facturer.length) > 0 && (
+            <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--text)_5%,var(--bg-card))] px-3 py-2 flex flex-col gap-1 text-xs">
               <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
                 <AlertTriangle size={13} className="text-[var(--warning)]" /> Il manque
               </span>
               {manques.partir.length > 0 && <Manque etape="pour partir" liste={manques.partir} />}
-              {manques.lv.length > 0 && <Manque etape="pour la lettre de voiture" liste={manques.lv} />}
               {manques.facturer.length > 0 && <Manque etape="pour facturer" liste={manques.facturer} />}
-            </div>
-          )}
-
-          {/* Enregistrer comme modèle (déplié à la demande). */}
-          {saveAsTplOpen && (
-            <div className="flex flex-wrap items-end gap-2 rounded-[var(--r-md)] border border-[var(--border)] p-3">
-              <div className="flex-1 min-w-[12rem]">
-                <Field label="Libellé du modèle *">
-                  <Input value={tplLabel} onChange={setTplLabel} placeholder="Nom du modèle…" />
-                </Field>
-              </div>
-              <Button variant="primary" onClick={handleSaveAsTemplate} disabled={savingTpl}>
-                {savingTpl ? 'Création…' : 'Créer le modèle'}
-              </Button>
-              <Button variant="secondary" onClick={() => { setSaveAsTplOpen(false); setTplLabel('') }} disabled={savingTpl}>
-                Annuler
-              </Button>
             </div>
           )}
 
@@ -1371,10 +1254,16 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
             {tenteEnregistrer && manques.enregistrer.length > 0 && (
               <span className="text-xs text-[var(--danger)]">À compléter : {manques.enregistrer.join(', ')}</span>
             )}
+            {!isEdit && !blocs.releve && canSave && (
+              <label className="ml-3 flex items-center gap-2 cursor-pointer text-sm text-[var(--text-muted)]"
+                title="Course passée saisie après coup : elle est créée « Livrée », prête à facturer.">
+                <input type="checkbox" checked={!!form.deja_livree}
+                  onChange={e => set('deja_livree', e.target.checked ? '1' : '')}
+                  className="accent-[var(--brand)] w-4 h-4 shrink-0 cursor-pointer" />
+                Déjà livrée <span className="hidden xl:inline text-xs">(saisie après coup)</span>
+              </label>
+            )}
             <span className="ml-auto flex items-center gap-2">
-              {canSave && !saveAsTplOpen && (
-                <BoutonIcone icone={Plus} libelle="Enregistrer comme modèle" onClick={() => setSaveAsTplOpen(true)} />
-              )}
               {isEdit && can('livraisons.livraisons', 'create') && (
                 <BoutonIcone icone={Copy} libelle="Dupliquer (nouvelle course pré-remplie)" onClick={dupliquer} />
               )}
@@ -1389,41 +1278,36 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       {/* ── Onglet Preuves & documents ──────────────────────────────────────── */}
       {tab === 'preuves' && (
         <div className="flex flex-col gap-4">
-          <div className="flex gap-1.5">
-            {([['pod', 'Preuve de livraison'], ['lv', 'Lettre de voiture'], ['fichiers', 'Fichiers']] as const).map(([k, l]) => (
-              <button key={k} type="button" onClick={() => setSousPreuve(k)}
-                className={`h-8 px-3 rounded-[var(--r-pill)] border text-xs transition-colors
-                  ${sousPreuve === k
-                    ? 'bg-[var(--brand)] border-[var(--brand)] text-white font-medium'
-                    : 'border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
-                {l}
-              </button>
-            ))}
-          </div>
-          <div className="max-w-[48rem]">
-            {sousPreuve === 'pod' && (
+          <div className="grid gap-4 lg:grid-cols-2 items-start">
+            <Bloc titre="Preuve de livraison" icone={<Camera size={15} />}>
               <PodTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
-            )}
-            {sousPreuve === 'lv' && (
-              <LettreVoitureTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
-            )}
-            {sousPreuve === 'fichiers' && (
+            </Bloc>
+            <Bloc titre="Fichiers">
               <DocumentsPanel entityType="delivery" entityId={delivery?.id ?? null} />
-            )}
+            </Bloc>
           </div>
         </div>
       )}
 
       {/* ── Onglet Facturation : suivi, facture, envoi ──────────────────────── */}
       {tab === 'montant' && delivery && (
-        <div className="grid gap-6 lg:grid-cols-2 items-start">
-          <SuiviTab
-            delivery={delivery}
-            transitioning={transitioning}
-            onTransition={handleTransition}
-            onRevenirALivree={handleRevenirALivree}
-          />
-          <EtatFacture delivery={delivery} extraLines={extraLines} />
+        <div className="grid gap-4 lg:grid-cols-2 items-start">
+          <Bloc titre="Suivi et actions">
+            <SuiviTab
+              delivery={delivery}
+              transitioning={transitioning}
+              onTransition={handleTransition}
+              onRevenirALivree={handleRevenirALivree}
+            />
+          </Bloc>
+          <div className="flex flex-col gap-4">
+            <Bloc titre="Facture">
+              <EtatFacture delivery={delivery} extraLines={extraLines} />
+            </Bloc>
+            <Bloc titre="Historique">
+              <HistoriqueCourse delivery={delivery} />
+            </Bloc>
+          </div>
         </div>
       )}
 
@@ -1447,7 +1331,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       <ConfirmDialog
         open={confirmSansPreuve}
         title="Facturer sans preuve de livraison ?"
-        message={"Cette course n'a ni photo, ni POD signé, ni lettre de voiture archivée. "
+        message={"Cette course n'a ni photo ni POD signé. "
           + "C'est le dernier moment pour en obtenir une : après, la facture est partie et le client est loin."}
         optionLabel="Aucun justificatif n'est attendu pour cette course"
         confirmLabel="Facturer quand même"
@@ -1487,7 +1371,6 @@ function Creneau({ debut, fin, onDebut, onFin, disabled, libelleDebut = 'Au plus
   disabled?: boolean; libelleDebut?: string; libelleFin?: string
 }) {
   const invalide = !!debut && !!fin && fin <= debut
-  const resume = libelleCreneau(debut, fin)
   return (
     <div className="flex flex-col gap-1">
       <div className="grid grid-cols-2 gap-3">
@@ -1498,14 +1381,41 @@ function Creneau({ debut, fin, onDebut, onFin, disabled, libelleDebut = 'Au plus
           <Input type="time" value={fin} onChange={onFin} disabled={disabled} />
         </Field>
       </div>
-      {invalide
-        ? <span className="text-xs text-[var(--danger)]">La fin du créneau est avant son début.</span>
-        : resume && <span className="text-xs text-[var(--text-muted)]">Créneau : {resume}</span>}
+      {invalide && <span className="text-xs text-[var(--danger)]">La fin du créneau est avant son début.</span>}
     </div>
   )
 }
 
-/** Facture : récapitulatif des montants + état Pennylane (onglet Facturation). */
+/** Dates clés de la course, de sa création à son paiement (colonnes déjà en base). */
+function HistoriqueCourse({ delivery }: { delivery: DeliveryRow }) {
+  const evenements: Array<{ libelle: string; date: string | null | undefined }> = [
+    { libelle: 'Créée', date: delivery.created_at },
+    { libelle: 'Course prévue le', date: `${delivery.date}T12:00:00` },
+    { libelle: 'Échec signalé', date: delivery.probleme_le },
+    { libelle: 'Livrée', date: delivery.delivered_at },
+    { libelle: 'Facturée', date: delivery.invoiced_at },
+    { libelle: 'Facture envoyée au client', date: delivery.email_sent_at },
+    { libelle: 'Payée', date: delivery.paid_at },
+  ]
+  const lignes = evenements
+    .filter(e => e.date)
+    .sort((a, b) => new Date(a.date!).getTime() - new Date(b.date!).getTime())
+  return (
+    <ul className="flex flex-col divide-y divide-[var(--border-soft)]">
+      {lignes.map(e => (
+        <li key={e.libelle} className="flex items-center justify-between py-2 text-sm">
+          <span className="text-[var(--text-muted)]">{e.libelle}</span>
+          <span className="font-mono text-xs text-[var(--text)]">
+            {new Date(e.date!).toLocaleDateString('fr-FR')}
+            {e.libelle !== 'Course prévue le' && ` · ${new Date(e.date!).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** Facture : total + état Pennylane (onglet Facturation). */
 function EtatFacture({ delivery, extraLines }: { delivery: DeliveryRow; extraLines: DeliveryExtraLine[] }) {
   const recap = recapMontant({
     ht_cts: effectiveHtCts(delivery),
@@ -1516,20 +1426,17 @@ function EtatFacture({ delivery, extraLines }: { delivery: DeliveryRow; extraLin
   })
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-[var(--r-lg)] border border-[var(--border)] divide-y divide-[var(--border)] overflow-hidden">
-        <InfoRow label="Prix HT"><span className="font-mono">{recap.ht_cts ? formatMoney(recap.ht_cts) : '—'}</span></InfoRow>
-        {extraLines.length > 0 && (
-          <InfoRow label={`Suppléments (${extraLines.length}) — HT`}><span className="font-mono">{formatMoney(recap.extras_ht_cts)}</span></InfoRow>
-        )}
-        <InfoRow label={delivery.autoliquidation ? 'TVA (autoliquidation)' : 'TVA'}>
-          <span className="font-mono">{formatMoney((recap.tva_cts ?? 0) + recap.extras_tva_cts)}</span>
-        </InfoRow>
-        <InfoRow label="Total TTC">
-          <span className="font-mono font-semibold text-[var(--text)]">
-            {recap.ttc_total_cts != null ? formatMoney(recap.ttc_total_cts) : '—'}
-          </span>
-        </InfoRow>
+      <div className="flex items-baseline justify-between">
+        <span className="text-sm text-[var(--text-muted)]">Total TTC</span>
+        <span className="font-mono text-2xl font-semibold text-[var(--text)]">
+          {recap.ttc_total_cts != null ? formatMoney(recap.ttc_total_cts) : '—'}
+        </span>
       </div>
+      <p className="text-xs text-[var(--text-muted)] text-right -mt-1.5">
+        HT <span className="font-mono">{recap.ht_cts ? formatMoney(recap.ht_cts + recap.extras_ht_cts) : '—'}</span>
+        {' · '}{delivery.autoliquidation ? 'autoliquidation' : 'TVA'}{' '}
+        <span className="font-mono">{formatMoney((recap.tva_cts ?? 0) + recap.extras_tva_cts)}</span>
+      </p>
       <EtatPennylane delivery={delivery} />
     </div>
   )
@@ -1567,7 +1474,7 @@ function EtatPennylane({ delivery }: { delivery: DeliveryRow | null }) {
   )
 }
 
-const textareaCls = `w-full px-3 py-2 rounded-[var(--r-md)] bg-[var(--bg)]
+const textareaCls = `w-full px-3 py-2 rounded-[var(--r-md)] bg-[color-mix(in_srgb,var(--text)_5%,var(--bg-card))]
   border border-[var(--border)] text-[var(--text)] text-sm
   leading-relaxed resize-y focus:outline-none focus:border-[var(--brand)]
   transition-colors disabled:opacity-50 disabled:cursor-not-allowed`
@@ -1578,12 +1485,10 @@ function MontantTab({
   form, set, tvaTouched, onTvaChange, onTvaRateChange,
   selectedClient, tvaIntraClient, computed, delivery,
   extraLines, setExtraLines,
-  isReadOnly, saving, onSave, onClose, integre = false, releve = false, catalogue = [], onTtcChange,
+  isReadOnly, saving, onSave, onClose, integre = false, releve = false, onTtcChange,
 }: {
   /** Saisie par le TTC (prix « tout compris » d'une plateforme) → HT et TVA déduits. */
   onTtcChange?: (ttcCts: number) => void
-  /** Suppléments du client (fiche client), ajoutés en un clic. */
-  catalogue?: Supplement[]
   /** Relevé de messagerie : le HT vient de « colis × prix au colis », pas de saisie. */
   releve?: boolean
   /** Dans le bloc « Exécution & prix » de la fiche : sans boutons ni état Pennylane. */
@@ -1606,6 +1511,7 @@ function MontantTab({
   onClose: () => void
 }) {
   const { can } = usePermissions()
+  const [corrigerTva, setCorrigerTva] = useState(false)
   const isEdit    = delivery != null
   const canMontant = can('livraisons.livraisons', isEdit ? 'update' : 'create')
   const mode = selectedClient?.tariff_mode ?? 'manuel'
@@ -1668,31 +1574,65 @@ function MontantTab({
             placeholder="0" disabled={isReadOnly} />
         </Field>
       )}
-      {!releve && (mode === 'manuel' || mode === 'colis') && (
-        <Field label={integre ? 'Prix HT (€)' : 'Montant HT (€) *'}>
-          <Input type="number" value={form.manual_ht} onChange={v => set('manual_ht', v)}
-            placeholder="0.00" disabled={isReadOnly} />
-        </Field>
+      {/* Prix HT | taux de TVA | prix TTC : une seule ligne alignée. */}
+      {(selectedClient || integre) && (
+        <div className="flex flex-col gap-2">
+          <div className={`grid gap-3 items-start ${
+            [!releve && (mode === 'manuel' || mode === 'colis'), !form.autoliquidation, !!onTtcChange && !form.autoliquidation].filter(Boolean).length >= 3
+              ? 'grid-cols-3' : [!releve && (mode === 'manuel' || mode === 'colis'), !form.autoliquidation].filter(Boolean).length >= 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {!releve && (mode === 'manuel' || mode === 'colis') && (
+              <Field label={integre ? 'Prix HT (€)' : 'Montant HT (€) *'}>
+                <Input type="number" value={form.manual_ht} onChange={v => set('manual_ht', v)}
+                  placeholder="0.00" disabled={isReadOnly} />
+              </Field>
+            )}
+            {!form.autoliquidation && (
+              <Field label="Taux de TVA">
+                <TvaRateInput
+                  value={parseFloat(form.tva_rate || '20')}
+                  onChange={onTvaRateChange}
+                  disabled={isReadOnly}
+                />
+              </Field>
+            )}
+            {onTtcChange && !form.autoliquidation && (
+              <Field label="Prix TTC (€)">
+                <ChampTtc ttcCts={computed?.amount_ttc_cts ?? null} onCommit={onTtcChange} disabled={isReadOnly} />
+              </Field>
+            )}
+          </div>
+          {!form.autoliquidation && ((tvaTouched || corrigerTva) ? (
+            <Field label={`Montant de TVA (€)${tvaTouched ? ' — corrigé à la main' : ''}`}>
+              <Input
+                type="number"
+                value={form.tva_override}
+                onChange={onTvaChange}
+                placeholder="0.00"
+                disabled={isReadOnly}
+              />
+            </Field>
+          ) : !isReadOnly && (
+            <button type="button" onClick={() => setCorrigerTva(true)}
+              className="self-start text-xs text-[var(--text-muted)] underline underline-offset-2 hover:text-[var(--text)]">
+              Corriger le montant de TVA
+            </button>
+          ))}
+        </div>
       )}
 
       {/* AUTOLIQUIDATION — avant les champs de TVA, parce qu'elle les annule. */}
       {(selectedClient || integre) && (
-        <div className="rounded-[var(--r-md)] border border-[var(--border)] p-3 flex flex-col gap-2">
-          <label className="flex items-start gap-2 cursor-pointer">
+        <div className="flex flex-col gap-1.5">
+          <label className="flex items-center gap-2 cursor-pointer w-fit"
+            title="Prestation intracommunautaire B2B (art. 259-1 du CGI). La TVA n'est pas facturée : le TTC vaut le HT.">
             <input
               type="checkbox"
               checked={!!form.autoliquidation}
               onChange={e => set('autoliquidation', e.target.checked ? '1' : '')}
               disabled={isReadOnly}
-              className="accent-[var(--brand)] w-4 h-4 mt-0.5 shrink-0 cursor-pointer"
+              className="accent-[var(--brand)] w-4 h-4 shrink-0 cursor-pointer"
             />
-            <span className="text-sm text-[var(--text)]">
-              Autoliquidation — TVA due par le preneur
-              <span className="block text-xs text-[var(--text-muted)]">
-                Prestation intracommunautaire B2B (art. 259-1 du CGI). La TVA n'est
-                pas facturée : le TTC vaut le HT.
-              </span>
-            </span>
+            <span className="text-sm text-[var(--text)]">Autoliquidation (TVA due par le preneur)</span>
           </label>
 
           {/* Le régime suppose un preneur ASSUJETTI. Sans numéro de TVA
@@ -1707,9 +1647,8 @@ function MontantTab({
           )}
 
           {!!form.autoliquidation && (
-            <p className="text-xs text-[var(--text-muted)] font-mono">
-              Mention portée sur la facture : « Autoliquidation — TVA due par le preneur,
-              art. 259-1 du CGI »
+            <p className="text-xs text-[var(--text-muted)]">
+              Mention sur la facture : « Autoliquidation — TVA due par le preneur, art. 259-1 du CGI »
             </p>
           )}
         </div>
@@ -1717,37 +1656,10 @@ function MontantTab({
 
       {/* Taux TVA + montant TVA éditable — masqués en autoliquidation : afficher
           un taux modifiable sous une case qui l'annule ne peut que tromper. */}
-      {(selectedClient || integre) && !form.autoliquidation && (
-        <div className={`grid gap-3 items-start ${onTtcChange ? 'grid-cols-3' : 'grid-cols-2'}`}>
-          <Field label="Taux TVA">
-            <TvaRateInput
-              value={parseFloat(form.tva_rate || '20')}
-              onChange={onTvaRateChange}
-              disabled={isReadOnly}
-            />
-          </Field>
-          <Field label={`TVA (€)${tvaTouched ? ' ✎' : ' — auto'}`}>
-            <Input
-              type="number"
-              value={form.tva_override}
-              onChange={onTvaChange}
-              placeholder="0.00"
-              disabled={isReadOnly}
-            />
-          </Field>
-          {onTtcChange && (
-            <Field label="TTC (€)">
-              <ChampTtc ttcCts={computed?.amount_ttc_cts ?? null} onCommit={onTtcChange} disabled={isReadOnly} />
-            </Field>
-          )}
-        </div>
-      )}
-
       {/* Lignes supplémentaires — attente, retour à vide, forfait…                  */}
       {/* Toutes sont regroupées avec la ligne principale sur la même facture.      */}
       {(selectedClient || integre) && (
         <ExtraLinesEditor
-          catalogue={catalogue}
           lines={extraLines}
           onChange={setExtraLines}
           defaultTvaRate={parseFloat(form.tva_rate || '20')}
@@ -1756,30 +1668,25 @@ function MontantTab({
         />
       )}
 
-      {/* Récapitulatif HT / TVA / TTC */}
+      {/* Récapitulatif : HT, TVA et TTC (suppléments compris), le TTC en grand. */}
       {displayHt != null && (
-        <div className="rounded-[var(--r-lg)] border border-[var(--border)] divide-y divide-[var(--border)] overflow-hidden">
-          <InfoRow label="Montant HT">
-            <span className="font-mono">{formatMoney(displayHt)}</span>
-          </InfoRow>
-          <InfoRow label={autoliq ? 'TVA (autoliquidation)' : 'TVA'}>
-            <span className="font-mono">{recap.tva_cts != null ? formatMoney(recap.tva_cts) : '—'}</span>
-          </InfoRow>
-          {extraLines.length > 0 && (
-            <>
-              <InfoRow label={`Lignes supp. (${extraLines.length}) — HT`}>
-                <span className="font-mono">{formatMoney(recap.extras_ht_cts)}</span>
-              </InfoRow>
-              <InfoRow label={autoliq ? 'Lignes supp. — TVA (0 %)' : 'Lignes supp. — TVA'}>
-                <span className="font-mono">{formatMoney(recap.extras_tva_cts)}</span>
-              </InfoRow>
-            </>
-          )}
-          <InfoRow label="Total TTC">
-            <span className="font-mono font-semibold text-[var(--text)]">
+        <div className="flex flex-col gap-1 rounded-[var(--r-md)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--text)_4%,transparent)] px-4 py-3">
+          <div className="flex items-center justify-between text-sm text-[var(--text-muted)]">
+            <span>Montant HT{extraLines.length > 0 ? ` (dont ${extraLines.length} supplément${extraLines.length > 1 ? 's' : ''})` : ''}</span>
+            <span className="font-mono text-[var(--text)]">{formatMoney(displayHt + recap.extras_ht_cts)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm text-[var(--text-muted)]">
+            <span>{autoliq ? 'TVA (autoliquidation)' : 'TVA'}</span>
+            <span className="font-mono text-[var(--text)]">
+              {formatMoney((recap.tva_cts ?? 0) + recap.extras_tva_cts)}
+            </span>
+          </div>
+          <div className="flex items-baseline justify-between pt-1.5 mt-0.5 border-t border-[var(--border-soft)]">
+            <span className="text-sm font-medium text-[var(--text)]">Total TTC</span>
+            <span className="font-mono text-xl font-semibold text-[var(--text)]">
               {recap.ttc_total_cts != null ? formatMoney(recap.ttc_total_cts) : '—'}
             </span>
-          </InfoRow>
+          </div>
         </div>
       )}
 
@@ -1827,49 +1734,40 @@ function SuiviTab({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-col py-1">
+      <ol className="flex items-start pt-1" aria-label="Suivi de la course">
         {STATUS_TIMELINE.map((s, i) => {
           const reached   = currentIdx >= 0 && i <= currentIdx
           const isCurrent = delivery.statut === s
+          const date = s === 'facturee' ? delivery.invoiced_at : s === 'payee' ? delivery.paid_at : null
           return (
-            <div key={s} className="flex items-start gap-3">
-              <div className="flex flex-col items-center pt-0.5">
-                <div className={`w-3 h-3 rounded-full flex-shrink-0
-                  ${isCurrent
-                    ? 'bg-[var(--brand)] ring-2 ring-[var(--brand)]/30'
-                    : reached ? 'bg-[var(--brand)]' : 'bg-[var(--border)]'}`} />
-                {i < STATUS_TIMELINE.length - 1 && (
-                  <div className={`w-0.5 h-8 mt-0.5
-                    ${reached && i < currentIdx ? 'bg-[var(--brand)]/40' : 'bg-[var(--border)]'}`} />
-                )}
-              </div>
-              <div className="pb-4">
-                <span className={`text-sm font-medium
-                  ${reached ? 'text-[var(--text)]' : 'text-[var(--text-disabled)]'}`}>
-                  {STATUS_LABELS[s]}
-                </span>
-                {isCurrent && <span className="ml-2 text-xs text-[var(--brand)]">← actuel</span>}
-                {s === 'facturee' && delivery.invoiced_at && (
-                  <span className="ml-2 text-xs text-[var(--text-muted)]">
-                    {new Date(delivery.invoiced_at).toLocaleDateString('fr-FR')}
-                  </span>
-                )}
-                {s === 'payee' && delivery.paid_at && (
-                  <span className="ml-2 text-xs text-[var(--text-muted)]">
-                    {new Date(delivery.paid_at).toLocaleDateString('fr-FR')}
-                  </span>
-                )}
-              </div>
-            </div>
+            <li key={s} className="relative flex-1 min-w-0 flex flex-col items-center gap-1.5 text-center">
+              {i > 0 && (
+                <span aria-hidden="true"
+                  className={`absolute top-[0.6875rem] right-1/2 w-full h-0.5 ${reached ? 'bg-[var(--brand)]' : 'bg-[var(--border)]'}`} />
+              )}
+              <span className={`relative z-10 grid place-items-center h-6 w-6 rounded-full border-2 transition-colors
+                ${isCurrent
+                  ? 'bg-[var(--brand)] border-[var(--brand)] text-white ring-4 ring-[var(--brand)]/20'
+                  : reached ? 'bg-[var(--brand)] border-[var(--brand)] text-white'
+                  : 'bg-[var(--bg-card)] border-[var(--border-strong)] text-transparent'}`}>
+                <Check size={13} strokeWidth={3} />
+              </span>
+              <span className={`text-xs font-medium truncate max-w-full ${reached ? 'text-[var(--text)]' : 'text-[var(--text-disabled)]'}`}>
+                {STATUS_LABELS[s]}
+              </span>
+              {date && (
+                <span className="text-[0.6875rem] text-[var(--text-muted)]">{new Date(date).toLocaleDateString('fr-FR')}</span>
+              )}
+            </li>
           )
         })}
         {delivery.statut === 'annulee' && (
-          <div className="mt-1 flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-[var(--danger)]" />
+          <li className="flex flex-col items-center gap-1.5 pl-3">
+            <span className="h-6 w-6 rounded-full bg-[var(--danger)]" />
             <Badge color="danger">Annulée</Badge>
-          </div>
+          </li>
         )}
-      </div>
+      </ol>
 
       {/* Course bloquée : pas d'« Encaisser » sur une course sans facture —
           il faut d'abord la remettre à « Livrée » et la refacturer. */}
@@ -1944,7 +1842,7 @@ function SuiviTab({
   )
 }
 
-// ── Envoi email client (facture Pennylane + lettre de voiture) ───────────────────────────────
+// ── Envoi email client (facture Pennylane) ───────────────────────────────
 // Réutilisable drawer + liste. Confirmation affichant l'email destinataire,
 // puis invocation de l'Edge send-client-email. Aucun changement de layout.
 
@@ -1965,9 +1863,7 @@ function EnvoiClientSection({ delivery }: { delivery: DeliveryRow }) {
     }
     setConfirm(false)
     setSentAt(new Date().toISOString())
-    toast(data.data?.bl_attached
-      ? 'Email envoyé (facture + lettre de voiture)'
-      : 'Email envoyé (facture — lettre de voiture non jointe)')
+    toast('Email envoyé')
   }
 
   return (
@@ -1992,7 +1888,7 @@ function EnvoiClientSection({ delivery }: { delivery: DeliveryRow }) {
       <ConfirmDialog
         open={confirm}
         title="Envoyer la facture au client ?"
-        message={`La facture Pennylane${delivery.lv_pdf_url ? ' et la lettre de voiture seront envoyées' : ' sera envoyée'} à ${email}.`}
+        message={`La facture Pennylane sera envoyée à ${email}.`}
         confirmLabel="Envoyer"
         onConfirm={handleSend}
         onCancel={() => setConfirm(false)}
@@ -2150,7 +2046,7 @@ function PodTab({
         </div>
 
         {/* Méta */}
-        <div className="flex flex-col gap-2 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)] p-3">
+        <div className="flex flex-col gap-2 rounded-[var(--r-md)] bg-[color-mix(in_srgb,var(--text)_5%,var(--bg-card))] border border-[var(--border)] p-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-[var(--text-muted)]">Réceptionnaire</span>
             <span className="font-medium text-[var(--text)]">{recipientSaved}</span>
@@ -2213,7 +2109,7 @@ function PodTab({
       </Field>
 
       <div className="flex flex-col gap-1">
-        <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
+        <label className="text-xs font-medium text-[var(--text-muted)]">
           Photo de preuve
         </label>
         <input
@@ -2227,7 +2123,7 @@ function PodTab({
         />
         <label htmlFor="pod-file-add"
           className={`flex items-center gap-2 h-9 px-3 rounded-[var(--r-md)]
-            border border-[var(--border)] bg-[var(--bg)] text-sm
+            border border-[var(--border)] bg-[color-mix(in_srgb,var(--text)_5%,var(--bg-card))] text-sm
             text-[var(--text-muted)] cursor-pointer hover:border-[var(--brand)] transition-colors
             ${(uploading || isReadOnly) ? 'opacity-50 pointer-events-none' : ''}`}>
           {uploading
@@ -2300,15 +2196,6 @@ function Input({
     <input type={type} value={value} placeholder={placeholder} disabled={disabled}
       min={min} step={step}
       onChange={e => onChange(e.target.value)} className={inputCls} />
-  )
-}
-
-function InfoRow({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="flex items-center justify-between px-4 py-2.5">
-      <span className="text-sm text-[var(--text-muted)]">{label}</span>
-      <span className="text-sm">{children}</span>
-    </div>
   )
 }
 

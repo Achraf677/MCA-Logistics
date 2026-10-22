@@ -319,7 +319,7 @@ export function Parametres() {
 
             {/* Section Conformité */}
             <Section title="Conformité / Documents société">
-              <Field label="N° licence de transport (DREAL) — obligatoire lettre de voiture">
+              <Field label="N° licence de transport (DREAL)">
                 <Input value={form.licence_transport ?? ''} onChange={v => set('licence_transport', v)}
                   placeholder="Ex. 2020/68/0000123" />
               </Field>

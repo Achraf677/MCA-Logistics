@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 
-const SHORTCUTS = [0, 5.5, 10, 19, 20]
+const TAUX_USUELS = [0, 5.5, 10, 20]
 
 interface TvaRateInputProps {
   value: number
@@ -8,86 +8,27 @@ interface TvaRateInputProps {
   disabled?: boolean
 }
 
-// `pr-8` laisse la place au suffixe « % » pose en absolu par-dessus le champ.
-const inputBase = 'field pr-8'
+const libelle = (r: number) => `${String(r).replace('.', ',')} %`
 
+/**
+ * Taux de TVA : une liste (0 / 5,5 / 10 / 20 %). Un taux atypique déjà saisi
+ * (ancienne course, devis) reste proposé tel quel plutôt que d'être écrasé.
+ */
 export function TvaRateInput({ value, onChange, disabled = false }: TvaRateInputProps) {
-  const [raw, setRaw] = useState(String(value))
-  const lastExt = useRef(value)
-
-  // Sync display quand le parent réinitialise la valeur (ex. ouverture d'un autre enregistrement)
-  useEffect(() => {
-    if (lastExt.current !== value) {
-      lastExt.current = value
-      setRaw(String(value))
-    }
-  }, [value])
-
-  const tryCommit = (s: string) => {
-    const n = parseFloat(s.replace(',', '.'))
-    if (!isNaN(n) && n >= 0 && n <= 100) {
-      lastExt.current = n
-      onChange(n)
-    }
-  }
-
-  const pick = (r: number) => {
-    lastExt.current = r
-    setRaw(String(r))
-    onChange(r)
-  }
-
+  const [courant, setCourant] = useState(value)
+  useEffect(() => { setCourant(value) }, [value])
+  const options = TAUX_USUELS.some(r => Math.abs(r - courant) < 0.01)
+    ? TAUX_USUELS
+    : [...TAUX_USUELS, courant].sort((a, b) => a - b)
   return (
-    <div className="flex flex-col gap-1.5">
-      {/* Saisie libre */}
-      <div className="relative">
-        <input
-          type="number"
-          min="0"
-          max="100"
-          step="0.1"
-          value={raw}
-          disabled={disabled}
-          onChange={e => { setRaw(e.target.value); tryCommit(e.target.value) }}
-          onBlur={e => {
-            const n = parseFloat(e.target.value.replace(',', '.'))
-            if (!isNaN(n) && n >= 0 && n <= 100) {
-              lastExt.current = n
-              onChange(n)
-              setRaw(String(n))
-            } else {
-              setRaw(String(value))
-            }
-          }}
-          className={inputBase}
-        />
-        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-disabled)] text-[var(--fs-xs)] pointer-events-none select-none">
-          %
-        </span>
-      </div>
-      {/* Raccourcis courants */}
-      {!disabled && (
-        <div className="flex gap-1 flex-wrap">
-          {SHORTCUTS.map(r => {
-            const active = Math.abs(value - r) < 0.01
-            return (
-              <button
-                key={r}
-                type="button"
-                onClick={() => pick(r)}
-                className={[
-                  'px-2 py-0.5 rounded text-[var(--fs-xs)] font-mono transition-colors',
-                  active
-                    ? 'bg-[var(--brand)] text-white'
-                    : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border border-[var(--border)] hover:border-[var(--brand)] hover:text-[var(--brand)]',
-                ].join(' ')}
-              >
-                {r === 5.5 ? '5,5' : r}%
-              </button>
-            )
-          })}
-        </div>
-      )}
-    </div>
+    <select
+      value={String(courant)}
+      disabled={disabled}
+      onChange={e => { const r = parseFloat(e.target.value); setCourant(r); onChange(r) }}
+      className="field"
+      aria-label="Taux de TVA"
+    >
+      {options.map(r => <option key={r} value={String(r)}>{libelle(r)}</option>)}
+    </select>
   )
 }

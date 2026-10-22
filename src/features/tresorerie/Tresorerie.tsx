@@ -231,7 +231,7 @@ export function Tresorerie() {
             <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Suggéré :</span>
             <button
               onClick={e => { e.stopPropagation(); handleSetJustifType(tx.qonto_id, suggestion) }}
-              className="px-2.5 py-0.5 text-[var(--fs-xs)] font-semibold rounded bg-[var(--brand-soft,#eff6ff)] text-[var(--brand)] border border-[var(--brand)] hover:bg-[var(--brand)] hover:text-white transition-colors"
+              className="px-2.5 py-0.5 text-[var(--fs-xs)] font-semibold rounded-[var(--r-pill)] bg-[var(--brand-soft,#eff6ff)] text-[var(--brand)] border border-[var(--brand)] hover:bg-[var(--brand)] hover:text-white transition-colors"
             >
               {JUSTIF_TYPE_LABELS[suggestion]}
             </button>
@@ -334,7 +334,7 @@ export function Tresorerie() {
             <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Suggéré :</span>
             <button
               onClick={e => { e.stopPropagation(); handleSetJustifType(tx.qonto_id, suggestion) }}
-              className="px-2.5 py-0.5 text-[var(--fs-xs)] font-semibold rounded bg-[var(--brand-soft,#eff6ff)] text-[var(--brand)] border border-[var(--brand)] hover:bg-[var(--brand)] hover:text-white transition-colors"
+              className="px-2.5 py-0.5 text-[var(--fs-xs)] font-semibold rounded-[var(--r-pill)] bg-[var(--brand-soft,#eff6ff)] text-[var(--brand)] border border-[var(--brand)] hover:bg-[var(--brand)] hover:text-white transition-colors"
             >
               {JUSTIF_TYPE_LABELS[suggestion]}
             </button>

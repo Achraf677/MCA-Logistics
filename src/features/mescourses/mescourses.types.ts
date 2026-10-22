@@ -17,12 +17,6 @@ export interface CourseChauffeur {
   weight_kg: number | null
   /** Horodatage du chargement (migration 20260913090000). null = pas encore chargé. */
   charge_le: string | null
-  /** Signatures de la lettre de voiture — même format que côté bureau. */
-  lv_signatures: {
-    expediteur?: { png: string; ts: string; geo?: { lat: number; lng: number; acc?: number } }
-    transporteur?: { png: string; ts: string; geo?: { lat: number; lng: number; acc?: number } }
-    destinataire?: { png: string; ts: string; geo?: { lat: number; lng: number; acc?: number } }
-  } | null
   expediteur_nom: string | null
   destinataire_nom: string | null
   pod_recipient_name: string | null

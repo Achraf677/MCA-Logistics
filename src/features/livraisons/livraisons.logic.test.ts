@@ -484,8 +484,8 @@ describe('fiche unique', () => {
     poids_kg_reel: '', volume_m3: '1', ht_cts: 5000, prix_colis: '',
     creneau_retrait_debut: '', creneau_retrait_fin: '', creneau_livraison_debut: '', creneau_livraison_fin: '',
   }
-  it('fiche complète : rien ne manque (volume suffit sans poids)', () => {
-    expect(manquesFiche(base)).toEqual({ enregistrer: [], partir: [], lv: [], facturer: [] })
+  it('fiche complète : rien ne manque', () => {
+    expect(manquesFiche(base)).toEqual({ enregistrer: [], partir: [], facturer: [] })
   })
   it('seuls client et date bloquent l’enregistrement', () => {
     const m = manquesFiche({ ...base, client_id: '', delivery_address: '', driver_id: '', ht_cts: null })
@@ -497,13 +497,9 @@ describe('fiche unique', () => {
     expect(manquesFiche({ ...base, creneau_livraison_debut: '14:00', creneau_livraison_fin: '09:00' }).enregistrer)
       .toEqual(['créneau de livraison (fin avant début)'])
   })
-  it('forfait : aucun arrêt, aucune LV exigée', () => {
+  it('forfait : aucun arrêt exigé', () => {
     const m = manquesFiche({ ...base, prestation: 'forfait', delivery_address: '', pickup_address: '', driver_id: '', vehicle_id: '', nb_colis: '' })
     expect(m.partir).toEqual([])
-    expect(m.lv).toEqual([])
-  })
-  it('poids ET volume vides : manque pour la LV', () => {
-    expect(manquesFiche({ ...base, volume_m3: '' }).lv).toEqual(['poids ou volume'])
   })
   it('libellés de créneau et de durée', () => {
     expect(libelleCreneau('09:00:00', '12:30:00')).toBe('9h – 12h30')
@@ -544,7 +540,7 @@ describe('messagerie : nb colis × prix au colis', () => {
       nb_colis: '', poids_kg_reel: '', volume_m3: '', ht_cts: null, prix_colis: '1',
       creneau_retrait_debut: '', creneau_retrait_fin: '', creneau_livraison_debut: '', creneau_livraison_fin: '',
     })
-    expect(m).toEqual({ enregistrer: [], partir: [], lv: [], facturer: ['nombre de colis'] })
+    expect(m).toEqual({ enregistrer: [], partir: [], facturer: ['nombre de colis'] })
   })
 })
 

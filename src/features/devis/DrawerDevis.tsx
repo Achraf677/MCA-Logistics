@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, Loader2 } from 'lucide-react'
+import { RefreshCw, Loader2, Trash2 } from 'lucide-react'
 import { Drawer }     from '../../shared/ui/Drawer'
 import { Bloc, ChoixClient, ChoixPrestation, Champ as Field } from '../../shared/ui/FicheSaisie'
 import { ContactLinks } from '../../shared/ui/ContactLinks'
@@ -18,7 +18,6 @@ import { formatMoney } from '../../shared/lib/money'
 import type { DeliveryExtraLine } from '../../shared/lib/money'
 import { toLocalISO } from '../../shared/lib/dates'
 import { autoliquidationParDefaut } from '../../shared/lib/pays'
-import { lireSupplements } from '../../shared/lib/supplements'
 import { blocsPrestation } from '../../shared/lib/prestations'
 import { libelleDelaiPaiement } from '../../shared/lib/paymentTerms'
 import type { Prestation } from '../../shared/lib/prestations'
@@ -577,7 +576,7 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
 
           {blocs.retrait && (
             <div className="flex flex-wrap items-center gap-3 px-1">
-              <span className="text-xs uppercase tracking-wide font-medium text-[var(--text-muted)]">Trajet</span>
+              <span className="text-xs font-medium text-[var(--text-muted)]">Trajet</span>
               {calcLoading && <Loader2 size={14} className="animate-spin text-[var(--text-muted)]" />}
               <div className="flex items-center gap-2 ml-auto">
                 <span className="text-xs text-[var(--text-muted)]">km</span>
@@ -684,7 +683,6 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
               defaultTvaRate={form.tva_rate}
               tauxForce={form.autoliquidation ? 0 : form.tva_rate}
               disabled={isReadOnly}
-              catalogue={lireSupplements(client?.supplements)}
             />
 
             {/* Autoliquidation avant la TVA, qu'elle annule (comme la fiche livraison) */}
@@ -763,8 +761,8 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
                 <Button variant="primary" onClick={() => handleMark('accepte')} disabled={actioning}>
                   {actioning ? '…' : 'Marquer accepté'}
                 </Button>
-                <Button variant="secondary" onClick={() => handleMark('refuse')} disabled={actioning}
-                  className="text-[var(--danger)] border-[var(--danger)]/40">
+                <Button variant="ghost" onClick={() => handleMark('refuse')} disabled={actioning}
+                  className="text-[var(--danger)]">
                   Marquer refusé
                 </Button>
               </>
@@ -799,8 +797,8 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
                     Facturer directement
                   </Button>
                 )}
-                <Button variant="secondary" onClick={() => handleMark('refuse')} disabled={actioning}
-                  className="text-[var(--danger)] border-[var(--danger)]/40">
+                <Button variant="ghost" onClick={() => handleMark('refuse')} disabled={actioning}
+                  className="text-[var(--danger)]">
                   Marquer refusé
                 </Button>
               </>
@@ -812,9 +810,9 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
         {isTerminal && <Button variant="secondary" onClick={onClose}>Fermer</Button>}
 
         {canDelete && (
-          <Button variant="ghost" onClick={() => setConfirmDelete(true)} className="ml-auto text-[var(--danger)]">
-            Supprimer
-          </Button>
+          <span className="ml-auto">
+            <BoutonIcone icone={Trash2} libelle="Supprimer le devis" onClick={() => setConfirmDelete(true)} />
+          </span>
         )}
       </div>
 

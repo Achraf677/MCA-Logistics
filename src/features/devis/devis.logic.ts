@@ -28,6 +28,35 @@ export function isExpiredDisplay(valid_until: string | null, statut: QuoteStatus
   return statut === 'envoye' && !!valid_until && valid_until < aujourdhui
 }
 
+export interface ResumeDevis {
+  /** Envoyés, sans réponse. */
+  attente: { nb: number; totalTtcCts: number }
+  /** Acceptés, pas encore transformés ni facturés. */
+  acceptes: { nb: number; totalTtcCts: number }
+  /** Envoyés dont la validité est passée. */
+  depasses: { nb: number; totalTtcCts: number }
+}
+
+/** Les trois chiffres de la liste des devis (`aujourdhui` = AAAA-MM-JJ local). */
+export function resumeDevis(
+  devis: Array<{ statut: QuoteStatus; valid_until: string | null; amount_ttc_cts: number | null }>,
+  aujourdhui: string,
+): ResumeDevis {
+  const r: ResumeDevis = {
+    attente: { nb: 0, totalTtcCts: 0 }, acceptes: { nb: 0, totalTtcCts: 0 }, depasses: { nb: 0, totalTtcCts: 0 },
+  }
+  for (const q of devis) {
+    const ttc = q.amount_ttc_cts ?? 0
+    if (q.statut === 'envoye') {
+      r.attente.nb += 1; r.attente.totalTtcCts += ttc
+      if (isExpiredDisplay(q.valid_until, q.statut, aujourdhui)) { r.depasses.nb += 1; r.depasses.totalTtcCts += ttc }
+    } else if (q.statut === 'accepte') {
+      r.acceptes.nb += 1; r.acceptes.totalTtcCts += ttc
+    }
+  }
+  return r
+}
+
 /** AAAA-MM-JJ + n jours, en date locale (jamais d'UTC : pas de veille avant 2 h). */
 export function addDays(isoDate: string, days: number): string {
   const [a, m, j] = isoDate.split('-').map(Number)

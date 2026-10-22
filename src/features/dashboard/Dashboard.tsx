@@ -125,14 +125,14 @@ export function Dashboard() {
           <div className="flex items-center gap-2 shrink-0">
             {alertes > 0 && (
               <button type="button" onClick={() => navigate('/livraisons')}
-                className="inline-flex items-center gap-1.5 rounded-[var(--r-pill)] border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-1 text-xs font-medium text-[var(--danger)] hover:bg-[var(--danger)]/15 transition-colors">
+                className="inline-flex items-center gap-1.5 rounded-[var(--r-pill)] border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-1 text-xs font-semibold text-[var(--danger)] hover:bg-[var(--danger)]/15 transition-colors">
                 <AlertTriangle size={13} />
                 {d?.jour.enRetard ? `${d.jour.enRetard} en retard` : ''}
                 {d?.jour.enRetard && d?.jour.echecs ? ' · ' : ''}
                 {d?.jour.echecs ? `${d.jour.echecs} échec${d.jour.echecs > 1 ? 's' : ''}` : ''}
               </button>
             )}
-            <span className="inline-flex items-center gap-1.5 rounded-[var(--r-pill)] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1 text-xs first-letter:uppercase text-[var(--text-muted)]">
+            <span className="inline-flex items-center gap-1.5 rounded-[var(--r-pill)] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1 text-xs font-semibold first-letter:uppercase text-[var(--text-muted)]">
               <CalendarDays size={13} /> {dateDuJour}
             </span>
           </div>

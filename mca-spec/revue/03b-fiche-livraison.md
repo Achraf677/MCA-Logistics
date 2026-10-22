@@ -281,3 +281,10 @@
 - Preuve par colis, statut par colis (livré, absent, refusé, endommagé).
 - État récapitulatif (LV de tournée, art. 5 de l'arrêté).
 - Facturation au colis / au point, relevé mensuel automatique.
+
+## Refonte de l'agencement (22/10/2026)
+- Onglet Course : ① Ordre en une bande (prestation, client, date, référence ; Urgent dans l'en-tête du bloc) · ② Retrait | Livraison côte à côte, ligne Trajet (km, recalcul) entre les deux · ③ Marchandise sur une ligne · ④ Exécution (chauffeur, véhicule, consignes, note interne) | Prix et facture (libellé, prix, TVA, suppléments, total, échéance).
+- « Déjà livrée » dans la barre du bas (création seulement). Bandeau rouge « Échec signalé » (motif, note, heure) tant que la course est ouverte.
+- TVA : taux (0 / 5,5 / 10 / 20, plus de 19 %) ; montant de TVA corrigeable via « Corriger le montant de TVA ». Autoliquidation = case simple (texte légal en info-bulle). Suppléments : menu « Ajouter un supplément ».
+- Résumé du haut : statut, urgent, preuve OK / sans preuve, trajet, chauffeur, HT, date.
+- Onglet Facturation : frise horizontale, Total TTC (HT / TVA en petit), N° facture, Historique (créée, livrée, facturée, envoyée, payée).

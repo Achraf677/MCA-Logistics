@@ -344,7 +344,7 @@ function OngletCourses() {
    * ensuite — laisserait des courses livrées sans preuve alors que le
    * chauffeur croit avoir tout fait.
    *
-   * `preuve` = il existe un nom, une photo OU une signature : on horodate alors
+   * `preuve` = il existe un nom OU une photo : on horodate alors
    * la preuve (`pod_captured_at`), même sans nom.
    *
    * Aucune preuve = livraison sans preuve, volontairement autorisée :
@@ -916,7 +916,7 @@ function CarteArret({
       {!arret.fait && (creneau || c.urgent || estime) && (
         <p className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
           {c.urgent && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-pill)] bg-[var(--danger)]/15 text-[var(--danger)] text-xs font-medium">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-pill)] bg-[var(--danger)]/15 text-[var(--danger)] text-xs font-semibold">
               <Zap size={12} /> Urgent
             </span>
           )}
@@ -1056,9 +1056,6 @@ function CarteArret({
         <EtapeTerrain
           courseId={c.id} role="expediteur"
           nomConnu={c.expediteur_nom}
-          dejaSignee={!!c.lv_signatures?.expediteur}
-          demanderTransporteur
-          transporteurDejaSigne={!!c.lv_signatures?.transporteur}
           busy={busy}
           onValider={nom => { setPanneauOuvert(false); onCharger(nom) }}
           onAnnuler={() => setPanneauOuvert(false)}
@@ -1069,12 +1066,6 @@ function CarteArret({
         <EtapeTerrain
           courseId={c.id} role="destinataire"
           nomConnu={c.destinataire_nom ?? c.pod_recipient_name}
-          dejaSignee={!!c.lv_signatures?.destinataire}
-          // Le transporteur signe a la PRISE EN CHARGE. Sans etape de
-          // chargement (marchandise deja dans le camion), c'est ici — sinon
-          // la lettre de voiture resterait sans sa signature.
-          demanderTransporteur={!c.pickup_address?.trim()}
-          transporteurDejaSigne={!!c.lv_signatures?.transporteur}
           busy={busy}
           onValider={(nom, preuve) => { setPanneauOuvert(false); onLivrer(nom, preuve) }}
           onAnnuler={() => setPanneauOuvert(false)}

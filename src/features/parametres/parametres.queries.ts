@@ -19,7 +19,7 @@ export interface CompanyData {
   bic: string | null
   transport_license_expiry: string | null
   rc_pro_expiry: string | null
-  /** Numéro de licence DREAL — mention obligatoire lettre de voiture. */
+  /** Numéro de licence DREAL — mention de transport (licence communautaire). */
   licence_transport: string | null
 }
 

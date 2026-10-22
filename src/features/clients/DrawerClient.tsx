@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Trash2, Plus, X, Archive } from 'lucide-react'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
-import type { ReactNode } from 'react'
 import { Drawer } from '../../shared/ui/Drawer'
+import { Bloc } from '../../shared/ui/FicheSaisie'
 import { Button } from '../../shared/ui/Button'
 import { Badge } from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -135,7 +135,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
       // Un particulier n'a ni SIRET ni TVA intracommunautaire. On les efface à
       // l'enregistrement plutôt que de les laisser en base sous des champs
       // devenus invisibles : une donnée qu'on ne peut plus ni voir ni corriger
-      // finirait tôt ou tard sur une facture ou une lettre de voiture.
+      // finirait tôt ou tard sur une facture ou un document de transport.
       const vide = (s: string | null | undefined) => (s ?? '').trim() || null
       const payload = {
         ...form,
@@ -501,12 +501,12 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
               {/* Résumé encours */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-[var(--bg-card)] rounded-[var(--r-md)] border border-[var(--border)] px-4 py-3">
-                  <p className="text-[var(--fs-xs)] text-[var(--text-muted)] uppercase tracking-wide mb-1">Encours total</p>
+                  <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mb-1">Encours total</p>
                   <p className="text-[var(--fs-lg)] font-semibold text-[var(--text)]">{formatMoney(encours.total_cts)}</p>
                   <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">{encours.count} facture{encours.count > 1 ? 's' : ''}</p>
                 </div>
                 <div className="bg-[var(--bg-card)] rounded-[var(--r-md)] border border-[var(--border)] px-4 py-3">
-                  <p className="text-[var(--fs-xs)] text-[var(--text-muted)] uppercase tracking-wide mb-1">Dont en retard</p>
+                  <p className="text-[var(--fs-xs)] text-[var(--text-muted)] mb-1">Dont en retard</p>
                   <p className={`text-[var(--fs-lg)] font-semibold ${encours.overdue_cts > 0 ? 'text-[var(--danger)]' : 'text-[var(--text)]'}`}>
                     {formatMoney(encours.overdue_cts)}
                   </p>
@@ -625,19 +625,10 @@ function FieldGroup({ label, children, error, className = '' }: {
 }) {
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
-      <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
+      <label className="text-xs font-medium text-[var(--text-muted)]">{label}</label>
       {children}
       {error && <span className="text-[var(--danger)] text-xs">{error}</span>}
     </div>
-  )
-}
-
-function Bloc({ titre, children }: { titre: string; children: ReactNode }) {
-  return (
-    <section className="rounded-[var(--r-lg)] border border-[var(--border)] p-3.5 flex flex-col gap-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">{titre}</h3>
-      {children}
-    </section>
   )
 }
 
@@ -664,7 +655,7 @@ function EditeurSupplements({ valeur, onChange }: { valeur: Supplement[]; onChan
   const usuels = SUPPLEMENTS_USUELS.filter(l => !deja.has(l.toLowerCase()))
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">Suppléments facturables</span>
+      <span className="text-xs font-medium text-[var(--text-muted)]">Suppléments facturables</span>
       {valeur.map((s, i) => (
         <div key={i} className="flex items-center gap-2">
           <input value={s.label} onChange={e => maj(i, { label: e.target.value })} placeholder="Libellé" className={`${inputClass} flex-1`} />

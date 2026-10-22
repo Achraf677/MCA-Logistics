@@ -156,6 +156,9 @@ body::before {
   animation: ambiance 38s ease-in-out infinite alternate;
   will-change: transform;
 }
+/* Thème clair : halos très discrets, ombres douces (le reste vient des variables) */
+:root[data-theme="clair"] { --shadow-card: 0 1px 2px rgba(68,55,40,.08), 0 8px 24px -14px rgba(68,55,40,.25); color-scheme: light; }
+:root[data-theme="clair"] body::before { opacity: .2; }
 @keyframes ambiance {
   from { transform: translate3d(0, 0, 0) scale(1); }
   to   { transform: translate3d(2.5%, 3%, 0) scale(1.06); }
@@ -213,13 +216,12 @@ body::before {
 @layer components {
   .field {
     width: 100%;
-    height: calc(36rem / 14);
+    height: calc(38rem / 14);
     padding: 0 calc(12rem / 14);
     border-radius: var(--r-md);
-    border: 1px solid var(--border);
-    background:
-      linear-gradient(180deg, color-mix(in srgb, var(--bg-deep) 55%, transparent), transparent 60%),
-      var(--bg);
+    border: 1px solid color-mix(in srgb, var(--border-strong) 80%, transparent);
+    /* Champ un cran plus clair que le bloc qui le porte : on voit où écrire. */
+    background: color-mix(in srgb, var(--text) 5%, var(--bg-card));
     color: var(--text);
     font-family: inherit;
     font-size: var(--fs-body);
