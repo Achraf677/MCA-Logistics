@@ -3,6 +3,7 @@ import { Check, CreditCard, ExternalLink, FilePlus2, Inbox, Pencil, Search, User
 import { Shell } from '../../app/Shell'
 import { useProfile } from '../../app/providers'
 import { Badge } from '../../shared/ui/Badge'
+import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Field } from '../../shared/ui/Field'
@@ -280,7 +281,7 @@ function Ligne({
             <span className={`font-semibold ${t.montant_ttc_cts == null ? 'text-[var(--danger)]' : ''}`}>
               {t.montant_ttc_cts != null ? formatMoney(t.montant_ttc_cts) : 'Montant manquant'}
             </span>
-            {' · '}{libelleCategorie(t.categorie)} · {dateCourte(jour, annee)}
+            {t.categorie ? <> · {libelleCategorie(t.categorie)}</> : null} · {dateCourte(jour, annee)}
             {t.note && <span className="text-[var(--text-muted)]"> · {t.note}</span>}
           </p>
           <p className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
@@ -289,34 +290,40 @@ function Ligne({
           {t.statut === 'ignore' && t.motif_refus && <p className="text-xs text-[var(--danger)]">Refusé : {t.motif_refus}</p>}
         </div>
 
-        {t.statut === 'traite' && <Badge color="success">Validé</Badge>}
-        {t.statut === 'traite' && noteDeFrais && (
-          t.rembourse_le
-            ? <Badge color="info">Remboursé le {dateCourte(t.rembourse_le, annee)}</Badge>
-            : <Badge color="warning">À rembourser</Badge>
-        )}
-        {t.statut === 'ignore' && <Badge color="danger">Refusé</Badge>}
+        {/* Colonne « état » : toujours la même largeur, les pastilles s'empilent à droite */}
+        <div className="flex items-center justify-end gap-1.5 sm:w-64 sm:flex-nowrap flex-wrap whitespace-nowrap">
+          {t.statut === 'traite' && <Badge color="success">Validé</Badge>}
+          {t.statut === 'traite' && noteDeFrais && (
+            t.rembourse_le
+              ? <Badge color="info">Remboursé le {dateCourte(t.rembourse_le, annee)}</Badge>
+              : <Badge color="warning">À rembourser</Badge>
+          )}
+          {t.statut === 'ignore' && <Badge color="danger">Refusé</Badge>}
+        </div>
 
-        <button onClick={onVoir} className="inline-flex items-center gap-1 text-xs text-[var(--brand)] hover:underline min-h-[2.5rem] px-1">
-          <ExternalLink size={13} /> Voir
-        </button>
+        {/* Colonne « geste principal » : un seul bouton à la fois */}
+        <div className="flex items-center justify-end gap-2 sm:w-72">
+          {peutEcrire && t.statut === 'a_traiter' && (
+            <>
+              <Button variant="primary" size="compact" className="whitespace-nowrap" onClick={onCreerCharge} disabled={busy}><FilePlus2 size={13} /> Créer la charge</Button>
+              <Button variant="secondary" size="compact" className="whitespace-nowrap" onClick={onValider} disabled={busy}><Check size={13} /> Valider</Button>
+            </>
+          )}
+          {peutEcrire && t.statut === 'traite' && noteDeFrais && (
+            t.rembourse_le
+              ? <Button variant="ghost" size="compact" className="whitespace-nowrap" onClick={onAnnulerRemboursement} disabled={busy}>Annuler</Button>
+              : <Button variant="secondary" size="compact" className="whitespace-nowrap" onClick={onRembourser} disabled={busy}><Check size={13} /> Marquer remboursé</Button>
+          )}
+        </div>
 
-        {peutEcrire && t.statut === 'a_traiter' && (
-          <>
-            <Button variant="primary" size="compact" onClick={onCreerCharge} disabled={busy}><FilePlus2 size={13} /> Créer la charge</Button>
-            <Button variant="secondary" size="compact" onClick={onValider} disabled={busy}><Check size={13} /> Valider</Button>
-            <Button variant="ghost" size="compact" onClick={onCorriger} disabled={busy}><Pencil size={13} /> Corriger</Button>
-            <Button variant="ghost" size="compact" disabled={busy} className="text-[var(--text-muted)]" onClick={onRefuserOuvrir}><X size={13} /> Refuser</Button>
-          </>
-        )}
-        {peutEcrire && t.statut === 'traite' && noteDeFrais && (
-          t.rembourse_le
-            ? <Button variant="ghost" size="compact" onClick={onAnnulerRemboursement} disabled={busy}>Annuler le remboursement</Button>
-            : <Button variant="secondary" size="compact" onClick={onRembourser} disabled={busy}><Check size={13} /> Marquer remboursé</Button>
-        )}
-        {peutEcrire && t.statut !== 'a_traiter' && (
-          <Button variant="ghost" size="compact" onClick={onCorriger} disabled={busy}><Pencil size={13} /> Corriger</Button>
-        )}
+        {/* Colonne « outils » : pictogrammes */}
+        <div className="flex items-center justify-end gap-1 sm:w-24">
+          <BoutonIcone icone={ExternalLink} taille="sm" libelle="Voir le justificatif" onClick={onVoir} />
+          {peutEcrire && <BoutonIcone icone={Pencil} taille="sm" libelle="Corriger" actif={correction} disabled={busy} onClick={onCorriger} />}
+          {peutEcrire && t.statut === 'a_traiter' && (
+            <BoutonIcone icone={X} taille="sm" libelle="Refuser" actif={refus} disabled={busy} onClick={onRefuserOuvrir} />
+          )}
+        </div>
       </div>
 
       {correction && peutEcrire && <FormCorrection t={t} busy={busy} onEnregistrer={onEnregistrerCorrection} onAnnuler={onCorriger} />}
