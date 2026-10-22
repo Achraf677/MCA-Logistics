@@ -42,7 +42,7 @@ export function SectionCard({ titre, icone, ton = 'neutral', sous, droite, accen
 }) {
   return (
     <section
-      className={`relative rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] shadow-[var(--shadow-card)] overflow-hidden ${className}`}
+      className={`relative rounded-[var(--r-xl)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--bg-card)_86%,transparent)] shadow-[var(--shadow-card)] overflow-hidden ${className}`}
       style={{
         backgroundImage: 'radial-gradient(120% 90% at 0% 0%, var(--glow-1), transparent 60%)',
         ...(accent ? { boxShadow: `inset 3px 0 0 ${COULEUR_TON[accent]}, var(--shadow-card)` } : null),

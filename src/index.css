@@ -128,10 +128,12 @@ html { font-size: 14px; }
 html, body, #root {
   height: 100%;
   font-family: var(--font-body);
-  background-color: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
 }
+/* Seul <html> porte l'aplat de fond : body et #root restent transparents, sinon
+   ils recouvrent les halos de fond (body::before / ::after, z-index -1). */
+html { background-color: var(--bg); }
 body, #root { font-size: var(--fs-body); }
 
 /* Halo de fond sur une couche fixe dédiée, peinte une seule fois.
@@ -141,13 +143,36 @@ body, #root { font-size: var(--fs-body); }
 body::before {
   content: '';
   position: fixed;
+  inset: -12%;
+  z-index: -1;
+  pointer-events: none;
+  /* Trois halos aux couleurs du thème (marque, accent, violet) : le fond n'est
+     plus un aplat noir. Ils dérivent lentement (transform seul, couche
+     dédiée : aucun repaint, voir l'animation ci-dessous). */
+  background-image:
+    radial-gradient(64rem 40rem at 34% 12%, color-mix(in srgb, var(--brand) 24%, transparent), transparent 66%),
+    radial-gradient(56rem 36rem at 86% 26%, color-mix(in srgb, var(--gold) 16%, transparent), transparent 66%),
+    radial-gradient(62rem 40rem at 44% 92%, color-mix(in srgb, var(--accent-violet) 16%, transparent), transparent 68%);
+  animation: ambiance 38s ease-in-out infinite alternate;
+  will-change: transform;
+}
+/* Fine trame de points, visible surtout en haut de l'écran, qui s'efface vers le bas. */
+body::after {
+  content: '';
+  position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background-image:
-    radial-gradient(900px 500px at 12% -8%, var(--glow-1), transparent 60%),
-    radial-gradient(800px 460px at 100% -5%, var(--glow-2), transparent 62%);
+  background-image: radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text) 16%, transparent) 1.2px, transparent 0);
+  background-size: 1.75rem 1.75rem;
+  -webkit-mask-image: radial-gradient(ellipse 85% 70% at 50% 0%, #000 0%, transparent 78%);
+  mask-image: radial-gradient(ellipse 85% 70% at 50% 0%, #000 0%, transparent 78%);
 }
+@keyframes ambiance {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(2.5%, 3%, 0) scale(1.06); }
+}
+@media (prefers-reduced-motion: reduce) { body::before { animation: none; } }
 
 /* ── Scrollbar sobres ───────────────────────────────────── */
 ::-webkit-scrollbar { width: calc(6rem / 14); height: calc(6rem / 14); }
