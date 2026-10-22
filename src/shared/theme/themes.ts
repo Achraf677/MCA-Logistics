@@ -12,6 +12,17 @@ export const THEMES: Theme[] = [
     '--profit':'#10b981','--profit-soft':'color-mix(in srgb,#10b981 15%,transparent)',
     '--warn':'#f5b424','--warn-soft':'color-mix(in srgb,#f5b424 15%,transparent)',
     '--loss':'#ff5a3c','--loss-soft':'color-mix(in srgb,#ff5a3c 15%,transparent)' }},
+  { id:'clair', name:'Clair MCA', swatch:'linear-gradient(120deg,#faf6ee,#d0021b)', vars:{
+    '--bg':'#f7f3ea','--bg-elevated':'#fffdf8','--bg-card':'#ffffff','--bg-card-hover':'#f1ece0','--bg-deep':'#ece6d8',
+    '--border':'#e3dccb','--border-soft':'rgba(68,55,40,.12)','--border-strong':'#cfc6b0',
+    '--brand':'#d0021b','--brand-hover':'#e5182f','--brand-soft':'rgba(208,2,27,.09)','--brand-deep':'#a30015',
+    '--gold':'#e0a100','--grad':'linear-gradient(120deg,#d0021b,#e0a100)',
+    '--success':'#0f9d6b','--danger':'#d0021b','--warning':'#c98a00','--info':'#2563eb','--accent-violet':'#7c5cd6',
+    '--text':'#2b2622','--text-muted':'#6b635a','--text-disabled':'#a39a8c',
+    '--glow-1':'rgba(208,2,27,.06)','--glow-2':'rgba(224,161,0,.06)',
+    '--profit':'#0f9d6b','--profit-soft':'color-mix(in srgb,#0f9d6b 14%,transparent)',
+    '--warn':'#c98a00','--warn-soft':'color-mix(in srgb,#c98a00 15%,transparent)',
+    '--loss':'#d0021b','--loss-soft':'color-mix(in srgb,#d0021b 12%,transparent)' }},
   { id:'cyber', name:'Cyber', swatch:'linear-gradient(120deg,#3b82f6,#22d3ee)', vars:{
     '--bg':'#070b14','--bg-elevated':'#0e1626','--bg-card':'#111c2e','--bg-card-hover':'#1a2940','--bg-deep':'#04070d',
     '--border':'#1e2c42','--border-soft':'rgba(232,238,247,.10)','--border-strong':'#2a3d59',
@@ -52,6 +63,7 @@ export function getThemeId(): string { try { return localStorage.getItem(KEY) ||
 export function applyTheme(id: string) {
   const t = THEMES.find(x => x.id === id) || THEMES[0]
   const root = document.documentElement
+  root.dataset.theme = t.id
   Object.entries(t.vars).forEach(([k,v]) => root.style.setProperty(k, v))
   try { localStorage.setItem(KEY, t.id) } catch { /* storage indisponible (navigation privée) */ }
 }

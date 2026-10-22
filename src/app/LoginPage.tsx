@@ -66,8 +66,11 @@ export function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
       <div className="w-full max-w-sm p-8 bg-[var(--bg-card)] rounded-[var(--r-xl)] border border-[var(--border)]">
-        <h1 className="font-display font-bold text-[var(--brand)] text-2xl mb-1">MCA Logistics</h1>
-        <p className="text-[var(--text-muted)] text-[var(--fs-sm)] mb-6">Connexion à votre espace</p>
+        <div className="flex flex-col items-center text-center mb-6">
+          <span className="inline-grid place-items-center w-24 h-24 rounded-[var(--r-xl)] bg-white mb-3 shadow-[0_0.4rem_1.5rem_-0.5rem_rgba(0,0,0,.35)]"><img src="/logo-mca.png" alt="MCA Logistics" className="w-20 h-20 object-contain" /></span>
+          <h1 className="font-display font-bold text-[var(--text)] text-2xl leading-tight">MCA <span className="text-[var(--brand)]">Logistics</span></h1>
+          <p className="text-[var(--text-muted)] text-[var(--fs-sm)] mt-1">Votre partenaire logistique</p>
+        </div>
 
         {/* Google OAuth */}
         <button

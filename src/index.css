@@ -156,6 +156,9 @@ body::before {
   animation: ambiance 38s ease-in-out infinite alternate;
   will-change: transform;
 }
+/* Thème clair : halos très discrets, ombres douces (le reste vient des variables) */
+:root[data-theme="clair"] { --shadow-card: 0 1px 2px rgba(68,55,40,.08), 0 8px 24px -14px rgba(68,55,40,.25); color-scheme: light; }
+:root[data-theme="clair"] body::before { opacity: .2; }
 @keyframes ambiance {
   from { transform: translate3d(0, 0, 0) scale(1); }
   to   { transform: translate3d(2.5%, 3%, 0) scale(1.06); }
