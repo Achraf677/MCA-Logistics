@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useSearchParams } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Download, Map as IconeCarte, PackageCheck, Pause, Radio, Route, RotateCcw,
-  ScanText, Search, Trash2, TriangleAlert, Truck, Undo2, Gauge,
+  ScanText, Search, FileText, Camera, Trash2, TriangleAlert, Truck, Undo2, Gauge,
 } from 'lucide-react'
 import { useProfile } from '../../app/providers'
 import { Badge } from '../../shared/ui/Badge'
@@ -520,17 +520,25 @@ function LigneTourneeCarte({ l, couleur, pos, maintenant, nbSyntheses, nbFeuille
             {enPause > 0 && <span className="text-[var(--warning)]">{enPause} en pause</span>}
             {c.collectes > 0 && <span>Collectes {c.collectesTraitees} / {c.collectes}</span>}
             {t.trajet && <span>{libelleDistance(t.trajet.km_total * 1000)}{modeOrdre(t) === 'manuel' ? ' · ordre manuel' : ''}</span>}
-            {nbFeuilles > 0 && (
-              <button type="button" className="underline text-[var(--text)]" onClick={e => { e.stopPropagation(); onOuvrir('feuille') }}>
-                Feuille de route ({nbFeuilles})
-              </button>
-            )}
-            {nbSyntheses > 0 && (
-              <button type="button" className="underline text-[var(--text)]" onClick={e => { e.stopPropagation(); onOuvrir('synthese') }}>
-                Synthèse ({nbSyntheses})
-              </button>
-            )}
           </span>
+          {(nbFeuilles > 0 || nbSyntheses > 0) && (
+            <span className="flex flex-wrap gap-2 pt-0.5">
+              {nbFeuilles > 0 && (
+                <button type="button" onClick={e => { e.stopPropagation(); onOuvrir('feuille') }}
+                  className="inline-flex items-center gap-1.5 rounded-[var(--r-pill)] border border-[var(--border-strong)] bg-[var(--bg-card-hover)] px-2.5 py-1 text-xs font-semibold text-[var(--text)] hover:border-[var(--brand)] transition-colors">
+                  <FileText size={12} /> Feuille de route
+                  <span className="rounded-full bg-[var(--brand)]/15 text-[var(--brand)] px-1.5 tabular-nums">{nbFeuilles}</span>
+                </button>
+              )}
+              {nbSyntheses > 0 && (
+                <button type="button" onClick={e => { e.stopPropagation(); onOuvrir('synthese') }}
+                  className="inline-flex items-center gap-1.5 rounded-[var(--r-pill)] border border-[var(--border-strong)] bg-[var(--bg-card-hover)] px-2.5 py-1 text-xs font-semibold text-[var(--text)] hover:border-[var(--brand)] transition-colors">
+                  <Camera size={12} /> Synthèse
+                  <span className="rounded-full bg-[var(--brand)]/15 text-[var(--brand)] px-1.5 tabular-nums">{nbSyntheses}</span>
+                </button>
+              )}
+            </span>
+          )}
         </div>
         <span className="text-lg font-mono font-semibold tabular-nums text-[var(--text)] shrink-0">{pct} %</span>
       </div>
