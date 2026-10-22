@@ -70,10 +70,10 @@
   /* Rayons — adoucis (retour utilisateur : « les formes trop rigides »).
      Un rayon unique par palier, utilise PARTOUT via var(--r-*) : changer ces
      quatre lignes reforme toute l'interface, sans toucher un seul composant. */
-  --r-sm: 6px;
-  --r-md: 10px;
-  --r-lg: 14px;
-  --r-xl: 20px;
+  --r-sm: calc(6rem / 14);
+  --r-md: calc(10rem / 14);
+  --r-lg: 1rem;
+  --r-xl: calc(20rem / 14);
 
   /* ── Mouvement ──────────────────────────────────────────
      Retour utilisateur : « les animations trop sec, manque de dynamisme ».
@@ -114,14 +114,15 @@
    Sur un écran PC plus petit (ex. 1920×1080 à 100 % : zone utile ≈ 1920×830),
    l'écran d'accueil ne tenait qu'en zoomant le navigateur à 80 %. On fait ce
    zoom automatiquement : à partir de 1024 px de large, la racine suit la plus
-   contraignante des deux dimensions (largeur : 14 px à 1920 px ; hauteur :
-   14 px à 1000 px de haut), bornée entre 10,5 px (75 %) et 14 px (100 %).
+   contraignante des deux dimensions (largeur : 16 px à 1920 px ; hauteur :
+   16 px à 970 px de haut), bornée entre 12 px et 16 px (décision du 22/10/2026 :
+   le site était trop dézoomé ; mobile inchangé à 14 px).
    Pour revenir en arrière : supprimer le bloc @media ci-dessous.
    NB : la racine doit rester en px/clamp — un rem posé sur <html> se
    rapporterait à la valeur du navigateur (16 px), pas à 14 px. */
 html { font-size: 14px; }
 @media (min-width: 1024px) {
-  html { font-size: clamp(11px, min(0.7292vw, 1.4vh), 14px); }
+  html { font-size: clamp(12px, min(0.8333vw, 1.65vh), 16px); }
 }
 
 html, body, #root {
@@ -149,7 +150,7 @@ body::before {
 }
 
 /* ── Scrollbar sobres ───────────────────────────────────── */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: calc(6rem / 14); height: calc(6rem / 14); }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 

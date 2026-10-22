@@ -16,7 +16,7 @@ import type { Alert, AlertCategory, AlertSeverity } from './alertes.types'
 // (detectAlerts) ne rendent QUE les catégories non couvertes par le moteur,
 // pour éviter tout double comptage dans le badge.
 const CATEGORIES_HORS_MOTEUR: AlertCategory[] = [
-  'incident', 'inspection', 'chauffeur', 'rh', 'conformite', 'entretien',
+  'chauffeur', 'rh', 'conformite', 'entretien',
 ]
 
 const SEV_META_METIER: Record<AlerteSeverite, { label: string; soft: string; dot: string }> = {
@@ -44,8 +44,6 @@ const CATEGORY_LABEL: Record<AlertCategory, string> = {
   entretien: 'Entretien',
   livraison: 'Livraison',
   facture: 'Facture',
-  incident: 'Incident',
-  inspection: 'Inspection',
   conformite: 'Conformité',
 }
 
@@ -55,8 +53,6 @@ const TABLE_ROUTE: Record<string, string> = {
   team_members: '/equipe',
   vehicle_maintenances: '/entretiens',
   deliveries: '/livraisons',
-  incidents: '/incidents',
-  inspections: '/inspections',
   companies: '/parametres',
 }
 
@@ -145,8 +141,8 @@ export function AlertesBell() {
 
   const all = useMemo(() => alerts ?? [], [alerts])
 
-  // Échéances détaillées : SEULEMENT les catégories hors moteur (incidents,
-  // inspections, RH, entretien, conformité) — le reste vient du moteur unifié.
+  // Échéances détaillées : SEULEMENT les catégories hors moteur (RH, entretien,
+  // conformité) — le reste vient du moteur unifié.
   const echeancesDetail = useMemo(
     () => all.filter(a => CATEGORIES_HORS_MOTEUR.includes(a.category)),
     [all],
@@ -283,7 +279,7 @@ export function AlertesBell() {
                   </div>
                 ))}
 
-                {/* Échéances détaillées (incidents, inspections, RH, entretien…). */}
+                {/* Échéances détaillées (RH, entretien…). */}
                 {echeanceGroups.map(({ sev, items }) => (
                   <div key={sev}>
                     <div className={`flex items-center gap-2 px-3 py-1.5 ${SEVERITY_META[sev].soft}`}>

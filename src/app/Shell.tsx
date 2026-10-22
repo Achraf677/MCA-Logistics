@@ -27,9 +27,8 @@ interface NavItem {
 
 // Sidebar plate, ultra-épurée : 8 entrées, chacune = une page à sous-onglets.
 const NAV: NavItem[] = [
-  // « Mes courses » n'a PAS de `section` : elle reste donc visible quel que
-  // soit le jeu de permissions, y compris pour un chauffeur a qui on n'a
-  // ouvert aucune section. C'est voulu — c'est son seul ecran.
+  // « Mes courses » n'a PAS de `section` : elle reste visible quel que soit le
+  // jeu de permissions, mais seulement pour un compte salarié (voir visibleNav).
   { key: 'mescourses', label: 'Mes courses', icon: Route,          path: '/mes-courses',  featureKey: 'mesCourses'                        },
   { key: 'pilotage',   label: 'Pilotage',   icon: LayoutDashboard, path: '/pilotage',     featureKey: 'pilotage',    section: 'Pilotage'   },
   { key: 'livraisons', label: 'Livraisons', icon: Package,         path: '/livraisons',   featureKey: 'livraisons',  section: 'Livraisons' },
@@ -44,6 +43,7 @@ const NAV: NavItem[] = [
 function SidebarNav({ collapsed }: { collapsed: boolean }) {
   const { pathname } = useLocation()
   const { ready, isPresident, canViewSection } = usePermissions()
+  const { profile } = useProfile()
 
   // Pilotage est aussi actif sur la racine "/" (l'app s'ouvre sur le Dashboard).
   const isItemActive = (item: NavItem) =>
@@ -51,8 +51,11 @@ function SidebarNav({ collapsed }: { collapsed: boolean }) {
 
   // Masquage sidebar : seulement quand ready && !isPresident.
   // Pendant !ready → nav complète (anti-écran-noir).
+  // « Mes courses » = écran du salarié : le bureau (président, admin, DG,
+  // comptable) ne livre pas, l'entrée n'a rien à faire dans sa barre.
   const visibleNav = NAV.filter(item =>
     features[item.featureKey] &&
+    (item.key !== 'mescourses' || estCompteSalarie(profile?.role)) &&
     (!(ready && !isPresident) || !item.section || canViewSection(item.section))
   )
 

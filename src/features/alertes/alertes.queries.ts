@@ -3,7 +3,7 @@ import type { Alert, AlertsInput } from './alertes.types'
 
 /** Charge les projections nécessaires au moteur de détection (alertes.logic.ts). */
 export async function getAlertesDetectionData(): Promise<AlertsInput> {
-  const [vehicles, drivers, maintenances, deliveries, incidents, inspections, company] = await Promise.all([
+  const [vehicles, drivers, maintenances, deliveries, company] = await Promise.all([
     supabase
       .from('vehicles')
       .select('id, label, plate, status, ct_expiry, insurance_expiry, next_revision_date')
@@ -20,14 +20,6 @@ export async function getAlertesDetectionData(): Promise<AlertsInput> {
       .from('deliveries')
       .select('id, statut, date, invoiced_at, paid_at, clients!client_id(name, payment_terms)')
       .in('statut', ['planifiee', 'facturee']),
-    supabase
-      .from('incidents')
-      .select('id, status, date, type, vehicles!vehicle_id(label)')
-      .in('status', ['ouvert', 'en_cours']),
-    supabase
-      .from('vehicle_inspections')
-      .select('id, status, date, vehicles!vehicle_id(label)')
-      .in('status', ['defauts', 'refuse']),
     supabase
       .from('companies')
       .select('id, transport_license_expiry, rc_pro_expiry')
@@ -76,19 +68,6 @@ export async function getAlertesDetectionData(): Promise<AlertsInput> {
         payment_terms: client?.payment_terms ?? 30,
       }
     }),
-    incidents: (incidents.data ?? []).map(i => ({
-      id: i.id,
-      status: i.status,
-      date: i.date,
-      type: i.type,
-      vehicleLabel: join(i.vehicles as never),
-    })),
-    inspections: (inspections.data ?? []).map(i => ({
-      id: i.id,
-      status: i.status,
-      date: i.date,
-      vehicleLabel: join(i.vehicles as never),
-    })),
     company: company.data
       ? {
           id: company.data.id,

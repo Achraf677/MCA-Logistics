@@ -2,16 +2,17 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Car, AlertTriangle } from 'lucide-react'
 import { Shell } from '../../app/Shell'
-import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
-import { SkeletonCards, SkeletonKpis } from '../../shared/ui/Skeleton'
+import { SkeletonCards } from '../../shared/ui/Skeleton'
 import { DrawerVehicule } from './DrawerVehicule'
 import { getVehicles } from './vehicules.queries'
+import { downloadCSV } from '../../shared/lib/download'
+import { useToast } from '../../shared/ui/useToast'
 import {
   STATUS_LABELS, STATUS_COLORS, FUEL_LABELS, getCritairClass, formatMileage,
-  vehicleEcheances, worstStatus,
+  vehicleEcheances, worstStatus, exportVehiculesCSV,
 } from './vehicules.logic'
 import type { Vehicle, VehicleFilters } from './vehicules.types'
 import type { EcheanceStatus } from '../../shared/lib/echeances'
@@ -37,6 +38,7 @@ function EcheancePastille({ status }: { status: EcheanceStatus }) {
 }
 
 export function Vehicules() {
+  const { toast } = useToast()
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -65,17 +67,6 @@ export function Vehicules() {
     setDrawerOpen(true)
   }
 
-  const handleAction = (key: ActionKey) => {
-    if (key === 'nouveau') openDrawer()
-  }
-
-  const actifs = vehicles.filter(v => v.status === 'active').length
-  const kmTotal = vehicles.reduce((sum, v) => sum + v.mileage_km, 0)
-  const echeancesUrgentes = vehicles.filter(v => {
-    const ws = worstStatus(vehicleEcheances(v, today))
-    return ws === 'overdue' || ws === 'soon'
-  }).length
-
   const displayedVehicles = filters.echeance === 'urgent'
     ? vehicles.filter(v => {
         const ws = worstStatus(vehicleEcheances(v, today))
@@ -83,18 +74,16 @@ export function Vehicules() {
       })
     : vehicles
 
+  const handleAction = (key: ActionKey) => {
+    if (key === 'nouveau') openDrawer()
+    if (key === 'export') {
+      downloadCSV(exportVehiculesCSV(displayedVehicles, today), 'vehicules.csv')
+      toast('Export téléchargé')
+    }
+  }
+
   return (
     <Shell pageTitle="Véhicules" actions={['nouveau', 'export']} onAction={handleAction}>
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
-        {loading ? <SkeletonKpis count={4} /> : <>
-          <KpiCard label="Véhicules actifs" value={actifs} sub={`${vehicles.length} au total`} />
-          <KpiCard label="Km total flotte" value={formatMileage(kmTotal)} />
-          <KpiCard label="En maintenance" value={vehicles.filter(v => v.status === 'maintenance').length} />
-          <KpiCard label="Échéances < 30 j" value={echeancesUrgentes} accent={echeancesUrgentes > 0} />
-        </>}
-      </div>
-
       {/* Filtres */}
       <div className="flex flex-wrap items-center gap-3 mb-6 glass rounded-[var(--r-xl)] px-4 py-3">
         <select

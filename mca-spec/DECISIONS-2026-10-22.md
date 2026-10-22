@@ -15,3 +15,12 @@
 
 ## À proposer / à faire
 - Archivage photos : original conservé tel quel (octet pour octet), copie web pour l'affichage, archive compressée sans perte réversible.
+
+## Réponses du 22/10/2026 (suite)
+- Livraisons : statut devis « expiré » gardé tel quel ; tuiles « Courses » + « CA HT » fusionnées ; Preuves & documents = une page.
+- Planning : retrait express COMPLET (B) ; plus de bandeau express dans Mes courses (l'express passe par Tournées) ; pas d'heure de début, pas de km réels (enlever), pas de pointage dépôt ; résumé « Tournées de colis » de la vue Jour = beau résumé cliquable ; export CSV.
+- Équipe : tarifs domicile/relais retirés ; `get_heures` retiré de l'assistant ; salaire brut masqué en liste.
+- Tiers/Système : Devis reste dans Livraisons ; Clients : masquer particuliers jetables + sans livraison récente ; Paramètres : Apparence + Compte fusionnés ; Admins : salariés séparés des administrateurs ; tailles de texte corrigées écran par écran (mobile + PC).
+- Finance : rapprochement Qonto par ligne retiré ; tuile « À encaisser » RETIRÉE (Dashboard) ; vérif paiements Pennylane : on teste, on redemande l'avis plus tard ; ventilation = TVA par ligne + complète + automatique par IA (lit tickets/factures, demande validation) ; Charges : mois courant ouvert ; Justificatifs : même droit que Charges, « Validé » distinct, « Remboursé » vu du salarié, ancien ticket corrigé un par un, validation sans montant refusée ; transfert Pennylane (cartes ET notes de frais) → « Factures fournisseur » à traiter + commentaire depuis l'app : à étudier EN DÉTAIL TOUT À LA FIN (API, pas d'adresse e-mail de dépôt).
+- Flotte : tables Inspections et Incidents SUPPRIMÉES (à recréer plus tard selon la réalité) ; entretiens existants = TOUS en TTC → l'IA reprend ticket par ticket, l'utilisateur vérifie et valide (comme carburant / consommables) ; ticket mixte ventilé par le président seul ; TVA repas 100 % déductible, saisie identique à Pennylane ; tout en HT (prix au litre, conso) sauf trésorerie ; Véhicules : réparer l'Export (CSV utile, à améliorer).
+- IA (lecture des lignes de facture, complétion, validation) : à travailler et proposer.

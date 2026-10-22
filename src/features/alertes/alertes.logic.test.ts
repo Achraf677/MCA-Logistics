@@ -20,8 +20,6 @@ function input(p: Partial<AlertsInput>): AlertsInput {
     drivers: [],
     maintenances: [],
     deliveries: [],
-    incidents: [],
-    inspections: [],
     company: null,
     ...p,
   }
@@ -79,7 +77,7 @@ describe('détection véhicule — seuils critique/urgent/warning', () => {
     const a = detectAlerts(
       input({ vehicles: [{ id: 'v1', label: 'Kangoo', ct_expiry: rel(10), insurance_expiry: null, next_revision_date: null }] }),
       TODAY,
-      { urgentDays: 14, warningDays: 30, lateDeliveryUrgentDays: 3, invoiceUrgentDays: 15, incidentUrgentDays: 14 },
+      { urgentDays: 14, warningDays: 30, lateDeliveryUrgentDays: 3, invoiceUrgentDays: 15 },
     )
     expect(a[0].severity).toBe('urgent') // 10 ≤ 14
   })
@@ -185,64 +183,6 @@ describe('détection facture impayée', () => {
     )
     // payment_terms 0 → ?? n'intervient pas (0 est valide), donc dépassée de 35j → urgent
     expect(a[0].severity).toBe('urgent')
-  })
-})
-
-// ── Incident ─────────────────────────────────────────────────────────────────
-describe('détection incident', () => {
-  it('ouvert récemment → warning', () => {
-    const a = detectAlerts(
-      input({ incidents: [{ id: 'i1', status: 'ouvert', date: rel(-3) }] }),
-      TODAY,
-    )
-    expect(a).toHaveLength(1)
-    expect(a[0].category).toBe('incident')
-    expect(a[0].severity).toBe('warning')
-  })
-
-  it('ouvert depuis > 14j → urgent', () => {
-    const a = detectAlerts(
-      input({ incidents: [{ id: 'i1', status: 'en_cours', date: rel(-20) }] }),
-      TODAY,
-    )
-    expect(a[0].severity).toBe('urgent')
-  })
-
-  it('clos → aucune alerte', () => {
-    const a = detectAlerts(
-      input({ incidents: [{ id: 'i1', status: 'clos', date: rel(-30) }] }),
-      TODAY,
-    )
-    expect(a).toHaveLength(0)
-  })
-})
-
-// ── Inspection ───────────────────────────────────────────────────────────────
-describe('détection inspection', () => {
-  it('défauts → urgent', () => {
-    const a = detectAlerts(
-      input({ inspections: [{ id: 's1', status: 'defauts', date: rel(-1) }] }),
-      TODAY,
-    )
-    expect(a).toHaveLength(1)
-    expect(a[0].severity).toBe('urgent')
-    expect(a[0].category).toBe('inspection')
-  })
-
-  it('refusé → urgent', () => {
-    const a = detectAlerts(
-      input({ inspections: [{ id: 's1', status: 'refuse', date: rel(-1) }] }),
-      TODAY,
-    )
-    expect(a[0].severity).toBe('urgent')
-  })
-
-  it('ok → aucune alerte', () => {
-    const a = detectAlerts(
-      input({ inspections: [{ id: 's1', status: 'ok', date: rel(-1) }] }),
-      TODAY,
-    )
-    expect(a).toHaveLength(0)
   })
 })
 
@@ -413,20 +353,18 @@ describe('summarizeAlerts', () => {
   it('compte total, par sévérité et par catégorie', () => {
     const alerts = detectAlerts(
       input({
-        vehicles: [{ id: 'v1', label: 'A', ct_expiry: rel(-1), insurance_expiry: null, next_revision_date: null }],
-        inspections: [{ id: 's1', status: 'refuse', date: rel(-1) }],
-        incidents: [{ id: 'i1', status: 'ouvert', date: rel(-1) }],
+        vehicles: [
+          { id: 'v1', label: 'A', ct_expiry: rel(-1), insurance_expiry: null, next_revision_date: null },
+          { id: 'v2', label: 'B', ct_expiry: rel(20), insurance_expiry: null, next_revision_date: null },
+        ],
       }),
       TODAY,
     )
     const s = summarizeAlerts(alerts)
-    expect(s.total).toBe(3)
+    expect(s.total).toBe(2)
     expect(s.parSeverite.critique).toBe(1)
-    expect(s.parSeverite.urgent).toBe(1)
     expect(s.parSeverite.warning).toBe(1)
-    expect(s.parCategorie.vehicule).toBe(1)
-    expect(s.parCategorie.inspection).toBe(1)
-    expect(s.parCategorie.incident).toBe(1)
+    expect(s.parCategorie.vehicule).toBe(2)
   })
 
   it('résumé vide pour aucune alerte', () => {

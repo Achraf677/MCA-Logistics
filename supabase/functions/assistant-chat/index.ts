@@ -30,7 +30,7 @@ const SYSTEM_BASE =
   "(modifier_client, en ne renseignant QUE les champs à changer), modifier une livraison existante " +
   "(modifier_livraison, sauf si facturée/payée, en ne renseignant que les champs à changer), créer un fournisseur " +
   "(create_fournisseur), ajouter un véhicule à la flotte (create_vehicule), ajouter un plein de carburant " +
-  "(create_plein), déclarer un incident (create_incident). Quand l'utilisateur demande clairement une action, " +
+  "(create_plein). Quand l'utilisateur demande clairement une action, " +
   "appelle l'outil avec les informations fournies. TRÈS IMPORTANT : l'application affichera à l'utilisateur une " +
   "carte de confirmation AVANT d'enregistrer quoi que ce soit. Ne dis JAMAIS qu'une action est déjà faite et ne " +
   "confirme pas toi-même : contente-toi d'appeler l'outil. Si une information essentielle manque, demande-la " +
@@ -52,7 +52,7 @@ const TOOLS = [
       description: "Indicateurs clés d'un mois : CA HT, nombre de livraisons, facturées, payées. Pour 'mon CA du mois', 'combien de courses ce mois', 'bilan du mois'.",
       parameters: { type: 'object', properties: { mois: { type: 'string', description: 'Mois YYYY-MM. Defaut : mois courant.' } }, required: [] } } },
   { type: 'function', function: { name: 'get_alertes',
-      description: "Toutes les alertes et échéances : CT/assurance/révision véhicule, permis et visite médicale chauffeur, entretiens dus, livraisons en retard, factures impayées, incidents ouverts, inspections avec défauts, fins de CDD. Pour 'qu'est-ce qui urge', 'mes échéances', 'quoi faire en priorité'.",
+      description: "Toutes les alertes et échéances : CT/assurance/révision véhicule, permis et visite médicale chauffeur, entretiens dus, livraisons en retard, factures impayées, fins de CDD. Pour 'qu'est-ce qui urge', 'mes échéances', 'quoi faire en priorité'.",
       parameters: { type: 'object', properties: {}, required: [] } } },
   { type: 'function', function: { name: 'get_impayes',
       description: "Factures émises non payées, avec montant et retard. Pour 'qui me doit de l'argent', 'mes impayés', 'créances'.",
@@ -81,12 +81,6 @@ const TOOLS = [
   { type: 'function', function: { name: 'get_tournees',
       description: "Tournées d'une date (véhicule, chauffeur, nombre d'arrêts, km, statut). Pour 'la tournée de demain', 'mes tournées du jour'.",
       parameters: { type: 'object', properties: { date: { type: 'string', description: 'Jour YYYY-MM-DD. Defaut : jour courant.' } }, required: [] } } },
-  { type: 'function', function: { name: 'get_incidents',
-      description: "Incidents (accidents, pannes, vols…), filtrables par statut. Par défaut, les incidents non clos. Pour 'des incidents', 'qu'est-ce qui s'est passé'.",
-      parameters: { type: 'object', properties: { statut: { type: 'string', enum: ['ouvert', 'en_cours', 'clos'], description: 'Statut. Optionnel.' } }, required: [] } } },
-  { type: 'function', function: { name: 'get_inspections',
-      description: "Inspections de véhicules (pré/post-trajet, périodiques), filtrables par statut (ok, defauts, refuse). Pour 'des inspections avec défauts', 'dernières inspections'.",
-      parameters: { type: 'object', properties: { statut: { type: 'string', enum: ['ok', 'defauts', 'refuse'], description: 'Statut. Optionnel.' } }, required: [] } } },
   { type: 'function', function: { name: 'get_vehicules',
       description: "État de la flotte : véhicules, statut, échéances (CT, assurance, révision). Pour 'mes véhicules', 'ma flotte', 'l'état de mes camions'.",
       parameters: { type: 'object', properties: {}, required: [] } } },
@@ -170,14 +164,6 @@ const TOOLS = [
         litres: { type: 'number', description: 'Nombre de litres.' },
         date: { type: 'string', description: 'Date du plein, format YYYY-MM-DD.' },
       }, required: ['vehicule', 'montant_ttc_eur', 'litres', 'date'] } } },
-  { type: 'function', function: { name: 'create_incident',
-      description: "Déclare un incident (accident, panne, vol, retard…). Carte de confirmation avant enregistrement : ne confirme pas toi-même. Demande la description et la date s'ils manquent.",
-      parameters: { type: 'object', properties: {
-        description: { type: 'string', description: "Description de l'incident." },
-        date: { type: 'string', description: "Date de l'incident, format YYYY-MM-DD." },
-        vehicule: { type: 'string', description: 'Véhicule concerné (plaque ou nom). Optionnel.' },
-        type: { type: 'string', description: 'Type d\'incident (ex. accident, panne, vol, retard). Optionnel.' },
-      }, required: ['description', 'date'] } } },
   { type: 'function', function: { name: 'modifier_client',
       description: "Modifie un client EXISTANT (coordonnées, type, délai de paiement, nom). Carte de confirmation AVANT enregistrement : ne confirme pas toi-même. Identifie le client par son nom. Ne renseigne QUE les champs à changer.",
       parameters: { type: 'object', properties: {

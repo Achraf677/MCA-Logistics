@@ -6,8 +6,6 @@ export const features = {
   tournees:     true,
   planning:     true,
   calendrier:   true,
-  incidents:    true,
-  inspections:  true,
   vehicules:    true,
   carburant:    true,
   entretiens:   true,

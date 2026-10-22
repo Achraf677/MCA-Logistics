@@ -37,14 +37,6 @@ import type { DeliveryRow, DeliveryFilters, DeliveryInsert, DeliveryType, Delive
 import { fetchToursByDate, getActiveVehicles, getActiveDrivers, getDeliveriesForDate } from '../tournees/tournees.queries'
 import type { Tour, TourDelivery } from '../tournees/tournees.types'
 
-import { getIncidents, createIncident } from '../incidents/incidents.queries'
-import { TYPE_LABELS as INCIDENT_TYPE_LABELS, STATUS_LABELS as INCIDENT_STATUS_LABELS } from '../incidents/incidents.logic'
-import type { IncidentRow, IncidentFilters, IncidentInsert, IncidentType } from '../incidents/incidents.types'
-
-import { getInspections } from '../inspections/inspections.queries'
-import { TYPE_LABELS as INSPECTION_TYPE_LABELS, STATUS_LABELS as INSPECTION_STATUS_LABELS } from '../inspections/inspections.logic'
-import type { InspectionRow, InspectionFilters } from '../inspections/inspections.types'
-
 import { getVehicles, createVehicle } from '../vehicules/vehicules.queries'
 import { STATUS_LABELS as VEHICLE_STATUS_LABELS, FUEL_LABELS } from '../vehicules/vehicules.logic'
 import type { Vehicle, VehicleInsert } from '../vehicules/vehicules.types'
@@ -421,47 +413,6 @@ export async function getTournees(date?: string) {
       nb_arrets: stopCount.get(t.id) ?? 0,
       km: t.total_km != null ? Number(t.total_km) : null,
       statut: TOUR_STATUS_LABELS[t.status] ?? t.status,
-    })),
-  }
-}
-
-// ── 3) Incidents ───────────────────────────────────────────────────────────────
-// Réutilise getIncidents() (onglet Incidents). Défaut : non clos (ouvert + en_cours).
-
-export async function getIncidentsList(statut?: string) {
-  const filters: IncidentFilters = {}
-  if (statut) filters.status = statut as IncidentFilters['status']
-  const { data } = await getIncidents(filters)
-  let rows = (data ?? []) as unknown as IncidentRow[]
-  if (!statut) rows = rows.filter(r => r.status !== 'clos')
-  return {
-    total: rows.length,
-    incidents: rows.slice(0, MAX_LIST).map(r => ({
-      date: r.date,
-      type: r.type ? (INCIDENT_TYPE_LABELS[r.type] ?? r.type) : null,
-      vehicule: r.vehicles?.label ?? '—',
-      statut: INCIDENT_STATUS_LABELS[r.status] ?? r.status,
-      description: r.description ?? null,
-    })),
-  }
-}
-
-// ── 4) Inspections ─────────────────────────────────────────────────────────────
-// Réutilise getInspections() (onglet Inspections). Champ défauts = `defects`.
-
-export async function getInspectionsList(statut?: string) {
-  const filters: InspectionFilters = {}
-  if (statut) filters.status = statut as InspectionFilters['status']
-  const { data } = await getInspections(filters)
-  const rows = (data ?? []) as unknown as InspectionRow[]
-  return {
-    total: rows.length,
-    inspections: rows.slice(0, MAX_LIST).map(r => ({
-      date: r.date,
-      vehicule: r.vehicles?.label ?? '—',
-      type: r.type ? (INSPECTION_TYPE_LABELS[r.type] ?? r.type) : null,
-      statut: INSPECTION_STATUS_LABELS[r.status] ?? r.status,
-      defauts: r.defects ?? null,
     })),
   }
 }
@@ -1221,76 +1172,6 @@ export async function prepareCreatePlein(args: CreatePleinArgs): Promise<Prepare
         const { error } = await createFuelLog(payload)
         if (error) return `❌ La création a échoué : ${(error as Error).message}.`
         return `✅ Plein enregistré : ${v.vehicle.label}, ${centimesToEuros(totalCts)} € TTC, ${args.litres} L, ${date}.`
-      },
-    },
-  }
-}
-
-// ── d) create_incident ────────────────────────────────────────────────────────
-// Réutilise createIncident() (onglet Incidents). status défaut 'ouvert',
-// police_report défaut false ; véhicule optionnel (tous statuts comme le drawer).
-
-export interface CreateIncidentArgs {
-  description?: string
-  date?: string
-  vehicule?: string
-  type?: string
-}
-
-const INCIDENT_TYPES = ['accident', 'panne', 'vol', 'vandalisme', 'infraction', 'autre']
-
-export async function prepareCreateIncident(args: CreateIncidentArgs): Promise<PrepareResult> {
-  const description = (args.description ?? '').trim()
-  if (!description) return { ok: false, message: 'Précise la description de l’incident.' }
-  const date = (args.date ?? '').trim()
-  if (!isoDateValid(date)) return { ok: false, message: 'Date invalide : indique une date au format AAAA-MM-JJ.' }
-  const companyId = await getCompanyId()
-  if (!companyId) return { ok: false, message: 'Profil non chargé : impossible de créer l’incident.' }
-
-  // Véhicule optionnel : résolu si fourni (tous statuts, comme le drawer Incidents).
-  let vehicleId: string | null = null
-  let vehiculeLabel = '—'
-  const rawV = (args.vehicule ?? '').trim()
-  if (rawV) {
-    const v = await resolveVehicule(rawV, false)
-    if (!v.ok) return v
-    vehicleId = v.vehicle.id
-    vehiculeLabel = `${v.vehicle.label} (${v.vehicle.plate})`
-  }
-
-  const type = (args.type && INCIDENT_TYPES.includes(args.type) ? args.type : null) as IncidentType | null
-
-  const payload: IncidentInsert = {
-    company_id: companyId,
-    vehicle_id: vehicleId,
-    driver_id: null,
-    date,
-    type,
-    description,
-    location: null,
-    damage_cts: null,
-    at_fault: null,
-    status: 'ouvert',
-    police_report: false,
-    insurance_ref: null,
-    notes: null,
-  }
-
-  return {
-    ok: true,
-    action: {
-      title: 'Signaler un incident',
-      lines: [
-        { label: 'Description', value: description },
-        { label: 'Type', value: type ? (INCIDENT_TYPE_LABELS[type] ?? type) : '—' },
-        { label: 'Véhicule', value: vehiculeLabel },
-        { label: 'Date', value: date },
-      ],
-      confirmLabel: 'Confirmer',
-      run: async () => {
-        const { error } = await createIncident(payload)
-        if (error) return `❌ La création a échoué : ${(error as Error).message}.`
-        return `✅ Incident enregistré : ${description.slice(0, 60)}, ${date}.`
       },
     },
   }

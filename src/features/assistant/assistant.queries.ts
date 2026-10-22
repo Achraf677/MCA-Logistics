@@ -4,7 +4,7 @@ import type { AssistantMessage } from './AssistantContext'
 import {
   getKpisMois, getAlertes, getImpayes, getTresorerie, getChargesMois,
   getClient, getClientsList, getFournisseursList,
-  getLivraisons, getTournees, getIncidentsList, getInspectionsList,
+  getLivraisons, getTournees,
   getVehicules, getCarburantMois, getEntretiens, getEquipe, getHeures,
 } from './assistant.tools'
 
@@ -26,8 +26,6 @@ const ASSISTANT_TOOLS: Record<string, (args: Record<string, unknown>) => Promise
   // Vague B — opérations / flotte / équipe
   get_livraisons:    (args) => getLivraisons(str(args.date), str(args.statut)),
   get_tournees:      (args) => getTournees(str(args.date)),
-  get_incidents:     (args) => getIncidentsList(str(args.statut)),
-  get_inspections:   (args) => getInspectionsList(str(args.statut)),
   get_vehicules:     () => getVehicules(),
   get_carburant_mois:(args) => getCarburantMois(str(args.mois)),
   get_entretiens:    () => getEntretiens(),
@@ -39,7 +37,7 @@ const ASSISTANT_TOOLS: Record<string, (args: Record<string, unknown>) => Promise
 // la boucle s'arrête et renvoie une proposition d'action (carte de confirmation UI).
 const WRITE_TOOLS = new Set<string>([
   'create_livraison', 'changer_statut_livraison',
-  'create_charge', 'create_client', 'create_plein', 'create_incident',
+  'create_charge', 'create_client', 'create_plein',
   'create_fournisseur', 'create_vehicule', 'modifier_client', 'modifier_livraison',
 ])
 

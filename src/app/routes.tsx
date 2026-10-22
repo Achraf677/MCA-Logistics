@@ -95,8 +95,6 @@ export function AppRoutes() {
       <Route path="/vehicules"  element={<VersOnglet section="/flotte" tab="vehicules" />} />
       <Route path="/carburant"  element={<VersOnglet section="/flotte" tab="carburant" />} />
       <Route path="/entretiens" element={<VersOnglet section="/flotte" tab="entretiens" />} />
-      <Route path="/inspections" element={<VersOnglet section="/flotte" tab="inspections" />} />
-      <Route path="/incidents"  element={<VersOnglet section="/flotte" tab="incidents" />} />
       {/* Domaine Tiers à sous-onglets ; anciennes routes → redirection */}
       <Route path="/tiers"         element={guard(features.tiers,        <TiersSection />)} />
       <Route path="/clients"    element={<VersOnglet section="/tiers" tab="clients" />} />

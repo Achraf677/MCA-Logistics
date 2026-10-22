@@ -9,8 +9,6 @@ export type AlertCategory =
   | 'entretien'
   | 'livraison'
   | 'facture'
-  | 'incident'
-  | 'inspection'
   | 'rh'
   | 'conformite'
 
@@ -40,8 +38,6 @@ export interface AlertThresholds {
   lateDeliveryUrgentDays: number
   /** Facture dépassée de plus de N jours → urgent (sinon warning). */
   invoiceUrgentDays: number
-  /** Incident ouvert depuis plus de N jours → urgent (sinon warning). */
-  incidentUrgentDays: number
 }
 
 export const DEFAULT_THRESHOLDS: AlertThresholds = {
@@ -49,7 +45,6 @@ export const DEFAULT_THRESHOLDS: AlertThresholds = {
   warningDays: 30,
   lateDeliveryUrgentDays: 3,
   invoiceUrgentDays: 15,
-  incidentUrgentDays: 14,
 }
 
 // ── Shapes d'entrée du moteur (projections minimales) ────────────────────────
@@ -93,21 +88,6 @@ export interface DeliveryAlertRow {
   payment_terms: number
 }
 
-export interface IncidentAlertRow {
-  id: string
-  status: string
-  date: string
-  type?: string | null
-  vehicleLabel?: string | null
-}
-
-export interface InspectionAlertRow {
-  id: string
-  status: string
-  date: string
-  vehicleLabel?: string | null
-}
-
 export interface CompanyAlertRow {
   id: string
   transport_license_expiry: string | null
@@ -119,8 +99,6 @@ export interface AlertsInput {
   drivers: DriverAlertRow[]
   maintenances: MaintenanceAlertRow[]
   deliveries: DeliveryAlertRow[]
-  incidents: IncidentAlertRow[]
-  inspections: InspectionAlertRow[]
   company?: CompanyAlertRow | null
 }
 

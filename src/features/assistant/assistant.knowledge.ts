@@ -4,7 +4,7 @@
 
 export const SITE_KNOWLEDGE = `MCA Logistics — PGI/TMS interne (transport routier sub-3,5 t).
 Navigation : 8 entrées de menu, chacune est une PAGE À SOUS-ONGLETS. Pour orienter l'utilisateur, donne toujours « Section, onglet X » et le chemin direct ?tab= (ex. « Va dans Finance, onglet Charges » → /finance?tab=charges). N'invente aucun onglet hors de cette liste.
-Permissions : rôles president / dg / chauffeur / comptable. Le front ne bloque explicitement que la SUPPRESSION définitive (réservée au président) dans Livraisons, Clients et Incidents ; tout le reste (qui lit/écrit) est encadré côté base par les politiques RLS Supabase. Montants toujours en centimes, formatés à l'affichage.
+Permissions : rôles president / dg / chauffeur / comptable. Le front ne bloque explicitement que la SUPPRESSION définitive (réservée au président) dans Livraisons, Clients ; tout le reste (qui lit/écrit) est encadré côté base par les politiques RLS Supabase. Montants toujours en centimes, formatés à l'affichage.
 
 1) PILOTAGE (/pilotage) — l'app s'ouvre dessus. Un seul écran, Dashboard (/pilotage) — KPIs du mois (CA HT, nb livraisons, % facturé/payé), référentiels actifs, tendance CA 6 mois, dernières livraisons. Lecture seule.
    (Rentabilité et Statistiques ont été retirées : redondantes avec le Dashboard.)
@@ -20,8 +20,6 @@ Permissions : rôles president / dg / chauffeur / comptable. Le front ne bloque 
    - Véhicules (/flotte?tab=vehicules) — référentiel flotte, échéancier (CT, assurance, révision), Crit'Air, PTAC ≤ 3,5 t. « Nouveau ».
    - Carburant (/flotte?tab=carburant) — journal des pleins (litres × prix/L = total), TVA déductible. « Nouveau », export CSV.
    - Entretiens (/flotte?tab=entretiens) — historique + prochaines échéances (date/km). « Nouveau ».
-   - Inspections (/flotte?tab=inspections) — checklist véhicule 7 points ; statut Conforme/Défauts auto. « Nouveau ».
-   - Incidents (/flotte?tab=incidents) — registre incidents (accident, panne, vol…), statut, dommages. « Nouveau ». Suppression réservée président.
 
 5) TIERS (/tiers) — Sous-onglets :
    - Clients (/tiers?tab=clients) — référentiel clients (coordonnées, tarif, délai de paiement, encours/statut paiement). « Nouveau » (nom requis, SIRET 14 chiffres). Désactiver (tous) ; Supprimer réservé président (bloqué si livraisons liées). Export CSV.
@@ -37,7 +35,7 @@ Permissions : rôles president / dg / chauffeur / comptable. Le front ne bloque 
    - Heures (/equipe-hub?tab=heures) — heures travaillées par chauffeur, rattachables à une livraison ; total net. « Nouveau ».
 
 8) SYSTÈME (/systeme) — Sous-onglets :
-   - Alertes (/systeme?tab=alertes) — centre d'alertes en direct (échéances, retards/impayés, incidents, inspections), filtres ; « Briefing du jour » = synthèse IA. Lecture seule.
+   - Alertes (/systeme?tab=alertes) — centre d'alertes en direct (échéances, retards/impayés), filtres ; « Briefing du jour » = synthèse IA. Lecture seule.
    - Paramètres (/systeme?tab=parametres) — fiche société (identité légale, IBAN, adresse/dépôt géocodé). Le dépôt géocodé sert aux tournées.
 
 Capacités intégrées À L'ASSISTANT (pas d'onglet dédié — tout se fait dans ce chat) :

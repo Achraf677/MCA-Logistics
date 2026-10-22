@@ -17,8 +17,6 @@ export const PERMISSION_CATALOG: PermResource[] = [
   { section: 'Flotte',      key: 'flotte.vehicules',      label: 'Véhicules' },
   { section: 'Flotte',      key: 'flotte.carburant',      label: 'Carburant' },
   { section: 'Flotte',      key: 'flotte.entretiens',     label: 'Entretiens' },
-  { section: 'Flotte',      key: 'flotte.inspections',    label: 'Inspections' },
-  { section: 'Flotte',      key: 'flotte.incidents',      label: 'Incidents' },
   // Tiers
   { section: 'Tiers',       key: 'tiers.clients',         label: 'Clients' },
   { section: 'Tiers',       key: 'tiers.fournisseurs',    label: 'Fournisseurs' },
