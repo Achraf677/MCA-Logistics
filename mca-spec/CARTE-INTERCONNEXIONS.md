@@ -215,3 +215,4 @@
 - Planning (19/10/2026) : lit aussi `tournees_colis` / `tournees_colis_arrets` via `shared/lib/tourneesColis.queries` (droit `planning.tournees`) ; écrit `deliveries.driver_id` / `date` seulement.
 
 - **Finance (22/10/2026)** : onglets Encaissement et Relances SUPPRIMÉS (code + routes + droits du catalogue ; lignes `user_permissions` gardées). Alerte « factures en retard de paiement » → `/livraisons`. `aRapprocher` = charges seulement (catégorisation, supprimées Pennylane, hors Pennylane, avoirs) ; plus de compteurs trésorerie / encaissements. Listes Finance groupées par mois : `shared/lib/mois` + `shared/ui/GroupeMois`.
+- **charges.passee_en_od** (22/10/2026) : écrit par `DrawerCharge` ; lu par `aRapprocher#estChargeHorsPennylane` (alerte cloche + bandeau Charges) et le badge « OD » de `Charges`.

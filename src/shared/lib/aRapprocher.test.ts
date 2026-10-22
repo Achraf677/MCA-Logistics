@@ -94,3 +94,14 @@ describe('countARapprocher — agrégation', () => {
     expect(r.total).toBe(r.categorisation + r.pennylane_supprimees + r.hors_pennylane)
   })
 })
+
+describe('charge passée en OD', () => {
+  const AUJ = new Date('2026-09-11T10:00:00Z')
+  const local = (o: Partial<ChargePick> = {}): ChargePick => ({
+    id: 'c1', montant_ttc_cts: -1929, category_id: 'x', pennylane_id: null, date: '2026-05-29', ...o,
+  })
+  it('un avoir passé en OD n’est pas « hors Pennylane »', () => {
+    expect(countChargesHorsPennylane([local()], AUJ)).toBe(1)
+    expect(countChargesHorsPennylane([local({ passee_en_od: true })], AUJ)).toBe(0)
+  })
+})

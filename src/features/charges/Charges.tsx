@@ -379,6 +379,7 @@ export function Charges() {
                         <div className="flex items-center gap-2">
                           <span title={row.label} className="font-medium text-[var(--text)] truncate">{row.label}</span>
                           {row.est_immobilisation && <Badge color="purple">Immobilisation</Badge>}
+                          {row.passee_en_od && <Badge color="muted">OD</Badge>}
                           {row.mode_paiement === 'note_de_frais' && !row.rembourse_le && (
                             <Badge color="warning">À rembourser</Badge>
                           )}
@@ -529,6 +530,7 @@ export function Charges() {
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span title={row.label} className="font-medium text-[var(--text)] truncate">{row.label}</span>
                       {row.est_immobilisation && <Badge color="purple">Immobilisation</Badge>}
+                          {row.passee_en_od && <Badge color="muted">OD</Badge>}
                       {row.mode_paiement === 'note_de_frais' && !row.rembourse_le && (
                         <Badge color="warning">À rembourser</Badge>
                       )}

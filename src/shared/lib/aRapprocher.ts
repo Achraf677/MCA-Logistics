@@ -33,6 +33,11 @@ export interface ChargePick {
    * d'exploitation. Absent (`undefined`) = considéré false (rétrocompat).
    */
   est_immobilisation?: boolean
+  /**
+   * Passée en OD chez le comptable (avoir, écriture diverse) : pas de facture fournisseur chez
+   * Pennylane, ce n'est donc pas un écart. Absent (`undefined`) = false.
+   */
+  passee_en_od?: boolean
 }
 
 export interface ARapprocherCounts {
@@ -96,6 +101,7 @@ export function estChargeHorsPennylane(c: ChargePick, aujourdhui: Date): boolean
   if (c.pennylane_id === undefined) return false   // colonne non selectionnee
   if (c.pennylane_id !== null) return false        // vient de Pennylane
   if (c.est_immobilisation) return false           // circuit comptable a part
+  if (c.passee_en_od) return false                 // ecriture diverse : Pennylane n'a pas de facture
   if (!c.date) return false                        // anciennete indeterminable
   const limite = new Date(aujourdhui.getTime() - DELAI_GRACE_PENNYLANE_JOURS * 86_400_000)
     .toISOString().slice(0, 10)

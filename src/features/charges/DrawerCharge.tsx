@@ -48,6 +48,7 @@ const EMPTY_FORM = {
   mode_paiement: 'qonto' as 'qonto' | 'note_de_frais' | 'especes' | 'prepaye' | 'autre',
   avance_par: '',
   rembourse_le: '',
+  passee_en_od: false,
 }
 
 const MODE_PAIEMENT_LABELS: Record<string, string> = {
@@ -112,6 +113,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
         mode_paiement: (charge.mode_paiement ?? 'qonto') as typeof EMPTY_FORM.mode_paiement,
         avance_par: charge.avance_par ?? '',
         rembourse_le: charge.rembourse_le ?? '',
+        passee_en_od: charge.passee_en_od ?? false,
       })
     } else {
       setIsAvoir(false)
@@ -125,7 +127,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
     }
   }, [charge, open, prefillDate, prefillLabel, prefillNotes])
 
-  const set = (k: keyof typeof form, v: string) => setForm(p => ({ ...p, [k]: v }))
+  const set = (k: keyof typeof form, v: string | boolean) => setForm(p => ({ ...p, [k]: v }))
 
   // L'utilisateur saisit toujours positif ; le signe est appliqué à l'enregistrement
   const absHtCts = Math.round(parseFloat(form.montant_ht || '0') * 100)
@@ -239,6 +241,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
         // ne pas polluer avec des données obsolètes si l'utilisateur bascule.
         avance_par: form.mode_paiement === 'note_de_frais' ? (form.avance_par || null) : null,
         rembourse_le: form.mode_paiement === 'note_de_frais' ? (form.rembourse_le || null) : null,
+        passee_en_od: form.passee_en_od,
       }
 
       if (isEdit && charge) {
@@ -377,6 +380,20 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
             ))}
           </select>
         </Field>
+
+        {/* OD : un avoir ou une écriture saisie directement chez le comptable n'a pas de facture Pennylane. */}
+        {!isPennylane && (
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={form.passee_en_od} onChange={e => set('passee_en_od', e.target.checked)}
+              className="mt-0.5" />
+            <span>
+              <span className="text-[var(--text)]">Passée en OD dans la compta</span>
+              <span className="block text-xs text-[var(--text-muted)]">
+                Avoir ou écriture diverse saisie chez le comptable : pas de facture dans Pennylane, donc pas d'alerte « n'existe que dans le site ».
+              </span>
+            </span>
+          </label>
+        )}
 
         {form.mode_paiement === 'note_de_frais' && (
           <div className="grid grid-cols-2 gap-3">

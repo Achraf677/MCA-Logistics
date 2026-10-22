@@ -7,6 +7,6 @@ export async function getARapprocherCounts(): Promise<ARapprocherCounts> {
     .from('charges')
     // pennylane_deleted_at : facture supprimée côté Pennylane ; pennylane_id + date : charges qui n'existent
     // que dans le site ; est_immobilisation : investissements exclus ; mode_paiement : canal de paiement.
-    .select('id, montant_ttc_cts, category_id, mode_paiement, pennylane_deleted_at, est_immobilisation, pennylane_id, date')
+    .select('id, montant_ttc_cts, category_id, mode_paiement, pennylane_deleted_at, est_immobilisation, passee_en_od, pennylane_id, date')
   return countARapprocher((data ?? []) as ChargePick[])
 }
