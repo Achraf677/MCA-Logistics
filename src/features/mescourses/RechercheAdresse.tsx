@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, Plus, Pencil, X } from 'lucide-react'
 import { LIBELLE_TYPE_ARRET, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
 import { libelleAdresse } from './tourneeColis.logic'
+import { modeOrdre, numeroAffiche } from '../../shared/lib/tourneesColisRoute'
 import { FeuilleAdresse } from '../../shared/ui/FeuilleAdresse'
 import { rechercherArrets } from '../../shared/lib/adresseTournee.logic'
 
@@ -18,6 +19,7 @@ export function RechercheAdresse({ tournee, arrets, verrouillee, onOuvrir, onAjo
   const [ouvert, setOuvert] = useState(false)
   const [feuille, setFeuille] = useState<{ saisie: string } | null>(null)
   const racine = useRef<HTMLDivElement>(null)
+  const mode = modeOrdre(tournee)
   const resultats = useMemo(() => rechercherArrets(arrets, q), [arrets, q])
 
   // Un appui ailleurs referme la liste (sans effacer ce qui est tapé).
@@ -53,7 +55,7 @@ export function RechercheAdresse({ tournee, arrets, verrouillee, onOuvrir, onAjo
               <button type="button" onClick={() => { onOuvrir(a); setOuvert(false) }} className="flex-1 min-w-0 px-3 py-2 text-left">
                 <span className="block text-base font-semibold text-[var(--text)] truncate">{libelleAdresse(a)}</span>
                 <span className="block text-sm text-[var(--text-muted)] truncate">
-                  {a.commune}{a.zone ? ` · ${a.zone.replace('ZONE', 'Zone')}` : ''} · {LIBELLE_TYPE_ARRET[a.type]}{a.statut ? ' · traité' : ''}
+                  {numeroAffiche(a, mode) != null ? <b className="text-[var(--text)]">N° {numeroAffiche(a, mode)}/{arrets.length} · </b> : null}{a.commune}{a.zone ? ` · ${a.zone.replace('ZONE', 'Zone')}` : ''} · {LIBELLE_TYPE_ARRET[a.type]}{a.statut ? ' · traité' : ''}
                 </span>
               </button>
               {!verrouillee && !a.statut && (
