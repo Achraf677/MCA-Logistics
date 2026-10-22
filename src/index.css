@@ -284,6 +284,13 @@ body::before {
    L'animation ne se rejoue PAS a chaque rendu : React reutilise les noeuds
    du DOM. Elle se rejoue quand le squelette de chargement laisse la place
    aux vraies cartes — c'est exactement le moment ou on la veut. */
+/* Barres d'un graphique : montent depuis la base, l'une après l'autre (--i = rang). */
+@keyframes barreMonte { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+.barre-monte {
+  transform-origin: bottom;
+  animation: barreMonte var(--dur-3) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
 .stagger > * { animation: riseIn var(--dur-3) var(--ease-out) backwards; }
 .stagger > *:nth-child(1) { animation-delay:   0ms; }
 .stagger > *:nth-child(2) { animation-delay:  45ms; }
@@ -367,7 +374,7 @@ body::before {
    Un seul interrupteur pour tout ce qui precede. Sans lui, chaque
    animation ajoutee plus tard devrait penser a son propre garde-fou. */
 @media (prefers-reduced-motion: reduce) {
-  .rise, .stagger > * { animation: none; opacity: 1; }
+  .rise, .stagger > *, .barre-monte { animation: none; opacity: 1; }
   .skeleton::after { animation: none; }
   .tab-active::after { animation: none; }
   .lift:hover, .press:active { transform: none; }

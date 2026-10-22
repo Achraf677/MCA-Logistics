@@ -1,7 +1,7 @@
 # 02 — Pilotage › Dashboard
 
 > Un fichier = un onglet (plan fixe, modèle `01-mes-courses.md`).
-> Dernière mise à jour : 30/09/2026 (lot 1).
+> Dernière mise à jour : 22/10/2026 (refonte visuelle ; tuile « À encaisser » retirée).
 
 ## 1. Rôle
 - Écran d'accueil de l'app (`/` et `/pilotage`) : savoir en 10 secondes où en est la société.
@@ -16,18 +16,17 @@
 - ÉCRAN DE CONSULTATION : aucune modification depuis le Dashboard. Chaque chiffre /
   ligne mène à l'onglet où l'on agit.
 - Tient sur UN écran PC (1080p) ; une colonne sur mobile.
-- Ligne 1 : « Bonjour <prénom> · date du jour » (plus de bouton Nouvelle livraison).
-- Ligne 2 — 4 cartes au même gabarit (en-tête pictogramme + libellé identique) :
-  - « Aujourd'hui » : 5 cases bordées (À faire · En cours · Livrées · Retard · Échecs),
-    rouges si > 0, → Livraisons ; lien « Planning » → Calendrier ;
-  - CA HT du mois (évolution vs mois dernier) → affiche les livraisons du mois à droite ;
-  - Reste à facturer (livrées non facturées, HT) → Livraisons ;
-  - À encaisser (facturées, TTC, « dont X en retard ») → Encaissement.
+- Ligne 1 : « Bonjour <prénom> » (grand titre, liseré dégradé), pastille « n en retard / échecs » si > 0, pastille date.
+- Ligne 2 — 3 cartes (`SectionCard`, `PastilleIcone`) :
+  - « Aujourd'hui » : 5 cases colorées par état (À faire · En cours · Livrées · Retard · Échecs ; retard / échecs en halo rouge si > 0, atténuées à 0) + barre de répartition → Livraisons ; lien « Planning » ;
+  - CA HT du mois en carte « héro » rouge (variation vs mois dernier, mini-courbe des 6 derniers mois) → affiche les livraisons du mois à droite ;
+  - À facturer (livrées non facturées, HT, liseré or) → Livraisons.
+  - « À encaisser » : RETIRÉ (décision du 22/10/2026).
 - Ligne 3 :
-  - barres mensuelles du CA (`BarresMensuelles`, cliquables) : un clic sur un mois
+  - barres mensuelles du CA (`BarresMensuelles` : dégradés, repères, ligne de moyenne, cliquables) : un clic sur un mois
     affiche ses livraisons dans la carte de droite (re-clic ou × = retour) ;
     période derrière le `BoutonIcone` Réglages ;
-  - carte de droite : « Activité récente » (6 dernières modifiées) OU « <mois> »
+  - carte de droite : « Activité récente » (12 dernières modifiées, avatar du chauffeur) OU « <mois> »
     (toutes ses livraisons, total HT, défilante). Un clic sur une ligne ouvre la
     livraison dans Livraisons (`/livraisons?ouvrir=<id>`).
 

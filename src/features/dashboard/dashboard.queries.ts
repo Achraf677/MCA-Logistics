@@ -1,5 +1,5 @@
 import { supabase } from '../../app/providers'
-import type { CourseDuJour, FactureOuverte } from './dashboard.logic'
+import type { CourseDuJour } from './dashboard.logic'
 
 /**
  * Tout ce que le Dashboard affiche, en UNE vague de requêtes parallèles.
@@ -12,7 +12,7 @@ import type { CourseDuJour, FactureOuverte } from './dashboard.logic'
  * vers Mes courses), un président / DG voit toute la société.
  */
 export async function getDashboard(debutPeriode: string, finPeriode: string, aujourdhui: string) {
-  const [livraisons, jour, livrees, facturees, recentes] = await Promise.all([
+  const [livraisons, jour, livrees, recentes] = await Promise.all([
     supabase
       .from('deliveries')
       .select('date, statut, amount_ht_cts')
@@ -29,31 +29,23 @@ export async function getDashboard(debutPeriode: string, finPeriode: string, auj
       .from('deliveries')
       .select('amount_ht_cts')
       .eq('statut', 'livree'),
-    supabase
-      .from('deliveries')
-      .select('invoiced_at, amount_ttc_cts, clients!client_id(payment_terms)')
-      .eq('statut', 'facturee'),
     // Activité récente : les dernières MODIFIÉES, pas les plus lointaines dans
     // le futur. Lecture seule : un clic ouvre la livraison dans Livraisons.
     supabase
       .from('deliveries')
       .select('id, date, statut, amount_ht_cts, clients!client_id(name), team_members!driver_id(full_name)')
       .order('updated_at', { ascending: false })
-      .limit(6)
+      .limit(12)
       .returns<LigneMois[]>(),
   ])
 
-  const erreur = [livraisons, jour, livrees, facturees, recentes].find(r => r.error)?.error ?? null
+  const erreur = [livraisons, jour, livrees, recentes].find(r => r.error)?.error ?? null
 
   return {
     erreur,
     livraisons: livraisons.data ?? [],
     jour: (jour.data ?? []) as CourseDuJour[],
     livrees: livrees.data ?? [],
-    facturees: (facturees.data ?? []).map((f): FactureOuverte => {
-      const client = (Array.isArray(f.clients) ? f.clients[0] : f.clients) as { payment_terms?: number | null } | null
-      return { invoiced_at: f.invoiced_at, amount_ttc_cts: f.amount_ttc_cts, payment_terms: client?.payment_terms ?? 30 }
-    }),
     recentes: recentes.data ?? [],
   }
 }
