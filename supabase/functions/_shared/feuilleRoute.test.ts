@@ -231,4 +231,16 @@ describe('tournée de Brumath', () => {
     const l = [L('rue du stade', 1, 1, '5', '(HC) 610 - KRIEGSHEIM', '67170 KRIEGSHEIM')]
     expect(forcerBrumath(l)).toEqual(l)
   })
+
+  it('feuille du 16/10/2026 : relais RC141(8) et collectes encadrées en noir', () => {
+    const a = lignesEnArrets([
+      ligne({ commune_bandeau: '67170 BRUMATH', rue: 'avenue de strasbourg', numeros: '1(2), 22A, 37(2), RC141(8), 144', nb_colis: 14, nb_pgeo: 5 }),
+      ligne({ rue: 'rue de vendenheim', numeros: '[C]28A', nb_colis: 1, nb_pgeo: 1 }),
+      ligne({ rue: 'rue jacques kable', numeros: 'RC4(22)', nb_colis: 22, nb_pgeo: 1 }),
+    ])
+    expect(a.find(x => x.numero === '141')).toMatchObject({ type: 'rc', quantite: 8 })
+    expect(a.find(x => x.numero === '28A')).toMatchObject({ type: 'col', quantite: 1 })
+    expect(a.find(x => x.numero === '4')).toMatchObject({ type: 'rc', quantite: 22 })
+    expect(a.filter(x => x.a_verifier)).toEqual([])
+  })
 })
