@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { Plus, X } from 'lucide-react'
+import { Plus, X, ChevronDown } from 'lucide-react'
 import { Button } from './Button'
 import { TvaRateInput } from './TvaRateInput'
 import { formatMoney } from '../lib/money'
@@ -75,24 +75,27 @@ export function ExtraLinesEditor({
     ? catalogue
     : SUPPLEMENTS_USUELS.map(label => ({ label, prix_ht_cts: 0 }))
 
+  const [ouvert, setOuvert] = useState(false)
+
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-[var(--text-muted)]">
-          Lignes supplémentaires
+          Suppléments{lines.length > 0 ? ` (${lines.length})` : ''}
         </span>
         {!disabled && (
-          <Button variant="ghost" size="compact" onClick={addLine}>
+          <Button variant="ghost" size="compact" onClick={() => setOuvert(o => !o)} aria-expanded={ouvert}>
             <Plus size={13} />
-            Ajouter une ligne
+            Ajouter un supplément
+            <ChevronDown size={13} className={`transition-transform ${ouvert ? 'rotate-180' : ''}`} />
           </Button>
         )}
       </div>
 
-      {!disabled && (
-        <div className="flex flex-wrap gap-1.5">
+      {!disabled && ouvert && (
+        <div className="flex flex-wrap gap-1.5 rounded-[var(--r-md)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--text)_4%,transparent)] p-2">
           {proposes.map(s => (
-            <button key={s.label} type="button" onClick={() => ajouter(s)}
+            <button key={s.label} type="button" onClick={() => { ajouter(s); setOuvert(false) }}
               title={s.prix_ht_cts ? `${formatMoney(s.prix_ht_cts)} HT` : 'Prix à saisir'}
               className="h-7 px-2.5 rounded-[var(--r-pill)] border border-[var(--border)] text-xs text-[var(--text-muted)]
                 hover:border-[var(--brand)] hover:text-[var(--text)] inline-flex items-center gap-1">
@@ -100,13 +103,16 @@ export function ExtraLinesEditor({
               {s.prix_ht_cts > 0 && <span className="font-mono">{formatMoney(s.prix_ht_cts)}</span>}
             </button>
           ))}
+          <button type="button" onClick={() => { addLine(); setOuvert(false) }}
+            className="h-7 px-2.5 rounded-[var(--r-pill)] border border-dashed border-[var(--border-strong)] text-xs text-[var(--text-muted)]
+              hover:border-[var(--brand)] hover:text-[var(--text)] inline-flex items-center gap-1">
+            <Plus size={11} /> Ligne libre
+          </button>
         </div>
       )}
       {lines.length === 0 ? (
         <p className="text-xs text-[var(--text-muted)] italic">
-          {catalogue.length > 0
-            ? 'Suppléments de ce client : un clic les ajoute à la facture.'
-            : 'Suppléments usuels (prix à saisir) — fixez les prix de ce client dans sa fiche.'}
+          Aucun supplément{catalogue.length === 0 ? ' — fixe les prix de ce client dans sa fiche pour les ajouter en un clic' : ''}.
         </p>
       ) : (
         <div className="flex flex-col gap-2">

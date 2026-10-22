@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 
-const SHORTCUTS = [0, 5.5, 10, 19, 20]
+const SHORTCUTS = [0, 5.5, 10, 20]
 
 interface TvaRateInputProps {
   value: number
