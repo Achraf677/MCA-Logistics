@@ -177,17 +177,22 @@ export function Charges() {
   // bandeau et la liste ne racontent jamais deux histoires différentes.
   const estHorsPennylane = (r: ChargeRow) => estChargeHorsPennylane(r, maintenant)
 
-  const displayRows = filtreSupprimees
+  const nbSupprimees = rows.filter(r => r.pennylane_deleted_at != null).length
+  const nbHorsPennylane = rows.filter(estHorsPennylane).length
+  // Un filtre spécial dont il ne reste plus rien (tout a été traité) est ignoré : sinon la liste
+  // resterait vide, sans bandeau ni bouton pour en sortir.
+  const filtreSupprimeesActif = filtreSupprimees && nbSupprimees > 0
+  const filtreHorsPennylaneActif = filtreHorsPennylane && nbHorsPennylane > 0
+
+  const displayRows = filtreSupprimeesActif
     ? rows.filter(r => r.pennylane_deleted_at != null)
-    : filtreHorsPennylane
+    : filtreHorsPennylaneActif
       ? rows.filter(estHorsPennylane)
       : rows
   const groupes = useMemo(() => grouperParMois([...displayRows].sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')), r => r.date), [displayRows])
   const moisOuvert = moisOuvertParDefaut(groupes.map(g => g.cle), maintenant)
   // Un filtre (période, catégorie, liste spéciale) ouvre tous les mois : on cherche, on ne feuillette pas.
-  const toutOuvrir = hasFilters || filtreSupprimees || filtreHorsPennylane
-  const nbSupprimees = rows.filter(r => r.pennylane_deleted_at != null).length
-  const nbHorsPennylane = rows.filter(estHorsPennylane).length
+  const toutOuvrir = hasFilters || filtreSupprimeesActif || filtreHorsPennylaneActif
 
   // Suggestions déterministes de catégorie par fournisseur — calculées 1 fois
   // par rendu de rows. Historique = TOUTES les rows chargées (`getCharges` ne
@@ -282,7 +287,7 @@ export function Charges() {
             {nbSupprimees} facture{nbSupprimees > 1 ? 's' : ''} supprimée{nbSupprimees > 1 ? 's' : ''} dans Pennylane —
             à traiter (supprimer de l'app ou conserver).
           </span>
-          {filtreSupprimees ? (
+          {filtreSupprimeesActif ? (
             <Button variant="ghost" size="compact" onClick={() => poseFiltre(null)}>
               Voir toutes les charges
             </Button>
@@ -305,7 +310,7 @@ export function Charges() {
               ? `${nbHorsPennylane} charges n'existent que dans le site`
               : "1 charge n'existe que dans le site"} — Pennylane ne l'a jamais vue passer.
           </span>
-          {filtreHorsPennylane ? (
+          {filtreHorsPennylaneActif ? (
             <Button variant="ghost" size="compact" onClick={() => poseFiltre(null)}>
               Voir toutes les charges
             </Button>
