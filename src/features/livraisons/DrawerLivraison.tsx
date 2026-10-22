@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { Trash2, Loader2, Camera, Mail, Check, Route, Copy, RefreshCw, Zap, AlertTriangle, MapPin } from 'lucide-react'
+import { Trash2, Loader2, Camera, Mail, Check, Route, Copy, RefreshCw, Zap, AlertTriangle } from 'lucide-react'
 import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { ApercuFacture } from './ApercuFacture'
 import { ColisDesJournees } from './ColisDesJournees'
@@ -34,7 +34,7 @@ import {
   effectiveHtCts, effectiveTtcCts,
   tauxTvaInitial, montantsAEcrire, recapMontant, estFacturationBloquee,
   isoLocal, trajet, blocsPrestation,
-  heureSaisie, libelleCreneau, libelleDuree, manquesFiche,
+  heureSaisie, libelleDuree, manquesFiche,
   moisDe, finDeMois, libelleMois, resumeMessagerie,
 } from './livraisons.logic'
 import type { ClientTariff, Prestation } from './livraisons.logic'
@@ -965,10 +965,10 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                 <Zap size={13} /> Urgent
               </button>
             )}>
-            <div className="grid gap-3 lg:grid-cols-[auto_minmax(0,1.4fr)_minmax(0,0.7fr)_minmax(0,1fr)] items-start">
-              <Field label="Prestation">
-                <ChoixPrestation value={prestation} onChange={choisirPrestation} disabled={ro} />
-              </Field>
+            <Field label="Prestation">
+              <ChoixPrestation value={prestation} onChange={choisirPrestation} disabled={ro} />
+            </Field>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1.2fr)] items-start">
               <Field label="Client *" error={tenteEnregistrer && !form.client_id ? 'Le client est requis' : undefined}>
                 <ChoixClient clients={clients} value={form.client_id} disabled={ro}
                   onChange={choisirClient} />
@@ -1034,16 +1034,18 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
 
           {/* ② Retrait | Livraison côte à côte, trajet entre les deux */}
           {(blocs.retrait || blocs.livraison) && (
-            <div className={`grid gap-4 items-start ${blocs.retrait && blocs.livraison ? 'lg:grid-cols-2' : ''}`}>
+            <div className={`grid gap-4 items-stretch ${blocs.retrait && blocs.livraison ? 'lg:grid-cols-2' : ''}`}>
               {blocs.retrait && (
                 <Bloc titre="Retrait" droite={<span className="text-xs text-[var(--text-muted)]">vide = départ du dépôt</span>}>
-                  <AddressAutocomplete
-                    value={form.pickup_address}
-                    placeholder="Rue, ville…"
-                    disabled={ro}
-                    onChange={v => set('pickup_address', v)}
-                    onSelect={s => set('pickup_address', s.address)}
-                  />
+                  <Field label="Adresse de retrait">
+                    <AddressAutocomplete
+                      value={form.pickup_address}
+                      placeholder="Rue, ville…"
+                      disabled={ro}
+                      onChange={v => set('pickup_address', v)}
+                      onSelect={s => set('pickup_address', s.address)}
+                    />
+                  </Field>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label="Qui remet">
                       <Input value={form.expediteur_nom} onChange={v => set('expediteur_nom', v)}
@@ -1062,26 +1064,22 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
 
               {blocs.livraison && (
                 <Bloc titre={blocs.titreLivraison}>
-                  <AddressAutocomplete
-                    value={form.delivery_address}
-                    placeholder="Rue, ville…"
-                    disabled={ro}
-                    onChange={v => {
-                      set('delivery_address', v)
-                      // Saisie libre : on invalide les coordonnées tant qu'aucune suggestion n'est choisie.
-                      setDeliveryCoords({ lat: null, lng: null })
-                    }}
-                    onSelect={s => {
-                      set('delivery_address', s.address)
-                      setDeliveryCoords({ lat: s.lat, lng: s.lng })
-                    }}
-                  />
-                  {form.delivery_address.trim() && (
-                    <span className="flex items-center gap-1 text-xs text-[var(--text-muted)]">
-                      <MapPin size={12} />
-                      {deliveryCoords.lat != null ? 'Adresse localisée' : 'Sera localisée à l’enregistrement'}
-                    </span>
-                  )}
+                  <Field label={prestation === 'mise_a_dispo' ? 'Adresse du lieu' : 'Adresse de livraison'}>
+                    <AddressAutocomplete
+                      value={form.delivery_address}
+                      placeholder="Rue, ville…"
+                      disabled={ro}
+                      onChange={v => {
+                        set('delivery_address', v)
+                        // Saisie libre : on invalide les coordonnées tant qu'aucune suggestion n'est choisie.
+                        setDeliveryCoords({ lat: null, lng: null })
+                      }}
+                      onSelect={s => {
+                        set('delivery_address', s.address)
+                        setDeliveryCoords({ lat: s.lat, lng: s.lng })
+                      }}
+                    />
+                  </Field>
                   <div className="grid grid-cols-2 gap-3">
                     <Field label={prestation === 'mise_a_dispo' ? 'Contact sur place' : 'Qui reçoit'}>
                       <Input value={form.destinataire_nom} onChange={v => set('destinataire_nom', v)}
@@ -1151,7 +1149,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
           )}
 
           {/* ④ Exécution (équipe) | Prix et facture (argent) */}
-          <div className="grid gap-4 lg:grid-cols-2 items-start">
+          <div className="grid gap-4 lg:grid-cols-2 items-stretch">
             <Bloc titre={blocs.releve ? 'Notes' : 'Exécution'}>
               {blocs.execution && (
                 <div className="grid grid-cols-2 gap-3">
@@ -1185,22 +1183,17 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
               </Field>
             </Bloc>
 
-            <Bloc titre={blocs.releve ? 'Facture' : 'Prix et facture'}
-              droite={selectedClient ? <span className="text-xs text-[var(--text-muted)]">Paiement : {libelleDelaiPaiement(selectedClient)}</span> : undefined}>
+            <Bloc titre={blocs.releve ? 'Facture' : 'Prix et facture'}>
               <Field label="Libellé de facture">
                 <Input value={form.description} onChange={v => set('description', v)}
                   placeholder={blocs.releve
                     ? `Vide = « Messagerie ${form.date ? libelleMois(form.date) : '…'} — colis livrés »`
                     : `Vide = « Livraison du ${form.date ? new Date(`${form.date}T00:00:00`).toLocaleDateString('fr-FR') : '…'} »`}
                   disabled={ro} />
-                {form.reference_client.trim() && (
-                  <span className="text-xs text-[var(--text-muted)]">La référence client est ajoutée sur la facture.</span>
-                )}
               </Field>
               <MontantTab
                 integre
                 releve={blocs.releve}
-                catalogue={selectedClient?.supplements ?? []}
                 onTtcChange={!blocs.releve && (!selectedClient || selectedClient.tariff_mode === 'manuel' || selectedClient.tariff_mode === 'colis')
                   ? saisirTtc : undefined}
                 extraLines={extraLines}
@@ -1230,9 +1223,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
                   )}
                 </div>
                 <span className="text-xs text-[var(--text-muted)]">
-                  {form.echeance_le
-                    ? 'Échéance imposée pour cette facture (plafonnée à 30 jours après la facture, L441-11).'
-                    : `Vide = délai du client${selectedClient ? ` (${libelleDelaiPaiement(selectedClient)})` : ''}, 30 jours maximum après la facture.`}
+                  {form.echeance_le ? 'Échéance imposée (30 jours maximum après la facture).' : 'Vide = délai du client (30 jours maximum).'}
                 </span>
               </Field>
             </Bloc>
@@ -1380,7 +1371,6 @@ function Creneau({ debut, fin, onDebut, onFin, disabled, libelleDebut = 'Au plus
   disabled?: boolean; libelleDebut?: string; libelleFin?: string
 }) {
   const invalide = !!debut && !!fin && fin <= debut
-  const resume = libelleCreneau(debut, fin)
   return (
     <div className="flex flex-col gap-1">
       <div className="grid grid-cols-2 gap-3">
@@ -1391,9 +1381,7 @@ function Creneau({ debut, fin, onDebut, onFin, disabled, libelleDebut = 'Au plus
           <Input type="time" value={fin} onChange={onFin} disabled={disabled} />
         </Field>
       </div>
-      {invalide
-        ? <span className="text-xs text-[var(--danger)]">La fin du créneau est avant son début.</span>
-        : resume && <span className="text-xs text-[var(--text-muted)]">Créneau : {resume}</span>}
+      {invalide && <span className="text-xs text-[var(--danger)]">La fin du créneau est avant son début.</span>}
     </div>
   )
 }
@@ -1497,12 +1485,10 @@ function MontantTab({
   form, set, tvaTouched, onTvaChange, onTvaRateChange,
   selectedClient, tvaIntraClient, computed, delivery,
   extraLines, setExtraLines,
-  isReadOnly, saving, onSave, onClose, integre = false, releve = false, catalogue = [], onTtcChange,
+  isReadOnly, saving, onSave, onClose, integre = false, releve = false, onTtcChange,
 }: {
   /** Saisie par le TTC (prix « tout compris » d'une plateforme) → HT et TVA déduits. */
   onTtcChange?: (ttcCts: number) => void
-  /** Suppléments du client (fiche client), ajoutés en un clic. */
-  catalogue?: Supplement[]
   /** Relevé de messagerie : le HT vient de « colis × prix au colis », pas de saisie. */
   releve?: boolean
   /** Dans le bloc « Exécution & prix » de la fiche : sans boutons ni état Pennylane. */
@@ -1588,11 +1574,50 @@ function MontantTab({
             placeholder="0" disabled={isReadOnly} />
         </Field>
       )}
-      {!releve && (mode === 'manuel' || mode === 'colis') && (
-        <Field label={integre ? 'Prix HT (€)' : 'Montant HT (€) *'}>
-          <Input type="number" value={form.manual_ht} onChange={v => set('manual_ht', v)}
-            placeholder="0.00" disabled={isReadOnly} />
-        </Field>
+      {/* Prix HT | taux de TVA | prix TTC : une seule ligne alignée. */}
+      {(selectedClient || integre) && (
+        <div className="flex flex-col gap-2">
+          <div className={`grid gap-3 items-start ${
+            [!releve && (mode === 'manuel' || mode === 'colis'), !form.autoliquidation, !!onTtcChange && !form.autoliquidation].filter(Boolean).length >= 3
+              ? 'grid-cols-3' : [!releve && (mode === 'manuel' || mode === 'colis'), !form.autoliquidation].filter(Boolean).length >= 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {!releve && (mode === 'manuel' || mode === 'colis') && (
+              <Field label={integre ? 'Prix HT (€)' : 'Montant HT (€) *'}>
+                <Input type="number" value={form.manual_ht} onChange={v => set('manual_ht', v)}
+                  placeholder="0.00" disabled={isReadOnly} />
+              </Field>
+            )}
+            {!form.autoliquidation && (
+              <Field label="Taux de TVA">
+                <TvaRateInput
+                  value={parseFloat(form.tva_rate || '20')}
+                  onChange={onTvaRateChange}
+                  disabled={isReadOnly}
+                />
+              </Field>
+            )}
+            {onTtcChange && !form.autoliquidation && (
+              <Field label="Prix TTC (€)">
+                <ChampTtc ttcCts={computed?.amount_ttc_cts ?? null} onCommit={onTtcChange} disabled={isReadOnly} />
+              </Field>
+            )}
+          </div>
+          {!form.autoliquidation && ((tvaTouched || corrigerTva) ? (
+            <Field label={`Montant de TVA (€)${tvaTouched ? ' — corrigé à la main' : ''}`}>
+              <Input
+                type="number"
+                value={form.tva_override}
+                onChange={onTvaChange}
+                placeholder="0.00"
+                disabled={isReadOnly}
+              />
+            </Field>
+          ) : !isReadOnly && (
+            <button type="button" onClick={() => setCorrigerTva(true)}
+              className="self-start text-xs text-[var(--text-muted)] underline underline-offset-2 hover:text-[var(--text)]">
+              Corriger le montant de TVA
+            </button>
+          ))}
+        </div>
       )}
 
       {/* AUTOLIQUIDATION — avant les champs de TVA, parce qu'elle les annule. */}
@@ -1631,46 +1656,10 @@ function MontantTab({
 
       {/* Taux TVA + montant TVA éditable — masqués en autoliquidation : afficher
           un taux modifiable sous une case qui l'annule ne peut que tromper. */}
-      {(selectedClient || integre) && !form.autoliquidation && (
-        <div className="flex flex-col gap-2">
-          <div className={`grid gap-3 items-start ${onTtcChange ? 'grid-cols-2' : 'grid-cols-1'}`}>
-            <Field label="Taux de TVA">
-              <TvaRateInput
-                value={parseFloat(form.tva_rate || '20')}
-                onChange={onTvaRateChange}
-                disabled={isReadOnly}
-              />
-            </Field>
-            {onTtcChange && (
-              <Field label="Prix TTC (€) — si tu pars du TTC">
-                <ChampTtc ttcCts={computed?.amount_ttc_cts ?? null} onCommit={onTtcChange} disabled={isReadOnly} />
-              </Field>
-            )}
-          </div>
-          {(tvaTouched || corrigerTva) ? (
-            <Field label={`Montant de TVA (€)${tvaTouched ? ' — corrigé à la main' : ''}`}>
-              <Input
-                type="number"
-                value={form.tva_override}
-                onChange={onTvaChange}
-                placeholder="0.00"
-                disabled={isReadOnly}
-              />
-            </Field>
-          ) : !isReadOnly && (
-            <button type="button" onClick={() => setCorrigerTva(true)}
-              className="self-start text-xs text-[var(--text-muted)] underline underline-offset-2 hover:text-[var(--text)]">
-              Corriger le montant de TVA
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Lignes supplémentaires — attente, retour à vide, forfait…                  */}
       {/* Toutes sont regroupées avec la ligne principale sur la même facture.      */}
       {(selectedClient || integre) && (
         <ExtraLinesEditor
-          catalogue={catalogue}
           lines={extraLines}
           onChange={setExtraLines}
           defaultTvaRate={parseFloat(form.tva_rate || '20')}

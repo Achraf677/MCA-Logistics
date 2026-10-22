@@ -1,15 +1,12 @@
 import { useState } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { Plus, X, ChevronDown } from 'lucide-react'
+import { Plus, X } from 'lucide-react'
 import { Button } from './Button'
 import { TvaRateInput } from './TvaRateInput'
-import { formatMoney } from '../lib/money'
 import type { DeliveryExtraLine } from '../lib/money'
-import { SUPPLEMENTS_USUELS } from '../lib/supplements'
-import type { Supplement } from '../lib/supplements'
 
 // Partagé : fiche livraison (`deliveries.extra_lines`) et devis (`quotes.extra_lines`),
-// même forme de ligne, même catalogue de suppléments du client.
+// même forme de ligne, saisie manuelle (libellé, quantité, HT unitaire, TVA).
 
 const inputCls = 'field'
 function Input({ value, onChange, placeholder, disabled }: {
@@ -38,10 +35,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 // livraison via le champ JSONB `extra_lines`.
 
 export function ExtraLinesEditor({
-  lines, onChange, defaultTvaRate, tauxForce = null, disabled, catalogue = [],
+  lines, onChange, defaultTvaRate, tauxForce = null, disabled,
 }: {
-  /** Suppléments du client ; sans catalogue, les libellés usuels (prix à saisir). */
-  catalogue?: Supplement[]
   lines: DeliveryExtraLine[]
   onChange: Dispatch<SetStateAction<DeliveryExtraLine[]>>
   defaultTvaRate: number
@@ -63,58 +58,22 @@ export function ExtraLinesEditor({
   const removeLine = (i: number) => {
     onChange(prev => prev.filter((_, j) => j !== i))
   }
-  const ajouter = (s: Supplement) => {
-    onChange(prev => [...prev, {
-      label: s.label,
-      quantity: 1,
-      amount_ht_cts: s.prix_ht_cts,
-      tva_rate: Number.isFinite(defaultTvaRate) ? defaultTvaRate : 20,
-    }])
-  }
-  const proposes: Supplement[] = catalogue.length > 0
-    ? catalogue
-    : SUPPLEMENTS_USUELS.map(label => ({ label, prix_ht_cts: 0 }))
-
-  const [ouvert, setOuvert] = useState(false)
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-[var(--text-muted)]">
-          Suppléments{lines.length > 0 ? ` (${lines.length})` : ''}
+          Lignes supplémentaires{lines.length > 0 ? ` (${lines.length})` : ''}
         </span>
         {!disabled && (
-          <Button variant="ghost" size="compact" onClick={() => setOuvert(o => !o)} aria-expanded={ouvert}>
+          <Button variant="ghost" size="compact" onClick={addLine}>
             <Plus size={13} />
-            Ajouter un supplément
-            <ChevronDown size={13} className={`transition-transform ${ouvert ? 'rotate-180' : ''}`} />
+            Ajouter une ligne
           </Button>
         )}
       </div>
 
-      {!disabled && ouvert && (
-        <div className="flex flex-wrap gap-1.5 rounded-[var(--r-md)] border border-[var(--border)] bg-[color-mix(in_srgb,var(--text)_4%,transparent)] p-2">
-          {proposes.map(s => (
-            <button key={s.label} type="button" onClick={() => { ajouter(s); setOuvert(false) }}
-              title={s.prix_ht_cts ? `${formatMoney(s.prix_ht_cts)} HT` : 'Prix à saisir'}
-              className="h-7 px-2.5 rounded-[var(--r-pill)] border border-[var(--border)] text-xs text-[var(--text-muted)]
-                hover:border-[var(--brand)] hover:text-[var(--text)] inline-flex items-center gap-1">
-              <Plus size={11} /> {s.label}
-              {s.prix_ht_cts > 0 && <span className="font-mono">{formatMoney(s.prix_ht_cts)}</span>}
-            </button>
-          ))}
-          <button type="button" onClick={() => { addLine(); setOuvert(false) }}
-            className="h-7 px-2.5 rounded-[var(--r-pill)] border border-dashed border-[var(--border-strong)] text-xs text-[var(--text-muted)]
-              hover:border-[var(--brand)] hover:text-[var(--text)] inline-flex items-center gap-1">
-            <Plus size={11} /> Ligne libre
-          </button>
-        </div>
-      )}
-      {lines.length === 0 ? (
-        <p className="text-xs text-[var(--text-muted)] italic">
-          Aucun supplément{catalogue.length === 0 ? ' — fixe les prix de ce client dans sa fiche pour les ajouter en un clic' : ''}.
-        </p>
-      ) : (
+      {lines.length > 0 && (
         <div className="flex flex-col gap-2">
           {lines.map((line, i) => (
             <ExtraLineRow

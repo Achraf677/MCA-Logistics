@@ -18,7 +18,6 @@ import { formatMoney } from '../../shared/lib/money'
 import type { DeliveryExtraLine } from '../../shared/lib/money'
 import { toLocalISO } from '../../shared/lib/dates'
 import { autoliquidationParDefaut } from '../../shared/lib/pays'
-import { lireSupplements } from '../../shared/lib/supplements'
 import { blocsPrestation } from '../../shared/lib/prestations'
 import { libelleDelaiPaiement } from '../../shared/lib/paymentTerms'
 import type { Prestation } from '../../shared/lib/prestations'
@@ -684,7 +683,6 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
               defaultTvaRate={form.tva_rate}
               tauxForce={form.autoliquidation ? 0 : form.tva_rate}
               disabled={isReadOnly}
-              catalogue={lireSupplements(client?.supplements)}
             />
 
             {/* Autoliquidation avant la TVA, qu'elle annule (comme la fiche livraison) */}

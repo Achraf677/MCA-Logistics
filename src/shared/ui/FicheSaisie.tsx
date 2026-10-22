@@ -126,9 +126,7 @@ export function ChoixPrestation({ value, onChange, disabled, avecVide = false }:
           </button>
         ))}
       </div>
-      {value
-        ? <span className="text-xs text-[var(--text-muted)]">{PRESTATION_AIDES[value]}</span>
-        : avecVide && <span className="text-xs text-[var(--text-muted)]">Choisir la prestation chiffrée.</span>}
+      {!value && avecVide && <span className="text-xs text-[var(--text-muted)]">Choisir la prestation chiffrée.</span>}
     </>
   )
 }
