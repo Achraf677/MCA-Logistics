@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   isoLocal, mois, moisDeLaPeriode, agregerParMois, evolution, eurosArrondis, eurosCourts,
-  resumeJour, echeance, aEncaisser, resteAFacturer,
+  resumeJour, resteAFacturer,
 } from './dashboard.logic'
 
 describe('dates locales', () => {
@@ -64,18 +64,6 @@ describe('resumeJour', () => {
 })
 
 describe('argent', () => {
-  it('échéance = facture + délai', () => {
-    expect(echeance('2026-09-01', 30)).toBe('2026-10-01')
-    expect(echeance('2026-09-01T10:00:00+00:00', 0)).toBe('2026-09-01')
-  })
-  it('à encaisser et en retard', () => {
-    const r = aEncaisser([
-      { invoiced_at: '2026-08-01', payment_terms: 30, amount_ttc_cts: 1200 }, // échue le 31/08
-      { invoiced_at: '2026-09-20', payment_terms: 30, amount_ttc_cts: 600 },
-      { invoiced_at: null, payment_terms: 30, amount_ttc_cts: 100 },
-    ], '2026-09-30')
-    expect(r).toEqual({ totalCts: 1900, retardCts: 1200, nbRetard: 1, nb: 3 })
-  })
   it('reste à facturer', () => {
     expect(resteAFacturer([{ amount_ht_cts: 100 }, { amount_ht_cts: 250 }])).toEqual({ totalCts: 350, nb: 2 })
   })

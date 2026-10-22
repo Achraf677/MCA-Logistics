@@ -4,7 +4,7 @@
 // minuit à Paris = 22 h ou 23 h la veille en UTC, donc le « mois d'octobre » allait
 // du 30/09 au 30/10. Ici, une date se formate avec ses composantes LOCALES.
 
-import { effectiveHtCts, effectiveTtcCts, type AmountSource } from '../../shared/lib/money'
+import { effectiveHtCts, type AmountSource } from '../../shared/lib/money'
 
 /** Date → 'AAAA-MM-JJ' selon l'heure locale (pas UTC). */
 export function isoLocal(d: Date): string {
@@ -148,31 +148,6 @@ function estEnRetard(c: CourseDuJour, aujourdhui: string, maintenant: number): b
 }
 
 // ── Argent ───────────────────────────────────────────────────────────────────
-
-export interface FactureOuverte extends AmountSource {
-  invoiced_at: string | null
-  payment_terms: number
-}
-
-/** Échéance = date de facture + délai de paiement du client (jours). */
-export function echeance(invoicedAt: string, delaiJours: number): string {
-  const [a, m, j] = invoicedAt.slice(0, 10).split('-').map(Number)
-  return isoLocal(new Date(a, m - 1, j + delaiJours))
-}
-
-/** À encaisser (TTC) et, dedans, ce qui a dépassé son échéance. */
-export function aEncaisser(factures: FactureOuverte[], aujourdhui: string) {
-  let totalCts = 0, retardCts = 0, nbRetard = 0
-  for (const f of factures) {
-    const ttc = effectiveTtcCts(f)
-    totalCts += ttc
-    if (f.invoiced_at && echeance(f.invoiced_at, f.payment_terms) < aujourdhui) {
-      retardCts += ttc
-      nbRetard += 1
-    }
-  }
-  return { totalCts, retardCts, nbRetard, nb: factures.length }
-}
 
 /** Reste à facturer : livrées pas encore facturées (HT). */
 export function resteAFacturer(livrees: AmountSource[]) {
