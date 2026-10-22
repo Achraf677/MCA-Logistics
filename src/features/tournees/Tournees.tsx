@@ -1,809 +1,577 @@
-import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react'
-import type { ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { MapPin, AlertTriangle, ArrowUp, ArrowDown, PackageOpen, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Shell } from '../../app/Shell'
-import { Button } from '../../shared/ui/Button'
-import { BoutonIcone } from '../../shared/ui/BoutonIcone'
-import { usePermissions } from '../../shared/permissions/usePermissions'
+import {
+  ChevronLeft, ChevronRight, Download, Map as IconeCarte, PackageCheck, Pause, Radio, Route, RotateCcw,
+  ScanText, Search, FileText, Camera, Trash2, TriangleAlert, Truck, Undo2, Gauge,
+} from 'lucide-react'
+import { useProfile } from '../../app/providers'
 import { Badge } from '../../shared/ui/Badge'
-import { Skeleton } from '../../shared/ui/Skeleton'
+import { BoutonIcone } from '../../shared/ui/BoutonIcone'
+import { Button } from '../../shared/ui/Button'
+import { ChiffreCarte } from '../../shared/ui/ChiffreCarte'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
+import { Drawer } from '../../shared/ui/Drawer'
+import { EmptyState } from '../../shared/ui/EmptyState'
+import { Field } from '../../shared/ui/Field'
+import { FeuilleAdresse } from '../../shared/ui/FeuilleAdresse'
+import { ScanFeuilleRoute } from '../../shared/ui/ScanFeuilleRoute'
+import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
-import { useProfile, supabase } from '../../app/providers'
+import { usePermissions } from '../../shared/permissions/usePermissions'
 import { toLocalISO } from '../../shared/lib/dates'
+import { downloadCSV } from '../../shared/lib/download'
+import type { DocumentRow } from '../../shared/lib/documents.types'
+import { LIBELLE_STATUT_TOURNEE, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
 import {
-  getCompanyDepot, getActiveVehicles, getActiveDrivers,
-  fetchPlannableDeliveries, getDeliveriesForDate, fetchToursByDate,
-  dispatchAndOptimize, repartirDansMonOrdre,
-  fetchLateDeliveries, replanifierRetardsAffectes, setRetraitAFaire, fetchStopsDesTournees,
-} from './tournees.queries'
-import {
-  isGeocoded, canDispatch, groupToursWithStops, totalsAcrossTours,
-  deplacerArret, planDeChargement,
-  coursesEnRetard, fusionnerPool, estEnRetard, libelleRetard, dateDepuisParam,
-  affectationsSuggerees, affectationsEcrasees,
-  departInitial, urgentesDAbord, hhmm, DEPART_DEFAUT,
-  type TourDeliveryAvecTournee,
-} from './tournees.logic'
-import { libelleCreneau } from '../livraisons/livraisons.logic'
-import { TourCard, formatDuration } from './TourCard'
+  arretsDesTournees, calculerItineraire, feuillesDeRoute, listerTourneesColis, membresPourTournee, nomsClients,
+  photosSynthese, positionsLivreurs, rouvrirTournee, supprimerTourneeColis, trouverScan, urlPhotoArret,
+  type PositionLivreur,
+} from '../../shared/lib/tourneesColis.queries'
+import { ilYA, libelleDistance, modeOrdre, positionAncienne, prochainDansOrdre } from '../../shared/lib/tourneesColisRoute'
+import { ListeTourneeColis } from './ListeTourneeColis'
 import { colorForIndex } from './tours.palette'
-import type { OverviewTour } from './ToursOverviewMap'
-import type { Tour, TourDelivery, Assignment, VehiculeTournee, ChauffeurTournee } from './tournees.types'
-import { alertesAffectation } from '../../shared/lib/documentsAffectation'
-import { TourneesColisDuJour } from './TourneesColisDuJour'
+import {
+  construireLignes, csvTournees, dateDepuisParam, decalerJour, filtrerTournees, resumeTournees,
+  type FiltreTournees, type LigneTournee,
+} from './tournees.logic'
 
-// Lazy-load : Leaflet hors bundle initial (chunk séparé).
-const ToursOverviewMap = lazy(() => import('./ToursOverviewMap'))
+const CarteTournee = lazy(() => import('../../shared/ui/CarteTournee'))
 
+type Membre = { id: string; full_name: string; clients_messagerie: string[] }
+type OngletDetail = 'arrets' | 'feuille' | 'synthese'
+
+const inputCls = 'field'
+
+/**
+ * Onglet Tournées (bureau) : les tournées de colis d'un jour — une ligne par feuille de route scannée.
+ * Tuiles cliquables (filtre), salarié, recherche, carte du jour avec positions, export CSV, et un tiroir par
+ * tournée (arrêts à corriger · feuille de route scannée · photos de synthèse). Le bureau peut aussi
+ * scanner la feuille d'un salarié. Plus d'express ici : les courses express se gèrent dans Planning.
+ */
 export function Tournees() {
   const { companyId } = useProfile()
   const { toast } = useToast()
   const { can } = usePermissions()
-  const peutEcrire = can('planning.tournees', 'update')
+  const peutScanner = can('planning.tournees', 'update')
+  const peutSupprimer = can('planning.tournees', 'delete')
 
-  // `?date=AAAA-MM-JJ` (lien « Composer la tournée de ce jour » du Planning),
-  // lu au montage seulement : ensuite, c'est le champ Date qui commande.
+  // `?date=AAAA-MM-JJ` (résumé du jour du Planning) : lu au montage, ensuite le sélecteur commande.
   const [params] = useSearchParams()
   const [date, setDate] = useState(() => dateDepuisParam(params.get('date')) ?? toLocalISO(new Date()))
+  const estAujourdhui = date === toLocalISO(new Date())
 
-  const [vehicles, setVehicles] = useState<VehiculeTournee[]>([])
-  const [drivers, setDrivers]   = useState<ChauffeurTournee[]>([])
-  const [depot, setDepot] = useState<{ lat: number | null; lng: number | null; name: string }>(
-    { lat: null, lng: null, name: '' },
-  )
+  const [tournees, setTournees] = useState<TourneeColis[]>([])
+  const [arrets, setArrets] = useState<ArretColis[]>([])
+  const [syntheses, setSyntheses] = useState<Map<string, DocumentRow[]>>(new Map())
+  const [feuilles, setFeuilles] = useState<Map<string, DocumentRow[]>>(new Map())
+  const [erreur, setErreur] = useState<string | null>(null)
+  const [charge, setCharge] = useState(false)
 
-  // Affectations : véhicules cochés + chauffeur par véhicule.
-  const [selectedVehicles, setSelectedVehicles] = useState<Set<string>>(new Set())
-  const [driverByVehicle, setDriverByVehicle]   = useState<Record<string, string>>({})
+  const [filtre, setFiltre] = useState<FiltreTournees>('toutes')
+  const [membreFiltre, setMembreFiltre] = useState('')
+  const [q, setQ] = useState('')
 
-  const [pool, setPool]                 = useState<TourDelivery[]>([])   // livraisons 'planifiee'
-  const [allDeliveries, setAllDeliveries] = useState<TourDelivery[]>([]) // pour les arrêts des tournées
-  const [tours, setTours]               = useState<Tour[]>([])
-  const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set())
-  /**
-   * Ordre imposé à la main sur le pool, avant toute répartition.
-   *
-   * État LOCAL et non persisté : tant qu'une livraison n'est rattachée à
-   * aucune tournée, son `stop_order` ne veut rien dire — l'écrire en base
-   * ferait ressortir un numéro d'arrêt sur une course qui n'a pas de tournée.
-   * L'ordre devient réel au moment de la répartition, pas avant.
-   */
-  const [ordrePool, setOrdrePool] = useState<string[]>([])
-  /** Départ du dépôt envoyé à l'optimiseur (lot T3). */
-  const [heureDepart, setHeureDepart] = useState(DEPART_DEFAUT)
-  const [planOuvert, setPlanOuvert] = useState(false)
+  const [carte, setCarte] = useState(false)
+  const [masques, setMasques] = useState<Set<string>>(new Set())
+  const [positions, setPositions] = useState<PositionLivreur[]>([])
+  const [maintenant, setMaintenant] = useState(() => Date.now())
 
-  const [loadingList, setLoadingList] = useState(false)
-  // Mobile : une colonne à la fois (Préparer / Tournées). Sur PC les deux sont visibles.
-  const [onglet, setOnglet] = useState<'preparer' | 'tournees'>('preparer')
-  const [erreurChargement, setErreurChargement] = useState<string | null>(null)
-  // Numéro de la dernière demande : une réponse plus lente d'une demande plus ancienne est ignorée.
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [onglet, setOnglet] = useState<OngletDetail>('arrets')
+  const [adresseEdit, setAdresseEdit] = useState<ArretColis | null>(null)
+  const [adresseAjout, setAdresseAjout] = useState(false)
+  const [aRecalculerListe, setARecalculerListe] = useState(false)
+  const [calcul, setCalcul] = useState<string | null>(null)
+  const [aCalculer, setACalculer] = useState<TourneeColis | null>(null)
+  const [aRouvrir, setARouvrir] = useState<TourneeColis | null>(null)
+  const [aSupprimer, setASupprimer] = useState<TourneeColis | null>(null)
+  const [suppression, setSuppression] = useState(false)
+
+  const [scanOuvert, setScanOuvert] = useState(false)
+  const [membres, setMembres] = useState<Membre[]>([])
+  const [membreId, setMembreId] = useState('')
+  // Scan déjà envoyé pour ce salarié (undefined = recherche en cours) : on le retrouve au lieu d'en refaire un.
+  const [scanMembre, setScanMembre] = useState<string | null | undefined>(undefined)
+  const [noms, setNoms] = useState<Map<string, string>>(new Map())
+
   const demande = useRef(0)
-  // Affectations reprises une fois par date (jamais par-dessus un choix fait à l'écran).
-  const affectationsReprisesPour = useRef<string | null>(null)
-  // Répartition en attente de confirmation (affectations existantes remplacées).
-  const [aConfirmer, setAConfirmer] = useState<{ mode: 'ordre' | 'optimiser'; lignes: string[] } | null>(null)
-  const [dispatching, setDispatching] = useState(false)
-  const [unassignedCount, setUnassignedCount] = useState(0)
-
-  // Résultat du dernier backfill géocodage — pour lister les adresses non résolues.
-  const [geocodeReport, setGeocodeReport] =
-    useState<{ echecs: string[]; depotMissingAddress: boolean } | null>(null)
-
-  // ── Référentiels (une fois) ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (!companyId) return
-    getCompanyDepot(companyId).then(({ data, error }) => {
-      if (error) toast(`Dépôt non chargé : ${error.message}`, 'error')
-      else if (data) setDepot({ lat: data.depot_lat, lng: data.depot_lng, name: data.name })
-    })
-    getActiveVehicles().then(({ data, error }) => {
-      if (error) { toast(`Véhicules non chargés : ${error.message}`, 'error'); return }
-      setVehicles((data ?? []).map(v => ({
-        id: v.id, label: v.label, ct_expiry: v.ct_expiry, insurance_expiry: v.insurance_expiry,
-      })))
-    })
-    getActiveDrivers().then(({ data, error }) => {
-      if (error) { toast(`Chauffeurs non chargés : ${error.message}`, 'error'); return }
-      setDrivers((data ?? []).map(d => ({
-        id: d.id, label: d.full_name,
-        licence_b_expiry: d.licence_b_expiry, medical_visit_expiry: d.medical_visit_expiry,
-      })))
-    })
-  }, [companyId, toast])
-
-  // ── Chargement : pool + livraisons + tournées de la date ─────────────────────
-  // `garderLocal` : après un geste sur une carte ou une répartition, on garde l'ordre et la
-  // sélection déjà faits à l'écran (seule la date remet tout à zéro).
-  const charger = useCallback(async (garderLocal: boolean) => {
-    if (!companyId) return
+  const recharger = useCallback(async () => {
     const n = ++demande.current
-    setLoadingList(true)
-    // Retards : seulement si on compose aujourd'hui ou plus tard (replanifier
-    // une course en retard vers une date passée n'aurait pas de sens).
-    const aujourdHui = toLocalISO(new Date())
-    const avecRetards = date >= aujourdHui
-    const [poolRes, allRes, toursRes, retardsRes] = await Promise.all([
-      fetchPlannableDeliveries(companyId, date),
-      getDeliveriesForDate(companyId, date),
-      fetchToursByDate(companyId, date),
-      avecRetards ? fetchLateDeliveries(companyId, aujourdHui) : Promise.resolve({ data: [], error: null }),
-    ])
+    const t = await listerTourneesColis({ du: date, au: date })
     if (n !== demande.current) return
-    const toursDuJour = (toursRes.data as unknown as Tour[]) ?? []
-    // Arrêts des tournées lus par tournée : une course facturée ou déplacée reste dans la sienne.
-    const stopsRes = toursRes.error ? { data: [], error: null } : await fetchStopsDesTournees(toursDuJour.map(t => t.id))
+    setCharge(true)
+    if (t.error) { setErreur(t.error.message); setTournees([]); setArrets([]); return }
+    const ids = t.data.map(x => x.id)
+    const [a, ph, fe] = await Promise.all([arretsDesTournees(ids), photosSynthese(ids), feuillesDeRoute(ids)])
     if (n !== demande.current) return
-    const echec = poolRes.error ?? allRes.error ?? toursRes.error ?? stopsRes.error
-    if (echec) {
-      setErreurChargement(echec.message)
-      setLoadingList(false)
-      return
+    if (a.error) { setErreur(a.error.message); return }
+    setErreur(null)
+    setTournees(t.data)
+    setArrets(a.data)
+    const parTournee = (docs: DocumentRow[]) => {
+      const m = new Map<string, DocumentRow[]>()
+      for (const d of docs) if (d.entity_id) m.set(d.entity_id, [...(m.get(d.entity_id) ?? []), d])
+      return m
     }
-    setErreurChargement(null)
-    if (retardsRes.error) toast(`Courses en retard non chargées : ${retardsRes.error.message}`, 'error')
-    const retards = coursesEnRetard(
-      (retardsRes.data as unknown as TourDeliveryAvecTournee[]) ?? [], aujourdHui,
-    )
-    // Urgentes en tête : c'est l'ordre proposé pour « mon ordre ».
-    const poolList = urgentesDAbord(fusionnerPool((poolRes.data as unknown as TourDelivery[]) ?? [], retards))
-    setPool(poolList)
-    const idsPool = new Set(poolList.map(d => d.id))
-    setOrdrePool(prev => {
-      if (!garderLocal) return poolList.map(d => d.id)
-      const gardes = prev.filter(id => idsPool.has(id))
-      const connus = new Set(gardes)
-      return [...gardes, ...poolList.filter(d => !connus.has(d.id)).map(d => d.id)]
+    setSyntheses(parTournee(ph.data))
+    setFeuilles(parTournee(fe.data))
+  }, [date])
+
+  useEffect(() => {
+    setCharge(false); setFiltre('toutes'); setMembreFiltre(''); setDetailId(null)
+    void recharger()
+  }, [recharger])
+
+  // Suivi en direct : positions partagées par les livreurs, relues toutes les 30 s (et l'avancement avec),
+  // seulement pour aujourd'hui.
+  useEffect(() => {
+    if (!estAujourdhui) return
+    let annule = false
+    const lire = () => positionsLivreurs().then(({ data }) => { if (!annule) { setPositions(data); setMaintenant(Date.now()) } })
+    void lire()
+    const id = window.setInterval(() => { void lire(); if (!document.hidden) void recharger() }, 30_000)
+    return () => { annule = true; window.clearInterval(id) }
+  }, [estAujourdhui, recharger])
+
+  // Salariés et noms de leurs clients : seulement quand on ouvre le scanner.
+  useEffect(() => {
+    if (!scanOuvert || membres.length) return
+    membresPourTournee().then(async ({ data }) => {
+      setMembres(data)
+      setNoms(await nomsClients([...new Set(data.flatMap(m => m.clients_messagerie))]))
     })
-    const parId = new Map<string, TourDelivery>()
-    for (const d of [...((allRes.data as unknown as TourDelivery[]) ?? []), ...((stopsRes.data as unknown as TourDelivery[]) ?? [])]) parId.set(d.id, d)
-    const duJour = [...parId.values()]
-    setAllDeliveries(duJour)
-    setTours(toursDuJour)
+  }, [scanOuvert, membres.length])
 
-    // Une seule saisie : chauffeur / véhicule déjà posés (tournées, Planning,
-    // fiche) cochés et pré-remplis à l'ouverture de la date.
-    if (affectationsReprisesPour.current !== date) {
-      affectationsReprisesPour.current = date
-      const sugg = affectationsSuggerees(toursDuJour, [...duJour, ...poolList])
-      setSelectedVehicles(new Set(sugg.vehicules))
-      setDriverByVehicle(sugg.chauffeurParVehicule)
-      setHeureDepart(departInitial(toursDuJour))
+  const membre = membres.find(m => m.id === membreId) ?? null
+  useEffect(() => {
+    if (!membreId) return
+    let annule = false
+    trouverScan(membreId).then(s => { if (!annule) setScanMembre(s?.id ?? null) })
+    return () => { annule = true }
+  }, [membreId])
+  const clientsMembre = useMemo(
+    () => (membre?.clients_messagerie ?? []).map(id => ({ id, name: noms.get(id) ?? 'Client' })),
+    [membre, noms],
+  )
+
+  // Une couleur par salarié (ordre alphabétique : stable d'un rechargement à l'autre).
+  const couleurs = useMemo(() => {
+    const liste = [...new Map(tournees.map(t => [t.member_id, t.team_members?.full_name ?? ''])).entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], 'fr'))
+    return new Map(liste.map(([id], i) => [id, colorForIndex(i)]))
+  }, [tournees])
+
+  const lignes = useMemo(() => construireLignes(tournees, arrets), [tournees, arrets])
+  const resume = useMemo(() => resumeTournees(lignes), [lignes])
+  const salaries = useMemo(
+    () => [...new Map(tournees.map(t => [t.member_id, t.team_members?.full_name ?? 'Salarié'])).entries()],
+    [tournees],
+  )
+  const visibles = useMemo(() => filtrerTournees(lignes, filtre, membreFiltre, q), [lignes, filtre, membreFiltre, q])
+
+  // Position de CETTE tournée, de moins de 3 h (une ligne oubliée ne traîne pas sur la carte).
+  const positionDe = (l: LigneTournee) => estAujourdhui
+    ? positions.find(p => p.member_id === l.t.member_id && p.tournee_id === l.t.id
+      && maintenant - new Date(p.maj_le).getTime() < 3 * 3_600_000)
+    : undefined
+
+  const surCarte = visibles.filter(l => !masques.has(l.t.member_id))
+  const couches = useMemo(() => surCarte.map(l => {
+    const mode = modeOrdre(l.t)
+    return {
+      id: l.t.id, couleur: couleurs.get(l.t.member_id) ?? '#2563eb', arrets: l.arrets, mode,
+      trajet: l.t.trajet ?? null, prochainId: prochainDansOrdre(l.arrets, mode)?.id ?? null,
     }
-
-    // Pré-coche les géocodées non encore rattachées (tour_id null). Les retards
-    // ne sont JAMAIS pré-cochés : les répartir change leur date, ça se décide.
-    if (garderLocal) setSelectedIds(prev => new Set([...prev].filter(id => idsPool.has(id))))
-    else setSelectedIds(new Set(
-      poolList.filter(d => isGeocoded(d) && d.tour_id == null && !estEnRetard(d, date)).map(d => d.id),
-    ))
-    setLoadingList(false)
-  }, [companyId, date, toast])
-
-  useEffect(() => { void charger(false) }, [charger])
-  const rechargerApresAction = useCallback(() => charger(true), [charger])
-
-  // Réinitialise l'avertissement « non réparties » quand la date change.
-  useEffect(() => { setUnassignedCount(0) }, [date])
-
-  // ── Géocodage manquant : bouton de rattrapage 1-clic ───────────────────────
-  const [geocoding, setGeocoding] = useState(false)
-  const handleBackfillGeocode = async () => {
-    setGeocoding(true)
-    try {
-      const { data, error } = await supabase.functions.invoke('geocode', {
-        body: { backfill: true },
-      })
-      if (error || !data?.ok) {
-        toast(error?.message ?? data?.error ?? 'Échec du géocodage', 'error')
-        return
-      }
-      const d = data.data as {
-        depot_ok: 'skipped' | 'ok' | 'echec' | 'no_address'
-        deliveries_ok: number
-        deliveries_echec: number
-        echecs?: string[]
-        depot_missing_address?: boolean
-      }
-      const parts: string[] = []
-      if (d.depot_ok === 'ok') parts.push('dépôt localisé')
-      if (d.depot_ok === 'no_address') parts.push('adresse du dépôt manquante')
-      if (d.deliveries_ok > 0) parts.push(`${d.deliveries_ok} livraison(s) localisée(s)`)
-      if (d.deliveries_echec > 0) parts.push(`${d.deliveries_echec} échec(s)`)
-      toast(parts.length ? parts.join(' · ') : 'Aucune adresse à géocoder',
-        d.depot_ok === 'no_address' || d.deliveries_echec > 0 ? 'error' : 'success')
-      setGeocodeReport({
-        echecs: d.echecs ?? [],
-        depotMissingAddress: !!d.depot_missing_address,
-      })
-
-      // Recharge le dépôt (pour lever le blocage) puis le board si dispo.
-      if (companyId) {
-        const { data: fresh } = await getCompanyDepot(companyId)
-        if (fresh) setDepot({ lat: fresh.depot_lat, lng: fresh.depot_lng, name: fresh.name })
-      }
-      await charger(true)
-    } finally {
-      setGeocoding(false)
-    }
-  }
-
-  // ── Dérivés ──────────────────────────────────────────────────────────────────
-  const depotGeocoded = depot.lat != null && depot.lng != null
-
-  // Objet stable : sans ce useMemo, un nouveau `{ lat, lng }` est créé à CHAQUE
-  // rendu de cet écran (cocher un véhicule, taper une date…), ce qui invalide
-  // le React.memo de ToursOverviewMap et force la carte à se recadrer toute
-  // seule à chaque interaction, même sans rapport avec elle.
-  const depotPourCarte = useMemo(
-    () => (depotGeocoded ? { lat: depot.lat as number, lng: depot.lng as number } : null),
-    [depotGeocoded, depot.lat, depot.lng],
-  )
-
-  // Seuls les véhicules ACTIFS cochés comptent : une affectation reprise peut
-  // viser un véhicule sorti de la flotte (jamais affiché, donc jamais envoyé).
-  const vehiculesCoches = useMemo(
-    () => [...selectedVehicles].filter(id => vehicles.some(v => v.id === id)),
-    [selectedVehicles, vehicles],
-  )
-
-  const assignments: Assignment[] = useMemo(
-    () => vehiculesCoches.map(vid => ({ vehicle_id: vid, driver_id: driverByVehicle[vid] || null })),
-    [vehiculesCoches, driverByVehicle],
-  )
-
-  /**
-   * Le pool dans l'ordre choisi.
-   *
-   * Les livraisons absentes de `ordrePool` sont placées à la fin plutôt que
-   * masquées : `pool` et `ordrePool` sont deux `setState` distincts, et une
-   * course qui disparaîtrait le temps d'un rendu serait un bug bien plus
-   * déroutant qu'une course en fin de liste.
-   */
-  const poolOrdonne = useMemo(() => {
-    const rang = new Map(ordrePool.map((id, i) => [id, i]))
-    return [...pool].sort(
-      (a, b) => (rang.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (rang.get(b.id) ?? Number.MAX_SAFE_INTEGER),
-    )
-  }, [pool, ordrePool])
-
-  const selectedDeliveries = useMemo(
-    () => poolOrdonne.filter(d => selectedIds.has(d.id)),
-    [poolOrdonne, selectedIds],
-  )
-
-  /** Ce qui partira réellement en tournée, dans l'ordre affiché à l'écran. */
-  const idsSelectionnesOrdonnes = useMemo(
-    () => selectedDeliveries.map(d => d.id),
-    [selectedDeliveries],
-  )
-
-  /**
-   * Plan de chargement : l'inverse de l'ordre de livraison. Un fourgon se
-   * charge par une seule porte, donc le premier client livré doit être chargé
-   * en dernier, contre la porte.
-   */
-  const chargement = useMemo(() => planDeChargement(selectedDeliveries), [selectedDeliveries])
-
-  const departValide = hhmm(heureDepart) !== ''
-  const dispatchReady = canDispatch(assignments, selectedDeliveries) && departValide
-
-  // « Répartir dans mon ordre » n'a de sens que sur UN véhicule : répartir sur
-  // plusieurs, c'est exactement le travail de l'optimiseur, et un ordre unique
-  // ne dit pas qui prend quoi.
-  const vehiculeUnique = vehiculesCoches.length === 1 ? vehiculesCoches[0] : null
-  const ordreReady = vehiculeUnique != null && idsSelectionnesOrdonnes.length > 0
-
-  const grouped = useMemo(() => groupToursWithStops(tours, allDeliveries), [tours, allDeliveries])
-  const totals  = useMemo(() => totalsAcrossTours(tours), [tours])
-
-  const vehicleLabel = (id: string | null) => vehicles.find(v => v.id === id)?.label
-  const driverLabel  = (id: string | null) => drivers.find(d => d.id === id)?.label
-
-  // Tournées préparées pour la carte d'ensemble (une couleur par tournée, par ordre).
-  const overviewTours: OverviewTour[] = useMemo(
-    () => grouped.map((g, i) => ({
-      id: g.tour.id,
-      geometry: g.tour.geometry,
-      color: colorForIndex(i),
-      vehicleLabel: vehicleLabel(g.tour.vehicle_id) ?? 'Véhicule',
-      totalKm: g.tour.total_km,
-      totalMin: g.tour.total_duration_min,
-      stops: g.stops
-        .filter(s => s.delivery_lat != null && s.delivery_lng != null)
-        .map(s => ({ stop_order: s.stop_order, lat: s.delivery_lat as number, lng: s.delivery_lng as number })),
-    })),
-    // vehicleLabel dépend de `vehicles` ; on recalcule quand l'un des deux change.
-    [grouped, vehicles], // eslint-disable-line react-hooks/exhaustive-deps
-  )
-
-  const hasMapData = depotGeocoded ||
-    overviewTours.some(t => (t.geometry && t.geometry.length > 0) || t.stops.length > 0)
-
-  // ── Handlers ───────────────────────────────────────────────────────────────
-  const toggleVehicle = (vid: string) => setSelectedVehicles(prev => {
-    const next = new Set(prev)
-    if (next.has(vid)) next.delete(vid); else next.add(vid)
-    return next
+  }), [surCarte, couleurs])
+  const positionsCarte = surCarte.flatMap(l => {
+    const p = positionDe(l)
+    return p ? [{
+      id: l.t.member_id, lat: p.lat, lng: p.lng, couleur: couleurs.get(l.t.member_id) ?? '#2563eb',
+      ancien: positionAncienne(p.maj_le, maintenant),
+      libelle: `${(l.t.team_members?.full_name ?? 'Salarié').split(' ')[0]} · ${ilYA(p.maj_le, maintenant)}`,
+    }] : []
   })
 
-  const toggleDelivery = (id: string) => setSelectedIds(prev => {
-    const next = new Set(prev)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    return next
+  const detail = lignes.find(l => l.t.id === detailId) ?? null
+  const ouvrirDetail = (id: string, o: OngletDetail = 'arrets') => { setARecalculerListe(false); setOnglet(o); setDetailId(id) }
+
+  const demanderCalcul = (t: TourneeColis) => {
+    // Tournée déjà en route ou ordre posé à la main : un recalcul complet l'écraserait.
+    if (t.statut === 'en_cours' || modeOrdre(t) === 'manuel') setACalculer(t)
+    else void calculer(t)
+  }
+  const calculer = async (t: TourneeColis) => {
+    setACalculer(null)
+    setCalcul(t.id)
+    const { data, error } = await calculerItineraire({ tourneeId: t.id, mode: 'tout' })
+    setCalcul(null)
+    if (error || !data) { toast(error?.message ?? 'Calcul impossible', 'error'); return }
+    toast(data.message ?? `Itinéraire calculé : ${libelleDistance(data.km_total * 1000)}`, 'success')
+    void recharger()
+  }
+  const apresAdresse = (ajout: boolean) => {
+    setAdresseEdit(null); setAdresseAjout(false); setARecalculerListe(true)
+    toast(ajout ? 'Adresse ajoutée : recalcule l’itinéraire' : 'Adresse corrigée : recalcule l’itinéraire', 'success')
+    void recharger()
+  }
+  const rouvrir = async () => {
+    if (!aRouvrir) return
+    const { error } = await rouvrirTournee(aRouvrir.id)
+    setARouvrir(null)
+    if (error) { toast(error.message, 'error'); return }
+    toast('Tournée rouverte : le salarié peut de nouveau la modifier', 'success')
+    void recharger()
+  }
+  const supprimer = async () => {
+    if (!aSupprimer) return
+    setSuppression(true)
+    const { error } = await supprimerTourneeColis(aSupprimer.id)
+    setSuppression(false)
+    setASupprimer(null)
+    if (error) { toast(error.message, 'error'); return }
+    setDetailId(null)
+    toast('Tournée de colis supprimée', 'success')
+    void recharger()
+  }
+  const basculerMasque = (id: string) => setMasques(prev => {
+    const n = new Set(prev)
+    if (n.has(id)) n.delete(id); else n.add(id)
+    return n
   })
-
-  /**
-   * Monte ou descend une livraison dans le pool.
-   *
-   * Purement local : rien n'est écrit tant que la répartition n'a pas eu lieu.
-   */
-  const deplacerDansPool = (id: string, sens: 'haut' | 'bas') => {
-    setOrdrePool(prev => deplacerArret(prev.length > 0 ? prev : pool.map(d => d.id), id, sens))
+  const exporter = () => {
+    downloadCSV(csvTournees(visibles, date), `tournees-colis-${date}.csv`)
+  }
+  const ouvrirPhoto = async (d: DocumentRow) => {
+    const u = await urlPhotoArret(d)
+    if (u) window.open(u, '_blank', 'noopener'); else toast('Photo introuvable', 'error')
   }
 
-  /**
-   * Répartit sur UN véhicule en gardant l'ordre choisi, sans optimisation.
-   *
-   * L'ordre humain et l'optimisation ne peuvent pas gagner en même temps : la
-   * seconde recalcule `stop_order` et effacerait le premier. Deux boutons, deux
-   * promesses distinctes, plutôt qu'un bouton qui trahit l'une des deux.
-   */
-  /** Avant de répartir : dire quelles affectations déjà posées vont être remplacées. */
-  const demander = (mode: 'ordre' | 'optimiser') => {
-    const cibles = mode === 'ordre' && vehiculeUnique
-      ? [{ vehicle_id: vehiculeUnique, driver_id: driverByVehicle[vehiculeUnique] || null }]
-      : assignments
-    const lignes: string[] = []
-    const ecrasees = affectationsEcrasees(selectedDeliveries, cibles, mode)
-    if (ecrasees.length > 0) {
-      const noms = ecrasees.map(c => selectedDeliveries.find(d => d.id === c.id)?.clients?.name ?? '—')
-      lignes.push(`${noms.length} course(s) ont déjà un autre chauffeur ou véhicule `
-        + `(${noms.slice(0, 5).join(', ')}${noms.length > 5 ? '…' : ''}) : la répartition les remplace.`)
-    }
-    // Documents échus au jour de la tournée (même règle que le Planning).
-    for (const a of cibles) {
-      const v = vehicles.find(x => x.id === a.vehicle_id)
-      const c = drivers.find(x => x.id === a.driver_id)
-      lignes.push(...alertesAffectation(
-        c ? { ...c, full_name: c.label } : null,
-        v ?? null,
-        date,
-      ))
-    }
-    if (lignes.length > 0) {
-      setAConfirmer({ mode, lignes })
-      return
-    }
-    if (mode === 'ordre') void handleRepartirDansMonOrdre()
-    else void handleDispatch()
-  }
-
-  const handleRepartirDansMonOrdre = async () => {
-    if (!companyId || !vehiculeUnique || !ordreReady || dispatching) return
-    setDispatching(true)
-    const { error } = await repartirDansMonOrdre({
-      companyId,
-      date,
-      vehicleId: vehiculeUnique,
-      driverId: driverByVehicle[vehiculeUnique] || null,
-      depotLat: depot.lat,
-      depotLng: depot.lng,
-      heureDepart: hhmm(heureDepart) || null,
-      coursesDansLOrdre: selectedDeliveries,
-    })
-    setDispatching(false)
-    if (error) { toast(error.message, 'error'); return }
-    setUnassignedCount(0)
-    toast(`${idsSelectionnesOrdonnes.length} livraison(s) rangée(s) dans ton ordre`)
-    await charger(true)
-  }
-
-  const handleDispatch = async () => {
-    if (!dispatchReady || dispatching) return
-    setDispatching(true)
-    try {
-      const data = await dispatchAndOptimize(date, hhmm(heureDepart), assignments, idsSelectionnesOrdonnes)
-      // L'Edge n'écrit pas `date` : les retards effectivement répartis sont
-      // replanifiés ici au jour de la tournée.
-      const idsRetard = selectedDeliveries.filter(d => estEnRetard(d, date)).map(d => d.id)
-      const { error: replanErr } = await replanifierRetardsAffectes(idsRetard, date)
-      if (replanErr) toast(`Tournée faite, mais date des courses en retard non mise à jour : ${replanErr.message}`, 'error')
-      // Nombre renvoyé par l'Edge (pas une liste) : sans ça, l'avertissement ne s'affichait jamais.
-      const un = typeof data.unassigned === 'number' ? data.unassigned : (data.unassigned?.length ?? 0)
-      setUnassignedCount(un)
-      toast(un > 0
-        ? `Réparti — ${un} livraison(s) non réparties`
-        : `${data.tours.length} tournée(s) réparties et optimisées`)
-      if ((data.retraits_non_localises ?? 0) > 0) {
-        toast(`${data.retraits_non_localises} adresse(s) de retrait introuvable(s) : ces courses partent du dépôt dans le calcul`, 'error')
-      }
-      await charger(true)
-    } catch (e) {
-      toast((e as Error).message, 'error')
-    } finally {
-      setDispatching(false)
-    }
-  }
-
-  /** Retrait à faire, coché dès le pool (lot T4) : l'optimiseur en fait une paire retrait → livraison. */
-  const [retraitBusy, setRetraitBusy] = useState<string | null>(null)
-  const basculerRetraitPool = async (d: TourDelivery) => {
-    setRetraitBusy(d.id)
-    const { error } = await setRetraitAFaire(d.id, !d.retrait_a_faire)
-    setRetraitBusy(null)
-    if (error) { toast(error.message, 'error'); return }
-    // Mise à jour locale : un rechargement complet perdrait l'ordre choisi.
-    setPool(prev => prev.map(x => (x.id === d.id ? { ...x, retrait_a_faire: !d.retrait_a_faire } : x)))
-  }
-
-  // ── Render ─────────────────────────────────────────────────────────────────────
-  const poolCount = pool.length
-  const nonLocalisees = pool.filter(d => !isGeocoded(d)).length
+  const tuile = (f: FiltreTournees) => ({ actif: filtre === f, onClick: () => setFiltre(cur => (cur === f ? 'toutes' : f)) })
 
   return (
-    <Shell pageTitle="Tournées">
-      <div className="flex flex-col gap-3 lg:h-[calc(100dvh-var(--topbar-h)-6.75rem)]">
-      {/* Date, départ, chiffres du jour */}
-      <div className="flex flex-wrap items-end gap-2 shrink-0">
+    <div className="flex flex-col gap-3 pb-6">
+      {/* Barre : jour · actions */}
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
           <BoutonIcone icone={ChevronLeft} libelle="Jour précédent" onClick={() => setDate(d => decalerJour(d, -1))} />
           <input type="date" value={date} aria-label="Date des tournées"
             onChange={e => { if (e.target.value) setDate(e.target.value) }} className={`${inputCls} !w-auto`} />
           <BoutonIcone icone={ChevronRight} libelle="Jour suivant" onClick={() => setDate(d => decalerJour(d, 1))} />
         </div>
-        <Button variant="secondary" size="compact" onClick={() => setDate(toLocalISO(new Date()))}>Aujourd'hui</Button>
-        <label className="flex items-center gap-2 text-sm text-[var(--text-muted)] ml-auto">
-          Départ du dépôt
-          <input type="time" value={heureDepart} onChange={e => setHeureDepart(e.target.value)}
-            className={`${inputCls} !w-auto`} aria-invalid={!departValide} />
-        </label>
-      </div>
-      <div className="flex gap-2 overflow-x-auto shrink-0 -mx-1 px-1 pb-0.5">
-        <Tuile n={tours.length} libelle="tournées" />
-        <Tuile n={grouped.reduce((n, g) => n + g.stops.length, 0)} libelle="courses en tournée" />
-        <Tuile n={poolCount} libelle="à répartir" />
-        <Tuile n={tours.length ? `${totals.totalKm.toFixed(0)} km` : '—'} libelle="distance" />
-        <Tuile n={tours.length ? formatDuration(totals.totalMin) : '—'} libelle="durée" />
+        {!estAujourdhui && (
+          <Button variant="secondary" size="compact" onClick={() => setDate(toLocalISO(new Date()))}>Aujourd'hui</Button>
+        )}
+        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+          {lignes.length > 0 && (
+            <>
+              <Button size="compact" className="whitespace-nowrap" variant={carte ? 'primary' : 'secondary'} onClick={() => setCarte(v => !v)}>
+                <IconeCarte size={14} /> Carte du jour
+              </Button>
+              <Button size="compact" className="whitespace-nowrap" variant="secondary" onClick={exporter}>
+                <Download size={14} /> Export CSV
+              </Button>
+            </>
+          )}
+          {peutScanner && !erreur && (
+            <Button size="compact" className="whitespace-nowrap" onClick={() => setScanOuvert(true)}>
+              <ScanText size={14} /> Scanner pour un salarié
+            </Button>
+          )}
+        </div>
       </div>
 
-      {erreurChargement && (
-        <div role="alert" className="shrink-0 flex flex-wrap items-center gap-3 px-3 py-2.5 rounded-[var(--r-md)]
-          bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-sm">
-          <AlertTriangle size={16} className="text-[var(--danger)] shrink-0" />
-          <span className="flex-1 min-w-0 text-[var(--text)]">Chargement impossible : {erreurChargement}</span>
-          <Button variant="secondary" size="compact" onClick={() => void charger(true)}>Réessayer</Button>
+      {erreur && (
+        <div role="alert" className="flex items-center gap-3 rounded-[var(--r-md)] border border-[var(--danger)]/40 bg-[var(--danger)]/10 px-3 py-2 text-sm text-[var(--danger)]">
+          <TriangleAlert size={15} className="shrink-0" />
+          <span className="flex-1">{erreur}</span>
+          <Button size="compact" variant="secondary" onClick={() => void recharger()}>Réessayer</Button>
         </div>
       )}
 
-      {/* Mobile : une colonne à la fois */}
-      <div className="lg:hidden shrink-0 grid grid-cols-2 gap-1 p-1 rounded-[var(--r-md)] bg-[var(--bg-elevated)]" role="tablist">
-        {([['preparer', 'Préparer'], ['tournees', `Tournées (${tours.length})`]] as const).map(([k, l]) => (
-          <button key={k} type="button" role="tab" aria-selected={onglet === k} onClick={() => setOnglet(k)}
-            className={`min-h-10 rounded-[var(--r-sm)] text-sm font-medium transition-colors ${
-              onglet === k ? 'bg-[var(--bg-card)] text-[var(--text)] shadow-sm' : 'text-[var(--text-muted)]'}`}>
-            {l}
-          </button>
-        ))}
-      </div>
+      {!charge ? (
+        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+          {Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-24" />)}
+        </div>
+      ) : lignes.length === 0 && !erreur ? (
+        <EmptyState icon={<PackageCheck size={28} />} title="Aucune tournée de colis ce jour"
+          description={peutScanner ? 'Scanne la feuille de route d’un salarié, ou choisis un autre jour.' : 'Choisis un autre jour.'}
+          action={peutScanner ? { label: 'Scanner pour un salarié', onClick: () => setScanOuvert(true) } : undefined} />
+      ) : lignes.length > 0 && (
+        <>
+          {/* Tuiles cliquables : chaque geste filtre la liste */}
+          <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+            <ChiffreCarte libelle="Tournées" icone={<Truck size={13} />} valeur={String(resume.tournees)}
+              detail={resume.tournees > 1 ? 'toutes les feuilles du jour' : 'la feuille du jour'} titre="Toutes les tournées"
+              actif={filtre === 'toutes'} onClick={() => setFiltre('toutes')} />
+            <ChiffreCarte libelle="En cours" icone={<Gauge size={13} />} valeur={String(resume.enCours)}
+              detail={`${resume.pct} % · ${resume.arretsTraites} / ${resume.arrets} arrêts`} titre="Tournées en cours" {...tuile('en_cours')} />
+            <ChiffreCarte libelle="Clôturées" icone={<PackageCheck size={13} />} valeur={String(resume.cloturees)}
+              detail={`${resume.colisLivres} / ${resume.colis} colis livrés${resume.enPause > 0 ? ` · ${resume.enPause} en pause` : ''}`}
+              titre="Tournées clôturées" {...tuile('cloturees')} />
+            <ChiffreCarte libelle="En attente" icone={<Pause size={13} />} valeur={String(resume.colisAttente)}
+              ton={resume.colisAttente > 0 ? 'warning' : undefined} detail="colis avisés / en instance"
+              titre="Tournées avec des colis en attente" {...tuile('attente')} />
+            <ChiffreCarte libelle="En retour" icone={<Undo2 size={13} />} valeur={String(resume.colisRetour)}
+              ton={resume.colisRetour > 0 ? 'danger' : undefined} detail="refusés, absents, adresse…"
+              titre="Tournées avec des colis en retour" {...tuile('retours')} />
+            <ChiffreCarte libelle="Kilomètres" icone={<Route size={13} />} valeur={resume.km > 0 ? libelleDistance(resume.km * 1000) : '—'}
+              detail="itinéraires calculés" titre="Toutes les tournées" actif={false} onClick={() => setFiltre('toutes')} />
+          </div>
 
-      {/* PC : préparation à gauche, carte et tournées à droite ; chaque colonne
-          défile seule, l'écran tient sans faire défiler la page. */}
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)] lg:flex-1 lg:min-h-0 [&>*]:min-w-0 lg:[&>*]:min-h-0">
-
-        {/* ── Colonne préparation ─────────────────────────────────────────── */}
-        <div className={`${onglet === 'preparer' ? 'flex' : 'hidden'} lg:flex flex-col gap-3 lg:overflow-y-auto lg:pr-1 [&>*]:shrink-0`}>
-
-          {/* Adresses non localisées — bouton de rattrapage 1-clic (Edge geocode). */}
-          {(!depotGeocoded || nonLocalisees > 0) && (
-            <div className="flex items-center gap-3 px-3 py-2 rounded-[var(--r-md)]
-              bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-sm">
-              <AlertTriangle size={16} className="text-[var(--warning)] mt-0.5 shrink-0" />
-              <span className="text-[var(--text-muted)] flex-1 min-w-0">
-                {!depotGeocoded
-                  ? 'Dépôt non localisé.'
-                  : `${nonLocalisees} non localisée(s)`}
-              </span>
-              <Button variant="secondary" size="compact" onClick={handleBackfillGeocode} disabled={geocoding}>
-                {geocoding ? 'Géocodage…' : 'Géocoder'}
+          {/* Filtres */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[12rem] max-w-md">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-disabled)] pointer-events-none" />
+              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Salarié, client…" aria-label="Rechercher une tournée"
+                className={`${inputCls} !pl-9`} />
+            </div>
+            {salaries.length > 1 && (
+              <select value={membreFiltre} onChange={e => setMembreFiltre(e.target.value)} aria-label="Salarié" className={`${inputCls} !w-auto`}>
+                <option value="">Tous les salariés</option>
+                {salaries.map(([id, nom]) => <option key={id} value={id}>{nom}</option>)}
+              </select>
+            )}
+            {(filtre !== 'toutes' || membreFiltre || q) && (
+              <Button size="compact" variant="secondary" onClick={() => { setFiltre('toutes'); setMembreFiltre(''); setQ('') }}>
+                Tout afficher
               </Button>
-            </div>
-          )}
+            )}
+            <span className="text-xs text-[var(--text-muted)] ml-auto">{visibles.length} sur {lignes.length} tournées</span>
+          </div>
 
-          {/* Rapport du dernier backfill — adresses non résolues (à corriger manuellement). */}
-          {geocodeReport && (geocodeReport.echecs.length > 0 || geocodeReport.depotMissingAddress) && (
-            <div className="flex flex-col gap-2 px-3 py-2.5 rounded-[var(--r-md)]
-              bg-[var(--danger)]/10 border border-[var(--danger)]/30 text-sm">
-              <div className="flex items-start gap-2">
-                <AlertTriangle size={16} className="text-[var(--danger)] mt-0.5 shrink-0" />
-                <span className="text-[var(--text)] font-medium flex-1">
-                  {geocodeReport.depotMissingAddress
-                    ? "Adresse du dépôt manquante — renseigne-la dans Paramètres puis relance le géocodage."
-                    : `${geocodeReport.echecs.length} adresse(s) non résolue(s) — corrige-les puis relance :`}
-                </span>
-                <button type="button" onClick={() => setGeocodeReport(null)}
-                  className="text-[var(--text-muted)] hover:text-[var(--text)] text-xs">
-                  Fermer
-                </button>
-              </div>
-              {geocodeReport.echecs.length > 0 && (
-                <ul className="list-disc pl-8 text-xs text-[var(--text-muted)] max-h-40 overflow-auto">
-                  {geocodeReport.echecs.map((addr, i) => (
-                    <li key={i} className="font-mono">{addr}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
-          {/* Véhicules & chauffeurs (affectations) */}
-          <Section title={`Véhicules & chauffeurs (${vehiculesCoches.length} sélectionné${vehiculesCoches.length > 1 ? 's' : ''})`}>
-            {vehicles.length === 0 ? (
-              <p className="text-sm text-[var(--text-muted)] py-1">Aucun véhicule actif.</p>
-            ) : (
-              <ul className="flex flex-col divide-y divide-[var(--border)]">
-                {vehicles.map(v => {
-                  const checked = selectedVehicles.has(v.id)
+          {carte && (
+            <div className="flex flex-col gap-3 rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] p-3">
+              <div className="flex flex-wrap gap-2" aria-label="Salariés affichés">
+                {salaries.map(([id, nom]) => {
+                  const siennes = lignes.filter(x => x.t.member_id === id)
+                  const km = siennes.reduce((s, x) => s + x.km, 0)
+                  const pct = Math.round(siennes.reduce((s, x) => s + x.pct, 0) / siennes.length)
+                  const masque = masques.has(id)
                   return (
-                    <li key={v.id} className="flex items-center gap-3 py-2">
-                      <label className="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
-                        <input type="checkbox" checked={checked} onChange={() => toggleVehicle(v.id)}
-                          className="w-4 h-4 rounded accent-[var(--brand)] shrink-0" />
-                        <span className="text-sm text-[var(--text)] truncate">{v.label}</span>
-                      </label>
-                      <select
-                        value={driverByVehicle[v.id] ?? ''}
-                        disabled={!checked}
-                        onChange={e => setDriverByVehicle(p => ({ ...p, [v.id]: e.target.value }))}
-                        className={`${inputCls} max-w-[13rem]`}
-                      >
-                        <option value="">— Chauffeur —</option>
-                        {drivers.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
-                      </select>
-                    </li>
+                    <button key={id} type="button" aria-pressed={!masque} onClick={() => basculerMasque(id)}
+                      className={`min-h-10 px-3 inline-flex items-center gap-2 rounded-[var(--r-md)] border text-xs ${
+                        masque ? 'border-[var(--border)] opacity-50' : 'border-[var(--border-strong)]'}`}>
+                      <span className="w-3 h-3 rounded-full shrink-0" style={{ background: couleurs.get(id) }} />
+                      <strong className="text-[var(--text)]">{nom}</strong>
+                      <span className="text-[var(--text-muted)] tabular-nums">{pct} %{km ? ` · ${libelleDistance(km * 1000)}` : ''}</span>
+                    </button>
                   )
                 })}
-              </ul>
-            )}
-          </Section>
-
-          {/* Pool de livraisons à répartir */}
-          <Section title={`Livraisons à répartir (${poolCount})`}>
-            {loadingList ? (
-              <div className="space-y-2">{[0, 1, 2].map(i => <Skeleton key={i} className="h-12" />)}</div>
-            ) : poolCount === 0 ? (
-              <p className="text-sm text-[var(--text-muted)] py-3 text-center">
-                Aucune livraison planifiée pour cette date, ni en retard.
-              </p>
-            ) : (
-              <>
-                <ul className="flex flex-col divide-y divide-[var(--border)]">
-                  {poolOrdonne.map((d, i) => {
-                    const geo = isGeocoded(d)
-                    const coche = selectedIds.has(d.id)
-                    // Numéro de livraison : compté parmi les cochées seulement,
-                    // parce que seules celles-là partiront en tournée.
-                    const rang = coche ? idsSelectionnesOrdonnes.indexOf(d.id) + 1 : null
-                    const creneau = libelleCreneau(d.creneau_livraison_debut, d.creneau_livraison_fin)
-                    return (
-                      <li key={d.id} className="flex flex-wrap items-start gap-2 py-2">
-                        <label className={`flex items-start gap-3 flex-1 min-w-0 ${geo ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
-                          <input type="checkbox" checked={coche} disabled={!geo}
-                            onChange={() => toggleDelivery(d.id)}
-                            className="w-4 h-4 mt-1 rounded accent-[var(--brand)] shrink-0" />
-                          <span className={`flex items-center justify-center w-6 h-6 shrink-0 rounded-full text-xs font-bold
-                            ${rang ? 'bg-[var(--brand-soft)] text-[var(--brand)]' : 'text-[var(--text-disabled)]'}`}>
-                            {rang ?? '–'}
-                          </span>
-                          <div className="flex flex-col min-w-0 flex-1">
-                            <span className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
-                              <span className="text-sm text-[var(--text)] truncate max-w-full">
-                                {d.clients?.name ?? '—'}
-                                {d.description && <span className="text-[var(--text-muted)]"> · {d.description}</span>}
-                              </span>
-                              {d.urgent && <Badge color="danger">Urgent</Badge>}
-                              {creneau && <Badge color="muted">{creneau}</Badge>}
-                              {estEnRetard(d, date) && <Badge color="danger">{libelleRetard(d.date)}</Badge>}
-                              {d.statut === 'en_cours' && <Badge color="warning">En cours</Badge>}
-                              {d.tour_id && (
-                                <Badge color="info">
-                                  Tournée {vehicleLabel(tours.find(t => t.id === d.tour_id)?.vehicle_id ?? null) ?? 'existante'}
-                                </Badge>
-                              )}
-                            </span>
-                            <span className="text-xs text-[var(--text-muted)] truncate">{d.delivery_address ?? '—'}</span>
-                          </div>
-                          {geo
-                            ? <MapPin size={14} className="text-[var(--success)] shrink-0 mt-1" />
-                            : <span className="text-xs text-[var(--text-disabled)] shrink-0">à géocoder</span>}
-                        </label>
-                        <span className="flex items-center shrink-0">
-                          <button type="button" onClick={() => deplacerDansPool(d.id, 'haut')}
-                            disabled={i === 0} aria-label="Monter cette livraison"
-                            className={flecheCls}><ArrowUp size={15} /></button>
-                          <button type="button" onClick={() => deplacerDansPool(d.id, 'bas')}
-                            disabled={i === poolOrdonne.length - 1} aria-label="Descendre cette livraison"
-                            className={flecheCls}><ArrowDown size={15} /></button>
-                        </span>
-                        {/* Retrait : coché à la main (la marchandise peut déjà être au dépôt). */}
-                        {d.pickup_address && (
-                          <label className="basis-full flex items-center gap-2 pl-16 cursor-pointer -mt-1">
-                            <input type="checkbox" checked={d.retrait_a_faire}
-                              onChange={() => basculerRetraitPool(d)} disabled={retraitBusy === d.id || !peutEcrire}
-                              className="accent-[var(--brand)] w-4 h-4 cursor-pointer shrink-0" />
-                            <span className="text-xs text-[var(--text-muted)] truncate">
-                              Retrait à faire : {d.pickup_address}
-                              {libelleCreneau(d.creneau_retrait_debut, d.creneau_retrait_fin)
-                                && ` (${libelleCreneau(d.creneau_retrait_debut, d.creneau_retrait_fin)})`}
-                            </span>
-                          </label>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-
-                {/* PLAN DE CHARGEMENT — l'inverse de l'ordre de livraison. Repliable. */}
-                {chargement.length > 1 && (
-                  <div className="mt-2 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)]">
-                    <button type="button" onClick={() => setPlanOuvert(o => !o)} aria-expanded={planOuvert}
-                      className="w-full flex items-center gap-2 px-3 min-h-10 text-left">
-                      <PackageOpen size={15} className="text-[var(--brand)] shrink-0" />
-                      <span className="text-sm font-medium text-[var(--text)] flex-1">Plan de chargement</span>
-                      <ChevronDown size={16}
-                        className={`text-[var(--text-muted)] shrink-0 transition-transform ${planOuvert ? 'rotate-180' : ''}`} />
-                    </button>
-                    {planOuvert && (
-                      <div className="px-3 pb-3">
-                        <p className="text-xs text-[var(--text-muted)] mb-2">
-                          Un fourgon se vide par une seule porte : ce qu'on charge en premier finit au
-                          fond. Donc le premier client livré se charge en dernier.
-                        </p>
-                        <ol className="flex flex-col gap-1">
-                          {chargement.map(({ item, rangChargement, rangLivraison }) => (
-                            <li key={item.id} className="flex items-center gap-2 text-sm">
-                              <span className="flex items-center justify-center w-6 h-6 shrink-0 rounded-full
-                                bg-[var(--bg-elevated)] border border-[var(--border)] text-xs font-bold text-[var(--text)]">
-                                {rangChargement}
-                              </span>
-                              <span className="text-[var(--text)] truncate flex-1 min-w-0">{item.clients?.name ?? '—'}</span>
-                              <span className="text-xs text-[var(--text-muted)] shrink-0">livré n° {rangLivraison}</span>
-                            </li>
-                          ))}
-                        </ol>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </>
-            )}
-
-            <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-[var(--border)] mt-3">
-              <Button variant="primary" className="min-h-11" onClick={() => demander('optimiser')}
-                disabled={dispatching || !dispatchReady || !peutEcrire}
-                title={!departValide ? 'Heure de départ invalide'
-                  : !dispatchReady ? 'Coche au moins un véhicule et une livraison géocodée' : undefined}>
-                {dispatching ? 'Répartition…' : 'Répartir & optimiser'}
-              </Button>
-              <Button variant="secondary" className="min-h-11" onClick={() => demander('ordre')}
-                disabled={dispatching || !ordreReady || !peutEcrire}
-                title={!ordreReady ? 'Coche UN seul véhicule et au moins une livraison' : undefined}>
-                Répartir dans mon ordre
-              </Button>
-              <span className="text-xs text-[var(--text-muted)] ml-auto">
-                {selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}
-              </span>
-            </div>
-
-          </Section>
-        </div>
-
-        {/* ── Colonne tournées ────────────────────────────────────────────── */}
-        <div className={`${onglet === 'tournees' ? 'flex' : 'hidden'} lg:flex flex-col gap-3 lg:overflow-y-auto lg:pr-1 [&>*]:shrink-0`}>
-          {/* Messagerie : feuilles de route scannées (hors deliveries, hors optimisation). */}
-          {companyId && <TourneesColisDuJour companyId={companyId} date={date} />}
-
-          {/* Avertissement non réparties */}
-          {unassignedCount > 0 && (
-            <div className="flex items-start gap-2 px-3 py-2.5 rounded-[var(--r-md)]
-              bg-[var(--warning)]/10 border border-[var(--warning)]/30 text-sm">
-              <AlertTriangle size={16} className="text-[var(--warning)] mt-0.5 shrink-0" />
-              <span className="text-[var(--text-muted)]">
-                {unassignedCount} livraison(s) non réparties : capacité insuffisante, ou créneau
-                impossible à tenir avec ce départ.
-              </span>
-            </div>
-          )}
-
-          {tours.length === 0 ? (
-            <div className="glass rounded-[var(--r-xl)] p-6 text-center text-sm text-[var(--text-muted)]">
-              Aucune tournée ce jour. Coche les véhicules et les livraisons, puis répartis.
-            </div>
-          ) : (
-            <>
-              {/* Carte d'ensemble — toutes les tournées, une couleur par véhicule */}
-              {hasMapData && (
-                <Suspense fallback={
-                  <div className="h-[22rem] w-full rounded-[var(--r-lg)] border border-[var(--border)]
-                    flex items-center justify-center text-sm text-[var(--text-muted)]">
-                    Chargement de la carte…
-                  </div>
-                }>
-                  <ToursOverviewMap tours={overviewTours} depot={depotPourCarte} />
-                </Suspense>
-              )}
-
-              <div className="flex flex-col gap-3">
-                {grouped.map((g, i) => (
-                  <TourCard
-                    key={g.tour.id}
-                    tour={g.tour}
-                    stops={g.stops}
-                    vehicleLabel={vehicleLabel(g.tour.vehicle_id)}
-                    driverLabel={driverLabel(g.tour.driver_id)}
-                    color={colorForIndex(i)}
-                    onChanged={rechargerApresAction}
-                    peutEcrire={peutEcrire}
-                    replie={grouped.length > 2}
-                  />
-                ))}
               </div>
-            </>
+              <Suspense fallback={<Skeleton className="h-[26rem]" />}>
+                <CarteTournee couches={couches} positions={positionsCarte} hauteur="h-[26rem]" />
+              </Suspense>
+            </div>
+          )}
+
+          {/* Liste : une ligne par tournée, un clic ouvre le tiroir */}
+          {visibles.length === 0 ? (
+            <p className="text-sm text-[var(--text-muted)] py-6 text-center">Aucune tournée ne correspond à ces filtres.</p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {visibles.map(l => (
+                <LigneTourneeCarte key={l.t.id} l={l} couleur={carte ? couleurs.get(l.t.member_id) : undefined}
+                  pos={positionDe(l)} maintenant={maintenant}
+                  nbSyntheses={(syntheses.get(l.t.id) ?? []).length} nbFeuilles={(feuilles.get(l.t.id) ?? []).length}
+                  onOuvrir={o => ouvrirDetail(l.t.id, o)} />
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+
+      {/* Tiroir d'une tournée */}
+      <Drawer open={detail != null} onClose={() => setDetailId(null)} width="max-w-[44rem]"
+        title={detail ? `${detail.t.team_members?.full_name ?? 'Salarié'}${detail.t.clients?.name ? ` · ${detail.t.clients.name}` : ''}` : 'Tournée'}>
+        {detail && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge color={detail.t.statut === 'cloturee' ? 'muted' : detail.t.statut === 'en_cours' ? 'info' : 'warning'}>
+                {LIBELLE_STATUT_TOURNEE[detail.t.statut]}
+              </Badge>
+              <span className="text-xs text-[var(--text-muted)] tabular-nums">
+                {detail.c.arretsTraites} / {detail.c.arrets} arrêts · {detail.c.colisLivres} / {detail.c.colis} colis
+                {detail.km > 0 ? ` · ${libelleDistance(detail.km * 1000)}` : ''}
+              </span>
+              <div className="ml-auto flex items-center gap-1">
+                {peutScanner && detail.t.statut !== 'cloturee' && (
+                  <BoutonIcone icone={Route} taille="sm" libelle={calcul === detail.t.id ? 'Calcul…' : "Calculer l'itinéraire"}
+                    disabled={calcul != null} onClick={() => demanderCalcul(detail.t)} />
+                )}
+                {peutScanner && detail.t.statut === 'cloturee' && (
+                  <BoutonIcone icone={RotateCcw} taille="sm" libelle="Rouvrir la tournée" onClick={() => setARouvrir(detail.t)} />
+                )}
+                {peutSupprimer && detail.t.statut !== 'cloturee' && (
+                  <BoutonIcone icone={Trash2} taille="sm" libelle="Supprimer cette tournée de colis" onClick={() => setASupprimer(detail.t)} />
+                )}
+              </div>
+            </div>
+
+            <div role="tablist" className="inline-flex self-start rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] p-0.5">
+              {([
+                ['arrets', `Arrêts (${detail.arrets.length})`],
+                ['feuille', `Feuille de route (${(feuilles.get(detail.t.id) ?? []).length})`],
+                ['synthese', `Synthèse (${(syntheses.get(detail.t.id) ?? []).length})`],
+              ] as Array<[OngletDetail, string]>).map(([k, lib]) => (
+                <button key={k} role="tab" type="button" aria-selected={onglet === k} onClick={() => setOnglet(k)}
+                  className={`px-3 py-1.5 rounded-[var(--r-sm)] text-xs font-semibold ${onglet === k ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+                  {lib}
+                </button>
+              ))}
+            </div>
+
+            {onglet === 'arrets' && (
+              <ListeTourneeColis tournee={detail.t} arrets={detail.arrets} peutModifier={peutScanner}
+                aRecalculer={aRecalculerListe} calcul={calcul === detail.t.id}
+                onModifier={setAdresseEdit} onAjouter={() => setAdresseAjout(true)}
+                onRecalculer={async () => { await calculer(detail.t); setARecalculerListe(false) }} />
+            )}
+            {onglet === 'feuille' && (
+              <Photos docs={feuilles.get(detail.t.id) ?? []} onOuvrir={ouvrirPhoto}
+                vide="Pas de photo de feuille de route pour cette tournée (elles sont gardées à partir de maintenant)." />
+            )}
+            {onglet === 'synthese' && (
+              <Photos docs={syntheses.get(detail.t.id) ?? []} onOuvrir={ouvrirPhoto}
+                vide="Le salarié n'a pas joint de photo de synthèse." />
+            )}
+          </div>
+        )}
+      </Drawer>
+
+      {(adresseEdit || adresseAjout) && (() => {
+        const l = lignes.find(x => x.t.id === (adresseEdit?.tournee_id ?? detailId))
+        if (!l) return null
+        return (
+          <FeuilleAdresse tournee={l.t} arrets={l.arrets} arret={adresseEdit}
+            onFermer={() => { setAdresseEdit(null); setAdresseAjout(false) }}
+            onFait={(_a, ajout) => apresAdresse(ajout)} />
+        )
+      })()}
+
+      <Drawer open={scanOuvert} onClose={() => { setScanOuvert(false); setMembreId('') }}
+        title="Scanner une feuille de route" width="max-w-[48rem]">
+        <div className="flex flex-col gap-4">
+          <Field label="Salarié">
+            <select value={membreId} onChange={e => { setScanMembre(undefined); setMembreId(e.target.value) }} className="field">
+              <option value="">Choisir…</option>
+              {membres.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+            </select>
+          </Field>
+          {membre && scanMembre !== undefined && companyId && (
+            <ScanFeuilleRoute key={`${membre.id}-${scanMembre ?? ''}`} companyId={companyId} memberId={membre.id} nomSalarie={membre.full_name}
+              date={date} clients={clientsMembre} reprendre={scanMembre}
+              onAnnuler={() => { setScanOuvert(false); setMembreId('') }}
+              onCree={() => { setScanOuvert(false); setMembreId(''); void recharger() }} />
           )}
         </div>
-      </div>
-      </div>
+      </Drawer>
 
-      <ConfirmDialog
-        open={aConfirmer != null}
-        title="Avant de répartir"
-        message={aConfirmer ? aConfirmer.lignes.join(' · ') : ''}
-        confirmLabel="Répartir quand même"
-        onConfirm={() => {
-          const mode = aConfirmer?.mode
-          setAConfirmer(null)
-          if (mode === 'ordre') void handleRepartirDansMonOrdre()
-          else if (mode === 'optimiser') void handleDispatch()
-        }}
-        onCancel={() => setAConfirmer(null)}
-        loading={dispatching}
-      />
-    </Shell>
-  )
-}
-
-// ── Sous-composants ────────────────────────────────────────────────────────────
-
-const inputCls = 'field'
-
-/** 'AAAA-MM-JJ' décalé de n jours (local, sans passer par UTC). */
-function decalerJour(iso: string, n: number): string {
-  const [a, m, j] = iso.split('-').map(Number)
-  return toLocalISO(new Date(a, m - 1, j + n))
-}
-
-function Tuile({ n, libelle }: { n: string | number; libelle: string }) {
-  return (
-    <div className="shrink-0 min-w-[5.5rem] flex-1 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1.5">
-      <p className="text-xl font-bold tabular-nums leading-tight text-[var(--text)]">{n}</p>
-      <p className="text-xs text-[var(--text-muted)] truncate">{libelle}</p>
+      <ConfirmDialog open={aSupprimer != null} title="Supprimer cette tournée de colis ?"
+        message={`Feuille de ${aSupprimer?.team_members?.full_name ?? 'ce salarié'} : les arrêts et leurs statuts seront effacés.`}
+        loading={suppression} onConfirm={supprimer} onCancel={() => setASupprimer(null)} />
+      <ConfirmDialog open={aCalculer != null} title="Recalculer l'itinéraire ?"
+        message="La tournée est en cours ou son ordre a été posé à la main : le recalcul complet remplace cet ordre."
+        confirmLabel="Recalculer" onConfirm={() => aCalculer && calculer(aCalculer)} onCancel={() => setACalculer(null)} />
+      <ConfirmDialog open={aRouvrir != null} title="Rouvrir cette tournée ?"
+        message={`Feuille de ${aRouvrir?.team_members?.full_name ?? 'ce salarié'} : il pourra de nouveau changer les statuts. Sa journée de colis n'est pas modifiée.`}
+        confirmLabel="Rouvrir" onConfirm={rouvrir} onCancel={() => setARouvrir(null)} />
     </div>
   )
 }
 
-const flecheCls = `min-w-10 min-h-10 inline-flex items-center justify-center rounded-[var(--r-md)] text-[var(--text-muted)]
-  hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]
-  disabled:opacity-30 disabled:cursor-not-allowed transition-colors`
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function LigneTourneeCarte({ l, couleur, pos, maintenant, nbSyntheses, nbFeuilles, onOuvrir }: {
+  l: LigneTournee
+  couleur: string | undefined
+  pos: PositionLivreur | undefined
+  maintenant: number
+  nbSyntheses: number
+  nbFeuilles: number
+  onOuvrir: (o: OngletDetail) => void
+}) {
+  const { t, c, pct, enPause } = l
   return (
-    <div className="glass rounded-[var(--r-xl)] overflow-hidden">
-      <div className="px-4 py-2 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
-        <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">{title}</span>
+    <li>
+      <div role="button" tabIndex={0} onClick={() => onOuvrir('arrets')}
+        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOuvrir('arrets') } }}
+        className="w-full text-left flex items-start gap-3 rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3 cursor-pointer hover:border-[var(--brand)] transition-colors">
+        {couleur && <span className="w-3 h-3 mt-1.5 rounded-full shrink-0" style={{ background: couleur }} aria-hidden />}
+        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+          <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+            <strong className="text-[var(--text)]">{t.team_members?.full_name ?? 'Salarié'}</strong>
+            {t.clients?.name && <span className="text-[var(--text-muted)]">{t.clients.name}</span>}
+            <Badge color={t.statut === 'cloturee' ? 'muted' : t.statut === 'en_cours' ? 'info' : 'warning'}>
+              {LIBELLE_STATUT_TOURNEE[t.statut]}
+            </Badge>
+            {pos && (
+              <span className={`inline-flex items-center gap-1 text-xs ${positionAncienne(pos.maj_le, maintenant) ? 'text-[var(--text-muted)]' : 'text-[var(--success)]'}`}>
+                <Radio size={11} /> position {ilYA(pos.maj_le, maintenant)}
+              </span>
+            )}
+          </span>
+          <div className="h-1.5 rounded-full bg-[var(--bg)] border border-[var(--border)] overflow-hidden" aria-hidden>
+            <div className="h-full bg-[var(--success)]" style={{ width: `${pct}%` }} />
+          </div>
+          <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[var(--text-muted)] tabular-nums">
+            <span>Arrêts {c.arretsTraites} / {c.arrets}</span>
+            <span>Colis {c.colisTraites} / {c.colis}</span>
+            <span className="text-[var(--success)]">{c.colisLivres} livrés</span>
+            {c.colisAttente > 0 && <span className="text-[var(--warning)]">{c.colisAttente} en attente</span>}
+            {c.colisRetour > 0 && <span className="text-[var(--danger)]">{c.colisRetour} en retour</span>}
+            {enPause > 0 && <span className="text-[var(--warning)]">{enPause} en pause</span>}
+            {c.collectes > 0 && <span>Collectes {c.collectesTraitees} / {c.collectes}</span>}
+            {t.trajet && <span>{libelleDistance(t.trajet.km_total * 1000)}{modeOrdre(t) === 'manuel' ? ' · ordre manuel' : ''}</span>}
+          </span>
+          {(nbFeuilles > 0 || nbSyntheses > 0) && (
+            <span className="flex flex-wrap gap-2 pt-0.5">
+              {nbFeuilles > 0 && (
+                <button type="button" onClick={e => { e.stopPropagation(); onOuvrir('feuille') }}
+                  className="inline-flex items-center gap-1.5 rounded-[var(--r-pill)] border border-[var(--border-strong)] bg-[var(--bg-card-hover)] px-2.5 py-1 text-xs font-semibold text-[var(--text)] hover:border-[var(--brand)] transition-colors">
+                  <FileText size={12} /> Feuille de route
+                  <span className="rounded-full bg-[var(--brand)]/15 text-[var(--brand)] px-1.5 tabular-nums">{nbFeuilles}</span>
+                </button>
+              )}
+              {nbSyntheses > 0 && (
+                <button type="button" onClick={e => { e.stopPropagation(); onOuvrir('synthese') }}
+                  className="inline-flex items-center gap-1.5 rounded-[var(--r-pill)] border border-[var(--border-strong)] bg-[var(--bg-card-hover)] px-2.5 py-1 text-xs font-semibold text-[var(--text)] hover:border-[var(--brand)] transition-colors">
+                  <Camera size={12} /> Synthèse
+                  <span className="rounded-full bg-[var(--brand)]/15 text-[var(--brand)] px-1.5 tabular-nums">{nbSyntheses}</span>
+                </button>
+              )}
+            </span>
+          )}
+        </div>
+        <span className="text-lg font-mono font-semibold tabular-nums text-[var(--text)] shrink-0">{pct} %</span>
       </div>
-      <div className="p-3">{children}</div>
-    </div>
+    </li>
+  )
+}
+
+/** Vignettes de photos (feuille de route, synthèse) : un clic ouvre l'image en grand. */
+function Photos({ docs, onOuvrir, vide }: { docs: DocumentRow[]; onOuvrir: (d: DocumentRow) => void; vide: string }) {
+  if (docs.length === 0) return <p className="text-sm text-[var(--text-muted)]">{vide}</p>
+  return (
+    <ul className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      {docs.map((d, i) => (
+        <li key={d.id}>
+          <Vignette doc={d} libelle={`Page ${i + 1}`} onOuvrir={() => onOuvrir(d)} />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function Vignette({ doc, libelle, onOuvrir }: { doc: DocumentRow; libelle: string; onOuvrir: () => void }) {
+  const [url, setUrl] = useState<string | null>(null)
+  useEffect(() => {
+    let annule = false
+    urlPhotoArret(doc).then(u => { if (!annule) setUrl(u) })
+    return () => { annule = true }
+  }, [doc])
+  return (
+    <button type="button" onClick={onOuvrir}
+      className="w-full aspect-[3/4] rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden relative hover:border-[var(--brand)]">
+      {url ? <img src={url} alt={libelle} loading="lazy" className="w-full h-full object-cover" /> : <Skeleton className="w-full h-full" />}
+      <span className="absolute bottom-1 left-1 rounded-[var(--r-pill)] bg-black/60 px-2 py-0.5 text-[0.6875rem] text-white">{libelle}</span>
+    </button>
   )
 }

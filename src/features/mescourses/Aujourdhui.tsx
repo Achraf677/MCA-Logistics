@@ -1,11 +1,10 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { Flag, Loader2, Route as RouteIcon, ScanText } from 'lucide-react'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { avancementParCategorie, type CategorieArret } from '../../shared/lib/tourneesColisRoute'
 import { compteursTournee, type CompteursTournee } from '../../shared/lib/tourneesColis'
 import { listerTourneesColis, arretsDesTournees, type ScanSuivi } from '../../shared/lib/tourneesColis.queries'
 import { jourParis } from '../../shared/lib/relaisPoste'
-import { getMesCourses } from './mescourses.queries'
 import type { EtatFiche, MaFiche } from './mescourses.types'
 import { Carte, MessageErreur, GardeFiche, boutonPrimaireCls } from './EspaceCommun'
 
@@ -13,20 +12,13 @@ interface Recap { c: CompteursTournee; categories: CategorieArret[]; tournees: n
 
 /**
  * « Aujourd'hui » : le récap de ma journée en un coup d'œil (colis livrés / en attente / retours,
- * arrêts faits, kilomètres prévus), lu depuis mes tournées du jour. Les éventuelles courses express
- * du jour s'affichent dessous (`express`), seulement s'il y en a.
+ * arrêts faits, kilomètres prévus), lu depuis mes tournées du jour.
  */
-export function Aujourdhui({ fiche, scan, onOuvrirTournee, express }: { fiche: EtatFiche; scan: ScanSuivi | null; onOuvrirTournee: () => void; express: ReactNode }) {
-  const [aExpress, setAExpress] = useState(false)
-  useEffect(() => {
-    const j = jourParis()
-    getMesCourses(j, j).then(({ data }) => setAExpress((data ?? []).length > 0))
-  }, [])
+export function Aujourdhui({ fiche, scan, onOuvrirTournee }: { fiche: EtatFiche; scan: ScanSuivi | null; onOuvrirTournee: () => void }) {
   return (
     <div className="flex flex-col gap-4">
       {scan && <CarteScan scan={scan} onOuvrir={onOuvrirTournee} />}
       <GardeFiche fiche={fiche}>{f => <RecapJour fiche={f} onOuvrirTournee={onOuvrirTournee} />}</GardeFiche>
-      {aExpress && express}
     </div>
   )
 }

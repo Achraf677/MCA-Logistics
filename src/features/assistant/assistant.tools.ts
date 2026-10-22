@@ -34,8 +34,8 @@ import { getDeliveries, createDelivery, transitionDelivery } from '../livraisons
 import { STATUS_LABELS as DELIVERY_STATUS_LABELS, computeAmount, canTransition } from '../livraisons/livraisons.logic'
 import type { DeliveryRow, DeliveryFilters, DeliveryInsert, DeliveryType, DeliveryStatus } from '../livraisons/livraisons.types'
 
-import { fetchToursByDate, getActiveVehicles, getActiveDrivers, getDeliveriesForDate } from '../tournees/tournees.queries'
-import type { Tour, TourDelivery } from '../tournees/tournees.types'
+import { listerTourneesColis, arretsDesTournees } from '../../shared/lib/tourneesColis.queries'
+import { compteursTournee, LIBELLE_STATUT_TOURNEE } from '../../shared/lib/tourneesColis'
 
 import { getVehicles, createVehicle } from '../vehicules/vehicules.queries'
 import { STATUS_LABELS as VEHICLE_STATUS_LABELS, FUEL_LABELS } from '../vehicules/vehicules.logic'
@@ -378,42 +378,31 @@ export async function getLivraisons(date?: string, statut?: string) {
 }
 
 // ── 2) Tournées du jour ────────────────────────────────────────────────────────
-// Réutilise fetchToursByDate() + getActiveVehicles/Drivers + getDeliveriesForDate (onglet Tournées).
-
-const TOUR_STATUS_LABELS: Record<string, string> = {
-  brouillon: 'Brouillon', optimisee: 'Optimisée', en_cours: 'En cours', terminee: 'Terminée',
-}
+// Tournées de colis (onglet Tournées) : une par feuille de route scannée. Plus d'express ici.
 
 export async function getTournees(date?: string) {
   const day = date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayISO()
-  const companyId = await getCompanyId()
-  if (!companyId) return { date: day, total: 0, tournees: [] }
-
-  const [toursRes, vehRes, drvRes, delRes] = await Promise.all([
-    fetchToursByDate(companyId, day),
-    getActiveVehicles(),
-    getActiveDrivers(),
-    getDeliveriesForDate(companyId, day),
-  ])
-  const vMap = new Map((vehRes.data ?? []).map(v => [v.id, v.label]))
-  const dMap = new Map((drvRes.data ?? []).map(d => [d.id, d.full_name]))
-
-  const stopCount = new Map<string, number>()
-  for (const d of (delRes.data ?? []) as unknown as TourDelivery[]) {
-    if (d.tour_id) stopCount.set(d.tour_id, (stopCount.get(d.tour_id) ?? 0) + 1)
-  }
-
-  const tours = (toursRes.data ?? []) as Tour[]
+  const t = await listerTourneesColis({ du: day, au: day })
+  if (t.error || t.data.length === 0) return { date: day, total: 0, tournees: [] }
+  const a = await arretsDesTournees(t.data.map(x => x.id))
   return {
     date: day,
-    total: tours.length,
-    tournees: tours.slice(0, MAX_LIST).map(t => ({
-      vehicule: t.vehicle_id ? (vMap.get(t.vehicle_id) ?? '—') : '—',
-      chauffeur: t.driver_id ? (dMap.get(t.driver_id) ?? '—') : '—',
-      nb_arrets: stopCount.get(t.id) ?? 0,
-      km: t.total_km != null ? Number(t.total_km) : null,
-      statut: TOUR_STATUS_LABELS[t.status] ?? t.status,
-    })),
+    total: t.data.length,
+    tournees: t.data.slice(0, MAX_LIST).map(x => {
+      const c = compteursTournee(a.data.filter(r => r.tournee_id === x.id))
+      return {
+        salarie: x.team_members?.full_name ?? '—',
+        client: x.clients?.name ?? '—',
+        nb_arrets: c.arrets,
+        arrets_traites: c.arretsTraites,
+        colis: c.colis,
+        colis_livres: c.colisLivres,
+        colis_en_attente: c.colisAttente,
+        colis_en_retour: c.colisRetour,
+        km: x.trajet?.km_total != null ? Math.round(x.trajet.km_total * 10) / 10 : null,
+        statut: LIBELLE_STATUT_TOURNEE[x.statut] ?? x.statut,
+      }
+    }),
   }
 }
 

@@ -1,218 +1,40 @@
 # 04a — Tournées (section Planning)
 
-> Cartographie du 04/10/2026, établie à partir du code ET de la base ; mise à jour le 22/10/2026 (calcul maison, refonte du 20/10, tournées de colis du jour).
-> Complète `04-planning.md` (section entière) : ce fichier fait foi pour l'onglet Tournées.
-> Plan § 13 de CLAUDE.md. À mettre à jour à chaque PR qui touche l'onglet.
+> Refonte du 22/10/2026 : l'onglet ne gère plus que les **tournées de colis**. L'express n'a plus de composeur
+> (décision « retrait express complet »). Fait foi pour l'onglet ; `04-planning.md` pour le reste de la section.
 
 ## 1. Rôle
-- Préparer la journée d'un ou plusieurs véhicules : quelles courses, dans quel ordre, avec
-  quel chauffeur ; obtenir l'itinéraire, le plan de chargement, puis suivre la tournée
-  (démarrer, livrer, terminer → heures du chauffeur).
-- Écran de bureau (exploitation). Le chauffeur, lui, voit sa tournée dans Mes courses.
+- Le bureau suit les feuilles de route de colis d'un jour : avancement, colis livrés / en attente / en retour, km,
+  positions des livreurs, adresses à corriger, photos de la feuille et de la synthèse.
+- Les courses express restent des `deliveries` : on les affecte dans Planning (Jour / Semaine / Mois).
 
 ## 2. Qui voit quoi
-- Onglet : droit `planning.tournees` (route `/planning-hub?tab=tournees`, `PlanningSection.tsx`).
-- Base : `tours` et `deliveries` en RLS — lecture : président, DG, comptable = tout ; chauffeur =
-  seulement ses lignes (`driver_id`). Écriture `tours` : président ou `planning.tournees/update` ;
-  écriture `deliveries` : président ou `livraisons.livraisons/update`.
-- **Edge `optimize-tours` et `optimize-tour` : AUCUN contrôle d'appelant** (service role, société
-  déduite de la 1re course reçue). Même faille que celle corrigée en U1 pour les synchros.
+- Onglet : droit `planning.tournees` (`/planning-hub?tab=tournees&date=AAAA-MM-JJ`).
+- Scanner pour un salarié / corriger / recalculer / rouvrir : `planning.tournees` update. Supprimer : delete.
 
-## 3. L'écran de haut en bas (PC = mobile : une colonne `max-w-3xl`)
-1. **Date** (champ date ; `?date=` lu au montage, lien depuis le Planning).
-2. **Bandeau géocodage** si le dépôt n'est pas localisé + bouton « Géocoder les adresses
-   manquantes » (Edge `geocode` backfill) ; rapport des adresses non résolues.
-3. **Véhicules & chauffeurs** : liste des véhicules actifs à cocher, un menu chauffeur par véhicule
-   (vide par défaut).
-4. **Livraisons à répartir** : courses `planifiee` du jour + courses en retard (planifiées /
-   en cours d'un jour passé, hors tournée terminée, 100 max) ; case à cocher, rang, client ·
-   description, badges « En retard » / « En cours », adresse de livraison, adresse de retrait,
-   repère « localisée » ; flèches monter / descendre (ordre local, non enregistré).
-5. **Plan de chargement** (ordre inverse de livraison) dès 2 courses cochées.
-6. **Boutons** « Répartir & optimiser » (Edge `optimize-tours`, plusieurs véhicules) et
-   « Répartir dans mon ordre » (un seul véhicule, sans calcul) + texte d'explication.
-7. **Récap** distance / durée cumulées, **carte d'ensemble** (Leaflet, une couleur par tournée).
-8. **Une carte par tournée** (`TourCard`) : véhicule, chauffeur, statut, « x / y livrés » ;
-   distance, durée, **carburant estimé à 0,15 €/km** ; Démarrer / Terminer ; « Itinéraire
-   complet » (Google Maps) ; case « Éviter les péages » ; plan de chargement repliable (poids) ;
-   arrêts : retrait éventuel (case « Passer par l'adresse de retrait »), n°, client, adresse,
-   heure prévue « ~ HH:MM » ou « livré HH:MM », flèches d'ordre, Naviguer / Waze, bouton « Livré ».
-9. Après « Terminer » : dialogue « Enregistrer les heures du chauffeur » (début = suggestion).
+## 3. L'écran
+- Barre : ‹ date › · Aujourd'hui · Carte du jour · Export CSV · Scanner pour un salarié.
+- 6 tuiles cliquables (filtre) : Tournées · En cours · Clôturées · En attente · En retour · Kilomètres.
+- Filtres : recherche (salarié, client), salarié. Liste : une carte par tournée (avancement, compteurs, pauses, km, position).
+- Clic = tiroir : onglets **Arrêts** (liste, correction d'adresse, Recalculer) · **Feuille de route** (pages scannées,
+  gardées à vie) · **Synthèse** (photos de fin de tournée). Actions : calculer l'itinéraire, rouvrir, supprimer.
+- Carte du jour : un marqueur / tracé par salarié, positions (< 3 h), mise à jour toutes les 30 s (aujourd'hui seulement).
+- Planning › Jour : le bloc « Tournées de colis » renvoie ici (« Ouvrir → », même date).
 
-## 4. Gestes et écritures
-- Répartir & optimiser → Edge `optimize-tours` : détache TOUTES les courses des tournées de ces
-  véhicules ce jour-là + le lot coché, calcule les routes (matrice OpenRouteService via api.heigit.org + planificateur maison, voir « Calcul des tournées express » plus bas), crée / met à jour
-  `tours` (statut `optimisee`, km, durée, tracé), écrit sur chaque course `tour_id`,
-  `stop_order`, `arrival_time` (départ fixe 08:00), **`vehicle_id` et `driver_id`** ; supprime les
-  tournées devenues vides. Refus 409 si une tournée est déjà en cours / terminée.
-  Front ensuite : `date` des courses en retard réparties = jour de la tournée.
-- Répartir dans mon ordre (front) : crée / met à jour la tournée `brouillon`, écrit `tour_id`,
-  `date`, `stop_order` ; remet km / durée / tracé à null. **N'écrit ni `driver_id` ni
-  `vehicle_id` sur les courses.**
-- Flèches d'une tournée → `stop_order` (N écritures). Case retrait → `retrait_a_faire`.
-  Péages → `tours.eviter_peages`. Démarrer / Terminer → `tours.status`.
-- « Livré » (bureau) → `deliveries.statut = livree`, `delivered_at`, `probleme_le = null`
-  (sans photo ni signature).
-- Heures → `work_hours` (insert, une ligne par chauffeur et par jour au plus).
+## 4. Données
+- Lit : `tournees_colis`, `tournees_colis_arrets`, `documents` (`entity_type = 'tournee_colis'`, `notes` = `feuille` | `synthese`),
+  `positions_livreurs`. Écrit : via `shared/lib/tourneesColis.queries` (calcul = Edge `optimiser-tournee-colis`).
+- `tours` / `tour_stops` : plus utilisés (gardés en base). Edge `optimize-tours` = 410.
 
-## 5. Données lues
-- `companies` (dépôt), `vehicles` actifs (`label` seulement), `team_members` chauffeurs actifs,
-  `deliveries` (filtre « sur la route » : ni messagerie ni forfait), `tours`, `work_hours`.
-- Non lus alors qu'ils existent : `deliveries.driver_id` / `vehicle_id` déjà affectés (Planning,
-  fiche), `creneau_*`, `urgent`, `nb_colis`, `volume_m3`, `notes` (consignes), retrait
-  géocodé (n'existe pas), charge utile du véhicule, échéances documents (permis, CT, assurance).
-- **En base (04/10/2026)** : 4 tournées au total (3 `optimisee`, 1 `terminee`), dernière le
-  03/10 ; 2 véhicules et 2 chauffeurs actifs ; 8 courses « sur la route » en 60 jours dont 2 en
-  tournée ; 0 non géocodée. L'activité actuelle (messagerie) n'y passe pas : l'onglet sert peu.
+## 5. Fichiers
+- `Tournees.tsx` (page + tiroir), `tournees.logic.ts` (+ test : lignes, résumé, filtres, CSV, date), `ListeTourneeColis.tsx`, `tours.palette.ts`.
 
-## 6. Fichiers
-- `features/tournees/Tournees.tsx` (627 l.), `TourCard.tsx` (518 l.), `ToursOverviewMap.tsx`,
-  `DialogueHeuresTournee.tsx`, `tournees.{logic,queries,types}.ts`, `tours.palette.ts`,
-  `tournees.logic.test.ts` ; `shared/lib/tourneeStatuts.ts`.
-- Edge : `optimize-tours` (utilisée), `optimize-tour` (**plus appelée par le front**), `geocode`,
-  `_shared/ors.ts`.
-- Code mort : `optimizeTour`, `getTourStops`, `unassignDeliveries` (queries),
-  `eligibleDeliveries`, `canOptimize` (logic) — aucun appelant.
+## 6. Reste
+- Feuilles de route côté salarié (Mes courses › Ma tournée) : pas encore affichées (le salarié peut lire les siennes, la base l'autorise).
+- Avant le 22/10/2026 les photos de feuille étaient effacées : seules les tournées créées après sont conservées.
 
-## 7. Critique (gestionnaire d'exploitation)
-### Ce qui est bien (à garder)
-- Deux promesses claires : « optimiser » (ordre calculé) ou « mon ordre » (ordre humain), dites
-  avant le clic.
-- Plan de chargement (inverse de la livraison, poids) : utile au dépôt, juste.
-- Liens Maps / Waze par arrêt + itinéraire complet ; « éviter les péages » honnête (dit ce qu'il
-  ne fait pas).
-- Courses en retard reprises (non pré-cochées), replanifiées seulement si réparties.
-- Garde 409 : on ne recompose pas une tournée en cours ; réoptimisation idempotente.
-- « Terminer » propose la ligne d'heures sans doublon.
-- Carte chargée à la demande, cartes mémorisées (perf).
-### Ce qui ne va pas
-- **Bloquant — sécurité** : `optimize-tours` / `optimize-tour` sans contrôle d'appelant ; un
-  compte connecté (chauffeur) peut réécrire l'ordre, le chauffeur et le véhicule des courses.
-- **Bloquant — le chauffeur ne voit pas sa tournée** si elle est faite par « Répartir dans mon
-  ordre » : `driver_id` n'est pas écrit sur les courses, or Mes courses (RLS) ne montre au
-  chauffeur que les courses à son `driver_id`.
-- **Double saisie et écrasement** : le chauffeur / véhicule choisis dans le Planning ou la fiche
-  ne sont pas repris (menus vides), puis l'optimisation écrase `driver_id` / `vehicle_id` des
-  courses sans le dire.
-- **L'express est mal servi** : l'optimiseur ne connaît que l'adresse de LIVRAISON (le retrait
-  n'est pas localisé ni envoyé) ; une course express = retrait → livraison, l'ordre calculé ne
-  tient pas compte du retrait.
-- **Heures prévues fausses** : départ fixe 08:00, aucun temps d'arrêt, créneaux de livraison et
-  urgence ignorés par l'optimisation ; « ~ 09:12 » affiché comme une vraie heure.
-- **Répartition « à parts égales »** (capacité = nombre de courses / nombre de véhicules) : ni
-  poids, ni volume, ni charge utile, ni zone.
-- **Chiffre inventé** : carburant « 0,15 €/km » codé en dur (ni consommation du véhicule, ni prix
-  du gazole des pleins).
-- **« Livré » depuis le bureau** sans preuve (photo / signature / nom du réceptionnaire) : la
-  course passe livrée et facturable sans justificatif.
-- Rien pour **retirer une course d'une tournée** ni **supprimer une tournée** (sauf tout
-  réoptimiser).
-- Le pool montre des courses déjà dans une tournée sans dire laquelle.
-- Contrôle des documents échus (permis, CT, assurance) fait dans le Planning, pas ici.
-- `tours.started_at` absent : l'heure de début des heures est une supposition.
-- Écran : une colonne étroite sur PC (beaucoup de défilement, ne tient pas sur un écran) ;
-  ~50 `text-[var(--fs-*)]` (interdit) ; tailles en px (`h-[420px]`, `max-w-[180px]`,
-  `min-h-[44px]`).
-### À enlever
-- Edge `optimize-tour` (mono-véhicule, plus appelée, sans contrôle) et le code mort listé § 6.
-- L'estimation carburant à 0,15 €/km (ou la calculer vraiment, voir lot T3).
-### À ajouter
-- Reprendre les affectations existantes (chauffeur / véhicule de la course, habituels du client).
-- Créneaux et urgence dans le pool et dans l'optimisation ; heure de départ réglable ; temps
-  d'arrêt par défaut (à fixer avec toi).
-- Retirer une course d'une tournée ; supprimer une tournée vide ou brouillon.
-- Vue PC en 2 colonnes (préparation à gauche, carte + tournées à droite).
-
-## 8. Lots proposés
-- **T1 — Sécurité et cohérence (sans migration)** : `exigerPermission` + société de l'appelant
-  dans `optimize-tours` (`planning.tournees/update`) ; supprimer `optimize-tour` et le code mort ;
-  « Répartir dans mon ordre » écrit `driver_id` / `vehicle_id` comme l'optimiseur ; menus
-  chauffeur pré-remplis depuis les courses du jour ; avertir avant d'écraser une affectation.
-- **T2 — Gérer une tournée** : retirer une course, supprimer une tournée brouillon / optimisée,
-  dire dans le pool « déjà dans la tournée de X », contrôle documents échus à l'affectation.
-- **T3 — Heures et chiffres justes** : heure de départ choisie, temps d'arrêt, créneaux envoyés à
-  l'optimiseur (fenêtres horaires), urgence en tête ; carburant = km × conso du véhicule × prix
-  moyen des pleins (ou retiré) ; `tours.started_at` (migration) posé par « Démarrer ».
-- **T4 — Express** : géocoder l'adresse de retrait (colonnes `pickup_lat/lng`, migration) et
-  envoyer des paires retrait → livraison à l'optimiseur.
-- **T5 — Écran** : 2 colonnes PC, tient sur un écran, rem, plus de `text-[var(--fs-*)]`.
-
-### Fait (lot T1, PR #49, déployé le 04/10/2026 : optimize-tours v20, optimize-tour v13 = 410 ; test : clé publique → 401)
-- ✔ `optimize-tours` : `exigerPermission(planning.tournees/update)`, société de l'appelant,
-  véhicules et chauffeurs vérifiés (403 sinon), courses d'une autre société ignorées.
-- ✔ `optimize-tour` : remplacée par une version qui répond 410 (l'outil ne permet pas de
-  supprimer une Edge déployée) ; code mort retiré (`optimizeTour`, `getTourStops`,
-  `eligibleDeliveries`, `canOptimize`, `OptimizeResult`). `unassignDeliveries` gardée pour T2.
-- ✔ « Répartir dans mon ordre » écrit `driver_id` / `vehicle_id` sur les courses (visibles dans
-  Mes courses).
-- ✔ Véhicules cochés et chauffeurs pré-remplis à l'ouverture d'une date (tournées du jour, puis
-  affectations des courses) : `affectationsSuggerees` ; seuls les véhicules actifs comptent.
-- ✔ Avant de répartir : confirmation si des courses ont déjà un autre chauffeur / véhicule
-  (`affectationsEcrasees`).
-- ✔ Bug : l'avertissement « N non réparties » ne s'affichait jamais (l'Edge renvoie un nombre).
-- Décision : temps d'arrêt par défaut = **5 min par livraison** (pour T3, validé le 04/10/2026).
-
-### Fait (lot T2, PR #50, mergé le 04/10/2026 ; sans migration ni Edge)
-- ✔ Retirer une course d'une tournée (picto croix, confirmé) : `retirerDeTournee` ; la tournée perd
-  km / durée / tracé et redevient brouillon (reste « en cours » si elle roule) ; le chauffeur reste
-  posé sur la course. Impossible si livrée ou tournée terminée (`peutRetirerArret`).
-- ✔ Supprimer une tournée non démarrée sans arrêt livré (`peutSupprimerTournee`) : ses courses
-  reviennent dans le pool d'abord (droit `planning.tournees/delete` côté base).
-- ✔ Pool : pastille « Tournée <véhicule> » sur une course déjà rattachée.
-- ✔ Documents échus (permis, visite médicale, CT, assurance) signalés avant de répartir : règle
-  sortie dans `shared/lib/documentsAffectation.ts` (Planning la réexporte, mêmes tests).
-
-## 9. À tester (après chaque lot)
-- Chauffeur connecté : appel direct de `optimize-tours` → 403.
-- « Répartir dans mon ordre » avec un chauffeur → les courses apparaissent dans SES Mes courses.
-- Course affectée à Pierre dans le Planning → menu Tournées pré-rempli « Pierre ».
-- Retirer une course d'une tournée → elle revient dans le pool, `stop_order` à null.
-- Course avec créneau 14 h – 16 h → heure prévue dans le créneau.
-
-### Fait (lots T3 + T4 + T5, PR #51, mergé et déployé le 06/10/2026 : migration `20261004090000_tours_depart_demarrage`, optimize-tours v21 ; test : heure invalide → 400, clé publique → 401)
-- ✔ T3 Départ du dépôt choisi à l'écran (défaut 08:00, repris d'une tournée déjà optimisée ce
-  jour), envoyé à `optimize-tours` et gardé sur `tours.heure_depart` (migration
-  `20261004090000_tours_depart_demarrage`).
-- ✔ T3 5 min d'arrêt par livraison ET par retrait ; créneaux de la fiche en fenêtres horaires ;
-  urgentes prioritaires (et en tête du pool pour « mon ordre ») ; durée = conduite + arrêts +
-  attente ; « prévu ~HH:MM » en rouge si après la fin du créneau ; créneau et « Urgent » affichés.
-- ✔ T3 Carburant à 0,15 €/km retiré (chiffre inventé). Un vrai coût demande la consommation du
-  véhicule : la base ne l'a pas (pleins sans kilométrage). Remplacé par « Départ prévu » /
-  « Démarrée ».
-- ✔ T3 `tours.started_at` posé par la base au premier « Démarrer » (trigger, Tournées et Mes
-  courses) ; début des heures du chauffeur = cette heure.
-- ✔ T4 Retrait à faire (case dans le pool et sur la tournée) : l'Edge géocode l'adresse de retrait
-  au moment d'optimiser (BAN, rien de stocké → jamais une position périmée) et envoie une paire
-  retrait → livraison (`shipments`) ; retraits et livraisons dans une seule séquence
-  (`pickup_order` / `stop_order`, comme Mes courses). Retrait introuvable → signalé, la course
-  part du dépôt dans le calcul. Choix : pas de colonnes `pickup_lat/lng` (prévues au plan).
-- ✔ T5 Écran 2 colonnes PC (préparation | carte + tournées), chaque colonne défile seule, la
-  page tient sur un écran ; mobile une colonne ; plus de `text-[var(--fs-*)]` ni de px dans
-  l'onglet ; plan de chargement du pool repliable ; bandeau géocodage aussi quand des livraisons
-  ne sont pas localisées.
-- Limites : la position des retraits n'est pas sur la carte ni dans « Itinéraire complet »
-  (pas de coordonnées stockées) ; « urgent » = priorité (servi si tout ne rentre pas), pas
-  « en premier » : pour imposer une heure, mettre un créneau.
-
-### Calcul des tournées express (20/10/2026, remplace Vroom)
-- `optimize-tours` : matrice de routes réelle (ORS, `_shared/routesOrs.ts`) + planificateur maison
-  (`_shared/planifExpress.ts` : créneaux durs avec attente, urgent prioritaire, retrait avant livraison, au plus
-  ceil(N/V) courses par véhicule, insertion + recherche locale + ruine/recrée) + tracé IGN. Mêmes entrées / sorties
-  qu'avant, aucun secours : en cas d'échec, erreur claire et rien n'est modifié. Quota ORS : 1 à 4 appels de matrice
-  par répartition (500 / jour). `vroom.ts` ne sert plus qu'à construire le problème et lire la route.
-- Refonte de l'écran (20/10) : barre de jour + tuiles comme Planning, mobile Préparer / Tournées, erreurs en bandeau +
-  Réessayer, rechargement sans perdre l'ordre ni la sélection, chiffres effacés quand l'ordre change, carte Plan IGN.
-
-### Tournées de colis du jour (messagerie) — état au 22/10/2026
-- Bloc en tête de la colonne de droite : une ligne par feuille de route scannée (salarié, client, statut, barre
-  d'avancement, arrêts et colis traités / total, livrés / attente / retour, « n en pause », collectes, km, liens
-  « Synthèse n » = photos de fin de tournée, position partagée « il y a 2 min »).
-- Icônes par ligne : **liste des arrêts** (À faire / En attente / En retour / Tous, recherche, crayon = corriger
-  village / rue / numéro / zone, « Ajouter » une adresse, bandeau « Recalculer » ensuite), calculer l'itinéraire,
-  rouvrir (tournée clôturée), supprimer (droit `planning.tournees : delete`).
-- « Carte du jour » : une couleur par salarié, avancement, km, filtre, camions ; une seule tournée = villages /
-  zones en couleur (contour, route, légende).
-- « Scanner pour un salarié » (droit `planning.tournees : update`) : tiroir, choix du salarié, même scanner que
-  Mes courses (`shared/ui/ScanFeuilleRoute`), à la date choisie.
-- Ces tournées ne passent PAS par l'optimiseur express ni par `tours` / `deliveries` : calcul par l'Edge
-  `optimiser-tournee-colis` (village par village, zones de Brumath de 1 à 7). Détail salarié : `01-mes-courses.md`.
+## 7. À tester
+- Tuiles : un clic filtre, un second revient à « toutes ». Export CSV du jour (Excel FR).
+- Tiroir : Arrêts / Feuille de route / Synthèse ; Rouvrir une clôturée ; Supprimer une non clôturée.
+- Scanner une feuille : à la création, les pages apparaissent dans Feuille de route.
+- Mobile 390 : boutons sans retour à la ligne, tuiles sur 2 colonnes.

@@ -24,3 +24,7 @@
 - Finance : rapprochement Qonto par ligne retiré ; tuile « À encaisser » RETIRÉE (Dashboard) ; vérif paiements Pennylane : on teste, on redemande l'avis plus tard ; ventilation = TVA par ligne + complète + automatique par IA (lit tickets/factures, demande validation) ; Charges : mois courant ouvert ; Justificatifs : même droit que Charges, « Validé » distinct, « Remboursé » vu du salarié, ancien ticket corrigé un par un, validation sans montant refusée ; transfert Pennylane (cartes ET notes de frais) → « Factures fournisseur » à traiter + commentaire depuis l'app : à étudier EN DÉTAIL TOUT À LA FIN (API, pas d'adresse e-mail de dépôt).
 - Flotte : tables Inspections et Incidents SUPPRIMÉES (à recréer plus tard selon la réalité) ; entretiens existants = TOUS en TTC → l'IA reprend ticket par ticket, l'utilisateur vérifie et valide (comme carburant / consommables) ; ticket mixte ventilé par le président seul ; TVA repas 100 % déductible, saisie identique à Pennylane ; tout en HT (prix au litre, conso) sauf trésorerie ; Véhicules : réparer l'Export (CSV utile, à améliorer).
 - IA (lecture des lignes de facture, complétion, validation) : à travailler et proposer.
+
+## Fait le 22/10/2026 (Planning)
+- Express retiré de Tournées et de Mes courses (hypothèse retenue : « express complet » = composeur de tournées + affichage chauffeur ; les courses express restent gérées dans Planning).
+- Onglet Tournées = tournées de colis (tuiles, filtres, tiroir à onglets, CSV) ; feuilles de route conservées à vie ; résumé du jour du Planning cliquable.

@@ -18,7 +18,7 @@
   - shared : `alertesEngine.queries` (à facturer, sans justificatif, retards), `pod.queries` ;
   - Edge : pennylane-invoice (écrit `facturee`, n° facture, sync_error), pennylane-register-payment
     (`payee`), pennylane-payment-check, send-client-email (email_sent_at), geocode,
-    optimize-tour(s).
+    (plus d'optimize-tour(s) : 410, 22/10/2026).
 - **clients** : clients (écrit), livraisons (tarif, délai, TVA intra), devis,
   encaissement, tresorerie, copilote / assistant ; Edge pennylane-invoice, pennylane-quote,
   pennylane-clients-sync (écrit).
@@ -41,16 +41,7 @@
   drive-migrate-to-storage ; alertes (sans justificatif).
 - **charges** : charges, fournisseurs, tresorerie, `shared` rapprochement / aRapprocher / alertes ;
   Edge pennylane-sync, lire-facture, lire-releve, suggest-categorie-ia.
-- **tours** : tournees, mescourses ; Edge optimize-tours (matrice ORS + `planifExpress` + tracé IGN, sans Vroom ; écrit aussi `deliveries.driver_id` /
-  `vehicle_id` des courses réparties). `optimize-tour` n'a plus d'appelant (revue 04a, 04/10/2026).
-  Lots T3 / T4 : `tours.heure_depart` (écrit par optimize-tours, lu par TourCard et pour proposer
-  le départ), `tours.started_at` (posé par le trigger `tours_started_at` au passage `en_cours`,
-  que le démarrage vienne de Tournées ou de Mes courses ; lu pour les heures du chauffeur).
-  optimize-tours lit sur `deliveries` `urgent`, `creneau_*`, `retrait_a_faire`, `pickup_address`
-  (retrait géocodé à la volée via `_shared/geocode`, rien de stocké) et écrit `stop_order`,
-  `pickup_order` (séquence unique retraits + livraisons, celle de Mes courses), `arrival_time`.
-  Règles pures : `_shared/vroom.ts`. « Mon ordre » et les flèches de TourCard écrivent la même
-  séquence (`tournees.logic#positionsDansLOrdre`) et effacent `arrival_time`.
+- **tours** (22/10/2026) : plus AUCUN lecteur ni écrivain côté site (composeur express retiré avec la refonte Planning). Table et colonnes gardées en base (`tours`, `deliveries.tour_id` / `stop_order` / `pickup_order` / `arrival_time`) ; Edge `optimize-tours` et `optimize-tour` = 410. Fichiers supprimés : `tournees/{Tournees (ancien),TourCard,ToursOverviewMap,DialogueHeuresTournee,tournees.queries,tournees.types}`, `_shared/{routesOrs,planifExpress,vroom}`, l'express de Mes courses (`MesCourses` : OngletCourses, étapes terrain, PanneauProbleme), `shared/lib/{arretsJour,messageClient,tourneeStatuts}`.
 - **tournees_colis / tournees_colis_arrets** (colonne `zone` ajoutée le 22/10/2026 : lue par l'Edge `optimiser-tournee-colis` (un bloc par zone), `shared/lib/tourneesColisRoute#infosGroupes` (couleurs liste / carte), `shared/ui/FeuilleAdresse` + liste bureau `tournees/ListeTourneeColis` (insert / update d'arrêts par le salarié sur SA tournée ou le bureau) ; lot TC1, migration
   `20261017090000_tournees_colis`, **en prod depuis le 18/10/2026**) : feuille de route de messagerie scannée et ses arrêts. Écrits
   par `shared/lib/tourneesColis.queries` depuis Mes courses › Ma tournée (salarié : SES tournées,
@@ -140,7 +131,7 @@
 ## 3. Edge Functions → appelants front
 - pennylane-invoice, pennylane-register-payment, pennylane-last-numbers, send-client-email,
   route-calc : **livraisons**
-- geocode : livraisons, parametres, tournees · optimize-tour(s) : tournees
+- geocode : livraisons, parametres, tournees · 
 - pennylane-quote : devis · pennylane-clients-sync : clients · pennylane-sync,
   suggest-categorie-ia : charges · pennylane-payment-check, qonto-sync : tresorerie
 - lire-facture : carburant, entretiens · lire-releve : carburant
@@ -217,6 +208,7 @@
   `TourneesColisDuJour`. `_shared/lireFeuilleCore.ts` = lecture d'une page (aussi `lire-feuille-route`).
 - Pause d'un arrêt (21/10/2026) : `tournees_colis_arrets.en_pause_le` écrit par `majArret` (salarié sur SA tournée,
   bureau) ; lu par `tourneesColisRoute` (liste, bandeau « En pause », clôture) et le bloc bureau ; n'agit pas sur l'ordre.
+- **Feuilles de route conservées (22/10/2026)** : à la création de la tournée, chaque page scannée devient un `documents` (`entity_type = 'tournee_colis'`, `entity_id` = tournée, `notes = 'feuille'`, Storage `documents`) au lieu d'être effacée (`tourneesColis.queries#terminerScan`) ; lues par `feuillesDeRoute` (onglet Tournées › tiroir › Feuille de route). Les photos de synthèse ont `notes = 'synthese'` (`photosSynthese` exclut les feuilles). Si un envoi échoue, les pages de travail restent.
 - Photos de synthèse (20/10/2026) : `documents` `entity_type = 'tournee_colis'` (policies insert / delete salarié sur SA
   tournée non clôturée) ; écrites par `FeuilleCloture` / `PhotosSynthese`, lues au bureau (liens « Synthèse n »).
 - `optimiser-tournee-colis` mode `suivre` : lit `ordre` des arrêts, écrit `trajet` + `eta_min` (jamais `ordre`).
