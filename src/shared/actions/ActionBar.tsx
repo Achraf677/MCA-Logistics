@@ -1,7 +1,7 @@
-import { Download, FileText, Package, Truck, Plus } from 'lucide-react'
+import { Download, FileText, Plus } from 'lucide-react'
 import { Button } from '../ui/Button'
 
-export type ActionKey = 'export' | 'facture' | 'bon-livraison' | 'lettre-voiture' | 'nouveau'
+export type ActionKey = 'export' | 'facture' | 'nouveau'
 
 interface ActionBarProps {
   actions: ActionKey[]
@@ -11,8 +11,6 @@ interface ActionBarProps {
 const ACTION_CONFIG: Record<ActionKey, { label: string; icon: React.ElementType }> = {
   'export':          { label: 'Export',            icon: Download  },
   'facture':         { label: 'Facture',            icon: FileText  },
-  'bon-livraison':   { label: 'Bon de livraison',   icon: Package   },
-  'lettre-voiture':  { label: 'Lettre de voiture',  icon: Truck     },
   'nouveau':         { label: 'Nouveau',             icon: Plus      },
 }
 

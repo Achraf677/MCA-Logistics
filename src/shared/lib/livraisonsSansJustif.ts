@@ -2,7 +2,7 @@
 //
 // "Sans justificatif" = livraison statut ∈ {livree, facturee, payee} SANS POD
 // (pod_captured_at) ET SANS document lié (documents.entity_type='delivery')
-// ET SANS lettre de voiture archivée (lv_pdf_url) ET non marquée
+// ET SANS ancien PDF archivé (lv_pdf_url, ex. lettre de voiture) ET non marquée
 // "justificatif non requis" par l'utilisateur.
 
 export interface DeliveryForJustif {

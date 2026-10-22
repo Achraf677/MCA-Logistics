@@ -105,10 +105,10 @@ export function actionArret(
 }
 
 /**
- * Une preuve existe-t-elle ? Un nom, une photo OU une signature suffisent :
+ * Une preuve existe-t-elle ? Un nom OU une photo suffisent :
  * `pod_captured_at` doit être posé dès qu'il y a quelque chose à montrer,
  * sinon une livraison photographiée ressort « sans justificatif ».
  */
-export function aUnePreuve(p: { nom: string | null; photos: number; signee: boolean }): boolean {
-  return !!p.nom?.trim() || p.photos > 0 || p.signee
+export function aUnePreuve(p: { nom: string | null; photos: number }): boolean {
+  return !!p.nom?.trim() || p.photos > 0
 }

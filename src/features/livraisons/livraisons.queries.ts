@@ -2,11 +2,9 @@ import { supabase } from '../../app/providers'
 import { facturerCourse } from '../../shared/lib/facturation.queries'
 import { lireErreurEdge } from '../../shared/lib/erreurEdge'
 import { canTransition, nettoyerRecherche, messageDepuisCorps } from './livraisons.logic'
-import { parseLvPdfRef, lvNumero } from './lettreVoiture.logic'
-import { getDocument, getDownloadUrl } from '../../shared/lib/documents.queries'
 import type { ComputedAmount } from './livraisons.logic'
 import type {
-  DeliveryFilters, DeliveryInsert, DeliveryStatus, LvSignatures, LvSignatureData,
+  DeliveryFilters, DeliveryInsert, DeliveryStatus,
 } from './livraisons.types'
 
 const WITH_JOINS = `
@@ -16,7 +14,7 @@ const WITH_JOINS = `
   team_members!driver_id(full_name)
 `.trim()
 
-/** Envoie au client la facture Pennylane + la lettre de voiture par email (Edge send-client-email). */
+/** Envoie au client la facture Pennylane par email (Edge send-client-email). */
 export async function sendClientEmail(deliveryId: string) {
   return supabase.functions.invoke('send-client-email', { body: { delivery_id: deliveryId } })
 }
@@ -119,21 +117,6 @@ export async function messageErreurEdge(error: unknown, data?: unknown, repli = 
 /** Une livraison par son id — ouverture directe via `/livraisons?ouvrir=<id>` (Dashboard). */
 export async function getDelivery(id: string) {
   return supabase.from('deliveries').select(WITH_JOINS).eq('id', id).maybeSingle()
-}
-
-/** Livraisons ayant une lettre de voiture (lv_numero attribué) — alimente l'onglet
- *  "Lettres de voiture" (clé `bl`). Aucune nouvelle table/colonne : filtre sur deliveries. */
-export async function getDeliveriesWithLv(filters: Pick<DeliveryFilters, 'date_from' | 'date_to'> = {}) {
-  let q = supabase
-    .from('deliveries')
-    .select(WITH_JOINS)
-    .not('lv_numero', 'is', null)
-    .order('date', { ascending: false })
-
-  if (filters.date_from) q = q.gte('date', filters.date_from)
-  if (filters.date_to)   q = q.lte('date', filters.date_to)
-
-  return q
 }
 
 export async function createDelivery(data: DeliveryInsert) {
@@ -344,148 +327,12 @@ export async function getActiveDrivers() {
     .order('full_name')
 }
 
-// ── Modèles de course (pré-remplissage en création) ──────────────────────────
-// Lecture locale de delivery_templates : on NE dépend PAS de features/modeles
-// (étanchéité entre features). Lecture seule, version allégée pour le formulaire.
-export interface DeliveryTemplateLite {
-  id: string; label: string; client_id: string | null;
-  description: string | null; pickup_address: string | null; delivery_address: string | null;
-  amount_ht_cts: number | null; tva_rate: number | null; type: string | null;
-  weight_kg: number | null; km: number | null; empty_km: number | null;
-  vehicle_id: string | null; driver_id: string | null;
-}
-
-export async function listDeliveryTemplates(): Promise<{ data: DeliveryTemplateLite[] | null; error: unknown }> {
-  return supabase.from('delivery_templates')
-    .select('id, label, client_id, description, pickup_address, delivery_address, amount_ht_cts, tva_rate, type, weight_kg, km, empty_km, vehicle_id, driver_id')
-    .order('label')
-}
-
-export interface DeliveryTemplateInsert {
-  company_id: string; label: string; client_id: string | null;
-  description: string | null; pickup_address: string | null; delivery_address: string | null;
-  amount_ht_cts: number | null; tva_rate: number; type: string | null;
-  weight_kg: number | null; km: number | null; empty_km: number | null;
-  vehicle_id: string | null; driver_id: string | null;
-}
-
-export async function createDeliveryTemplate(payload: DeliveryTemplateInsert) {
-  return supabase.from('delivery_templates').insert(payload).select().single()
-}
-
 // ── Preuve de livraison (POD) ─────────────────────────────────────────────────
 // Reexport : l'ecriture reelle a demenage dans shared/lib/pod.queries.ts,
 // parce que l'ecran chauffeur l'ecrit lui aussi et qu'il ne peut pas
 // importer cette feature. Le nom `savePod` est conserve pour ne pas
 // toucher aux appelants existants.
 export { enregistrerPod as savePod } from '../../shared/lib/pod.queries'
-
-// ── Lettre de voiture — récupération des numéros LV attribués sur l'année ───
-// Sert à alimenter lvNumero() côté logic : la fonction reste pure, l'appelant
-// ici fournit la liste des lv_numero déjà attribués sur l'année en cours.
-export async function getLvNumerosForYear(year: number): Promise<{ data: string[] | null; error: unknown }> {
-  const prefix = `LV-${year}-`
-  const { data, error } = await supabase
-    .from('deliveries')
-    .select('lv_numero')
-    .like('lv_numero', `${prefix}%`)
-  if (error) return { data: null, error }
-  const list = ((data as { lv_numero: string | null }[] | null) ?? [])
-    .map(r => r.lv_numero).filter((n): n is string => !!n)
-  return { data: list, error: null }
-}
-
-/**
- * Attribue un n° LV à la livraison si elle n'en a pas encore, sans jamais en
- * écraser un existant (update conditionné à `lv_numero is null`).
- *
- * Unicité : index unique partiel `deliveries(company_id, lv_numero)`
- * (migration 20260930120000). Si deux générations simultanées tombent sur le
- * même « max + 1 », la seconde reçoit 23505 : on relit la liste, on recalcule
- * et on réessaie UNE fois. Si la livraison a reçu un numéro entre-temps (autre
- * onglet), on renvoie celui-là.
- */
-export async function attribuerNumeroLv(
-  id: string,
-  year: number,
-): Promise<{ data: string | null; error: Error | null }> {
-  for (let essai = 0; essai < 2; essai++) {
-    const { data: existants, error: lErr } = await getLvNumerosForYear(year)
-    if (lErr) return { data: null, error: new Error((lErr as { message?: string }).message ?? 'Lecture des numéros LV échouée') }
-    const candidat = lvNumero(existants ?? [], year)
-    const { data, error } = await supabase
-      .from('deliveries')
-      .update({ lv_numero: candidat })
-      .eq('id', id)
-      .is('lv_numero', null)
-      .select('lv_numero')
-      .maybeSingle()
-    if (error) {
-      if (error.code === '23505' && essai === 0) continue // collision : on recalcule
-      return { data: null, error: new Error(error.message) }
-    }
-    if (data?.lv_numero) return { data: data.lv_numero as string, error: null }
-    // Aucune ligne modifiée : la livraison a déjà un numéro → on le reprend.
-    const { data: ligne, error: rErr } = await supabase
-      .from('deliveries').select('lv_numero').eq('id', id).single()
-    if (rErr) return { data: null, error: new Error(rErr.message) }
-    if (ligne?.lv_numero) return { data: ligne.lv_numero as string, error: null }
-    return { data: null, error: new Error('Attribution du numéro LV impossible') }
-  }
-  return { data: null, error: new Error('Numéro LV déjà pris deux fois de suite — réessaie.') }
-}
-
-// ── Lettre de voiture — signatures (relire puis fusionner) ───────────────────
-// `lv_signatures` est un jsonb à 3 clés, écrit AUSSI par l'écran chauffeur
-// (Mes courses). Un update direct depuis l'état chargé à l'ouverture du tiroir
-// effacerait une signature prise entre-temps sur le téléphone : on relit la
-// valeur en base, on ne touche qu'au rôle concerné, puis on écrit.
-// (Même principe que `ajouterSignature` de Mes courses — recodé ici, les
-// features ne s'importent pas entre elles.)
-
-/** Signatures actuellement en base pour une livraison. */
-export async function lireSignaturesLv(id: string): Promise<{ data: LvSignatures | null; error: Error | null }> {
-  const { data, error } = await supabase
-    .from('deliveries').select('lv_signatures').eq('id', id).single()
-  if (error) return { data: null, error: new Error(error.message) }
-  return { data: ((data?.lv_signatures ?? {}) as LvSignatures), error: null }
-}
-
-/**
- * Pose (`entry`) ou retire (`null`) la signature d'UN rôle, sans toucher aux
- * autres. Renvoie l'objet complet tel qu'écrit, pour resynchroniser l'écran.
- */
-export async function ecrireSignatureLv(
-  id: string,
-  role: keyof LvSignatures,
-  entry: LvSignatureData | null,
-): Promise<{ data: LvSignatures | null; error: Error | null }> {
-  const { data: actuelles, error: lErr } = await lireSignaturesLv(id)
-  if (lErr || !actuelles) return { data: null, error: lErr ?? new Error('Lecture des signatures échouée') }
-  const next: LvSignatures = { ...actuelles }
-  if (entry) next[role] = entry
-  else delete next[role]
-  const { error } = await supabase
-    .from('deliveries').update({ lv_signatures: next }).eq('id', id)
-  if (error) return { data: null, error: new Error(error.message) }
-  return { data: next, error: null }
-}
-
-// ── Lettre de voiture — ouverture du PDF archivé ────────────────────────────
-/**
- * Lien d'ouverture du PDF à partir de `deliveries.lv_pdf_url` :
- *   - `doc:<id>` → URL signée (1 h) du document dans Storage ;
- *   - `https://…` (anciens liens Drive) → renvoyé tel quel ;
- *   - sinon null.
- */
-export async function lienPdfLv(ref: string | null | undefined): Promise<string | null> {
-  const parsed = parseLvPdfRef(ref)
-  if (!parsed) return null
-  if (parsed.kind === 'url') return parsed.url
-  const { data: doc } = await getDocument(parsed.documentId)
-  if (!doc) return null
-  return getDownloadUrl(doc)
-}
 
 // ── Export CSV ────────────────────────────────────────────────────────────────
 export async function exportDeliveriesCSV(filters: DeliveryFilters = {}) {

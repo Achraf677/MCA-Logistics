@@ -279,11 +279,7 @@ export function eurosArrondis(cts: number): string {
   return EUROS.format(Math.round(cts / 100))
 }
 
-/** 'AAAA-MM-JJ' → '30/09' (année courante) ou '30/09/25', sans passer par UTC. */
-export function dateCourte(iso: string, anneeCourante: number): string {
-  const [a, m, j] = iso.slice(0, 10).split('-')
-  return Number(a) === anneeCourante ? `${j}/${m}` : `${j}/${m}/${a.slice(2)}`
-}
+export { dateCourte } from '../../shared/lib/dates'
 
 /** '14:30:00' → '14:30' ; '9:05' → '09:05' ; vide / illisible → null. */
 export function heureCourte(t: string | null | undefined): string | null {
@@ -556,8 +552,6 @@ export interface Manques {
   enregistrer: string[]
   /** Manque pour que le chauffeur puisse partir. */
   partir: string[]
-  /** Manque pour la lettre de voiture (arrêté du 9/11/1999). */
-  lv: string[]
   /** Manque pour facturer. */
   facturer: string[]
 }
@@ -581,18 +575,6 @@ export function manquesFiche(f: FicheASaisir): Manques {
   if (b.execution && vide(f.driver_id)) partir.push('chauffeur')
   if (b.execution && vide(f.vehicle_id)) partir.push('véhicule')
 
-  const lv: string[] = []
-  if (b.marchandise) {
-    if (vide(f.pickup_address)) lv.push('adresse de retrait')
-    if (vide(f.delivery_address)) lv.push('adresse de livraison')
-    if (vide(f.expediteur_nom)) lv.push('expéditeur')
-    if (vide(f.destinataire_nom)) lv.push('destinataire')
-    if (vide(f.marchandise_desc)) lv.push('nature de la marchandise')
-    if (vide(f.nb_colis)) lv.push('nombre de colis')
-    // Loi : poids OU volume (arrêté du 9/11/1999, art. 4).
-    if (vide(f.poids_kg_reel) && vide(f.volume_m3)) lv.push('poids ou volume')
-  }
-
   const facturer: string[] = []
   if (b.releve) {
     if (!(nombreEntier(f.nb_colis) > 0)) facturer.push('nombre de colis')
@@ -600,7 +582,7 @@ export function manquesFiche(f: FicheASaisir): Manques {
   } else if (!f.ht_cts || f.ht_cts <= 0) facturer.push('prix HT')
   if (f.reference_exigee && !f.reference_client?.trim()) facturer.push('référence client (exigée par le client)')
 
-  return { enregistrer, partir, lv, facturer }
+  return { enregistrer, partir, facturer }
 }
 
 // ── Messagerie : relevé mensuel « nb colis × prix au colis » ─────────────────

@@ -133,8 +133,9 @@ supabase/
 - `deliveries.weight_kg` = poids kg (lu par le chauffeur) — ne PAS y mettre des palettes.
 - `deliveries.arrival_time` = heure calculée par les **tournées** (remise à null au détachement) ;
   les créneaux saisis sont `creneau_retrait_*` / `creneau_livraison_*`.
-- `lv_pdf_url` = `doc:<id>` (Storage) ou ancien lien Drive ; jamais une URL signée.
-- `lv_numero` unique par société (index `deliveries_company_lv_numero_uniq`).
+- Lettre de voiture, Modèles, Inspections, Incidents : SUPPRIMÉS du site (22/10/2026, CMR papier). Colonnes `lv_*`,
+  `expediteur_siren`, table `delivery_templates` : gardées en base, plus écrites. `lv_pdf_url` (`doc:<id>` ou ancien
+  lien Drive) compte encore comme justificatif (alerte « sans justificatif »).
 - `clients.tariff_mode` ∈ `forfait, km, palette, colis, manuel`.
 - `clients.pays` ISO alpha-2 (FR par défaut) → adresse Pennylane + autoliquidation auto.
 - `clients.siret` = 14 chiffres SEULEMENT ; le SIREN (9) va dans `clients.siren` (U2).
@@ -213,14 +214,12 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
    Le détail technique va dans la PR et dans ce fichier, pas dans le message.
 
 ## 11. État actuel (22/10/2026)
-- 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis,
-  Modèles, Lettres de voiture) · **Finance** (Trésorerie, Charges, Encaissement, TVA, Relances) ·
-  **Flotte** (Véhicules, Carburant, Entretiens, Inspections, Incidents) · **Planning** (Tournées, Planning : vues Jour / Semaine / Mois, refonte du 19/10/2026 ; l'ancien Calendrier y est fondu) · **Tiers**
-  (Clients, Fournisseurs, Devis) · **Équipe** (Équipe, Heures) · **Système** (Paramètres, Admins,
-  Modèles). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
+- 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis) · **Finance** (Trésorerie, Charges, Encaissement, TVA, Relances) ·
+  **Flotte** (Véhicules, Carburant, Entretiens) · **Planning** (Tournées, Planning : vues Jour / Semaine / Mois, refonte du 19/10/2026 ; l'ancien Calendrier y est fondu) · **Tiers**
+  (Clients, Fournisseurs) · **Équipe** (Équipe, Heures) · **Système** (Paramètres, Admins). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
   Les specs `mca-spec/tabs/` n'en couvrent qu'une partie : vérifier le code.
 - Revue onglet par onglet (méthode § 13) : 01 Mes courses ✔ · 02 Dashboard ✔ · 03 Livraisons ✔
-  (liste, facturation, lettre de voiture, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie)
+  (liste, facturation, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie)
   · 04 Planning ✔ (refonte 19/10/2026 : Jour / Semaine / Mois, charge par chauffeur, tournées de colis du jour, menu d'actions ; `mca-spec/revue/04-planning.md`).
 - **Tournées (bureau, refonte 20/10/2026)** : barre de jour + tuiles comme Planning, mobile Préparer / Tournées, erreurs en bandeau + Réessayer, rechargement sans perdre l'ordre ni la sélection, écritures comptées (`ecritureComptee`), arrêts lus par tournée, chiffres effacés quand l'ordre change, carte Plan IGN. **Calcul des tournées express (20/10/2026)** : plus de Vroom (api.openrouteservice.org fermait début 11/2026) ; `optimize-tours` = matrice ORS réelle (api.heigit.org, `_shared/routesOrs.ts`) + planificateur maison `_shared/planifExpress.ts` (créneaux durs avec attente, urgent prioritaire, retrait avant livraison, au plus ceil(N/V) courses par véhicule, insertion + recherche locale + ruine/recrée) + tracé IGN ; mêmes entrées / sorties qu'avant (`vroom.ts` inchangé), aucun secours, échec = erreur claire et rien n'est modifié. Quota ORS : 1 à 4 appels de matrice par répartition.
 - **Clôture avec photos (20/10/2026)** : « Terminer ma tournée » ouvre une feuille avec les photos de la synthèse de fin de tournée (appareil ou galerie, plusieurs, envoyées tout de suite ; `documents` `entity_type = 'tournee_colis'`, migration `20261020100000_documents_synthese_tournee` appliquée) ; photos visibles côté bureau dans « Tournées de colis du jour » (liens Synthèse n) ; « Supprimer ce scan » dans l'aperçu du scan.
@@ -401,7 +400,9 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - **À décider (22/10/2026)** : ordre des villages d'après l'onglet « Villages » de `Tournée Brumath et villages 23.xlsx` (non fait) ; tournée Brumath du jour : 19 arrêts sur rues coupées entre zones sans zone tant que la feuille n'est pas relue ; frontières de zones « aux routes près » impossibles (non publiées). **Lecture IA** : Mistral gratuit reste en place ; passer à Claude coûterait ~2-3 $/mois avec Haiku 5.5 (~30-40 $ avec Sonnet 5.5) pour ~780 photos/mois, estimation non mesurée → essai comparatif Mistral / Haiku / Sonnet sur la feuille de Brumath proposé, nécessite une clé API Anthropic (plafond 5 $/mois) ; rien changé.
 - U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;
   pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
-- Onglets suivants de la revue : Modèles, puis le menu dans l'ordre.
+- Refonte par onglet (22/10/2026) : plan et décisions dans `mca-spec/DECISIONS-2026-10-22.md`. Faits : zoom, Mes courses
+  retiré du menu bureau, Flotte allégée, Pilotage, fond / cadre, Livraisons (Modèles + LV retirés, tuiles fusionnées,
+  Preuves sur une page, Devis harmonisé). Reste : Planning, Finance, Équipe, Tiers, Système, reste de Flotte.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)
 - Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation → PR +

@@ -135,7 +135,7 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
       // Un particulier n'a ni SIRET ni TVA intracommunautaire. On les efface à
       // l'enregistrement plutôt que de les laisser en base sous des champs
       // devenus invisibles : une donnée qu'on ne peut plus ni voir ni corriger
-      // finirait tôt ou tard sur une facture ou une lettre de voiture.
+      // finirait tôt ou tard sur une facture ou un document de transport.
       const vide = (s: string | null | undefined) => (s ?? '').trim() || null
       const payload = {
         ...form,

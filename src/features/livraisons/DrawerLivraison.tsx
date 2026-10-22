@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { Dispatch, ReactNode, SetStateAction } from 'react'
-import { Trash2, Loader2, Camera, Plus, Mail, Copy, RefreshCw, Zap, AlertTriangle, MapPin } from 'lucide-react'
+import { Trash2, Loader2, Camera, Mail, Copy, RefreshCw, Zap, AlertTriangle, MapPin } from 'lucide-react'
 import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
-import { LettreVoitureTab } from './LettreVoitureTab'
 import { ApercuFacture } from './ApercuFacture'
 import { ColisDesJournees } from './ColisDesJournees'
 import { uploadDocument, listDocuments, getDownloadUrl } from '../../shared/lib/documents.queries'
@@ -19,7 +18,7 @@ import { ContactLinks } from '../../shared/ui/ContactLinks'
 import { useToast }    from '../../shared/ui/useToast'
 import { useProfile, supabase } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
-import { formatMoney, addTva, centimesToEuros } from '../../shared/lib/money'
+import { formatMoney, addTva } from '../../shared/lib/money'
 import { TvaRateInput } from '../../shared/ui/TvaRateInput'
 import { autoliquidationParDefaut } from '../../shared/lib/pays'
 import { lireSupplements } from '../../shared/lib/supplements'
@@ -41,29 +40,27 @@ import type { ClientTariff, Prestation } from './livraisons.logic'
 import {
   createDelivery, updateDelivery, transitionDelivery, deleteDelivery,
   getActiveClients, getActiveVehicles, getActiveDrivers, savePod,
-  listDeliveryTemplates, createDeliveryTemplate, sendClientEmail,
+  sendClientEmail,
   getClientLookup, revenirALivree,
 } from './livraisons.queries'
-import type { DeliveryTemplateLite } from './livraisons.queries'
 import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
 
 /**
  * 3 onglets en modification : la course (tout ce qui se saisit, prix compris),
- * les preuves (photo, lettre de voiture, fichiers) et la facturation (suivi).
- * Les anciennes clés ('documents', 'pod', 'lv') restent acceptées en entrée.
+ * les preuves (photo + fichiers, sur une seule page) et la facturation (suivi).
+ * Les anciennes clés ('documents', 'pod') restent acceptées en entrée.
  */
 type Tab = 'detail' | 'preuves' | 'montant'
-type SousPreuve = 'pod' | 'lv' | 'fichiers'
-type TabDemande = Tab | 'documents' | 'pod' | 'lv'
+type TabDemande = Tab | 'documents' | 'pod'
 
 interface Props {
   open: boolean
   onClose: () => void
   delivery?: DeliveryRow | null
   onSaved: () => void
-  /** Onglet pré-sélectionné à l'ouverture (ex 'lv' depuis la liste Bons de livraison). Défaut 'detail'. */
+  /** Onglet pré-sélectionné à l'ouverture (ex 'pod' pour ouvrir les preuves). Défaut 'detail'. */
   initialTab?: TabDemande
   /** Nouvelle course : date pré-remplie (AAAA-MM-JJ, ex. jour cliqué dans le Calendrier). Défaut : aujourd'hui. */
   dateInitiale?: string
@@ -110,7 +107,7 @@ const EMPTY_FORM = {
   description:      '',
   pickup_address:   '',
   delivery_address: '',
-  // Arrêts : qui remet / qui reçoit (colonnes de la lettre de voiture).
+  // Arrêts : qui remet / qui reçoit (expéditeur / destinataire).
   expediteur_nom:   '',
   expediteur_tel:   '',
   destinataire_nom: '',
@@ -151,12 +148,12 @@ const EMPTY_FORM = {
 type Form = typeof EMPTY_FORM
 
 /**
- * Champs que l'onglet « Lettre de voiture » écrit AUSSI, de son côté. Ils ne
- * sont renvoyés à l'enregistrement de la fiche que s'ils ont été modifiés ici :
- * sinon une saisie faite dans la LV serait écrasée par la valeur chargée à
+ * Champs que le chauffeur peut AUSSI renseigner depuis Mes courses. Ils ne sont
+ * renvoyés à l'enregistrement de la fiche que s'ils ont été modifiés ici :
+ * sinon une saisie faite sur le terrain serait écrasée par la valeur chargée à
  * l'ouverture.
  */
-const CHAMPS_PARTAGES_LV = [
+const CHAMPS_PARTAGES = [
   'expediteur_nom', 'expediteur_tel', 'destinataire_nom', 'destinataire_tel',
   'marchandise_desc', 'nb_colis', 'poids_kg_reel',
 ] as const
@@ -257,9 +254,8 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
   const isEdit   = !!delivery
 
   const [tab, setTab]           = useState<Tab>('detail')
-  const [sousPreuve, setSousPreuve] = useState<SousPreuve>('pod')
   const [form, setForm]         = useState<Form>(EMPTY_FORM)
-  /** Valeurs à l'ouverture : seuls les champs partagés avec la LV modifiés ici sont réécrits. */
+  /** Valeurs à l'ouverture : seuls les champs partagés avec Mes courses modifiés ici sont réécrits. */
   const formInitial = useRef<Form>(EMPTY_FORM)
   /** Même instantané, en état : lu au rendu (« modifications non enregistrées »). */
   const [instantane, setInstantane] = useState<Form>(EMPTY_FORM)
@@ -295,15 +291,6 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
   const [vehicles, setVehicles] = useState<Lookup[]>([])
   const [drivers,  setDrivers]  = useState<Lookup[]>([])
 
-  // Modèles de course — chargés uniquement en CRÉATION (pré-remplissage).
-  const [templates, setTemplates]     = useState<DeliveryTemplateLite[]>([])
-  const [templateId, setTemplateId]   = useState('')
-
-  // « Enregistrer comme modèle » — champ inline (libellé) + état de création.
-  const [saveAsTplOpen, setSaveAsTplOpen] = useState(false)
-  const [tplLabel, setTplLabel]           = useState('')
-  const [savingTpl, setSavingTpl]         = useState(false)
-
   // ── Référentiels ─────────────────────────────────────────────────────────────
 
   // Client de la course courante : s'il est INACTIF, il n'est pas dans la
@@ -332,78 +319,6 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
     )
     return () => { annule = true }
   }, [open, clientCourantId])
-
-  // ── Modèles de course (création uniquement) ────────────────────────────────────
-
-  useEffect(() => {
-    if (!open || delivery) { setTemplates([]); return }
-    setTemplateId('')
-    listDeliveryTemplates().then(({ data }) => setTemplates(data ?? []))
-  }, [open, delivery])
-
-  // Pré-remplit le formulaire depuis un modèle, sans toucher à la date ni au statut.
-  // PIÈGE TVA : le modèle stocke un TAUX (tva_rate, en %) ; le form attend un MONTANT
-  // de TVA en euros (tva_override). On convertit, puis setTvaTouched(true) pour figer.
-  const applyTemplate = (id: string) => {
-    setTemplateId(id)
-    if (!id) return
-    const t = templates.find(x => x.id === id)
-    if (!t) return
-    const tvaCts = t.amount_ht_cts != null && t.tva_rate != null
-      ? Math.round(t.amount_ht_cts * t.tva_rate / 100)
-      : null
-    setForm(p => ({
-      ...p,
-      client_id:        t.client_id ?? '',
-      vehicle_id:       t.vehicle_id ?? '',
-      driver_id:        t.driver_id ?? '',
-      description:      t.description ?? '',
-      pickup_address:   t.pickup_address ?? '',
-      delivery_address: t.delivery_address ?? '',
-      km:               t.km != null ? String(t.km) : '',
-      empty_km:         t.empty_km != null ? String(t.empty_km) : '',
-      pallets:          t.weight_kg != null ? String(t.weight_kg) : '',
-      manual_ht:        t.amount_ht_cts != null ? String(centimesToEuros(t.amount_ht_cts)) : '',
-      tva_override:     tvaCts != null ? String(centimesToEuros(tvaCts)) : '',
-    }))
-    setTvaTouched(true)
-  }
-
-  // Crée un modèle (delivery_templates) depuis les champs ACTUELS du form.
-  // PIÈGE TVA (inverse) : le form porte tva_override = MONTANT TVA (€) et manual_ht = HT (€) ;
-  // le modèle veut tva_rate = TAUX en %. On déduit le taux brut puis on le SNAPPE au taux légal.
-  const handleSaveAsTemplate = async () => {
-    const label = tplLabel.trim()
-    if (!label) { toast('Le libellé du modèle est requis', 'error'); return }
-    if (!companyId) { toast('Profil non chargé', 'error'); return }
-
-    const rawRate = (form.tva_override && parseFloat(form.manual_ht) > 0)
-      ? parseFloat(form.tva_override) / parseFloat(form.manual_ht) * 100 : 20
-    const tva_rate = Math.round(rawRate * 100) / 100
-
-    setSavingTpl(true)
-    const { error } = await createDeliveryTemplate({
-      company_id:       companyId,
-      label,
-      client_id:        form.client_id || null,
-      description:      form.description || null,
-      pickup_address:   form.pickup_address || null,
-      delivery_address: form.delivery_address || null,
-      amount_ht_cts:    form.manual_ht ? Math.round(parseFloat(form.manual_ht) * 100) : null,
-      tva_rate,
-      type:             deliveryProp?.type ?? null,
-      weight_kg:        form.pallets  ? Number(form.pallets)  : null,
-      km:               form.km       ? Number(form.km)       : null,
-      empty_km:         form.empty_km ? Number(form.empty_km) : null,
-      vehicle_id:       form.vehicle_id || null,
-      driver_id:        form.driver_id || null,
-    })
-    setSavingTpl(false)
-    if (error) { toast((error as Error).message ?? 'Erreur', 'error'); return }
-    toast(`Modèle « ${label} » enregistré`)
-    setSaveAsTplOpen(false)
-    setTplLabel('')
-  }
 
   // ── Initialisation formulaire ─────────────────────────────────────────────────
 
@@ -436,16 +351,8 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
     // Même lot de rendu que setForm : le recalcul auto de la TVA sait ainsi
     // si le formulaire affiché est déjà celui de CETTE course.
     setFormPour(deliveryProp?.id ?? 'nouvelle')
-    setSaveAsTplOpen(false)
-    setTplLabel('')
     const demande: TabDemande = initialTab
-    if (demande === 'lv' || demande === 'pod' || demande === 'documents') {
-      setTab('preuves')
-      setSousPreuve(demande === 'documents' ? 'fichiers' : demande)
-    } else {
-      setTab(demande)
-      setSousPreuve('pod')
-    }
+    setTab(demande === 'pod' || demande === 'documents' ? 'preuves' : demande)
   }, [deliveryProp, open, initialTab, dateInitiale])
 
   const set = (k: keyof Form, v: string) => setForm(p => ({ ...p, [k]: v }))
@@ -731,10 +638,10 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
         }
       }
 
-      // Champs partagés avec l'onglet Lettre de voiture : seulement s'ils ont
-      // bougé ici (voir CHAMPS_PARTAGES_LV).
+      // Champs partagés avec Mes courses : seulement s'ils ont
+      // bougé ici (voir CHAMPS_PARTAGES).
       const partages: Record<string, string | number | null> = {}
-      for (const k of CHAMPS_PARTAGES_LV) {
+      for (const k of CHAMPS_PARTAGES) {
         if (form[k] === formInitial.current[k]) continue
         partages[k] = k === 'nb_colis' || k === 'poids_kg_reel'
           ? (k === 'nb_colis' ? (nombreOuNull(form[k]) != null ? Math.round(nombreOuNull(form[k])!) : null) : nombreOuNull(form[k]))
@@ -1021,17 +928,6 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       {/* ── Onglet Course : la fiche unique ─────────────────────────────────── */}
       {tab === 'detail' && (
         <div className="flex flex-col gap-4">
-          {/* Pré-remplissage depuis un modèle — création uniquement, masqué si aucun modèle. */}
-          {!isEdit && templates.length > 0 && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[var(--text-muted)] shrink-0">Partir d'un modèle</span>
-              <select value={templateId} onChange={e => applyTemplate(e.target.value)} className={`${inputCls} max-w-[20rem]`}>
-                <option value="">— Aucun —</option>
-                {templates.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-              </select>
-            </div>
-          )}
-
           <div className="grid gap-4 lg:grid-cols-2 items-start">
             {/* Colonne 1 : l'ordre et les arrêts */}
             <div className="flex flex-col gap-4 min-w-0">
@@ -1329,31 +1225,13 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
           </div>
 
           {/* Ce qui manque, par étape : n'empêche pas d'enregistrer (sauf client / date). */}
-          {!ro && (manques.partir.length + manques.lv.length + manques.facturer.length) > 0 && (
+          {!ro && (manques.partir.length + manques.facturer.length) > 0 && (
             <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 flex flex-col gap-1 text-xs">
               <span className="flex items-center gap-1.5 font-medium text-[var(--text)]">
                 <AlertTriangle size={13} className="text-[var(--warning)]" /> Il manque
               </span>
               {manques.partir.length > 0 && <Manque etape="pour partir" liste={manques.partir} />}
-              {manques.lv.length > 0 && <Manque etape="pour la lettre de voiture" liste={manques.lv} />}
               {manques.facturer.length > 0 && <Manque etape="pour facturer" liste={manques.facturer} />}
-            </div>
-          )}
-
-          {/* Enregistrer comme modèle (déplié à la demande). */}
-          {saveAsTplOpen && (
-            <div className="flex flex-wrap items-end gap-2 rounded-[var(--r-md)] border border-[var(--border)] p-3">
-              <div className="flex-1 min-w-[12rem]">
-                <Field label="Libellé du modèle *">
-                  <Input value={tplLabel} onChange={setTplLabel} placeholder="Nom du modèle…" />
-                </Field>
-              </div>
-              <Button variant="primary" onClick={handleSaveAsTemplate} disabled={savingTpl}>
-                {savingTpl ? 'Création…' : 'Créer le modèle'}
-              </Button>
-              <Button variant="secondary" onClick={() => { setSaveAsTplOpen(false); setTplLabel('') }} disabled={savingTpl}>
-                Annuler
-              </Button>
             </div>
           )}
 
@@ -1372,9 +1250,6 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
               <span className="text-xs text-[var(--danger)]">À compléter : {manques.enregistrer.join(', ')}</span>
             )}
             <span className="ml-auto flex items-center gap-2">
-              {canSave && !saveAsTplOpen && (
-                <BoutonIcone icone={Plus} libelle="Enregistrer comme modèle" onClick={() => setSaveAsTplOpen(true)} />
-              )}
               {isEdit && can('livraisons.livraisons', 'create') && (
                 <BoutonIcone icone={Copy} libelle="Dupliquer (nouvelle course pré-remplie)" onClick={dupliquer} />
               )}
@@ -1389,27 +1264,15 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       {/* ── Onglet Preuves & documents ──────────────────────────────────────── */}
       {tab === 'preuves' && (
         <div className="flex flex-col gap-4">
-          <div className="flex gap-1.5">
-            {([['pod', 'Preuve de livraison'], ['lv', 'Lettre de voiture'], ['fichiers', 'Fichiers']] as const).map(([k, l]) => (
-              <button key={k} type="button" onClick={() => setSousPreuve(k)}
-                className={`h-8 px-3 rounded-[var(--r-pill)] border text-xs transition-colors
-                  ${sousPreuve === k
-                    ? 'bg-[var(--brand)] border-[var(--brand)] text-white font-medium'
-                    : 'border-[var(--border)] text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
-                {l}
-              </button>
-            ))}
-          </div>
-          <div className="max-w-[48rem]">
-            {sousPreuve === 'pod' && (
+          <div className="max-w-[48rem] flex flex-col gap-6">
+            <section className="flex flex-col gap-2">
+              <h3 className="text-sm font-semibold text-[var(--text)]">Preuve de livraison</h3>
               <PodTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
-            )}
-            {sousPreuve === 'lv' && (
-              <LettreVoitureTab delivery={delivery ?? null} companyId={companyId} onSaved={onSaved} />
-            )}
-            {sousPreuve === 'fichiers' && (
+            </section>
+            <section className="flex flex-col gap-2 pt-4 border-t border-[var(--border)]">
+              <h3 className="text-sm font-semibold text-[var(--text)]">Fichiers</h3>
               <DocumentsPanel entityType="delivery" entityId={delivery?.id ?? null} />
-            )}
+            </section>
           </div>
         </div>
       )}
@@ -1447,7 +1310,7 @@ export function DrawerLivraison({ open, onClose, delivery: deliveryProp, onSaved
       <ConfirmDialog
         open={confirmSansPreuve}
         title="Facturer sans preuve de livraison ?"
-        message={"Cette course n'a ni photo, ni POD signé, ni lettre de voiture archivée. "
+        message={"Cette course n'a ni photo ni POD signé. "
           + "C'est le dernier moment pour en obtenir une : après, la facture est partie et le client est loin."}
         optionLabel="Aucun justificatif n'est attendu pour cette course"
         confirmLabel="Facturer quand même"
@@ -1944,7 +1807,7 @@ function SuiviTab({
   )
 }
 
-// ── Envoi email client (facture Pennylane + lettre de voiture) ───────────────────────────────
+// ── Envoi email client (facture Pennylane) ───────────────────────────────
 // Réutilisable drawer + liste. Confirmation affichant l'email destinataire,
 // puis invocation de l'Edge send-client-email. Aucun changement de layout.
 
@@ -1965,9 +1828,7 @@ function EnvoiClientSection({ delivery }: { delivery: DeliveryRow }) {
     }
     setConfirm(false)
     setSentAt(new Date().toISOString())
-    toast(data.data?.bl_attached
-      ? 'Email envoyé (facture + lettre de voiture)'
-      : 'Email envoyé (facture — lettre de voiture non jointe)')
+    toast('Email envoyé')
   }
 
   return (
@@ -1992,7 +1853,7 @@ function EnvoiClientSection({ delivery }: { delivery: DeliveryRow }) {
       <ConfirmDialog
         open={confirm}
         title="Envoyer la facture au client ?"
-        message={`La facture Pennylane${delivery.lv_pdf_url ? ' et la lettre de voiture seront envoyées' : ' sera envoyée'} à ${email}.`}
+        message={`La facture Pennylane sera envoyée à ${email}.`}
         confirmLabel="Envoyer"
         onConfirm={handleSend}
         onCancel={() => setConfirm(false)}

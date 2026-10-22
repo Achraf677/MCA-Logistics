@@ -9,7 +9,6 @@ export const PERMISSION_CATALOG: PermResource[] = [
   // Livraisons
   { section: 'Livraisons',  key: 'livraisons.livraisons', label: 'Livraisons' },
   { section: 'Livraisons',  key: 'livraisons.devis',      label: 'Devis' },
-  { section: 'Livraisons',  key: 'livraisons.modeles',    label: 'Modèles' },
   // Planning
   { section: 'Planning',    key: 'planning.tournees',     label: 'Tournées' },
   { section: 'Planning',    key: 'planning.planning',     label: 'Planning' },

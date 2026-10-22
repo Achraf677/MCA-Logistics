@@ -19,7 +19,7 @@
   - Edge : pennylane-invoice (écrit `facturee`, n° facture, sync_error), pennylane-register-payment
     (`payee`), pennylane-payment-check, send-client-email (email_sent_at), geocode,
     optimize-tour(s).
-- **clients** : clients (écrit), livraisons (tarif, délai, TVA intra), devis, modeles,
+- **clients** : clients (écrit), livraisons (tarif, délai, TVA intra), devis,
   encaissement, tresorerie, copilote / assistant ; Edge pennylane-invoice, pennylane-quote,
   pennylane-clients-sync (écrit).
   - colonnes « défauts des courses » (lot B : `pays`, `retrait_*`, `chauffeur_habituel_id`,
@@ -33,11 +33,11 @@
     `shared/lib/pays.ts` (UE, autoliquidation), `shared/lib/supplements.ts`.
 - **vehicles / team_members** : flotte (vehicules, carburant, entretiens, inspections, incidents),
   livraisons, tournees, planning (échéances permis / visite médicale / CT / assurance à
-  l'affectation), mescourses, equipe, heures, alertes, devis, modeles ; planning (lecture
+  l'affectation), mescourses, equipe, heures, alertes, devis ; planning (lecture
   des échéances : `ct_expiry`, `insurance_expiry`, `next_revision_date`, `licence_b_expiry`,
   `medical_visit_expiry` via `planning.queries#getSourcesEcheances` : vue Mois + en-têtes de jour).
 - **documents** (+ Storage `documents`) : `shared/lib/documents.queries` (tous les panneaux
-  Documents), mescourses (photos), parametres ; Edge send-client-email (pièce jointe LV),
+  Documents), mescourses (photos), parametres ; Edge send-client-email (facture seule : plus de lettre de voiture),
   drive-migrate-to-storage ; alertes (sans justificatif).
 - **charges** : charges, fournisseurs, tresorerie, `shared` rapprochement / aRapprocher / alertes ;
   Edge pennylane-sync, lire-facture, lire-releve, suggest-categorie-ia.
@@ -123,9 +123,9 @@
   planning, dashboard (journée) ; la vue Mois du planning filtre côté client. Tout NOUVEL écran « terrain »
   doit appliquer ce filtre.
 - `nb_colis`, `prix_unitaire_cts` : relevé de messagerie (HT = nb × prix) ; facture en quantité ;
-  `nb_colis` aussi écrit par l'onglet Lettre de voiture.
+  `nb_colis` aussi écrit par Mes courses.
 - `expediteur_* / destinataire_* / marchandise_desc / nb_colis / poids_kg_reel` : écrits par la
-  fiche ET par l'onglet Lettre de voiture → la fiche ne les réécrit que s'ils ont changé.
+  fiche ET par Mes courses → la fiche ne les réécrit que s'ils ont changé.
 - `notes` (consignes chauffeur) → Mes courses. `note_interne` → jamais montré au chauffeur
   (mais lisible par l'API : pas de secret dedans).
 - `reference_client` : fiche, en-tête, libellé de facture (Edge + aperçu).

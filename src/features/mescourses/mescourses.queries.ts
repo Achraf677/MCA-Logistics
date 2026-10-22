@@ -23,7 +23,7 @@ export async function getMesCourses(debut: string, fin: string) {
       'id', 'date', 'statut', 'description',
       'pickup_address', 'delivery_address',
       'delivery_lat', 'delivery_lng',
-      'pod_captured_at', 'weight_kg', 'charge_le', 'lv_signatures',
+      'pod_captured_at', 'weight_kg', 'charge_le',
       'expediteur_nom', 'destinataire_nom', 'pod_recipient_name', 'stop_order', 'tour_id',
       'pickup_order', 'expediteur_tel', 'destinataire_tel',
       'notes', 'arrival_time', 'nb_colis', 'driver_id',
@@ -87,7 +87,7 @@ function resultatEcriture<T>(data: T[] | null, error: { message: string; code?: 
  * Documents rattachés aux courses affichées.
  *
  * Ce sont les pièces déposées côté bureau — bon de commande, étiquette,
- * consignes du client, lettre de voiture — plus les photos de preuve prises
+ * consignes du client — plus les photos de preuve prises
  * sur le terrain. Le chauffeur en avait besoin AVANT d'arriver, et il n'avait
  * jusqu'ici aucun moyen de les consulter depuis son téléphone.
  *
@@ -125,34 +125,6 @@ export async function marquerCharge(id: string, expediteurNom: string | null) {
     .eq('id', id)
     .select('id, charge_le')
   return resultatEcriture(data, error)
-}
-
-/**
- * Ajoute une signature à la lettre de voiture, sans écraser les autres.
- *
- * `lv_signatures` est un objet jsonb à trois clés (expediteur, transporteur,
- * destinataire). On RELIT avant d'écrire : un `update` direct remplacerait
- * l'objet entier et effacerait la signature de l'autre partie. Le format est
- * exactement celui de la lettre de voiture du bureau — même PNG, même
- * horodatage, même géoloc — pour qu'une signature prise sur le téléphone soit
- * indiscernable d'une signature prise sur l'ordinateur.
- */
-export async function ajouterSignature(
-  id: string,
-  role: 'expediteur' | 'transporteur' | 'destinataire',
-  data: { png: string; ts: string; geo?: { lat: number; lng: number; acc?: number } },
-) {
-  const { data: ligne, error: lErr } = await supabase
-    .from('deliveries').select('lv_signatures').eq('id', id).single()
-  if (lErr) return { error: lErr }
-
-  const actuelles = (ligne?.lv_signatures ?? {}) as Record<string, unknown>
-  const res = await supabase
-    .from('deliveries')
-    .update({ lv_signatures: { ...actuelles, [role]: data } })
-    .eq('id', id)
-    .select('id')
-  return resultatEcriture(res.data, res.error)
 }
 
 /**

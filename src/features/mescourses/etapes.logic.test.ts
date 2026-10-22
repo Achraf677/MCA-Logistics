@@ -123,10 +123,9 @@ describe('actionArret', () => {
 
 describe('aUnePreuve', () => {
   it('nom, photo ou signature suffisent', () => {
-    expect(aUnePreuve({ nom: null, photos: 0, signee: false })).toBe(false)
-    expect(aUnePreuve({ nom: '  ', photos: 0, signee: false })).toBe(false)
-    expect(aUnePreuve({ nom: null, photos: 1, signee: false })).toBe(true)
-    expect(aUnePreuve({ nom: null, photos: 0, signee: true })).toBe(true)
-    expect(aUnePreuve({ nom: 'M. Martin', photos: 0, signee: false })).toBe(true)
+    expect(aUnePreuve({ nom: null, photos: 0 })).toBe(false)
+    expect(aUnePreuve({ nom: '  ', photos: 0 })).toBe(false)
+    expect(aUnePreuve({ nom: null, photos: 1 })).toBe(true)
+    expect(aUnePreuve({ nom: 'M. Martin', photos: 0 })).toBe(true)
   })
 })

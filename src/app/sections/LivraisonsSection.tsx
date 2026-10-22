@@ -2,8 +2,6 @@ import { Shell } from '../Shell'
 import { TabbedSection } from '../../shared/ui/TabbedSection'
 import { Livraisons } from '../../features/livraisons/Livraisons'
 import { Devis } from '../../features/devis/Devis'
-import { Modeles } from '../../features/modeles/Modeles'
-import { BonsLivraison } from '../../features/livraisons/BonsLivraison'
 import { DerniersNumeros } from '../../features/livraisons/DerniersNumeros'
 
 export function LivraisonsSection() {
@@ -14,8 +12,6 @@ export function LivraisonsSection() {
         tabs={[
           { key: 'livraisons', label: 'Livraisons',        element: <Livraisons />,    permKey: 'livraisons.livraisons' },
           { key: 'devis',      label: 'Devis',             element: <Devis />,         permKey: 'livraisons.devis'      },
-          { key: 'modeles',    label: 'Modèles',           element: <Modeles />,       permKey: 'livraisons.modeles'    },
-          { key: 'bl',         label: 'Lettres de voiture', element: <BonsLivraison />, permKey: 'livraisons.livraisons' },
         ]}
       />
     </Shell>

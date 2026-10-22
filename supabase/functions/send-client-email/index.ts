@@ -1,6 +1,7 @@
 // Edge Function `send-client-email` — envoie au client, par email, la facture
-// Pennylane ORIGINALE (PDF officiel) + la lettre de voiture (LV) en pièces
-// jointes RÉELLES. verify_jwt=true. Aucune écriture destructive.
+// Pennylane ORIGINALE (PDF officiel) en pièce jointe RÉELLE. verify_jwt=true.
+// Aucune écriture destructive. (La lettre de voiture n'est plus jointe : le
+// site n'en génère plus, décision du 22/10/2026.)
 //
 // Canal : Gmail API via l'infra Google OAuth serveur EXISTANTE
 // (google_drive_tokens.refresh_token). L'email part de l'adresse Google
@@ -8,18 +9,9 @@
 // (fait dans drive-oauth-start) + RECONNEXION du Drive pour régénérer un
 // refresh_token incluant Gmail.
 //
-// Pièces jointes :
-//   (a) Facture : téléchargée via l'API Pennylane (file_url signée, jamais la
-//       copie stockée).
-//   (b) LV : dernier document catégorie 'LV' de la livraison. Lu dans Supabase
-//       Storage (bucket `documents`, `storage_path`) via le client service
-//       role ; repli Google Drive (`drive_file_id`) pour les LV archivées avant
-//       le passage à Storage. Pièce nommée `Lettre_de_voiture_<numero>.pdf`.
-//       Absente → on n'attache que la facture et on le signale dans la réponse
-//       (`bl_attached: false`, clé conservée pour les appelants).
+// Pièce jointe : la facture, téléchargée via l'API Pennylane (file_url
+// signée, jamais la copie stockée).
 //
-// Token Google : un seul refresh par appel, partagé entre le repli Drive et
-// l'envoi Gmail.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { exigerPermission } from '../_shared/auth.ts'
 
@@ -34,7 +26,7 @@ const json = (b: unknown, s = 200) =>
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const PENNYLANE_BASE = 'https://app.pennylane.com/api/external/v2'
 
-// ── Composition email (dupliquée depuis src/features/livraisons/emailClient.logic.ts) ─
+// ── Composition email ─
 function formatEuros(cts: number): string {
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency', currency: 'EUR',
@@ -47,16 +39,15 @@ function composeSubject(invoiceNumber: string | null): string {
 }
 function composeBody(input: {
   invoiceNumber: string | null; clientName: string | null
-  amountTtcCts?: number | null; hasBl: boolean
+  amountTtcCts?: number | null
 }): string {
   const greeting = input.clientName?.trim() ? `Bonjour ${input.clientName.trim()},` : 'Bonjour,'
   const num = (input.invoiceNumber ?? '').trim()
   const objetLigne = num ? `Veuillez trouver ci-joint votre facture ${num}` : 'Veuillez trouver ci-joint votre facture'
   const montantLigne = input.amountTtcCts != null && input.amountTtcCts > 0
     ? ` d'un montant de ${formatEuros(input.amountTtcCts)} TTC` : ''
-  const piecesLigne = input.hasBl ? ', accompagnée de la lettre de voiture correspondante.' : '.'
   return [
-    greeting, '', `${objetLigne}${montantLigne}${piecesLigne}`, '',
+    greeting, '', `${objetLigne}${montantLigne}.`, '',
     'Nous restons à votre disposition pour toute question.', '',
     'Cordialement,', 'MCA Logistics',
   ].join('\n')
@@ -64,11 +55,6 @@ function composeBody(input: {
 function invoiceAttachmentName(invoiceNumber: string | null): string {
   const num = (invoiceNumber ?? '').trim().replace(/[^\w-]+/g, '_')
   return num ? `Facture_${num}.pdf` : 'Facture.pdf'
-}
-// Dupliqué depuis src/features/livraisons/lettreVoiture.logic.ts (lvNomFichier).
-function lvAttachmentName(numero: string | null): string {
-  const n = (numero ?? '').trim().replace(/[^\w-]+/g, '_')
-  return n ? `Lettre_de_voiture_${n}.pdf` : 'Lettre_de_voiture.pdf'
 }
 
 // ── Utils ─────────────────────────────────────────────────────────────────────
@@ -163,7 +149,7 @@ Deno.serve(async (req: Request) => {
     // Livraison + client (garde company).
     const { data: delivery } = await service
       .from('deliveries')
-      .select('id, company_id, statut, amount_ttc_cts, lv_numero, lv_pdf_url, pennylane_invoice_id, pennylane_invoice_number, clients!client_id(name, email)')
+      .select('id, company_id, statut, amount_ttc_cts, pennylane_invoice_id, pennylane_invoice_number, clients!client_id(name, email)')
       .eq('id', deliveryId)
       .single()
     if (!delivery || delivery.company_id !== companyId) {
@@ -181,7 +167,7 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: 'Facture Pennylane introuvable pour cette livraison.' }, 400)
     }
 
-    // ── (a) PDF facture Pennylane (URL signée fraîche) ────────────────────────
+    // ── PDF facture Pennylane (URL signée fraîche) ────────────────────────────
     let pennylaneToken = ''
     { const t = Deno.env.get('PENNYLANE_API_TOKEN'); if (!t) return json({ ok: false, error: 'PENNYLANE_API_TOKEN manquant' }, 500); pennylaneToken = t }
     const invRes = await fetch(
@@ -201,7 +187,7 @@ Deno.serve(async (req: Request) => {
       base64: toBase64(invoiceBytes),
     }]
 
-    // ── Token Google (une seule fois : repli Drive + envoi Gmail) ────────────
+    // ── Token Google (envoi Gmail) ────────────
     const { data: gtok } = await service
       .from('google_drive_tokens').select('refresh_token')
       .eq('company_id', companyId).maybeSingle()
@@ -212,48 +198,11 @@ Deno.serve(async (req: Request) => {
     try { gmailToken = await getGoogleAccessToken(gtok.refresh_token) }
     catch { return json({ ok: false, error: 'Auth Google échouée — reconnecte le Drive.' }, 502) }
 
-    // ── (b) Lettre de voiture — Storage, repli Drive — best-effort ────────────
-    let blAttached = false
-    if (delivery.lv_pdf_url) {
-      const { data: lvDoc } = await service
-        .from('documents')
-        .select('storage_path, drive_file_id')
-        .eq('company_id', companyId)
-        .eq('entity_type', 'delivery').eq('entity_id', deliveryId).eq('category', 'LV')
-        .order('created_at', { ascending: false })
-        .limit(1).maybeSingle()
-      let lvBytes: Uint8Array | null = null
-      if (lvDoc?.storage_path) {
-        try {
-          const { data: blob, error: dlErr } = await service.storage
-            .from('documents').download(lvDoc.storage_path as string)
-          if (!dlErr && blob) lvBytes = new Uint8Array(await blob.arrayBuffer())
-        } catch { /* repli Drive ci-dessous */ }
-      }
-      if (!lvBytes && lvDoc?.drive_file_id) {
-        try {
-          const dlRes = await fetch(
-            `https://www.googleapis.com/drive/v3/files/${lvDoc.drive_file_id}?alt=media`,
-            { headers: { Authorization: `Bearer ${gmailToken}` } },
-          )
-          if (dlRes.ok) lvBytes = new Uint8Array(await dlRes.arrayBuffer())
-        } catch { /* LV best-effort : on continue sans */ }
-      }
-      if (lvBytes) {
-        attachments.push({
-          filename: lvAttachmentName(delivery.lv_numero as string | null),
-          base64: toBase64(lvBytes),
-        })
-        blAttached = true
-      }
-    }
-
     const subject = composeSubject(delivery.pennylane_invoice_number as string | null)
     const body = composeBody({
       invoiceNumber: delivery.pennylane_invoice_number as string | null,
       clientName: client?.name ?? null,
       amountTtcCts: (delivery.amount_ttc_cts ?? null) as number | null,
-      hasBl: blAttached,
     })
     const raw = buildMime(to, subject, body, attachments)
 
@@ -279,7 +228,7 @@ Deno.serve(async (req: Request) => {
       .update({ email_sent_at: new Date().toISOString() })
       .eq('id', deliveryId)
 
-    return json({ ok: true, data: { to, bl_attached: blAttached } })
+    return json({ ok: true, data: { to } })
   } catch (e) {
     return json({ ok: false, error: (e as Error).message }, 500)
   }

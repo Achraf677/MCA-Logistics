@@ -2,10 +2,11 @@ import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react
 import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  Package, RefreshCw, Loader2, FileText, Euro, FileClock, Wallet, Mail, Search,
+  Package, RefreshCw, Loader2, FileText, FileClock, Wallet, Mail, Search,
   CalendarRange, AlertTriangle, Camera, X, Route,
 } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
+import { ChiffreCarte } from '../../shared/ui/ChiffreCarte'
 import { Badge }       from '../../shared/ui/Badge'
 import { Button }      from '../../shared/ui/Button'
 import { EmptyState }  from '../../shared/ui/EmptyState'
@@ -269,7 +270,7 @@ export function Livraisons() {
       return
     }
     await load()
-    toast(data.data?.bl_attached ? 'Email envoyé (facture + lettre de voiture)' : 'Email envoyé (facture)')
+    toast('Email envoyé (facture)')
   }
 
   // ── Lignes affichées & chiffres ────────────────────────────────────────────
@@ -330,21 +331,20 @@ export function Livraisons() {
           </Bandeau>
         )}
 
-        {/* ── Chiffres de la période : 4 cartes au gabarit du Dashboard ── */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 [&>*]:min-w-0">
-          {loading ? [0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[5.5rem]" />) : (
+        {/* ── Chiffres de la période : 3 cartes au gabarit du Dashboard ── */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 [&>*]:min-w-0">
+          {loading ? [0, 1, 2].map(i => <Skeleton key={i} className="h-[5.5rem]" />) : (
             <>
-              <Chiffre libelle="Courses" icone={<Package size={14} />} valeur={String(kpis.nbCourses)}
-                detail={`${kpis.nbAFaire} à faire · ${kpis.nbFaites} faite${kpis.nbFaites > 1 ? 's' : ''}`}
+              <ChiffreCarte libelle="Courses · CA HT" icone={<Package size={14} />} valeur={eurosArrondis(kpis.caHtCts)}
+                detail={kpis.nbCourses
+                  ? `${kpis.nbCourses} course${kpis.nbCourses > 1 ? 's' : ''} · ${kpis.nbAFaire} à faire · ${kpis.nbFaites} faite${kpis.nbFaites > 1 ? 's' : ''}`
+                  : 'Aucune course'}
                 onClick={() => setStatut('all')} titre="Tout afficher" />
-              <Chiffre libelle="CA HT" icone={<Euro size={14} />} valeur={eurosArrondis(kpis.caHtCts)}
-                detail={kpis.nbCourses ? `${eurosArrondis(Math.round(kpis.caHtCts / kpis.nbCourses))} / course` : 'Aucune course'}
-                onClick={() => setStatut('all')} titre="Tout afficher" />
-              <Chiffre libelle="À facturer" icone={<FileClock size={14} />} valeur={eurosArrondis(kpis.aFacturerHtCts)}
+              <ChiffreCarte libelle="À facturer" icone={<FileClock size={14} />} valeur={eurosArrondis(kpis.aFacturerHtCts)}
                 ton={kpis.nbAFacturer ? 'warning' : undefined} actif={statut === 'livree'}
                 detail={`${kpis.nbAFacturer} livrée${kpis.nbAFacturer > 1 ? 's' : ''} · HT`}
                 onClick={() => choisirStatut('livree')} titre="Afficher les livrées à facturer" />
-              <Chiffre libelle="À encaisser" icone={<Wallet size={14} />} valeur={eurosArrondis(kpis.aEncaisserTtcCts)}
+              <ChiffreCarte libelle="À encaisser" icone={<Wallet size={14} />} valeur={eurosArrondis(kpis.aEncaisserTtcCts)}
                 ton={kpis.nbRetard ? 'danger' : undefined} actif={statut === 'facturee'}
                 detail={kpis.nbRetard
                   ? `dont ${eurosArrondis(kpis.retardTtcCts)} en retard`
@@ -630,7 +630,7 @@ export function Livraisons() {
         open={emailConfirm !== null}
         title="Envoyer la facture au client ?"
         message={emailConfirm
-          ? `La facture Pennylane${emailConfirm.lv_pdf_url ? ' et la lettre de voiture seront envoyées' : ' sera envoyée'} à ${emailConfirm.clients?.email ?? ''}.`
+          ? `La facture Pennylane sera envoyée à ${emailConfirm.clients?.email ?? ''}.`
           : ''}
         onConfirm={handleSendEmail}
         onCancel={() => setEmailConfirm(null)}
@@ -652,33 +652,6 @@ export function Livraisons() {
 const carteCls = 'rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)]'
 const champCls = `h-8 min-w-0 px-2 rounded-[var(--r-md)] bg-[var(--bg)] border border-[var(--border)]
   text-[var(--text)] text-xs placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--brand)] transition-colors`
-/** Libellé de carte, IDENTIQUE au Dashboard. */
-const libelleCls = 'text-[0.6875rem] sm:text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]'
-
-/** Un chiffre de la période : même gabarit que les cartes du Dashboard, arrondi à l'euro. */
-function Chiffre({ libelle, icone, valeur, detail, ton, actif, onClick, titre }: {
-  libelle: string
-  icone: ReactNode
-  valeur: string
-  detail: ReactNode
-  ton?: 'warning' | 'danger'
-  actif?: boolean
-  onClick: () => void
-  titre: string
-}) {
-  const couleur = ton === 'danger' ? 'var(--danger)' : ton === 'warning' ? 'var(--warning)' : 'var(--text)'
-  return (
-    <button type="button" onClick={onClick} title={titre} aria-pressed={actif}
-      className={`${carteCls} p-3 text-left flex flex-col min-w-0 transition-colors hover:border-[var(--brand)] ${actif ? '!border-[var(--brand)]' : ''}`}>
-      <span className={`inline-flex items-center gap-1.5 mb-2 min-h-[1.25rem] truncate ${libelleCls}`}>
-        {icone} {libelle}
-      </span>
-      <span className="font-mono font-semibold text-base sm:text-2xl leading-tight truncate" style={{ color: couleur }}>{valeur}</span>
-      <span className="mt-auto pt-1 text-[0.6875rem] sm:text-xs text-[var(--text-muted)] truncate">{detail}</span>
-    </button>
-  )
-}
-
 /** Bandeau d'une ligne (filtre de la cloche, synchronisation en attente). */
 function Bandeau({ ton, icone, action, children }: {
   ton: 'warning' | 'danger'

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   addDays, isExpiredDisplay, uniteParDefaut, prixParDefaut, montantsDevis, resumeLigne,
   ligneDepuisAncien, versLivraison, tarifDepuisDevis, seTransformeEnCourse,
-  versLivraisonFacturable, peutFacturerDirectement,
+  versLivraisonFacturable, peutFacturerDirectement, resumeDevis,
 } from './devis.logic'
 import type { Quote } from './devis.types'
 
@@ -137,5 +137,19 @@ describe('facturer directement (lot U4)', () => {
     expect(peutFacturerDirectement(devis({ prestation: 'messagerie' }))).toBe(false)
     expect(peutFacturerDirectement(devis({ prestation: 'express', statut: 'envoye' }))).toBe(false)
     expect(peutFacturerDirectement(devis({ prestation: 'forfait', pennylane_invoice_id: '9' }))).toBe(false)
+  })
+})
+
+describe('resumeDevis', () => {
+  const q = (statut: Quote['statut'], valid_until: string | null, amount_ttc_cts: number | null) =>
+    ({ statut, valid_until, amount_ttc_cts })
+  it('compte les envoyés, les acceptés et les envoyés hors validité', () => {
+    const r = resumeDevis([
+      q('envoye', '2026-12-01', 1000), q('envoye', '2026-09-01', 500), q('accepte', null, 2000),
+      q('brouillon', null, 9999), q('refuse', null, 9999), q('facture', null, 9999),
+    ], '2026-10-22')
+    expect(r.attente).toEqual({ nb: 2, totalTtcCts: 1500 })
+    expect(r.depasses).toEqual({ nb: 1, totalTtcCts: 500 })
+    expect(r.acceptes).toEqual({ nb: 1, totalTtcCts: 2000 })
   })
 })

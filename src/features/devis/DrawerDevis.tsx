@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { RefreshCw, Loader2 } from 'lucide-react'
+import { RefreshCw, Loader2, Trash2 } from 'lucide-react'
 import { Drawer }     from '../../shared/ui/Drawer'
 import { Bloc, ChoixClient, ChoixPrestation, Champ as Field } from '../../shared/ui/FicheSaisie'
 import { ContactLinks } from '../../shared/ui/ContactLinks'
@@ -763,8 +763,8 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
                 <Button variant="primary" onClick={() => handleMark('accepte')} disabled={actioning}>
                   {actioning ? '…' : 'Marquer accepté'}
                 </Button>
-                <Button variant="secondary" onClick={() => handleMark('refuse')} disabled={actioning}
-                  className="text-[var(--danger)] border-[var(--danger)]/40">
+                <Button variant="ghost" onClick={() => handleMark('refuse')} disabled={actioning}
+                  className="text-[var(--danger)]">
                   Marquer refusé
                 </Button>
               </>
@@ -799,8 +799,8 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
                     Facturer directement
                   </Button>
                 )}
-                <Button variant="secondary" onClick={() => handleMark('refuse')} disabled={actioning}
-                  className="text-[var(--danger)] border-[var(--danger)]/40">
+                <Button variant="ghost" onClick={() => handleMark('refuse')} disabled={actioning}
+                  className="text-[var(--danger)]">
                   Marquer refusé
                 </Button>
               </>
@@ -812,9 +812,9 @@ export function DrawerDevis({ open, onClose, quote, onSaved }: Props) {
         {isTerminal && <Button variant="secondary" onClick={onClose}>Fermer</Button>}
 
         {canDelete && (
-          <Button variant="ghost" onClick={() => setConfirmDelete(true)} className="ml-auto text-[var(--danger)]">
-            Supprimer
-          </Button>
+          <span className="ml-auto">
+            <BoutonIcone icone={Trash2} libelle="Supprimer le devis" onClick={() => setConfirmDelete(true)} />
+          </span>
         )}
       </div>
 
