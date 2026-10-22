@@ -212,7 +212,7 @@ export function AlertesBell() {
             <div className="flex items-center gap-2">
               <span className="text-[var(--fs-sm)] font-semibold text-[var(--text)]">Alertes &amp; échéances</span>
               {count > 0 && (
-                <span className="rounded-full bg-[var(--brand-soft)] px-2 py-0.5 text-[var(--fs-xs)] font-medium text-[var(--brand)]">
+                <span className="rounded-full bg-[var(--brand-soft)] px-2 py-0.5 text-[var(--fs-xs)] font-semibold text-[var(--brand)]">
                   {count}
                 </span>
               )}

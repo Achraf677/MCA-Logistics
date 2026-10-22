@@ -916,7 +916,7 @@ function CarteArret({
       {!arret.fait && (creneau || c.urgent || estime) && (
         <p className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm">
           {c.urgent && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-pill)] bg-[var(--danger)]/15 text-[var(--danger)] text-xs font-medium">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-pill)] bg-[var(--danger)]/15 text-[var(--danger)] text-xs font-semibold">
               <Zap size={12} /> Urgent
             </span>
           )}

@@ -109,7 +109,7 @@ function Puce({ icone, texte, accent }: { icone: ReactNode; texte: string | null
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-[var(--r-pill)] text-[var(--fs-xs)]
       border ${accent
-        ? 'border-[var(--brand)]/40 bg-[var(--brand-soft)] text-[var(--text)] font-medium'
+        ? 'border-[var(--brand)]/40 bg-[var(--brand-soft)] text-[var(--text)] font-semibold'
         : 'border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-muted)]'}`}>
       {icone}{texte}
     </span>

@@ -45,7 +45,7 @@ function PastilleStatut({ famille, children }: { famille: FamilleArret; children
   const Icone = ICONE_FAMILLE[famille]
   const fond = { livre: 'var(--success)', attente: 'var(--warning)', retour: 'var(--danger)', neutre: 'var(--text-muted)' }[famille]
   return (
-    <span style={{ background: fond }} className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-bold leading-none ${
+    <span style={{ background: fond }} className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-semibold leading-none ${
       famille === 'attente' || famille === 'livre' ? 'text-black' : 'text-white'}`}>
       <Icone size={14} aria-hidden /> {children}
     </span>
@@ -428,7 +428,7 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
           <PastilleColis n={arret.quantite} />
           <PastilleType type={arret.type} />
           {enPause && (
-            <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-bold leading-none border border-[var(--warning)]/40 bg-[var(--warning)]/20 text-[var(--warning)]">
+            <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-sm font-semibold leading-none border border-[var(--warning)]/40 bg-[var(--warning)]/20 text-[var(--warning)]">
               <Pause size={14} aria-hidden /> En pause
             </span>
           )}
