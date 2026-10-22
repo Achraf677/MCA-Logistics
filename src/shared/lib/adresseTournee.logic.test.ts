@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import type { ArretColis } from '../../shared/lib/tourneesColis'
-import { rechercherArrets, analyserSaisie, zoneDeLaRue, cpDeLaCommune } from './rechercheAdresse.logic'
+import type { ArretColis } from './tourneesColis'
+import { rechercherArrets, analyserSaisie, zoneDeLaRue, cpDeLaCommune } from './adresseTournee.logic'
 
 const a = (p: Partial<ArretColis>) => ({ id: 'x', commune: 'BRUMATH', rue: 'rue des Roses', numero: '12', cp: '67170', zone: 'ZONE 3', ...p }) as ArretColis
 const liste = [a({ id: '1' }), a({ id: '2', numero: '120', rue: 'avenue de Strasbourg' }), a({ id: '3', commune: 'KRIEGSHEIM', numero: '5', rue: "Grand'Rue", zone: null, cp: '67170' })]

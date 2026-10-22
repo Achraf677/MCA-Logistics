@@ -1,4 +1,4 @@
-import type { ArretColis } from '../../shared/lib/tourneesColis'
+import type { ArretColis } from './tourneesColis'
 
 export const normaliser = (s: string | null | undefined) =>
   (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
