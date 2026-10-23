@@ -28,7 +28,7 @@ describe('corpsImportFournisseur', () => {
   it('une ligne, code TVA Pennylane', () => {
     const l = (corpsImportFournisseur(base).invoice_lines as Array<Record<string, unknown>>);
     expect(l).toHaveLength(1);
-    expect(l[0]).toMatchObject({ label: 'Cb perso', quantity: 1, raw_currency_unit_price: '1.50', vat_rate: 'FR_200' });
+    expect(l[0]).toMatchObject({ label: 'Cb perso', vat_rate: 'FR_200', currency_amount: '1.80', currency_tax: '0.30' });
   })
   it('refuse un taux inconnu plutôt que de deviner', () => {
     expect(() => corpsImportFournisseur({ ...base, tauxPct: 7 })).toThrow();

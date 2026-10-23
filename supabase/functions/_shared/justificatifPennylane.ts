@@ -75,9 +75,6 @@ export function corpsImportFournisseur(e: EntreeImport): Record<string, unknown>
     currency_tax: euros(tvaCts),
     invoice_lines: [{
       label: e.libelle,
-      quantity: 1,
-      unit: 'piece',
-      raw_currency_unit_price: euros(htCts),
       vat_rate: code,
       currency_amount: euros(e.ttcCts),
       currency_tax: euros(tvaCts),
