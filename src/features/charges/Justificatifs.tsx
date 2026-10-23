@@ -13,7 +13,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  CATEGORIES_DEPENSE, TAUX_TVA_JUSTIF, libelleCategorie, manquesEnvoiPennylane, manquesValidation, montantSaisiEnCts, totalARembourser,
+  CATEGORIES_DEPENSE, TAUX_TVA_JUSTIF, libelleCategorie, manquesValidation, montantSaisiEnCts, totalARembourser,
   type CategorieDepense,
 } from '../../shared/lib/depenses'
 import { getCategories } from '../../shared/lib/categories.queries'
@@ -115,33 +115,26 @@ export function Justificatifs() {
   const valider = (t: TicketInbox) => {
     const manques = manquesValidation(t)
     if (manques.length) { toast(`Validation impossible : ${manques.join(', ').toLowerCase()} manquant. Renseigne-le puis enregistre.`, 'error'); return }
-    const manquesEnvoi = manquesEnvoiPennylane(t)
-    if (manquesEnvoi.length) {
-      toast(`Pour l'envoyer à Pennylane, renseigne : ${manquesEnvoi.join(', ')}, puis enregistre.`, 'error')
-      return
-    }
     return validerEtEnvoyer(t)
   }
 
-  /** Valide, puis envoie dans « à traiter » de Pennylane. Si l'envoi échoue, le justificatif reste validé : « Renvoyer ». */
+  /** Valide, puis envoie à Pennylane (« À traiter »). Si l'envoi échoue, le justificatif reste validé : « Renvoyer ». */
   const validerEtEnvoyer = async (t: TicketInbox) => {
     setBusy(true)
     const { error } = await classerTicket(t.id, 'traite')
     if (error) { setBusy(false); toast(error.message, 'error'); return }
     const envoi = await envoyerVersPennylane(t.id)
     setBusy(false)
-    if (envoi.ok) toast('Justificatif validé et envoyé dans « à traiter » de Pennylane')
+    if (envoi.ok) toast('Justificatif validé et envoyé à Pennylane (« À traiter »)')
     else toast(`Validé, mais l'envoi à Pennylane a échoué : ${envoi.message}`, 'error')
     await charger()
   }
 
   const renvoyer = async (t: TicketInbox) => {
-    const manquesEnvoi = manquesEnvoiPennylane(t)
-    if (manquesEnvoi.length) { toast(`Pour l'envoyer à Pennylane, renseigne : ${manquesEnvoi.join(', ')}, puis enregistre.`, 'error'); return }
     setBusy(true)
     const envoi = await envoyerVersPennylane(t.id, true)
     setBusy(false)
-    if (envoi.ok) toast('Envoyé dans « à traiter » de Pennylane')
+    if (envoi.ok) toast('Envoyé à Pennylane (« À traiter »)')
     else toast(`Envoi à Pennylane échoué : ${envoi.message}`, 'error')
     await charger()
   }

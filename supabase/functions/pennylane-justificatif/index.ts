@@ -1,34 +1,18 @@
-// Edge Function `pennylane-justificatif` — envoie un justificatif VALIDÉ (ticket / dépense d'un salarié) dans la
-// liste « à traiter » de Pennylane : le fichier est déposé (POST /file_attachments) puis importé comme facture
-// fournisseur (POST /supplier_invoices/import). Pennylane crée ensuite la charge côté site via la synchro habituelle.
+// Edge Function `pennylane-justificatif` — envoie un justificatif VALIDÉ (ticket / dépense d'un salarié) à
+// l'adresse de dépôt Pennylane de la société (`companies.pennylane_depot_email`), par mail, fichier en pièce jointe :
+// il arrive dans « À traiter » de la compta et Pennylane lit lui-même montant, TVA et fournisseur.
+// (L'API d'import de factures fournisseur rangeait le document côté gestion seulement : abandonnée le 23/10/2026.)
 //
-// POST { ticket_id: string } → { ok: true, data: { pennylane_id } } | { ok: false, error, status?, body? }
-// Droit : président ou finance.charges / update. Idempotent : un ticket déjà envoyé n'est pas renvoyé
-// (sauf `forcer: true`). L'échec est gardé sur le ticket (`pennylane_erreur`) et affiché au bureau.
-// Le token n'est ni loggué ni renvoyé.
+// POST { ticket_id, forcer? } → { ok: true, data: { to } } | { ok: false, error }
+// Droit : président ou finance.charges / update. Idempotent (`pennylane_envoye_le`), sauf `forcer: true`.
+// Canal : Gmail API du compte Google connecté (Paramètres › Drive, scope gmail.send).
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
-import { PENNYLANE_BASE, pennylaneHeaders, pennylaneToken } from '../_shared/pennylaneBase.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
-import { corpsImportFournisseur, FOURNISSEUR_GENERIQUE, manquesEnvoiPennylane, TAUX_PAR_DEFAUT } from '../_shared/justificatifPennylane.ts';
+import { construireMime, enBase64, envoyerMail, tokenGoogle } from '../_shared/gmail.ts';
 
 const BUCKET = 'documents';
-
-/**
- * Appel Pennylane avec reprise sur 429 (limite de débit) : on attend le délai annoncé par `Retry-After`
- * (2 s à défaut, 8 s au plus) et on réessaie jusqu'à 3 fois. Les autres statuts sont rendus tels quels.
- */
-async function appelerPennylane(faire: () => Promise<Response>): Promise<Response> {
-  let rep = await faire();
-  for (let essai = 0; essai < 3 && rep.status === 429; essai++) {
-    const annonce = Number(rep.headers.get('retry-after'));
-    const attente = Number.isFinite(annonce) && annonce > 0 ? Math.min(annonce, 8) : 2;
-    await rep.body?.cancel();
-    await new Promise(r => setTimeout(r, attente * 1000));
-    rep = await faire();
-  }
-  return rep;
-}
+const euros = (cts: number) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(cts / 100);
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse();
@@ -50,92 +34,52 @@ Deno.serve(async (req) => {
 
   const { data: ticket } = await service
     .from('receipts_inbox')
-    .select('id, company_id, statut, storage_path, file_name, mime_type, montant_ttc_cts, date_depense, created_at, note, supplier_id, tva_rate, pennylane_envoye_le')
+    .select('id, company_id, statut, storage_path, file_name, mime_type, montant_ttc_cts, date_depense, created_at, note, pennylane_envoye_le')
     .eq('id', ticketId).maybeSingle();
   if (!ticket || ticket.company_id !== acces.companyId) return jsonResponse({ ok: false, error: 'Justificatif introuvable' }, 404);
   if (ticket.statut !== 'traite') return jsonResponse({ ok: false, error: 'Le justificatif doit être validé avant l’envoi à Pennylane.' }, 400);
   if (ticket.pennylane_envoye_le && !forcer) return jsonResponse({ ok: true, data: { deja_envoye: true } });
-  // Pennylane exige fournisseur, montants et ligne : seul le montant vient de la dépense ; le reste a une valeur par défaut.
-  const manques = manquesEnvoiPennylane(ticket);
-  if (manques.length) return jsonResponse({ ok: false, error: `Il manque : ${manques.join(', ')}. Renseigne-le dans le justificatif puis réessaie.` }, 400);
 
-  let token: string;
-  try { token = pennylaneToken(); }
-  catch { return jsonResponse({ ok: false, error: 'PENNYLANE_API_TOKEN manquant' }, 500); }
-
-  const echec = async (error: string, status?: number, body?: unknown) => {
-    const detail = typeof body === 'string' ? body : JSON.stringify(body ?? null);
-    await service.from('receipts_inbox')
-      .update({ pennylane_erreur: `${error}${status ? ` (${status})` : ''} ${detail}`.slice(0, 4000) })
-      .eq('id', ticket.id);
-    return jsonResponse({ ok: false, error, status, body });
+  const echec = async (error: string, status = 400) => {
+    await service.from('receipts_inbox').update({ pennylane_erreur: error.slice(0, 1000) }).eq('id', ticket.id);
+    return jsonResponse({ ok: false, error }, status);
   };
 
-  // 0) Le fournisseur : celui choisi, sinon le fournisseur générique « Note de frais » (créé chez Pennylane au besoin).
-  let fournisseurPennylaneId: string | null = null;
-  let fournisseurNom: string = FOURNISSEUR_GENERIQUE;
-  if (ticket.supplier_id) {
-    const { data: f } = await service.from('suppliers').select('pennylane_id, name')
-      .eq('id', ticket.supplier_id).eq('company_id', acces.companyId).maybeSingle();
-    if (f?.pennylane_id) { fournisseurPennylaneId = String(f.pennylane_id); fournisseurNom = f.name; }
-  }
-  if (!fournisseurPennylaneId) {
-    const { data: g } = await service.from('suppliers').select('pennylane_id')
-      .eq('company_id', acces.companyId).ilike('name', FOURNISSEUR_GENERIQUE).not('pennylane_id', 'is', null).limit(1).maybeSingle();
-    fournisseurPennylaneId = g?.pennylane_id ? String(g.pennylane_id) : null;
-  }
-  if (!fournisseurPennylaneId) {
-    // Pas encore dans le site : on le cherche chez Pennylane, sinon on le crée.
-    const filtre = encodeURIComponent(JSON.stringify([{ field: 'name', operator: 'eq', value: FOURNISSEUR_GENERIQUE }]));
-    const cherche = await appelerPennylane(() => fetch(`${PENNYLANE_BASE}/suppliers?filter=${filtre}`, { headers: pennylaneHeaders(token) }));
-    const chercheBody = await cherche.json().catch(() => null) as { items?: Array<{ id: number }> } | null;
-    let id: number | null = cherche.ok ? (chercheBody?.items?.[0]?.id ?? null) : null;
-    if (id == null) {
-      const cree = await appelerPennylane(() => fetch(`${PENNYLANE_BASE}/suppliers`, {
-        method: 'POST', headers: { ...pennylaneHeaders(token), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: FOURNISSEUR_GENERIQUE }),
-      }));
-      const creeBody = await cree.json().catch(() => null) as Record<string, unknown> | null;
-      if (!cree.ok || creeBody?.id == null) return await echec(`Pennylane n’a pas créé le fournisseur « ${FOURNISSEUR_GENERIQUE} ».`, cree.status, creeBody);
-      id = Number(creeBody.id);
-    }
-    fournisseurPennylaneId = String(id);
-    // On le garde aussi dans le site (la synchro Pennylane le retrouvera par son n°).
-    await service.from('suppliers').insert({ company_id: acces.companyId, name: FOURNISSEUR_GENERIQUE, pennylane_id: fournisseurPennylaneId, active: true });
-  }
+  const { data: societe } = await service.from('companies').select('pennylane_depot_email').eq('id', acces.companyId).maybeSingle();
+  const to = (societe?.pennylane_depot_email ?? '').trim();
+  if (!to) return await echec('Adresse de dépôt Pennylane non renseignée (Pennylane › Paramètres › Transmission des factures).');
 
-  // 1) Le fichier, depuis le stockage.
+  const { data: gtok } = await service.from('google_drive_tokens').select('refresh_token').eq('company_id', acces.companyId).maybeSingle();
+  if (!gtok?.refresh_token) return await echec('Compte Google non connecté : connecte le Drive (avec Gmail) dans Paramètres.');
+  let acces_google: string;
+  try { acces_google = await tokenGoogle(gtok.refresh_token); }
+  catch { return await echec('Connexion Google échouée : reconnecte le Drive dans Paramètres.', 502); }
+
   const { data: blob, error: dlErr } = await service.storage.from(BUCKET).download(ticket.storage_path);
   if (dlErr || !blob) return await echec('Fichier du justificatif introuvable dans le stockage.');
 
-  // 2) Dépôt du fichier chez Pennylane.
-  const form = new FormData();
-  form.append('file', new Blob([await blob.arrayBuffer()], { type: ticket.mime_type || 'application/octet-stream' }), ticket.file_name || 'justificatif');
-  const up = await appelerPennylane(() => fetch(`${PENNYLANE_BASE}/file_attachments`, { method: 'POST', headers: pennylaneHeaders(token), body: form }));
-  const upBody = await up.json().catch(() => null) as Record<string, unknown> | null;
-  if (up.status === 429) return await echec('Pennylane limite le nombre de requêtes : réessaie dans une minute.', 429, { retry_after: up.headers.get('retry-after') });
-  if (!up.ok || !upBody?.id) return await echec('Pennylane a refusé le fichier.', up.status, upBody);
+  const jour = (ticket.date_depense ?? ticket.created_at).slice(0, 10);
+  const sujet = `Note de frais ${jour}${ticket.montant_ttc_cts ? ` — ${euros(ticket.montant_ttc_cts)}` : ''}`;
+  const corps = [
+    'Justificatif envoyé depuis le site MCA Logistics.', '',
+    `Date : ${jour}`,
+    ticket.montant_ttc_cts ? `Montant TTC : ${euros(ticket.montant_ttc_cts)}` : '',
+    ticket.note ? `Note : ${ticket.note}` : '',
+  ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n');
+  const raw = construireMime(to, sujet, corps, [{
+    filename: ticket.file_name || 'justificatif',
+    mime: ticket.mime_type || 'application/octet-stream',
+    base64: enBase64(new Uint8Array(await blob.arrayBuffer())),
+  }]);
 
-  // 3) Import comme facture fournisseur « à traiter ».
-  const imp = await appelerPennylane(() => fetch(`${PENNYLANE_BASE}/supplier_invoices/import`, {
-    method: 'POST',
-    headers: { ...pennylaneHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify(corpsImportFournisseur({
-      fileAttachmentId: upBody.id as number | string,
-      supplierPennylaneId: fournisseurPennylaneId,
-      date: (ticket.date_depense ?? ticket.created_at).slice(0, 10),
-      libelle: ticket.note || fournisseurNom,
-      ttcCts: ticket.montant_ttc_cts,
-      tauxPct: ticket.tva_rate != null ? Number(ticket.tva_rate) : TAUX_PAR_DEFAUT,
-    })),
-  }));
-  const impBody = await imp.json().catch(() => null) as Record<string, unknown> | null;
-  if (imp.status === 429) return await echec('Pennylane limite le nombre de requêtes : réessaie dans une minute.', 429, { retry_after: imp.headers.get('retry-after') });
-  if (!imp.ok) return await echec('Pennylane a refusé l’import de la facture.', imp.status, impBody);
+  const rep = await envoyerMail(acces_google, raw);
+  if (!rep.ok) {
+    const indice = rep.status === 403 ? ' (scope Gmail manquant : reconnecte le Drive pour autoriser l’envoi de mails)' : '';
+    return await echec(`Envoi du mail échoué (${rep.status})${indice}`, 502);
+  }
 
-  const pennylaneId = impBody?.id != null ? String(impBody.id) : null;
   await service.from('receipts_inbox')
-    .update({ pennylane_envoye_le: new Date().toISOString(), pennylane_id: pennylaneId, pennylane_erreur: null })
+    .update({ pennylane_envoye_le: new Date().toISOString(), pennylane_id: null, pennylane_erreur: null })
     .eq('id', ticket.id);
-  return jsonResponse({ ok: true, data: { pennylane_id: pennylaneId } });
+  return jsonResponse({ ok: true, data: { to } });
 });

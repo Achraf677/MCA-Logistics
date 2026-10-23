@@ -22,8 +22,7 @@
 - Cloche : « tickets à traiter » ouvre Justificatifs.
 
 ## 2c. Envoi vers Pennylane (22/10/2026)
-- « Valider » envoie le justificatif dans la liste « à traiter » de Pennylane : Edge `pennylane-justificatif` (POST `/file_attachments` puis `/supplier_invoices/import` avec `file_attachment_id`), suivi sur le ticket (`receipts_inbox.pennylane_envoye_le` / `pennylane_id` / `pennylane_erreur`, migration `20261022140000` appliquée). Échec = le ticket reste validé, le tiroir affiche l'erreur + « Envoyer à Pennylane ».
-- Contrat Pennylane (vérifié par les erreurs de l'API, 23/10/2026) : droits de la clé `file_attachments:all` + `supplier_invoices:all` ; l'import exige `supplier_id`, `date`, `deadline`, `currency_amount_before_tax`, `currency_amount`, `currency_tax`, `invoice_lines`. Décision du 23/10/2026 (pas d'adresse e-mail de dépôt) : seul le **montant TTC** est exigé ; sans fournisseur choisi → fournisseur générique **« Note de frais »** (cherché / créé chez Pennylane puis gardé dans `suppliers`), sans TVA choisie → **0 %** (HT = TTC, à corriger dans « à traiter » de Pennylane) ; fournisseur et TVA restent facultatifs dans le tiroir ; colonnes `receipts_inbox.supplier_id` / `tva_rate` (migration `20261023090000`). Les noms de champs des lignes (`label`, `quantity`, `unit`, `raw_currency_unit_price`, `vat_rate`, `currency_amount`, `currency_tax`) sont à confirmer au premier envoi réel.
+- « Valider » envoie le justificatif PAR MAIL à l'adresse de dépôt Pennylane (`companies.pennylane_depot_email`, Paramètres Pennylane › Transmission des factures) avec le fichier en pièce jointe : il arrive dans « À traiter » de la compta, Pennylane lit montant / TVA / fournisseur. Edge `pennylane-justificatif` (v9) via Gmail du compte Google connecté (`_shared/gmail.ts`, scope gmail.send : reconnecter le Drive si besoin). L'API d'import fournisseur (`/supplier_invoices/import`) rangeait la facture côté gestion seulement : abandonnée le 23/10/2026.
 - « Créer la charge » ne l'envoie PAS (sinon doublon : la synchro ramènerait la facture Pennylane en charge). Une dépense envoyée à Pennylane revient comme charge par la synchro habituelle.
 
 ## 3. Reste (F2b → F4, décisions du 22/10/2026)
@@ -38,4 +37,3 @@
 - Charges : mois ouverts / repliés, filtre de dates, export CSV, « Voir la liste » des charges hors Pennylane.
 - Cloche : plus d'alerte « mouvements à rapprocher » ; l'alerte factures en retard ouvre Livraisons.
 
-- Pennylane import fournisseur : codes TVA propres (`FR_200`, `FR_100`, `FR_55`, `FR_21`) ≠ facture client (`FR_000` refusé le 23/10/2026) ; 0 % = `exempt` (à confirmer au 1er envoi) ; erreur gardée sur 4000 caractères.
