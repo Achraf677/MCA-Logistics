@@ -35,6 +35,15 @@ export interface TicketInbox {
   /** Ce que Pennylane exige pour l'import : fournisseur du site (qui porte le n° Pennylane) et taux de TVA (%). */
   supplier_id?: string | null
   tva_rate?: number | null
+  /** Lecture IA du ticket (Edge `lire-ticket`, migration 20261023110000) : ce qui a été lu et prérempli. */
+  ocr_lecture?: LectureTicketIa | null
+  ocr_lu_le?: string | null
+}
+
+export interface LectureTicketIa {
+  lu?: { fournisseur: string | null; date: string | null; total_ttc_cts: number | null; taux_tva: number | null; categorie: string | null } | null
+  rempli?: string[]
+  raison?: string
 }
 
 /** Détails d'une dépense déclarée avec son justificatif. */
@@ -233,4 +242,13 @@ export async function envoyerVersPennylane(ticketId: string, forcer = false): Pr
     return { ok: false, message: echec?.message ?? "Envoi impossible" }
   }
   return { ok: true, message: null }
+}
+
+/**
+ * Fait lire le ticket par l'IA (Edge `lire-ticket`) : les cases vides du justificatif sont préremplies côté serveur,
+ * rien de ce qui est déjà saisi n'est écrasé. Une panne n'est jamais bloquante (renvoie `false`).
+ */
+export async function lireTicketIa(ticketId: string): Promise<boolean> {
+  const { data, error } = await supabase.functions.invoke('lire-ticket', { body: { ticket_id: ticketId } })
+  return !error && !!data?.ok
 }

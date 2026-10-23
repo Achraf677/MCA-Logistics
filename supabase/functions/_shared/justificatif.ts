@@ -14,7 +14,7 @@
 // limitée. Celle stockée dans `charges.receipt_url` au moment du sync expire —
 // la télécharger plus tard renvoie 400. On redemande l'URL à Pennylane juste
 // avant de lire.
-import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from './pennylane.ts';
+import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from './pennylaneBase.ts';
 
 /** Au-delà, on n'essaie même pas : ni un ticket ni une facture ne pèse ça. */
 const TAILLE_MAX_OCTETS = 15 * 1024 * 1024;
