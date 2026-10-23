@@ -9,6 +9,7 @@
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
+import { jpegVersPdf } from '../_shared/jpegPdf.ts';
 import { construireMime, enBase64, envoyerMail, tokenGoogle } from '../_shared/gmail.ts';
 
 const BUCKET = 'documents';
@@ -66,11 +67,13 @@ Deno.serve(async (req) => {
     ticket.montant_ttc_cts ? `Montant TTC : ${euros(ticket.montant_ttc_cts)}` : '',
     ticket.note ? `Note : ${ticket.note}` : '',
   ].filter((l, i, a) => l !== '' || a[i - 1] !== '').join('\n');
-  const raw = construireMime(to, sujet, corps, [{
-    filename: ticket.file_name || 'justificatif',
-    mime: ticket.mime_type || 'application/octet-stream',
-    base64: enBase64(new Uint8Array(await blob.arrayBuffer())),
-  }]);
+  // Pennylane ne lit que les PDF reçus par mail (une JPEG jointe n'arrive pas dans « À traiter ») : la photo devient un PDF.
+  const octets = new Uint8Array(await blob.arrayBuffer());
+  const pdf = jpegVersPdf(octets);
+  const piece = pdf
+    ? { filename: `justificatif-${jour}.pdf`, mime: 'application/pdf', base64: enBase64(pdf) }
+    : { filename: ticket.file_name || 'justificatif', mime: ticket.mime_type || 'application/octet-stream', base64: enBase64(octets) };
+  const raw = construireMime(to, sujet, corps, [piece]);
 
   const rep = await envoyerMail(acces_google, raw);
   if (!rep.ok) {

@@ -22,7 +22,7 @@
 - Cloche : « tickets à traiter » ouvre Justificatifs.
 
 ## 2c. Envoi vers Pennylane (22/10/2026)
-- « Valider » envoie le justificatif PAR MAIL à l'adresse de dépôt Pennylane (`companies.pennylane_depot_email`, Paramètres Pennylane › Transmission des factures) avec le fichier en pièce jointe : il arrive dans « À traiter » de la compta, Pennylane lit montant / TVA / fournisseur. Edge `pennylane-justificatif` (v9) via Gmail du compte Google connecté (`_shared/gmail.ts`, scope gmail.send seul ; connexion « Envoi d’e-mails (Gmail) » dans Paramètres, Drive retiré le 23/10/2026 (60 anciens justificatifs restent lisibles par leur ancien lien, non rapatriés)). L'API d'import fournisseur (`/supplier_invoices/import`) rangeait la facture côté gestion seulement : abandonnée le 23/10/2026.
+- « Valider » envoie le justificatif PAR MAIL à l'adresse de dépôt Pennylane (`companies.pennylane_depot_email`, Paramètres Pennylane › Transmission des factures) avec le fichier en pièce jointe : il arrive dans « À traiter » de la compta, Pennylane lit montant / TVA / fournisseur. Edge `pennylane-justificatif` (v12 : photo JPEG convertie en PDF avant envoi, `_shared/jpegPdf.ts`, car Pennylane ignore une JPEG jointe) via Gmail du compte Google connecté (`_shared/gmail.ts`, scope gmail.send seul ; connexion « Envoi d’e-mails (Gmail) » dans Paramètres, Drive retiré le 23/10/2026 (60 anciens justificatifs restent lisibles par leur ancien lien, non rapatriés)). L'API d'import fournisseur (`/supplier_invoices/import`) rangeait la facture côté gestion seulement : abandonnée le 23/10/2026.
 - « Créer la charge » ne l'envoie PAS (sinon doublon : la synchro ramènerait la facture Pennylane en charge). Une dépense envoyée à Pennylane revient comme charge par la synchro habituelle.
 
 ## 3. Reste (F2b → F4, décisions du 22/10/2026)
@@ -36,4 +36,5 @@
 - Trésorerie : changer de filtre, chercher « total », ouvrir un mois ancien.
 - Charges : mois ouverts / repliés, filtre de dates, export CSV, « Voir la liste » des charges hors Pennylane.
 - Cloche : plus d'alerte « mouvements à rapprocher » ; l'alerte factures en retard ouvre Livraisons.
-
+- Justificatif ouvert : « Remettre à traiter » (validé ou refusé, repart de zéro) et « Supprimer » (confirmation ; droit finance.charges delete) dans le tiroir.
+- **Lecture IA du ticket (23/10/2026)** : à l'ouverture d'un justificatif « à traiter » jamais lu, Edge `lire-ticket` (vision Mistral, gratuit) lit le ticket et remplit SEULEMENT les cases vides : montant TTC, date, catégorie, TVA (un seul taux), fournisseur (si un seul fournisseur du site correspond). Rien de saisi par le salarié n'est écrasé ; champ douteux (confiance < 0,7) ou invraisemblable (> 5 000 €, date future) = vide. Résultat gardé dans `receipts_inbox.ocr_lecture` / `ocr_lu_le` (migration `20261023110000`) ; bandeau « Prérempli d'après le ticket » + alerte si le montant lu diffère du montant saisi. Règles pures : `_shared/lectureTicket.ts`.

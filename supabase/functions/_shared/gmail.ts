@@ -23,6 +23,9 @@ export function enBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 
+/** Lignes de 76 caractères (RFC 2045) : certains lecteurs de mails ignorent une pièce jointe en une seule ligne. */
+const coupe76 = (b64: string) => b64.replace(/(.{76})/g, '$1\r\n');
+
 const utf8 = (s: string) => btoa(unescape(encodeURIComponent(s)));
 
 /** Message MIME multipart/mixed, encodé base64url pour Gmail. */
@@ -36,7 +39,7 @@ export function construireMime(to: string, sujet: string, corps: string, pieces:
   ];
   for (const p of pieces) {
     parts.push(`--${limite}`, `Content-Type: ${p.mime}; name="${nom(p.filename)}"`, 'Content-Transfer-Encoding: base64',
-      `Content-Disposition: attachment; filename="${nom(p.filename)}"`, '', p.base64);
+      `Content-Disposition: attachment; filename="${nom(p.filename)}"`, '', coupe76(p.base64));
   }
   parts.push(`--${limite}--`, '');
   return utf8(parts.join('\r\n')).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');

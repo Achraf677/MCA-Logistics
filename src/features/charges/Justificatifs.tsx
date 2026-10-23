@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, ChevronRight, CreditCard, ExternalLink, FilePlus2, Inbox, Search, Wallet, X } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Check, ChevronRight, Sparkles, Trash2, Undo2, CreditCard, ExternalLink, FilePlus2, Inbox, Search, Wallet, X } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { supabase, useProfile } from '../../app/providers'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Drawer } from '../../shared/ui/Drawer'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Bloc, Champ } from '../../shared/ui/FicheSaisie'
@@ -13,14 +14,14 @@ import { useToast } from '../../shared/ui/useToast'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  CATEGORIES_DEPENSE, TAUX_TVA_JUSTIF, libelleCategorie, manquesValidation, montantSaisiEnCts, totalARembourser,
+  CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, TAUX_TVA_JUSTIF, libelleCategorie, manquesValidation, montantSaisiEnCts, totalARembourser,
   type CategorieDepense,
 } from '../../shared/lib/depenses'
 import { getCategories } from '../../shared/lib/categories.queries'
 import { indexerFichierExistant } from '../../shared/lib/documents.queries'
 import { grouperParMois } from '../../shared/lib/mois'
 import {
-  classerTicket, corrigerTicket, envoyerVersPennylane, listerTickets, marquerRembourse, refuserDepense, urlTicket, type TicketInbox,
+  classerTicket, corrigerTicket, envoyerVersPennylane, lireTicketIa, listerTickets, remettreATraiter, supprimerDepense, marquerRembourse, refuserDepense, urlTicket, type TicketInbox,
 } from '../../shared/lib/receiptsInbox.queries'
 import type { ChargeCategoryRow } from '../../shared/types/categories'
 import { DrawerCharge } from './DrawerCharge'
@@ -67,6 +68,8 @@ export function Justificatifs() {
   const [ouvertId, setOuvertId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [source, setSource] = useState<TicketInbox | null>(null)
+  const [lectureEnCours, setLectureEnCours] = useState(false)
+  const dejaLus = useRef(new Set<string>())
 
   const charger = useCallback(async () => {
     setLoading(true)
@@ -94,6 +97,14 @@ export function Justificatifs() {
   const parMois = useMemo(() => grouperParMois(visibles, t => jourJustif(t)), [visibles])
   const nomDe = (t: TicketInbox) => (t.uploaded_by ? (noms[t.uploaded_by] ?? 'Déclarant inconnu') : 'Déclarant inconnu')
   const ouvert = tickets.find(t => t.id === ouvertId) ?? null
+
+  // Ouverture d'un justificatif pas encore lu : l'IA lit le ticket et préremplit les cases vides, puis on recharge.
+  useEffect(() => {
+    if (!ouvert || !peutEcrire || ouvert.statut !== 'a_traiter' || ouvert.ocr_lu_le || dejaLus.current.has(ouvert.id)) return
+    dejaLus.current.add(ouvert.id)
+    setLectureEnCours(true)
+    void lireTicketIa(ouvert.id).then(async ok => { if (ok) await charger() }).finally(() => setLectureEnCours(false))
+  }, [ouvert, peutEcrire, charger])
 
   const ouvrirFichier = async (t: TicketInbox) => {
     const url = await urlTicket(t)
@@ -247,13 +258,16 @@ export function Justificatifs() {
 
       <Drawer open={ouvert != null} onClose={() => setOuvertId(null)} width="max-w-[40rem]" title="Justificatif">
         {ouvert && (
-          <FicheJustificatif key={ouvert.id} t={ouvert} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy} fournisseurs={fournisseurs}
+          <FicheJustificatif key={`${ouvert.id}-${ouvert.ocr_lu_le ?? ''}`} t={ouvert} lectureEnCours={lectureEnCours} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy} fournisseurs={fournisseurs}
             onFichier={() => void ouvrirFichier(ouvert)}
             onEnregistrer={maj => void agir(() => corrigerTicket(ouvert.id, maj), 'Justificatif corrigé')}
             onValider={() => void valider(ouvert)}
             onCreerCharge={() => setSource(ouvert)}
             onRefuser={motif => void agir(() => refuserDepense(ouvert.id, motif), 'Dépense refusée : le déclarant voit le motif', true)}
-            onRembourser={date => void agir(() => marquerRembourse(ouvert.id, date), date ? 'Remboursée : le salarié le voit' : 'Remboursement annulé')} />
+            onRembourser={date => void agir(() => marquerRembourse(ouvert.id, date), date ? 'Remboursée : le salarié le voit' : 'Remboursement annulé')}
+            peutSupprimer={can('finance.charges', 'delete')}
+            onRemettre={() => void agir(() => remettreATraiter(ouvert.id), 'Remis à traiter', true)}
+            onSupprimer={() => void agir(() => supprimerDepense(ouvert), 'Justificatif supprimé', true)} />
         )}
       </Drawer>
 
@@ -288,6 +302,26 @@ export function Justificatifs() {
   )
 }
 
+/** Ce que l'IA a lu sur le ticket : cases préremplies à vérifier, et alerte si le montant lu diffère du montant saisi. */
+function BandeauLecture({ t, lectureEnCours, montantSaisi }: { t: TicketInbox; lectureEnCours: boolean; montantSaisi: number | null }) {
+  const l = t.ocr_lecture
+  const rempli = (l?.rempli ?? []).map(c => LIBELLE_CHAMP_LU[c] ?? c)
+  const luCts = l?.lu?.total_ttc_cts ?? null
+  const ecart = luCts != null && montantSaisi != null && luCts !== montantSaisi
+  return (
+    <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2 text-sm flex flex-col gap-1">
+      <div className="flex items-center gap-2 text-[var(--text)]">
+        <Sparkles size={15} className="text-[var(--brand)] shrink-0" />
+        {lectureEnCours ? 'Lecture du ticket en cours…'
+          : rempli.length ? `Prérempli d’après le ticket : ${rempli.join(', ')}. Vérifie avant de valider.`
+          : l?.raison ? `Ticket non lu : ${l.raison}.` : 'Ticket lu : rien à préremplir.'}
+      </div>
+      {ecart && <div className="text-[var(--warning)]">Le ticket indique {formatMoney(luCts!)}, pas {formatMoney(montantSaisi!)}.</div>}
+      {l?.lu?.fournisseur && !lectureEnCours && <div className="text-xs text-[var(--text-muted)]">Fournisseur lu : {l.lu.fournisseur}</div>}
+    </div>
+  )
+}
+
 /** Moyen de paiement, sobre : pictogramme + libellé (pas de grosse pastille). */
 function Paiement({ moyen }: { moyen: string | null | undefined }) {
   if (moyen === 'personnel') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><Wallet size={13} className="text-[var(--text-muted)]" /> Note de frais</span>
@@ -296,8 +330,9 @@ function Paiement({ moyen }: { moyen: string | null | undefined }) {
 }
 
 /** Tiroir d'un justificatif : photo, détails modifiables, suivi, et la barre d'actions en bas. */
-function FicheJustificatif({ t, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onCreerCharge, onRefuser, onRembourser }: {
+function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onCreerCharge, onRefuser, onRembourser, peutSupprimer, onRemettre, onSupprimer }: {
   t: TicketInbox
+  lectureEnCours: boolean
   nom: string
   peutEcrire: boolean
   busy: boolean
@@ -308,6 +343,9 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, fournisseurs, onFichier, 
   onCreerCharge: () => void
   onRefuser: (motif: string) => void
   onRembourser: (date: string | null) => void
+  peutSupprimer: boolean
+  onRemettre: () => void
+  onSupprimer: () => void
 }) {
   const [montant, setMontant] = useState(t.montant_ttc_cts != null ? (t.montant_ttc_cts / 100).toFixed(2).replace('.', ',') : '')
   const [date, setDate] = useState(t.date_depense ?? t.created_at.slice(0, 10))
@@ -316,6 +354,7 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, fournisseurs, onFichier, 
   const [fournisseur, setFournisseur] = useState(t.supplier_id ?? '')
   const [tva, setTva] = useState(t.tva_rate != null ? String(t.tva_rate) : '')
   const [refus, setRefus] = useState(false)
+  const [suppression, setSuppression] = useState(false)
   const [motif, setMotif] = useState('')
   const [url, setUrl] = useState<string | null>(null)
 
@@ -348,6 +387,10 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, fournisseurs, onFichier, 
         <div className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-deep)] flex items-center justify-center h-72 overflow-hidden">
           {url ? <img src={url} alt="Justificatif" className="max-h-full max-w-full object-contain" /> : <Skeleton className="w-full h-full" />}
         </div>
+      )}
+
+      {t.statut === 'a_traiter' && (lectureEnCours || t.ocr_lecture) && (
+        <BandeauLecture t={t} lectureEnCours={lectureEnCours} montantSaisi={Number.isNaN(cts) ? null : cts} />
       )}
 
       <Bloc titre="Détails">
@@ -436,10 +479,27 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, fournisseurs, onFichier, 
               )}
               {t.statut === 'traite' && !noteDeFrais && <span className="text-sm text-[var(--text-muted)]">Justificatif validé.</span>}
               {t.statut === 'ignore' && <span className="text-sm text-[var(--text-muted)]">Dépense refusée.</span>}
+              {t.statut !== 'a_traiter' && (
+                <Button variant="secondary" onClick={onRemettre} disabled={busy}><Undo2 size={15} /> Remettre à traiter</Button>
+              )}
+              {peutSupprimer && (
+                <Button variant="ghost" className="ml-auto text-[var(--danger)]" onClick={() => setSuppression(true)} disabled={busy}><Trash2 size={15} /> Supprimer</Button>
+              )}
             </div>
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={suppression}
+        title="Supprimer ce justificatif ?"
+        message={t.pennylane_envoye_le
+          ? 'Le ticket et sa photo seront effacés du site. Il a déjà été envoyé à Pennylane : il y reste, à supprimer là-bas si besoin.'
+          : 'Le ticket et sa photo seront effacés du site. Cette action est définitive.'}
+        confirmLabel="Supprimer"
+        onConfirm={() => { setSuppression(false); onSupprimer() }}
+        onCancel={() => setSuppression(false)}
+      />
     </div>
   )
 }
