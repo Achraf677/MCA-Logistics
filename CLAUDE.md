@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **22/10/2026** (refonte par onglet : Livraisons mergée PR #80 ; Planning / Tournées en cours).
+> Dernière mise à jour : **23/10/2026** (refonte par onglet : Livraisons mergée PR #80 ; Planning / Tournées en cours).
 
 ---
 
@@ -238,6 +238,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   documents · Facturation).
 
 ## 12. En cours / à décider (mettre à jour à chaque session)
+- **Drive retiré (23/10/2026, demande de l'utilisateur)** : plus d'écran ni de rapatriement Drive ; Paramètres › « Envoi d'e-mails (Gmail) » (`GmailConnect`, Edge `drive-oauth-start` v16 = scope gmail.send seul, noms d'Edge / table `google_drive_tokens` gardés). Justificatifs validés → mail à `companies.pennylane_depot_email` (Edge `pennylane-justificatif` v10). 14 Edge `drive-*` restent déployées sans appel ; messages d'erreur de `send-client-email` citent encore « Drive » (à reformuler au prochain déploiement).
 - **CHANTIER PRIORITAIRE — Uniformisation Pennylane ↔ site** (demandé le 02/10/2026) : plan
   `mca-spec/UNIFORMISATION-PENNYLANE.md` (écarts cités fichier:ligne, lots U1 → U8). Règle :
   une seule source par règle (`_shared/` + miroir front testé) ; tout document envoyé à

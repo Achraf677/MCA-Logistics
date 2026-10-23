@@ -1,24 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
-import { CheckCircle2, HardDrive } from 'lucide-react'
+import { CheckCircle2, Mail } from 'lucide-react'
 import { supabase } from '../../app/providers'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 
 /**
- * Connexion Google Drive — panneau TRANSITOIRE.
- *
- * Le site ne stocke plus rien dans Drive : tout part dans Supabase Storage.
- * Ce panneau ne sert qu'a une chose, rebrancher Drive le temps de RAPATRIER
- * les anciens justificatifs (voir MigrationDrive juste en dessous), puis on
- * debranche et le panneau disparait avec le reste de Drive.
- *
- * Il affiche le COMPTE connecte, et pas seulement « connecte ». C'est le seul
- * moyen de voir qu'on s'est rebranche sur la mauvaise boite Google : les
- * anciens fichiers appartiennent a un compte precis, et un rapatriement lance
- * depuis un autre compte renvoie « fichier introuvable » sur chaque ligne sans
- * dire pourquoi.
+ * Connexion Gmail : le site envoie par mail depuis ce compte Google (justificatifs vers Pennylane, factures aux
+ * clients). Affiche le compte connecté, pour voir qu'on est branché sur la bonne boîte.
  */
-export function DriveConnect() {
+export function GmailConnect() {
   const [chargement, setChargement] = useState(true)
   const [connecte, setConnecte] = useState(false)
   const [email, setEmail] = useState<string | null>(null)
@@ -46,7 +36,7 @@ export function DriveConnect() {
     if (drive) {
       window.history.replaceState({}, '', '/systeme?tab=parametres')
       if (drive === 'error') {
-        setErreur(`Connexion Drive échouée (${p.get('reason') ?? 'raison inconnue'})`)
+        setErreur(`Connexion Gmail échouée (${p.get('reason') ?? 'raison inconnue'})`)
       }
     }
     void relireStatut()
@@ -58,7 +48,7 @@ export function DriveConnect() {
       body: { origin: window.location.origin },
     })
     if (error || !data?.url) {
-      setErreur('Impossible de démarrer la connexion Drive')
+      setErreur('Impossible de démarrer la connexion Gmail')
       return
     }
     window.location.href = data.url
@@ -70,7 +60,7 @@ export function DriveConnect() {
     const { data, error } = await supabase.functions.invoke('drive-disconnect')
     setDeconnexion(false)
     if (error || !data?.ok) {
-      setErreur('Déconnexion Drive impossible')
+      setErreur('Déconnexion Gmail impossible')
       return
     }
     setConfirmation(false)
@@ -81,7 +71,7 @@ export function DriveConnect() {
     <div className="glass rounded-[var(--r-xl)] overflow-hidden">
       <div className="px-4 py-2.5 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
         <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
-          Connexion Google Drive
+          Envoi d’e-mails (Gmail)
         </span>
       </div>
 
@@ -93,7 +83,7 @@ export function DriveConnect() {
             <div className="flex items-center gap-2.5 min-w-0">
               <CheckCircle2 size={18} className="text-[var(--success,#16a34a)] shrink-0" />
               <div className="min-w-0">
-                <p className="text-[var(--fs-sm)] font-medium text-[var(--text)]">Drive connecté</p>
+                <p className="text-[var(--fs-sm)] font-medium text-[var(--text)]">Gmail connecté</p>
                 <p className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">
                   {email ?? 'compte inconnu — reconnectez-vous pour l’afficher'}
                 </p>
@@ -116,20 +106,19 @@ export function DriveConnect() {
         ) : (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
-              <HardDrive size={18} className="text-[var(--text-muted)] shrink-0" />
+              <Mail size={18} className="text-[var(--text-muted)] shrink-0" />
               <p className="text-[var(--fs-sm)] text-[var(--text-muted)]">
-                Aucun Drive connecté.
+                Aucun Gmail connecté.
               </p>
             </div>
             <Button variant="primary" size="compact" onClick={connecter} className="shrink-0">
-              Connecter Google Drive
+              Connecter Gmail
             </Button>
           </div>
         )}
 
         <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
-          Connectez le compte Google qui contient les anciens justificatifs, rapatriez-les
-          ci-dessous, puis déconnectez. Le site n’écrit plus rien dans Drive.
+          Le site envoie les justificatifs à Pennylane et les factures aux clients depuis ce compte.
         </p>
 
         {erreur && <p className="text-[var(--fs-xs)] text-[var(--danger,#dc2626)]">{erreur}</p>}
@@ -137,8 +126,8 @@ export function DriveConnect() {
 
       <ConfirmDialog
         open={confirmation}
-        title="Se déconnecter de Google Drive ?"
-        message="L’accès sera coupé pour toute la société. Les fichiers déjà présents dans Drive ne sont pas supprimés."
+        title="Se déconnecter de Gmail ?"
+        message="L’envoi d’e-mails par le site sera coupé pour toute la société."
         confirmLabel="Se déconnecter"
         onConfirm={deconnecter}
         onCancel={() => setConfirmation(false)}

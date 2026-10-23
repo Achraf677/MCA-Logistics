@@ -5,7 +5,7 @@
 //
 // POST { ticket_id, forcer? } → { ok: true, data: { to } } | { ok: false, error }
 // Droit : président ou finance.charges / update. Idempotent (`pennylane_envoye_le`), sauf `forcer: true`.
-// Canal : Gmail API du compte Google connecté (Paramètres › Drive, scope gmail.send).
+// Canal : Gmail API du compte Google connecté (Paramètres › Gmail, scope gmail.send).
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
@@ -50,10 +50,10 @@ Deno.serve(async (req) => {
   if (!to) return await echec('Adresse de dépôt Pennylane non renseignée (Pennylane › Paramètres › Transmission des factures).');
 
   const { data: gtok } = await service.from('google_drive_tokens').select('refresh_token').eq('company_id', acces.companyId).maybeSingle();
-  if (!gtok?.refresh_token) return await echec('Compte Google non connecté : connecte le Drive (avec Gmail) dans Paramètres.');
+  if (!gtok?.refresh_token) return await echec('Gmail non connecté : connecte-le dans Paramètres.');
   let acces_google: string;
   try { acces_google = await tokenGoogle(gtok.refresh_token); }
-  catch { return await echec('Connexion Google échouée : reconnecte le Drive dans Paramètres.', 502); }
+  catch { return await echec('Connexion Gmail échouée : reconnecte-le dans Paramètres.', 502); }
 
   const { data: blob, error: dlErr } = await service.storage.from(BUCKET).download(ticket.storage_path);
   if (dlErr || !blob) return await echec('Fichier du justificatif introuvable dans le stockage.');
@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
 
   const rep = await envoyerMail(acces_google, raw);
   if (!rep.ok) {
-    const indice = rep.status === 403 ? ' (scope Gmail manquant : reconnecte le Drive pour autoriser l’envoi de mails)' : '';
+    const indice = rep.status === 403 ? ' (autorisation d’envoi manquante : reconnecte Gmail dans Paramètres)' : '';
     return await echec(`Envoi du mail échoué (${rep.status})${indice}`, 502);
   }
 

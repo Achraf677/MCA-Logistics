@@ -13,8 +13,7 @@ import type { CompanyData } from './parametres.queries'
 import { ThemeSelector } from '../../shared/theme/ThemeSelector'
 import { GestionCategories } from './GestionCategories'
 import { GestionProduits } from './GestionProduits'
-import { MigrationDrive, useDocsDriveRestants } from './MigrationDrive'
-import { DriveConnect } from './DriveConnect'
+import { GmailConnect } from './GmailConnect'
 import { TestLectureAuto } from './TestLectureAuto'
 import { Field } from '../../shared/ui/Field'
 
@@ -37,7 +36,6 @@ export function Parametres() {
   const [saving, setSaving]       = useState(false)
   const [dirty, setDirty]         = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
-  const { restants: restantsDrive } = useDocsDriveRestants()
   const [params, setParams] = useSearchParams()
   const volet = (params.get('volet') ?? 'societe') as Volet
   const choisirVolet = (v: Volet) => {
@@ -393,17 +391,7 @@ export function Parametres() {
               <TestLectureAuto />
             </Section>
 
-            {/* Bloc Drive, TRANSITOIRE et solidaire : la connexion au compte
-                Google et le rapatriement des anciens justificatifs vivent et
-                meurent ensemble. Zero fichier restant, plus rien a l'ecran —
-                on ne laisse pas trainer un bouton « Connecter Google Drive »
-                sur un site qui n'ecrit plus une seule ligne dans Drive. */}
-            {(restantsDrive ?? 0) > 0 && (
-              <>
-                <DriveConnect />
-                <MigrationDrive />
-              </>
-            )}
+            <GmailConnect />
 
                           </>
             )}
