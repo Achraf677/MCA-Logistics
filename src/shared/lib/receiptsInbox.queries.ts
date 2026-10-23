@@ -195,6 +195,16 @@ export async function classerTicket(
     .eq('id', id)
 }
 
+/** Remet un justificatif validé ou refusé « à traiter » (bureau) : repart de zéro, sans trace d'envoi ni de refus. */
+export async function remettreATraiter(id: string) {
+  return supabase.from('receipts_inbox')
+    .update({
+      statut: 'a_traiter', charge_id: null, traite_at: null, motif_refus: null, rembourse_le: null,
+      pennylane_envoye_le: null, pennylane_id: null, pennylane_erreur: null,
+    })
+    .eq('id', id)
+}
+
 // ── Dépenses du déclarant (lot S1) ───────────────────────────────────────────
 
 /** Mes dépenses (RLS : celles que j'ai déposées), plus récentes d'abord. */

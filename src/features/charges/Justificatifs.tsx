@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Check, ChevronRight, Sparkles, CreditCard, ExternalLink, FilePlus2, Inbox, Search, Wallet, X } from 'lucide-react'
+import { Check, ChevronRight, Sparkles, Trash2, Undo2, CreditCard, ExternalLink, FilePlus2, Inbox, Search, Wallet, X } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { supabase, useProfile } from '../../app/providers'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
+import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Drawer } from '../../shared/ui/Drawer'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Bloc, Champ } from '../../shared/ui/FicheSaisie'
@@ -20,7 +21,7 @@ import { getCategories } from '../../shared/lib/categories.queries'
 import { indexerFichierExistant } from '../../shared/lib/documents.queries'
 import { grouperParMois } from '../../shared/lib/mois'
 import {
-  classerTicket, corrigerTicket, envoyerVersPennylane, lireTicketIa, listerTickets, marquerRembourse, refuserDepense, urlTicket, type TicketInbox,
+  classerTicket, corrigerTicket, envoyerVersPennylane, lireTicketIa, listerTickets, remettreATraiter, supprimerDepense, marquerRembourse, refuserDepense, urlTicket, type TicketInbox,
 } from '../../shared/lib/receiptsInbox.queries'
 import type { ChargeCategoryRow } from '../../shared/types/categories'
 import { DrawerCharge } from './DrawerCharge'
@@ -263,7 +264,10 @@ export function Justificatifs() {
             onValider={() => void valider(ouvert)}
             onCreerCharge={() => setSource(ouvert)}
             onRefuser={motif => void agir(() => refuserDepense(ouvert.id, motif), 'Dépense refusée : le déclarant voit le motif', true)}
-            onRembourser={date => void agir(() => marquerRembourse(ouvert.id, date), date ? 'Remboursée : le salarié le voit' : 'Remboursement annulé')} />
+            onRembourser={date => void agir(() => marquerRembourse(ouvert.id, date), date ? 'Remboursée : le salarié le voit' : 'Remboursement annulé')}
+            peutSupprimer={can('finance.charges', 'delete')}
+            onRemettre={() => void agir(() => remettreATraiter(ouvert.id), 'Remis à traiter', true)}
+            onSupprimer={() => void agir(() => supprimerDepense(ouvert), 'Justificatif supprimé', true)} />
         )}
       </Drawer>
 
@@ -326,7 +330,7 @@ function Paiement({ moyen }: { moyen: string | null | undefined }) {
 }
 
 /** Tiroir d'un justificatif : photo, détails modifiables, suivi, et la barre d'actions en bas. */
-function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onCreerCharge, onRefuser, onRembourser }: {
+function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onCreerCharge, onRefuser, onRembourser, peutSupprimer, onRemettre, onSupprimer }: {
   t: TicketInbox
   lectureEnCours: boolean
   nom: string
@@ -339,6 +343,9 @@ function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisse
   onCreerCharge: () => void
   onRefuser: (motif: string) => void
   onRembourser: (date: string | null) => void
+  peutSupprimer: boolean
+  onRemettre: () => void
+  onSupprimer: () => void
 }) {
   const [montant, setMontant] = useState(t.montant_ttc_cts != null ? (t.montant_ttc_cts / 100).toFixed(2).replace('.', ',') : '')
   const [date, setDate] = useState(t.date_depense ?? t.created_at.slice(0, 10))
@@ -347,6 +354,7 @@ function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisse
   const [fournisseur, setFournisseur] = useState(t.supplier_id ?? '')
   const [tva, setTva] = useState(t.tva_rate != null ? String(t.tva_rate) : '')
   const [refus, setRefus] = useState(false)
+  const [suppression, setSuppression] = useState(false)
   const [motif, setMotif] = useState('')
   const [url, setUrl] = useState<string | null>(null)
 
@@ -471,10 +479,27 @@ function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisse
               )}
               {t.statut === 'traite' && !noteDeFrais && <span className="text-sm text-[var(--text-muted)]">Justificatif validé.</span>}
               {t.statut === 'ignore' && <span className="text-sm text-[var(--text-muted)]">Dépense refusée.</span>}
+              {t.statut !== 'a_traiter' && (
+                <Button variant="secondary" onClick={onRemettre} disabled={busy}><Undo2 size={15} /> Remettre à traiter</Button>
+              )}
+              {peutSupprimer && (
+                <Button variant="ghost" className="ml-auto text-[var(--danger)]" onClick={() => setSuppression(true)} disabled={busy}><Trash2 size={15} /> Supprimer</Button>
+              )}
             </div>
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={suppression}
+        title="Supprimer ce justificatif ?"
+        message={t.pennylane_envoye_le
+          ? 'Le ticket et sa photo seront effacés du site. Il a déjà été envoyé à Pennylane : il y reste, à supprimer là-bas si besoin.'
+          : 'Le ticket et sa photo seront effacés du site. Cette action est définitive.'}
+        confirmLabel="Supprimer"
+        onConfirm={() => { setSuppression(false); onSupprimer() }}
+        onCancel={() => setSuppression(false)}
+      />
     </div>
   )
 }

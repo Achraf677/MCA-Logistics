@@ -36,4 +36,5 @@
 - Trésorerie : changer de filtre, chercher « total », ouvrir un mois ancien.
 - Charges : mois ouverts / repliés, filtre de dates, export CSV, « Voir la liste » des charges hors Pennylane.
 - Cloche : plus d'alerte « mouvements à rapprocher » ; l'alerte factures en retard ouvre Livraisons.
+- Justificatif ouvert : « Remettre à traiter » (validé ou refusé, repart de zéro) et « Supprimer » (confirmation ; droit finance.charges delete) dans le tiroir.
 - **Lecture IA du ticket (23/10/2026)** : à l'ouverture d'un justificatif « à traiter » jamais lu, Edge `lire-ticket` (vision Mistral, gratuit) lit le ticket et remplit SEULEMENT les cases vides : montant TTC, date, catégorie, TVA (un seul taux), fournisseur (si un seul fournisseur du site correspond). Rien de saisi par le salarié n'est écrasé ; champ douteux (confiance < 0,7) ou invraisemblable (> 5 000 €, date future) = vide. Résultat gardé dans `receipts_inbox.ocr_lecture` / `ocr_lu_le` (migration `20261023110000`) ; bandeau « Prérempli d'après le ticket » + alerte si le montant lu diffère du montant saisi. Règles pures : `_shared/lectureTicket.ts`.
