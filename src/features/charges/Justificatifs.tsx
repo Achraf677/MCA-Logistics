@@ -130,15 +130,6 @@ export function Justificatifs() {
     await charger()
   }
 
-  const renvoyer = async (t: TicketInbox) => {
-    setBusy(true)
-    const envoi = await envoyerVersPennylane(t.id, true)
-    setBusy(false)
-    if (envoi.ok) toast('Envoyé à Pennylane (« À traiter »)')
-    else toast(`Envoi à Pennylane échoué : ${envoi.message}`, 'error')
-    await charger()
-  }
-
   const tableau = (liste: TicketInbox[]) => (
     <>
       <table className="hidden md:table w-full text-sm">
@@ -260,7 +251,6 @@ export function Justificatifs() {
             onFichier={() => void ouvrirFichier(ouvert)}
             onEnregistrer={maj => void agir(() => corrigerTicket(ouvert.id, maj), 'Justificatif corrigé')}
             onValider={() => void valider(ouvert)}
-            onRenvoyer={() => void renvoyer(ouvert)}
             onCreerCharge={() => setSource(ouvert)}
             onRefuser={motif => void agir(() => refuserDepense(ouvert.id, motif), 'Dépense refusée : le déclarant voit le motif', true)}
             onRembourser={date => void agir(() => marquerRembourse(ouvert.id, date), date ? 'Remboursée : le salarié le voit' : 'Remboursement annulé')} />
@@ -306,7 +296,7 @@ function Paiement({ moyen }: { moyen: string | null | undefined }) {
 }
 
 /** Tiroir d'un justificatif : photo, détails modifiables, suivi, et la barre d'actions en bas. */
-function FicheJustificatif({ t, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onRenvoyer, onCreerCharge, onRefuser, onRembourser }: {
+function FicheJustificatif({ t, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onCreerCharge, onRefuser, onRembourser }: {
   t: TicketInbox
   nom: string
   peutEcrire: boolean
@@ -315,7 +305,6 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, fournisseurs, onFichier, 
   onFichier: () => void
   onEnregistrer: (maj: { montant_ttc_cts: number | null; date_depense: string | null; categorie: string | null; moyen_paiement: string | null; supplier_id: string | null; tva_rate: number | null }) => void
   onValider: () => void
-  onRenvoyer: () => void
   onCreerCharge: () => void
   onRefuser: (motif: string) => void
   onRembourser: (date: string | null) => void
@@ -415,17 +404,9 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, fournisseurs, onFichier, 
         </dl>
       </Bloc>
 
-      {t.statut === 'traite' && (
+      {t.statut === 'traite' && t.pennylane_envoye_le && (
         <Bloc titre="Pennylane">
-          {t.pennylane_envoye_le ? (
-            <p className="text-sm text-[var(--text)]">Envoyé dans « à traiter » le {new Date(t.pennylane_envoye_le).toLocaleString('fr-FR')}.</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm text-[var(--warning)]">Pas encore envoyé à Pennylane.</p>
-              {t.pennylane_erreur && <p className="text-xs text-[var(--danger)] break-words">Dernière erreur : {t.pennylane_erreur}</p>}
-              {peutEcrire && <div><Button variant="secondary" size="compact" onClick={onRenvoyer} disabled={busy}>Envoyer à Pennylane</Button></div>}
-            </div>
-          )}
+          <p className="text-sm text-[var(--text)]">Envoyé à Pennylane le {new Date(t.pennylane_envoye_le).toLocaleString('fr-FR')}.</p>
         </Bloc>
       )}
 
