@@ -1,7 +1,25 @@
 // Corps de l'import d'un justificatif (ticket, dépense) comme facture fournisseur Pennylane — PUR (aucun
 // Deno.env, aucun fetch), testé par vitest. Pennylane exige : supplier_id, date, deadline, currency_amount_before_tax,
 // currency_amount, currency_tax, invoice_lines (vérifié sur l'API le 23/10/2026).
-import { codeTvaLegal } from './lignesFacture.ts';
+
+/**
+ * Codes TVA d'une facture FOURNISSEUR chez Pennylane. Ce ne sont pas ceux d'une facture client
+ * (`lignesFacture#codeTvaLegal` : FR_055, FR_021, FR_000) : l'API fournisseur n'accepte que FR_55, FR_21, FR_100,
+ * FR_200… (énumération renvoyée par Pennylane le 23/10/2026). Clé = taux en dixièmes de point.
+ * 0 % : `exempt` (code d'exonération documenté par Pennylane) — à confirmer au premier envoi.
+ */
+const CODES_FOURNISSEUR: Record<number, string> = {
+  200: 'FR_200',
+  100: 'FR_100',
+  55: 'FR_55',
+  21: 'FR_21',
+  0: 'exempt',
+};
+
+export function codeTvaFournisseur(ratePct: number): string | null {
+  if (!Number.isFinite(ratePct)) return null;
+  return CODES_FOURNISSEUR[Math.round(ratePct * 10)] ?? null;
+}
 
 /** TTC (centimes) + taux de TVA (%) → HT et TVA (centimes), la TVA arrondie, le HT = TTC − TVA. */
 export function ventilerTtc(ttcCts: number, tauxPct: number): { htCts: number; tvaCts: number } {
@@ -37,12 +55,12 @@ export function manquesEnvoiPennylane(t: {
 }): string[] {
   const m: string[] = [];
   if (t.montant_ttc_cts == null || t.montant_ttc_cts <= 0) m.push('montant');
-  if (t.tva_rate != null && codeTvaLegal(Number(t.tva_rate)) === null) m.push('taux de TVA reconnu');
+  if (t.tva_rate != null && codeTvaFournisseur(Number(t.tva_rate)) === null) m.push('taux de TVA reconnu');
   return m;
 }
 
 export function corpsImportFournisseur(e: EntreeImport): Record<string, unknown> {
-  const code = codeTvaLegal(e.tauxPct);
+  const code = codeTvaFournisseur(e.tauxPct);
   if (code === null) throw new Error(`Taux de TVA inconnu : ${e.tauxPct} %`);
   const { htCts, tvaCts } = ventilerTtc(e.ttcCts, e.tauxPct);
   return {

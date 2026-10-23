@@ -37,3 +37,5 @@
 - Trésorerie : changer de filtre, chercher « total », ouvrir un mois ancien.
 - Charges : mois ouverts / repliés, filtre de dates, export CSV, « Voir la liste » des charges hors Pennylane.
 - Cloche : plus d'alerte « mouvements à rapprocher » ; l'alerte factures en retard ouvre Livraisons.
+
+- Pennylane import fournisseur : codes TVA propres (`FR_200`, `FR_100`, `FR_55`, `FR_21`) ≠ facture client (`FR_000` refusé le 23/10/2026) ; 0 % = `exempt` (à confirmer au 1er envoi) ; erreur gardée sur 4000 caractères.

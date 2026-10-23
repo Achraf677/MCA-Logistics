@@ -66,7 +66,7 @@ Deno.serve(async (req) => {
   const echec = async (error: string, status?: number, body?: unknown) => {
     const detail = typeof body === 'string' ? body : JSON.stringify(body ?? null);
     await service.from('receipts_inbox')
-      .update({ pennylane_erreur: `${error}${status ? ` (${status})` : ''} ${detail}`.slice(0, 900) })
+      .update({ pennylane_erreur: `${error}${status ? ` (${status})` : ''} ${detail}`.slice(0, 4000) })
       .eq('id', ticket.id);
     return jsonResponse({ ok: false, error, status, body });
   };

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { corpsImportFournisseur, manquesEnvoiPennylane, ventilerTtc } from './justificatifPennylane';
+import { codeTvaFournisseur, corpsImportFournisseur, manquesEnvoiPennylane, ventilerTtc } from './justificatifPennylane';
 
 describe('ventilerTtc', () => {
   it('20 % : 12,00 € TTC = 10,00 HT + 2,00 TVA', () => {
@@ -32,6 +32,17 @@ describe('corpsImportFournisseur', () => {
   })
   it('refuse un taux inconnu plutôt que de deviner', () => {
     expect(() => corpsImportFournisseur({ ...base, tauxPct: 7 })).toThrow();
+  })
+})
+
+describe('codes TVA fournisseur', () => {
+  it('ne reprend pas les codes d’une facture client (FR_055 / FR_021 / FR_000 refusés par Pennylane)', () => {
+    expect(codeTvaFournisseur(5.5)).toBe('FR_55');
+    expect(codeTvaFournisseur(2.1)).toBe('FR_21');
+    expect(codeTvaFournisseur(10)).toBe('FR_100');
+    expect(codeTvaFournisseur(20)).toBe('FR_200');
+    expect(codeTvaFournisseur(0)).toBe('exempt');
+    expect(codeTvaFournisseur(7)).toBeNull();
   })
 })
 
