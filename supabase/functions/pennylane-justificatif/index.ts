@@ -74,8 +74,9 @@ Deno.serve(async (req) => {
 
   const rep = await envoyerMail(acces_google, raw);
   if (!rep.ok) {
-    const indice = rep.status === 403 ? ' (autorisation d’envoi manquante : reconnecte Gmail dans Paramètres)' : '';
-    return await echec(`Envoi du mail échoué (${rep.status})${indice}`, 502);
+    // Le motif donné par Google (API Gmail non activée, droit refusé…) est la seule façon de savoir quoi corriger.
+    const detail = (await rep.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 400);
+    return await echec(`Envoi du mail échoué (${rep.status}) : ${detail}`, 502);
   }
 
   await service.from('receipts_inbox')
