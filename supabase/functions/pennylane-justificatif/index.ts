@@ -13,6 +13,22 @@ import { exigerPermission } from '../_shared/auth.ts';
 
 const BUCKET = 'documents';
 
+/**
+ * Appel Pennylane avec reprise sur 429 (limite de débit) : on attend le délai annoncé par `Retry-After`
+ * (2 s à défaut, 8 s au plus) et on réessaie jusqu'à 3 fois. Les autres statuts sont rendus tels quels.
+ */
+async function appelerPennylane(faire: () => Promise<Response>): Promise<Response> {
+  let rep = await faire();
+  for (let essai = 0; essai < 3 && rep.status === 429; essai++) {
+    const annonce = Number(rep.headers.get('retry-after'));
+    const attente = Number.isFinite(annonce) && annonce > 0 ? Math.min(annonce, 8) : 2;
+    await rep.body?.cancel();
+    await new Promise(r => setTimeout(r, attente * 1000));
+    rep = await faire();
+  }
+  return rep;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse();
 
@@ -58,17 +74,19 @@ Deno.serve(async (req) => {
   // 2) Dépôt du fichier chez Pennylane.
   const form = new FormData();
   form.append('file', new Blob([await blob.arrayBuffer()], { type: ticket.mime_type || 'application/octet-stream' }), ticket.file_name || 'justificatif');
-  const up = await fetch(`${PENNYLANE_BASE}/file_attachments`, { method: 'POST', headers: pennylaneHeaders(token), body: form });
+  const up = await appelerPennylane(() => fetch(`${PENNYLANE_BASE}/file_attachments`, { method: 'POST', headers: pennylaneHeaders(token), body: form }));
   const upBody = await up.json().catch(() => null) as Record<string, unknown> | null;
+  if (up.status === 429) return await echec('Pennylane limite le nombre de requêtes : réessaie dans une minute.', 429, { retry_after: up.headers.get('retry-after') });
   if (!up.ok || !upBody?.id) return await echec('Pennylane a refusé le fichier.', up.status, upBody);
 
   // 3) Import comme facture fournisseur « à traiter ».
-  const imp = await fetch(`${PENNYLANE_BASE}/supplier_invoices/import`, {
+  const imp = await appelerPennylane(() => fetch(`${PENNYLANE_BASE}/supplier_invoices/import`, {
     method: 'POST',
     headers: { ...pennylaneHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify({ file_attachment_id: upBody.id }),
-  });
+  }));
   const impBody = await imp.json().catch(() => null) as Record<string, unknown> | null;
+  if (imp.status === 429) return await echec('Pennylane limite le nombre de requêtes : réessaie dans une minute.', 429, { retry_after: imp.headers.get('retry-after') });
   if (!imp.ok) return await echec('Pennylane a refusé l’import de la facture.', imp.status, impBody);
 
   const pennylaneId = impBody?.id != null ? String(impBody.id) : null;
