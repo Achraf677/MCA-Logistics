@@ -1,7 +1,7 @@
 // Dépenses déclarées par un salarié ou un associé (lot S1) — PUR, testé.
 // Une dépense = un justificatif photographié dans la boîte `receipts_inbox`, avec montant,
 // catégorie, date et moyen de paiement : carte de la société, ou de sa poche (note de
-// frais à rembourser). Le bureau la traite dans Finance › Charges.
+// frais à rembourser). Le bureau la traite dans Finance › Justificatifs.
 
 export type CategorieDepense = 'carburant' | 'peage' | 'parking' | 'repas' | 'entretien' | 'fournitures' | 'autre'
 export type MoyenPaiement = 'carte_societe' | 'personnel'
@@ -24,7 +24,7 @@ export const LIBELLE_MOYEN: Record<MoyenPaiement, string> = {
 
 export const LIBELLE_STATUT_DEPENSE: Record<StatutDepense, string> = {
   a_traiter: 'En attente du bureau',
-  traite: 'Traitée',
+  traite: 'Validée',
   ignore: 'Refusée',
 }
 
@@ -63,9 +63,27 @@ export function manquesDepense(s: SaisieDepense): string[] {
   return m
 }
 
-/** Total à rembourser (notes de frais non refusées), en centimes. */
-export function totalARembourser(depenses: Array<{ moyen_paiement: string | null; montant_ttc_cts: number | null; statut: string }>): number {
-  return depenses
-    .filter(d => d.moyen_paiement === 'personnel' && d.statut !== 'ignore')
-    .reduce((s, d) => s + (d.montant_ttc_cts ?? 0), 0)
+type DepenseRemb = { moyen_paiement: string | null; montant_ttc_cts: number | null; statut: string; rembourse_le?: string | null }
+
+/** Note de frais encore due : payée de la poche, ni refusée ni déjà remboursée. */
+export function estADeduireRemboursement(d: DepenseRemb): boolean {
+  return d.moyen_paiement === 'personnel' && d.statut !== 'ignore' && !d.rembourse_le
 }
+
+/** Total à rembourser (notes de frais non refusées, pas encore remboursées), en centimes. */
+export function totalARembourser(depenses: DepenseRemb[]): number {
+  return depenses.filter(estADeduireRemboursement).reduce((s, d) => s + (d.montant_ttc_cts ?? 0), 0)
+}
+
+/**
+ * Ce qui empêche de VALIDER une dépense côté bureau : sans montant elle ne peut ni devenir une charge,
+ * ni être remboursée. (Les anciens tickets sans montant se corrigent un par un.)
+ */
+export function manquesValidation(t: { montant_ttc_cts?: number | null; date_depense?: string | null }): string[] {
+  const m: string[] = []
+  if (t.montant_ttc_cts == null || t.montant_ttc_cts <= 0) m.push('Montant')
+  return m
+}
+
+/** Taux de TVA français que Pennylane accepte (même table que `_shared/lignesFacture#codeTvaLegal`). */
+export const TAUX_TVA_JUSTIF = [20, 10, 5.5, 2.1, 0] as const

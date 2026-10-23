@@ -27,7 +27,7 @@ interface Props {
   /** Valeurs de depart pour une creation (ex. un ticket chauffeur). Elles
    *  remplissent le formulaire et restent entierement modifiables : le
    *  pre-remplissage propose, il n'impose pas. */
-  prefill?: { date?: string; label?: string; notes?: string } | null
+  prefill?: { date?: string; label?: string; notes?: string; mode_paiement?: 'qonto' | 'note_de_frais' } | null
   /** Appele apres une CREATION reussie, avec l'identifiant de la charge.
    *  Permet a l'appelant de rattacher ce qui doit l'etre (ticket, piece). */
   onCreated?: (chargeId: string) => void | Promise<void>
@@ -45,7 +45,8 @@ const EMPTY_FORM = {
   tva_rate: '20',
   tva_amount: '',
   notes: '',
-  mode_paiement: 'qonto' as 'qonto' | 'note_de_frais' | 'especes' | 'prepaye' | 'autre',
+  // Obligatoire : pas de valeur par défaut, on choisit (décision du 22/10/2026).
+  mode_paiement: '' as '' | 'qonto' | 'note_de_frais' | 'especes' | 'prepaye' | 'autre',
   avance_par: '',
   rembourse_le: '',
   passee_en_od: false,
@@ -80,6 +81,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
   const prefillDate  = prefill?.date
   const prefillLabel = prefill?.label
   const prefillNotes = prefill?.notes
+  const prefillMode = prefill?.mode_paiement
 
   const [doublons, setDoublons] = useState<Doublon[]>([])
   const [doublonsAcceptes, setDoublonsAcceptes] = useState(false)
@@ -123,9 +125,10 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
         date:  prefillDate  ?? new Date().toISOString().slice(0, 10),
         label: prefillLabel ?? '',
         notes: prefillNotes ?? '',
+        mode_paiement: prefillMode ?? '',
       })
     }
-  }, [charge, open, prefillDate, prefillLabel, prefillNotes])
+  }, [charge, open, prefillDate, prefillLabel, prefillNotes, prefillMode])
 
   const set = (k: keyof typeof form, v: string | boolean) => setForm(p => ({ ...p, [k]: v }))
 
@@ -216,6 +219,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
     if (!form.label.trim()) { toast('Le libellé est requis', 'error'); return }
     if (!form.date) { toast('La date est requise', 'error'); return }
     if (absHtCts <= 0) { toast('Le montant HT doit être supérieur à 0', 'error'); return }
+    if (!form.mode_paiement) { toast('Choisis le moyen de paiement', 'error'); return }
     // Meme garde qu'a l'affichage, mais cote action : le bouton desactive ne
     // protege pas d'une validation au clavier ni d'un double-clic pendant que
     // le controle se termine.
@@ -236,7 +240,7 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
         montant_ttc_cts: ttcCts,
         receipt_url: null,
         notes: form.notes || null,
-        mode_paiement: form.mode_paiement,
+        mode_paiement: form.mode_paiement as ChargeInsert['mode_paiement'],
         // Champs uniquement pertinents pour la note de frais — sinon null pour
         // ne pas polluer avec des données obsolètes si l'utilisateur bascule.
         avance_par: form.mode_paiement === 'note_de_frais' ? (form.avance_par || null) : null,
@@ -368,13 +372,15 @@ export function DrawerCharge({ open, onClose, charge, onSaved, categories, prefi
 
         {/* Mode de paiement — hors Qonto → sort du compteur "à rapprocher".
          *   Note de frais → révèle "avancé par" + "remboursé le". */}
-        <Field label="Mode de paiement">
+        <Field label="Moyen de paiement *">
           <select
             value={form.mode_paiement}
             onChange={e => set('mode_paiement', e.target.value as typeof form.mode_paiement)}
             className={inputCls}
             disabled={isPennylane}
+            aria-required="true"
           >
+            {!form.mode_paiement && <option value="">Choisir…</option>}
             {(Object.keys(MODE_PAIEMENT_LABELS) as Array<keyof typeof MODE_PAIEMENT_LABELS>).map(k => (
               <option key={k} value={k}>{MODE_PAIEMENT_LABELS[k]}</option>
             ))}

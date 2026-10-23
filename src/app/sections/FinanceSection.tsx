@@ -3,6 +3,7 @@ import { TabbedSection } from '../../shared/ui/TabbedSection'
 // Sous-vues : pages métier EXISTANTES, réutilisées telles quelles (non modifiées).
 import { Tresorerie } from '../../features/tresorerie/Tresorerie'
 import { Charges } from '../../features/charges/Charges'
+import { Justificatifs } from '../../features/charges/Justificatifs'
 
 /**
  * Domaine FINANCE — page à sous-onglets regroupant les pages Finance (Encaissement et Relances retirés le 22/10/2026).
@@ -16,6 +17,7 @@ export function FinanceSection() {
         tabs={[
           { key: 'tresorerie',   label: 'Trésorerie',   element: <Tresorerie />,   permKey: 'finance.tresorerie'  },
           { key: 'charges',      label: 'Charges',      element: <Charges />,      permKey: 'finance.charges'     },
+          { key: 'justificatifs', label: 'Justificatifs', element: <Justificatifs />, permKey: 'finance.charges'   },
         ]}
       />
     </Shell>

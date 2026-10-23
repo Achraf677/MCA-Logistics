@@ -13,9 +13,20 @@
 
 - Charge « Passée en OD » (`charges.passee_en_od`, migration `20261022120000` appliquée) : un avoir saisi directement chez le comptable n'a pas de facture Pennylane → case dans la fiche charge, badge « OD » dans la liste, plus d'alerte « n'existe que dans le site » (`estChargeHorsPennylane`). Avoir E.LECLERC (retour mastic) marqué.
 
-## 3. Reste (F2 → F4, décisions du 22/10/2026)
-- Charges : plusieurs catégories par charge (HT par ligne, TVA par ligne), ventilation automatique par IA (le président valide), moyen de paiement obligatoire, TVA repas 100 % déductible.
-- Onglet Justificatifs (même droit que Charges ; « Validé » distinct, « Remboursé » vu du salarié, validation sans montant refusée).
+## 2b. Fait (F2a, 22/10/2026) — onglet Justificatifs
+- Onglet **Justificatifs** (même droit que Charges) : À traiter · Validés · À rembourser · Refusés, recherche, mois par mois (hors « À traiter »). Remplace le panneau de tickets qui était dans Charges.
+- Écran : la liste se LIT (tableau Date · Déclarant · Détail · Paiement · Montant · Statut, un seul état par ligne) ; on AGIT dans le tiroir d'un justificatif (photo, détails modifiables, suivi, barre d'actions en bas).
+- Gestes (dans le tiroir) : Voir · Créer la charge (formulaire prérempli : date, libellé, moyen de paiement) · Valider (**refusé sans montant**) · Corriger (montant, date, catégorie, payé avec : anciens tickets sans montant, un par un) · Refuser (motif lu par le salarié).
+- Notes de frais : « À rembourser » puis « Marquer remboursé » (`receipts_inbox.rembourse_le`, migration `20261022130000` appliquée) ; le salarié voit « Remboursée le … » dans Mes courses › Dépenses ; le total « à te rembourser » ne compte plus les remboursées. Statut « traité » renommé **Validé / Validée**.
+- Charges : **moyen de paiement obligatoire** (plus de valeur par défaut « Qonto »).
+- Cloche : « tickets à traiter » ouvre Justificatifs.
+
+## 2c. Envoi vers Pennylane (22/10/2026)
+- « Valider » envoie le justificatif PAR MAIL à l'adresse de dépôt Pennylane (`companies.pennylane_depot_email`, Paramètres Pennylane › Transmission des factures) avec le fichier en pièce jointe : il arrive dans « À traiter » de la compta, Pennylane lit montant / TVA / fournisseur. Edge `pennylane-justificatif` (v9) via Gmail du compte Google connecté (`_shared/gmail.ts`, scope gmail.send seul ; connexion « Envoi d’e-mails (Gmail) » dans Paramètres, Drive retiré le 23/10/2026 (60 anciens justificatifs restent lisibles par leur ancien lien, non rapatriés)). L'API d'import fournisseur (`/supplier_invoices/import`) rangeait la facture côté gestion seulement : abandonnée le 23/10/2026.
+- « Créer la charge » ne l'envoie PAS (sinon doublon : la synchro ramènerait la facture Pennylane en charge). Une dépense envoyée à Pennylane revient comme charge par la synchro habituelle.
+
+## 3. Reste (F2b → F4, décisions du 22/10/2026)
+- Charges : plusieurs catégories par charge avec HT et TVA par ligne (aujourd'hui la ventilation existe en TTC, après enregistrement : `charge_allocations`), ventilation automatique par IA (le président valide), TVA repas 100 % déductible.
 - Transfert vers Pennylane (cartes ET notes de frais) : à étudier en détail à la fin.
 
 ## 4. Fichiers
@@ -25,3 +36,4 @@
 - Trésorerie : changer de filtre, chercher « total », ouvrir un mois ancien.
 - Charges : mois ouverts / repliés, filtre de dates, export CSV, « Voir la liste » des charges hors Pennylane.
 - Cloche : plus d'alerte « mouvements à rapprocher » ; l'alerte factures en retard ouvre Livraisons.
+

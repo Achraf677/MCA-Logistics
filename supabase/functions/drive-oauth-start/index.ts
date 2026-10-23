@@ -1,6 +1,6 @@
-// Edge `drive-oauth-start` — démarre le flux OAuth Drive côté serveur (Plan B).
+// Edge `drive-oauth-start` — démarre la connexion Gmail (nom d'Edge gardé : le Drive n'est plus utilisé, 23/10/2026).
 // Authentifie le user (verify_jwt=true), crée un state (nonce) lié à sa société,
-// et renvoie l'URL d'autorisation Google (scope drive complet, access_type=offline).
+// et renvoie l'URL d'autorisation Google (scope gmail.send seul, access_type=offline).
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { exigerPermission } from '../_shared/auth.ts';
 
@@ -13,20 +13,11 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
 const REDIRECT_URI = 'https://pzfgtcugmqeqixogwzcu.supabase.co/functions/v1/drive-oauth-callback';
-// Scope Drive (upload/browse) + gmail.send (envoi facture au client par email
-// depuis l'adresse @mcalogistics.fr). Reconnexion requise après ajout du scope
-// pour régénérer un refresh_token incluant Gmail.
-//
-// `openid email` n'est pas décoratif : sans lui Google ne renvoie PAS d'id_token,
-// donc le callback n'a aucune adresse à enregistrer et `connected_email` reste
-// null. On voyait alors « Drive connecté » sans savoir SUR QUEL COMPTE — et un
-// rapatriement lancé depuis le mauvais compte échoue sur chaque fichier avec un
-// 404 qui n'explique rien. L'adresse est la seule façon de le voir avant de
-// cliquer.
+// `openid email` n'est pas décoratif : sans lui Google ne renvoie PAS d'id_token, donc le callback n'a aucune
+// adresse à enregistrer et `connected_email` reste null (on ne saurait pas SUR QUEL COMPTE le site est branché).
 const SCOPE = [
   'openid',
   'email',
-  'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/gmail.send',
 ].join(' ');
 

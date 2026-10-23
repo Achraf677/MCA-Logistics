@@ -1,5 +1,6 @@
 import imageCompression from 'browser-image-compression'
 import { supabase } from '../../app/providers'
+import { lireErreurEdge } from './erreurEdge'
 
 const BUCKET = 'documents'
 const MAX_BYTES = 20 * 1024 * 1024
@@ -25,6 +26,15 @@ export interface TicketInbox {
   moyen_paiement?: string | null
   date_depense?: string | null
   motif_refus?: string | null
+  /** Note de frais remboursée le (migration 20261022130000). */
+  rembourse_le?: string | null
+  /** Envoi du justificatif validé vers Pennylane (migration 20261022140000). */
+  pennylane_envoye_le?: string | null
+  pennylane_id?: string | null
+  pennylane_erreur?: string | null
+  /** Ce que Pennylane exige pour l'import : fournisseur du site (qui porte le n° Pennylane) et taux de TVA (%). */
+  supplier_id?: string | null
+  tva_rate?: number | null
 }
 
 /** Détails d'une dépense déclarée avec son justificatif. */
@@ -117,6 +127,32 @@ export async function listerTicketsATraiter() {
     .returns<TicketInbox[]>()
 }
 
+/** Tous les justificatifs, quel que soit leur statut (onglet Justificatifs), plus récents d'abord. */
+export async function listerTickets(limite = 500) {
+  return supabase
+    .from('receipts_inbox')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limite)
+    .returns<TicketInbox[]>()
+}
+
+/** Le bureau corrige une dépense (ancien ticket sans montant, mauvaise date…). */
+export async function corrigerTicket(id: string, maj: Partial<DetailsDepense> & { note?: string | null; supplier_id?: string | null; tva_rate?: number | null }) {
+  const { data, error } = await supabase.from('receipts_inbox').update(maj).eq('id', id).select('id')
+  if (error) return { error: new Error(error.message) }
+  if (!data || data.length === 0) return { error: new Error('Correction refusée : droit insuffisant.') }
+  return { error: null }
+}
+
+/** Note de frais remboursée (`date`) ou remise à « à rembourser » (`null`). */
+export async function marquerRembourse(id: string, date: string | null) {
+  const { data, error } = await supabase.from('receipts_inbox').update({ rembourse_le: date }).eq('id', id).select('id')
+  if (error) return { error: new Error(error.message) }
+  if (!data || data.length === 0) return { error: new Error('Enregistrement refusé : droit insuffisant.') }
+  return { error: null }
+}
+
 /** Compteur pour la pastille de notification. `head: true` = aucune ligne transférée. */
 export async function compterTicketsATraiter(): Promise<number> {
   const { count } = await supabase
@@ -184,4 +220,17 @@ export async function refuserDepense(id: string, motif: string) {
   return supabase.from('receipts_inbox')
     .update({ statut: 'ignore', motif_refus: motif, traite_at: new Date().toISOString() })
     .eq('id', id)
+}
+
+/**
+ * Envoie un justificatif VALIDÉ dans la liste « à traiter » de Pennylane (Edge `pennylane-justificatif`).
+ * Le résultat (envoyé le … ou erreur) est gardé sur le ticket par l'Edge ; ici on renvoie juste le message.
+ */
+export async function envoyerVersPennylane(ticketId: string, forcer = false): Promise<{ ok: boolean; message: string | null }> {
+  const { data, error } = await supabase.functions.invoke('pennylane-justificatif', { body: { ticket_id: ticketId, forcer } })
+  if (error || !data?.ok) {
+    const echec = await lireErreurEdge(data, error)
+    return { ok: false, message: echec?.message ?? "Envoi impossible" }
+  }
+  return { ok: true, message: null }
 }

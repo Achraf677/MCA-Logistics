@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Phone, Mail, IdCard, Stethoscope, FileText, Image as ImageIcon, Upload, User, Navigation } from 'lucide-react'
+import { Phone, Mail, IdCard, Stethoscope, FileText, Image as ImageIcon, Upload, User, Navigation, Palette } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
+import { ThemeSelector } from '../../shared/theme/ThemeSelector'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
@@ -26,6 +27,7 @@ export function Moi({ fiche }: { fiche: EtatFiche }) {
     <div className="flex flex-col gap-4">
       <GardeFiche fiche={fiche}>{f => <MoiFiche fiche={f} />}</GardeFiche>
       <ChoixNavigation />
+      <ChoixFond />
     </div>
   )
 }
@@ -46,6 +48,16 @@ function ChoixNavigation() {
           </button>
         ))}
       </div>
+    </Carte>
+  )
+}
+
+/** Fond de l'application : réglage de CE téléphone (même choix que Système › Apparence). */
+function ChoixFond() {
+  return (
+    <Carte>
+      <TitreCarte icone={<Palette size={18} />}>Fond d’écran</TitreCarte>
+      <ThemeSelector />
     </Carte>
   )
 }
