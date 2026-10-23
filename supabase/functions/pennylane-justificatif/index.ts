@@ -10,7 +10,7 @@ import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { PENNYLANE_BASE, pennylaneHeaders, pennylaneToken } from '../_shared/pennylaneBase.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
-import { corpsImportFournisseur, manquesEnvoiPennylane } from '../_shared/justificatifPennylane.ts';
+import { corpsImportFournisseur, FOURNISSEUR_GENERIQUE, manquesEnvoiPennylane, TAUX_PAR_DEFAUT } from '../_shared/justificatifPennylane.ts';
 
 const BUCKET = 'documents';
 
@@ -55,12 +55,9 @@ Deno.serve(async (req) => {
   if (!ticket || ticket.company_id !== acces.companyId) return jsonResponse({ ok: false, error: 'Justificatif introuvable' }, 404);
   if (ticket.statut !== 'traite') return jsonResponse({ ok: false, error: 'Le justificatif doit être validé avant l’envoi à Pennylane.' }, 400);
   if (ticket.pennylane_envoye_le && !forcer) return jsonResponse({ ok: true, data: { deja_envoye: true } });
-  // Pennylane exige un fournisseur, des montants HT / TVA / TTC et une ligne : on ne devine rien.
+  // Pennylane exige fournisseur, montants et ligne : seul le montant vient de la dépense ; le reste a une valeur par défaut.
   const manques = manquesEnvoiPennylane(ticket);
   if (manques.length) return jsonResponse({ ok: false, error: `Il manque : ${manques.join(', ')}. Renseigne-le dans le justificatif puis réessaie.` }, 400);
-  const { data: fournisseur } = await service.from('suppliers').select('pennylane_id, name')
-    .eq('id', ticket.supplier_id).eq('company_id', acces.companyId).maybeSingle();
-  if (!fournisseur?.pennylane_id) return jsonResponse({ ok: false, error: 'Ce fournisseur n’existe pas encore chez Pennylane : lance la synchro Pennylane ou choisis-en un autre.' }, 400);
 
   let token: string;
   try { token = pennylaneToken(); }
@@ -73,6 +70,39 @@ Deno.serve(async (req) => {
       .eq('id', ticket.id);
     return jsonResponse({ ok: false, error, status, body });
   };
+
+  // 0) Le fournisseur : celui choisi, sinon le fournisseur générique « Note de frais » (créé chez Pennylane au besoin).
+  let fournisseurPennylaneId: string | null = null;
+  let fournisseurNom: string = FOURNISSEUR_GENERIQUE;
+  if (ticket.supplier_id) {
+    const { data: f } = await service.from('suppliers').select('pennylane_id, name')
+      .eq('id', ticket.supplier_id).eq('company_id', acces.companyId).maybeSingle();
+    if (f?.pennylane_id) { fournisseurPennylaneId = String(f.pennylane_id); fournisseurNom = f.name; }
+  }
+  if (!fournisseurPennylaneId) {
+    const { data: g } = await service.from('suppliers').select('pennylane_id')
+      .eq('company_id', acces.companyId).ilike('name', FOURNISSEUR_GENERIQUE).not('pennylane_id', 'is', null).limit(1).maybeSingle();
+    fournisseurPennylaneId = g?.pennylane_id ? String(g.pennylane_id) : null;
+  }
+  if (!fournisseurPennylaneId) {
+    // Pas encore dans le site : on le cherche chez Pennylane, sinon on le crée.
+    const filtre = encodeURIComponent(JSON.stringify([{ field: 'name', operator: 'eq', value: FOURNISSEUR_GENERIQUE }]));
+    const cherche = await appelerPennylane(() => fetch(`${PENNYLANE_BASE}/suppliers?filter=${filtre}`, { headers: pennylaneHeaders(token) }));
+    const chercheBody = await cherche.json().catch(() => null) as { items?: Array<{ id: number }> } | null;
+    let id: number | null = cherche.ok ? (chercheBody?.items?.[0]?.id ?? null) : null;
+    if (id == null) {
+      const cree = await appelerPennylane(() => fetch(`${PENNYLANE_BASE}/suppliers`, {
+        method: 'POST', headers: { ...pennylaneHeaders(token), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: FOURNISSEUR_GENERIQUE }),
+      }));
+      const creeBody = await cree.json().catch(() => null) as Record<string, unknown> | null;
+      if (!cree.ok || creeBody?.id == null) return await echec(`Pennylane n’a pas créé le fournisseur « ${FOURNISSEUR_GENERIQUE} ».`, cree.status, creeBody);
+      id = Number(creeBody.id);
+    }
+    fournisseurPennylaneId = String(id);
+    // On le garde aussi dans le site (la synchro Pennylane le retrouvera par son n°).
+    await service.from('suppliers').insert({ company_id: acces.companyId, name: FOURNISSEUR_GENERIQUE, pennylane_id: fournisseurPennylaneId, active: true });
+  }
 
   // 1) Le fichier, depuis le stockage.
   const { data: blob, error: dlErr } = await service.storage.from(BUCKET).download(ticket.storage_path);
@@ -92,11 +122,11 @@ Deno.serve(async (req) => {
     headers: { ...pennylaneHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify(corpsImportFournisseur({
       fileAttachmentId: upBody.id as number | string,
-      supplierPennylaneId: fournisseur.pennylane_id,
+      supplierPennylaneId: fournisseurPennylaneId,
       date: (ticket.date_depense ?? ticket.created_at).slice(0, 10),
-      libelle: ticket.note || fournisseur.name || 'Dépense',
+      libelle: ticket.note || fournisseurNom,
       ttcCts: ticket.montant_ttc_cts,
-      tauxPct: Number(ticket.tva_rate),
+      tauxPct: ticket.tva_rate != null ? Number(ticket.tva_rate) : TAUX_PAR_DEFAUT,
     })),
   }));
   const impBody = await imp.json().catch(() => null) as Record<string, unknown> | null;

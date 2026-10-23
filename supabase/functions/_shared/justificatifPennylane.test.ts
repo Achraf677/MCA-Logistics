@@ -36,9 +36,12 @@ describe('corpsImportFournisseur', () => {
 })
 
 describe('manquesEnvoiPennylane', () => {
-  it('liste ce qui manque', () => {
-    expect(manquesEnvoiPennylane({})).toEqual(['montant', 'fournisseur', 'taux de TVA']);
-    expect(manquesEnvoiPennylane({ montant_ttc_cts: 180, supplier_id: 'x', tva_rate: 20 })).toEqual([]);
-    expect(manquesEnvoiPennylane({ montant_ttc_cts: 180, supplier_id: 'x', tva_rate: 7 })).toEqual(['taux de TVA']);
+  it('seul le montant est exigé (fournisseur et TVA ont une valeur par défaut)', () => {
+    expect(manquesEnvoiPennylane({})).toEqual(['montant']);
+    expect(manquesEnvoiPennylane({ montant_ttc_cts: 180 })).toEqual([]);
+    expect(manquesEnvoiPennylane({ montant_ttc_cts: 180, tva_rate: 20 })).toEqual([]);
+  })
+  it('un taux renseigné mais inconnu est refusé', () => {
+    expect(manquesEnvoiPennylane({ montant_ttc_cts: 180, tva_rate: 7 })).toEqual(['taux de TVA reconnu']);
   })
 })

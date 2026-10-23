@@ -90,14 +90,11 @@ export const TAUX_TVA_JUSTIF = [20, 10, 5.5, 2.1, 0] as const
 
 /**
  * Ce qui manque pour envoyer une dépense validée à Pennylane (miroir de `_shared/justificatifPennylane#manquesEnvoiPennylane`) :
- * Pennylane exige un fournisseur, les montants et la TVA — on ne devine rien.
+ * seul le montant est exigé (sans fournisseur choisi : « Note de frais » ; sans taux : 0 %).
  */
-export function manquesEnvoiPennylane(t: {
-  montant_ttc_cts?: number | null; supplier_id?: string | null; tva_rate?: number | null
-}): string[] {
+export function manquesEnvoiPennylane(t: { montant_ttc_cts?: number | null; tva_rate?: number | null }): string[] {
   const m: string[] = []
   if (t.montant_ttc_cts == null || t.montant_ttc_cts <= 0) m.push('montant')
-  if (!t.supplier_id) m.push('fournisseur')
-  if (t.tva_rate == null || !(TAUX_TVA_JUSTIF as readonly number[]).includes(Number(t.tva_rate))) m.push('taux de TVA')
+  if (t.tva_rate != null && !(TAUX_TVA_JUSTIF as readonly number[]).includes(Number(t.tva_rate))) m.push('taux de TVA reconnu')
   return m
 }

@@ -22,14 +22,22 @@ export interface EntreeImport {
   tauxPct: number;
 }
 
-/** Ce qui manque pour pouvoir envoyer ; liste vide = prêt. */
+/** Fournisseur générique des dépenses envoyées sans fournisseur (décision du 23/10/2026). */
+export const FOURNISSEUR_GENERIQUE = 'Note de frais';
+
+/** Taux appliqué quand le bureau n'a pas précisé la TVA : 0 % (à corriger dans « à traiter » de Pennylane). */
+export const TAUX_PAR_DEFAUT = 0;
+
+/**
+ * Ce qui manque pour pouvoir envoyer ; liste vide = prêt. Seul le montant est exigé : sans fournisseur choisi on
+ * prend « Note de frais », sans taux 0 % ; un taux renseigné mais inconnu est refusé (on ne devine pas).
+ */
 export function manquesEnvoiPennylane(t: {
-  montant_ttc_cts?: number | null; date_depense?: string | null; supplier_id?: string | null; tva_rate?: number | null
+  montant_ttc_cts?: number | null; tva_rate?: number | null
 }): string[] {
   const m: string[] = [];
   if (t.montant_ttc_cts == null || t.montant_ttc_cts <= 0) m.push('montant');
-  if (!t.supplier_id) m.push('fournisseur');
-  if (t.tva_rate == null || codeTvaLegal(Number(t.tva_rate)) === null) m.push('taux de TVA');
+  if (t.tva_rate != null && codeTvaLegal(Number(t.tva_rate)) === null) m.push('taux de TVA reconnu');
   return m;
 }
 

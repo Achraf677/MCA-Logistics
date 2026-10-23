@@ -382,15 +382,15 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, fournisseurs, onFichier, 
               {CATEGORIES_DEPENSE.map(c => <option key={c.valeur} value={c.valeur}>{c.libelle}</option>)}
             </select>
           </Champ>
-          <Champ label="Fournisseur (exigé par Pennylane)">
+          <Champ label="Fournisseur (facultatif : « Note de frais » par défaut)">
             <select className="field" value={fournisseur} onChange={e => setFournisseur(e.target.value)} disabled={!peutEcrire}>
-              <option value="">Choisir…</option>
+              <option value="">Note de frais (par défaut)</option>
               {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
             </select>
           </Champ>
-          <Champ label="TVA (exigée par Pennylane)">
+          <Champ label="TVA (facultative : 0 % par défaut)">
             <select className="field" value={tva} onChange={e => setTva(e.target.value)} disabled={!peutEcrire}>
-              <option value="">Choisir…</option>
+              <option value="">0 % (par défaut)</option>
               {TAUX_TVA_JUSTIF.map(r => <option key={r} value={String(r)}>{String(r).replace('.', ',')} %</option>)}
             </select>
           </Champ>
