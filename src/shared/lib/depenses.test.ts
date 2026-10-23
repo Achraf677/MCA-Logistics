@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { montantSaisiEnCts, manquesDepense, totalARembourser, libelleCategorie, manquesValidation } from './depenses'
+import { montantSaisiEnCts, manquesDepense, totalARembourser, libelleCategorie, manquesValidation, manquesEnvoiPennylane } from './depenses'
 
 describe('dépenses', () => {
   it('montant saisi', () => {
@@ -39,5 +39,11 @@ describe('dépenses', () => {
     expect(manquesValidation({ montant_ttc_cts: null })).toEqual(['Montant'])
     expect(manquesValidation({ montant_ttc_cts: 0 })).toEqual(['Montant'])
     expect(manquesValidation({ montant_ttc_cts: 1250 })).toEqual([])
+  })
+  it('envoi Pennylane : fournisseur, montant et TVA obligatoires', () => {
+    expect(manquesEnvoiPennylane({})).toEqual(['montant', 'fournisseur', 'taux de TVA'])
+    expect(manquesEnvoiPennylane({ montant_ttc_cts: 180, supplier_id: 's', tva_rate: 20 })).toEqual([])
+    expect(manquesEnvoiPennylane({ montant_ttc_cts: 180, supplier_id: 's', tva_rate: 5.5 })).toEqual([])
+    expect(manquesEnvoiPennylane({ montant_ttc_cts: 180, supplier_id: 's', tva_rate: 7 })).toEqual(['taux de TVA'])
   })
 })

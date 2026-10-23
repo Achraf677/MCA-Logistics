@@ -23,7 +23,7 @@
 
 ## 2c. Envoi vers Pennylane (22/10/2026)
 - « Valider » envoie le justificatif dans la liste « à traiter » de Pennylane : Edge `pennylane-justificatif` (POST `/file_attachments` puis `/supplier_invoices/import` avec `file_attachment_id`), suivi sur le ticket (`receipts_inbox.pennylane_envoye_le` / `pennylane_id` / `pennylane_erreur`, migration `20261022140000` appliquée). Échec = le ticket reste validé, le tiroir affiche l'erreur + « Envoyer à Pennylane ».
-- ⚠️ Contrat Pennylane non vérifié en vrai (doc injoignable depuis l'environnement) : si Pennylane refuse, l'erreur affichée dit quels champs manquent → ajuster l'Edge.
+- Contrat Pennylane (vérifié par les erreurs de l'API, 23/10/2026) : droits de la clé `file_attachments:all` + `supplier_invoices:all` ; l'import exige `supplier_id`, `date`, `deadline`, `currency_amount_before_tax`, `currency_amount`, `currency_tax`, `invoice_lines`. Donc, avant « Valider et envoyer » : **fournisseur** (celui du site, qui porte le n° Pennylane) + **taux de TVA** (HT/TVA calculés depuis le TTC) dans le tiroir ; colonnes `receipts_inbox.supplier_id` / `tva_rate` (migration `20261023090000`). Les noms de champs des lignes (`label`, `quantity`, `unit`, `raw_currency_unit_price`, `vat_rate`, `currency_amount`, `currency_tax`) sont à confirmer au premier envoi réel.
 - « Créer la charge » ne l'envoie PAS (sinon doublon : la synchro ramènerait la facture Pennylane en charge). Une dépense envoyée à Pennylane revient comme charge par la synchro habituelle.
 
 ## 3. Reste (F2b → F4, décisions du 22/10/2026)

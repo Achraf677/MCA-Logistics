@@ -10,6 +10,7 @@ import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { PENNYLANE_BASE, pennylaneHeaders, pennylaneToken } from '../_shared/pennylaneBase.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
+import { corpsImportFournisseur, manquesEnvoiPennylane } from '../_shared/justificatifPennylane.ts';
 
 const BUCKET = 'documents';
 
@@ -49,11 +50,17 @@ Deno.serve(async (req) => {
 
   const { data: ticket } = await service
     .from('receipts_inbox')
-    .select('id, company_id, statut, storage_path, file_name, mime_type, montant_ttc_cts, pennylane_envoye_le')
+    .select('id, company_id, statut, storage_path, file_name, mime_type, montant_ttc_cts, date_depense, created_at, note, supplier_id, tva_rate, pennylane_envoye_le')
     .eq('id', ticketId).maybeSingle();
   if (!ticket || ticket.company_id !== acces.companyId) return jsonResponse({ ok: false, error: 'Justificatif introuvable' }, 404);
   if (ticket.statut !== 'traite') return jsonResponse({ ok: false, error: 'Le justificatif doit être validé avant l’envoi à Pennylane.' }, 400);
   if (ticket.pennylane_envoye_le && !forcer) return jsonResponse({ ok: true, data: { deja_envoye: true } });
+  // Pennylane exige un fournisseur, des montants HT / TVA / TTC et une ligne : on ne devine rien.
+  const manques = manquesEnvoiPennylane(ticket);
+  if (manques.length) return jsonResponse({ ok: false, error: `Il manque : ${manques.join(', ')}. Renseigne-le dans le justificatif puis réessaie.` }, 400);
+  const { data: fournisseur } = await service.from('suppliers').select('pennylane_id, name')
+    .eq('id', ticket.supplier_id).eq('company_id', acces.companyId).maybeSingle();
+  if (!fournisseur?.pennylane_id) return jsonResponse({ ok: false, error: 'Ce fournisseur n’existe pas encore chez Pennylane : lance la synchro Pennylane ou choisis-en un autre.' }, 400);
 
   let token: string;
   try { token = pennylaneToken(); }
@@ -83,7 +90,14 @@ Deno.serve(async (req) => {
   const imp = await appelerPennylane(() => fetch(`${PENNYLANE_BASE}/supplier_invoices/import`, {
     method: 'POST',
     headers: { ...pennylaneHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ file_attachment_id: upBody.id }),
+    body: JSON.stringify(corpsImportFournisseur({
+      fileAttachmentId: upBody.id as number | string,
+      supplierPennylaneId: fournisseur.pennylane_id,
+      date: (ticket.date_depense ?? ticket.created_at).slice(0, 10),
+      libelle: ticket.note || fournisseur.name || 'Dépense',
+      ttcCts: ticket.montant_ttc_cts,
+      tauxPct: Number(ticket.tva_rate),
+    })),
   }));
   const impBody = await imp.json().catch(() => null) as Record<string, unknown> | null;
   if (imp.status === 429) return await echec('Pennylane limite le nombre de requêtes : réessaie dans une minute.', 429, { retry_after: imp.headers.get('retry-after') });

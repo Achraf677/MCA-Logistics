@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, ChevronRight, CreditCard, ExternalLink, FilePlus2, Inbox, Search, Wallet, X } from 'lucide-react'
 import { Shell } from '../../app/Shell'
-import { useProfile } from '../../app/providers'
+import { supabase, useProfile } from '../../app/providers'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { Drawer } from '../../shared/ui/Drawer'
@@ -13,7 +13,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  CATEGORIES_DEPENSE, libelleCategorie, manquesValidation, montantSaisiEnCts, totalARembourser,
+  CATEGORIES_DEPENSE, TAUX_TVA_JUSTIF, libelleCategorie, manquesEnvoiPennylane, manquesValidation, montantSaisiEnCts, totalARembourser,
   type CategorieDepense,
 } from '../../shared/lib/depenses'
 import { getCategories } from '../../shared/lib/categories.queries'
@@ -59,6 +59,7 @@ export function Justificatifs() {
   const [tickets, setTickets] = useState<TicketInbox[]>([])
   const [noms, setNoms] = useState<Record<string, string>>({})
   const [categories, setCategories] = useState<ChargeCategoryRow[]>([])
+  const [fournisseurs, setFournisseurs] = useState<Array<{ id: string; name: string }>>([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
   const [filtre, setFiltre] = useState<FiltreJustif>('a_traiter')
@@ -80,6 +81,10 @@ export function Justificatifs() {
 
   useEffect(() => { void charger() }, [charger])
   useEffect(() => { if (companyId) getCategories(companyId).then(setCategories) }, [companyId])
+  useEffect(() => {
+    supabase.from('suppliers').select('id, name').eq('active', true).order('name')
+      .then(({ data }) => setFournisseurs((data ?? []) as Array<{ id: string; name: string }>))
+  }, [])
 
   const compteurs = useMemo(() => compteursJustificatifs(tickets), [tickets])
   const dus = useMemo(() => totalARembourser(tickets.map(t => ({
@@ -110,6 +115,11 @@ export function Justificatifs() {
   const valider = (t: TicketInbox) => {
     const manques = manquesValidation(t)
     if (manques.length) { toast(`Validation impossible : ${manques.join(', ').toLowerCase()} manquant. Renseigne-le puis enregistre.`, 'error'); return }
+    const manquesEnvoi = manquesEnvoiPennylane(t)
+    if (manquesEnvoi.length) {
+      toast(`Pour l'envoyer à Pennylane, renseigne : ${manquesEnvoi.join(', ')}, puis enregistre.`, 'error')
+      return
+    }
     return validerEtEnvoyer(t)
   }
 
@@ -126,6 +136,8 @@ export function Justificatifs() {
   }
 
   const renvoyer = async (t: TicketInbox) => {
+    const manquesEnvoi = manquesEnvoiPennylane(t)
+    if (manquesEnvoi.length) { toast(`Pour l'envoyer à Pennylane, renseigne : ${manquesEnvoi.join(', ')}, puis enregistre.`, 'error'); return }
     setBusy(true)
     const envoi = await envoyerVersPennylane(t.id, true)
     setBusy(false)
@@ -251,7 +263,7 @@ export function Justificatifs() {
 
       <Drawer open={ouvert != null} onClose={() => setOuvertId(null)} width="max-w-[40rem]" title="Justificatif">
         {ouvert && (
-          <FicheJustificatif key={ouvert.id} t={ouvert} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy}
+          <FicheJustificatif key={ouvert.id} t={ouvert} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy} fournisseurs={fournisseurs}
             onFichier={() => void ouvrirFichier(ouvert)}
             onEnregistrer={maj => void agir(() => corrigerTicket(ouvert.id, maj), 'Justificatif corrigé')}
             onValider={() => void valider(ouvert)}
@@ -301,13 +313,14 @@ function Paiement({ moyen }: { moyen: string | null | undefined }) {
 }
 
 /** Tiroir d'un justificatif : photo, détails modifiables, suivi, et la barre d'actions en bas. */
-function FicheJustificatif({ t, nom, peutEcrire, busy, onFichier, onEnregistrer, onValider, onRenvoyer, onCreerCharge, onRefuser, onRembourser }: {
+function FicheJustificatif({ t, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onRenvoyer, onCreerCharge, onRefuser, onRembourser }: {
   t: TicketInbox
   nom: string
   peutEcrire: boolean
   busy: boolean
+  fournisseurs: Array<{ id: string; name: string }>
   onFichier: () => void
-  onEnregistrer: (maj: { montant_ttc_cts: number | null; date_depense: string | null; categorie: string | null; moyen_paiement: string | null }) => void
+  onEnregistrer: (maj: { montant_ttc_cts: number | null; date_depense: string | null; categorie: string | null; moyen_paiement: string | null; supplier_id: string | null; tva_rate: number | null }) => void
   onValider: () => void
   onRenvoyer: () => void
   onCreerCharge: () => void
@@ -318,6 +331,8 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, onFichier, onEnregistrer,
   const [date, setDate] = useState(t.date_depense ?? t.created_at.slice(0, 10))
   const [categorie, setCategorie] = useState<CategorieDepense | ''>((t.categorie as CategorieDepense | null) ?? '')
   const [moyen, setMoyen] = useState(t.moyen_paiement ?? '')
+  const [fournisseur, setFournisseur] = useState(t.supplier_id ?? '')
+  const [tva, setTva] = useState(t.tva_rate != null ? String(t.tva_rate) : '')
   const [refus, setRefus] = useState(false)
   const [motif, setMotif] = useState('')
   const [url, setUrl] = useState<string | null>(null)
@@ -332,7 +347,8 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, onFichier, onEnregistrer,
   const invalide = Number.isNaN(cts)
   const modifie = !invalide && (
     cts !== (t.montant_ttc_cts ?? null) || date !== (t.date_depense ?? t.created_at.slice(0, 10))
-    || (categorie || null) !== (t.categorie ?? null) || (moyen || null) !== (t.moyen_paiement ?? null))
+    || (categorie || null) !== (t.categorie ?? null) || (moyen || null) !== (t.moyen_paiement ?? null)
+    || (fournisseur || null) !== (t.supplier_id ?? null) || (tva === '' ? null : Number(tva)) !== (t.tva_rate ?? null))
   const etat = etatJustificatif(t)
   const noteDeFrais = t.moyen_paiement === 'personnel'
 
@@ -366,6 +382,18 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, onFichier, onEnregistrer,
               {CATEGORIES_DEPENSE.map(c => <option key={c.valeur} value={c.valeur}>{c.libelle}</option>)}
             </select>
           </Champ>
+          <Champ label="Fournisseur (exigé par Pennylane)">
+            <select className="field" value={fournisseur} onChange={e => setFournisseur(e.target.value)} disabled={!peutEcrire}>
+              <option value="">Choisir…</option>
+              {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </Champ>
+          <Champ label="TVA (exigée par Pennylane)">
+            <select className="field" value={tva} onChange={e => setTva(e.target.value)} disabled={!peutEcrire}>
+              <option value="">Choisir…</option>
+              {TAUX_TVA_JUSTIF.map(r => <option key={r} value={String(r)}>{String(r).replace('.', ',')} %</option>)}
+            </select>
+          </Champ>
           <Champ label="Payé avec">
             <select className="field" value={moyen} onChange={e => setMoyen(e.target.value)} disabled={!peutEcrire}>
               <option value="">Non précisé</option>
@@ -377,7 +405,7 @@ function FicheJustificatif({ t, nom, peutEcrire, busy, onFichier, onEnregistrer,
         {peutEcrire && modifie && (
           <div className="flex gap-2">
             <Button variant="primary" size="compact" disabled={busy}
-              onClick={() => onEnregistrer({ montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null })}>
+              onClick={() => onEnregistrer({ montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null, supplier_id: fournisseur || null, tva_rate: tva === '' ? null : Number(tva) })}>
               Enregistrer les modifications
             </Button>
           </div>

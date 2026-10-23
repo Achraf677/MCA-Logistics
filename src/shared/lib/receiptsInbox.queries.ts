@@ -32,6 +32,9 @@ export interface TicketInbox {
   pennylane_envoye_le?: string | null
   pennylane_id?: string | null
   pennylane_erreur?: string | null
+  /** Ce que Pennylane exige pour l'import : fournisseur du site (qui porte le n° Pennylane) et taux de TVA (%). */
+  supplier_id?: string | null
+  tva_rate?: number | null
 }
 
 /** Détails d'une dépense déclarée avec son justificatif. */
@@ -135,7 +138,7 @@ export async function listerTickets(limite = 500) {
 }
 
 /** Le bureau corrige une dépense (ancien ticket sans montant, mauvaise date…). */
-export async function corrigerTicket(id: string, maj: Partial<DetailsDepense> & { note?: string | null }) {
+export async function corrigerTicket(id: string, maj: Partial<DetailsDepense> & { note?: string | null; supplier_id?: string | null; tva_rate?: number | null }) {
   const { data, error } = await supabase.from('receipts_inbox').update(maj).eq('id', id).select('id')
   if (error) return { error: new Error(error.message) }
   if (!data || data.length === 0) return { error: new Error('Correction refusée : droit insuffisant.') }
