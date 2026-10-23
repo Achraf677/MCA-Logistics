@@ -179,6 +179,16 @@ export async function urlTicket(t: TicketInbox): Promise<string | null> {
   return error ? null : (data?.signedUrl ?? null)
 }
 
+/** Liens signés (1 h) de plusieurs fichiers d'un coup : miniatures de la liste. Chemin → lien ; un chemin refusé est absent. */
+export async function urlsTickets(chemins: string[]): Promise<Record<string, string>> {
+  if (chemins.length === 0) return {}
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(chemins, 3600)
+  if (error || !data) return {}
+  const out: Record<string, string> = {}
+  for (const d of data) if (d.path && d.signedUrl) out[d.path] = d.signedUrl
+  return out
+}
+
 /**
  * Marque un ticket traité ou ignoré.
  * `charge_id` relie le ticket à la charge créée, quand il y en a une — c'est ce

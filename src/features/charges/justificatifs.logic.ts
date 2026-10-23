@@ -57,3 +57,30 @@ export function etatJustificatif(t: JustifLigne): { libelle: string; ton: TonEta
   }
   return { libelle: 'Validé', ton: 'success' }
 }
+
+export interface EtapeSuivi {
+  cle: 'envoye' | 'valide' | 'refuse' | 'pennylane' | 'rembourse'
+  libelle: string
+  date: string | null
+  /** fait = acquis · attente = prochaine étape · refuse = fin refusée. */
+  etat: 'fait' | 'attente' | 'refuse'
+}
+
+/** Frise de suivi d'un justificatif : envoyé → validé → envoyé à Pennylane → (note de frais) remboursé ; ou envoyé → refusé. */
+export function etapesSuivi(t: JustifLigne & {
+  traite_at?: string | null; pennylane_envoye_le?: string | null
+}): EtapeSuivi[] {
+  const etapes: EtapeSuivi[] = [{ cle: 'envoye', libelle: 'Envoyé', date: t.created_at, etat: 'fait' }]
+  if (t.statut === 'ignore') return [...etapes, { cle: 'refuse', libelle: 'Refusé', date: t.traite_at ?? null, etat: 'refuse' }]
+  const valide = t.statut === 'traite'
+  etapes.push({ cle: 'valide', libelle: 'Validé', date: valide ? (t.traite_at ?? null) : null, etat: valide ? 'fait' : 'attente' })
+  etapes.push({ cle: 'pennylane', libelle: 'Pennylane', date: t.pennylane_envoye_le ?? null, etat: t.pennylane_envoye_le ? 'fait' : 'attente' })
+  if (t.moyen_paiement === 'personnel') {
+    etapes.push({ cle: 'rembourse', libelle: 'Remboursé', date: t.rembourse_le ?? null, etat: t.rembourse_le ? 'fait' : 'attente' })
+  }
+  return etapes
+}
+
+/** Initiales d'un nom (pastille du déclarant). */
+export const initiales = (nom: string): string =>
+  nom.split(/\s+/).filter(Boolean).slice(0, 2).map(m => m[0]?.toUpperCase() ?? '').join('') || '?'

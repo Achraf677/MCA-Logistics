@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { compteursJustificatifs, etatJustificatif, filtrerJustificatifs, jourJustif, type JustifLigne } from './justificatifs.logic'
+import { compteursJustificatifs, etapesSuivi, etatJustificatif, filtrerJustificatifs, initiales, jourJustif, type JustifLigne } from './justificatifs.logic'
 
 const t = (o: Partial<JustifLigne> & { id?: string; uploaded_by?: string }): JustifLigne & { id?: string; uploaded_by?: string } =>
   ({ statut: 'a_traiter', created_at: '2026-10-20T08:00:00Z', ...o })
@@ -35,5 +35,19 @@ describe('justificatifs', () => {
     expect(etatJustificatif({ statut: 'traite', moyen_paiement: 'personnel', rembourse_le: '2026-10-21', created_at: 'x' }).libelle).toBe('Remboursé')
     expect(etatJustificatif({ statut: 'traite', moyen_paiement: 'carte_societe', created_at: 'x' }).libelle).toBe('Validé')
     expect(etatJustificatif({ statut: 'ignore', created_at: 'x' }).ton).toBe('danger')
+  })
+  it('frise : à traiter → validé → Pennylane → remboursé', () => {
+    const e = etapesSuivi({ statut: 'a_traiter', moyen_paiement: 'personnel', created_at: '2026-10-20T08:00:00Z' })
+    expect(e.map(x => [x.cle, x.etat])).toEqual([['envoye', 'fait'], ['valide', 'attente'], ['pennylane', 'attente'], ['rembourse', 'attente']])
+    const f = etapesSuivi({ statut: 'traite', moyen_paiement: 'carte_societe', created_at: '2026-10-20T08:00:00Z', traite_at: '2026-10-21T08:00:00Z', pennylane_envoye_le: '2026-10-21T08:01:00Z' })
+    expect(f.map(x => [x.cle, x.etat])).toEqual([['envoye', 'fait'], ['valide', 'fait'], ['pennylane', 'fait']])
+  })
+  it('frise : un refus s’arrête là', () => {
+    const e = etapesSuivi({ statut: 'ignore', created_at: '2026-10-20T08:00:00Z', traite_at: '2026-10-21T08:00:00Z' })
+    expect(e.map(x => [x.cle, x.etat])).toEqual([['envoye', 'fait'], ['refuse', 'refuse']])
+  })
+  it('initiales', () => {
+    expect(initiales('Lucas Martin')).toBe('LM')
+    expect(initiales('')).toBe('?')
   })
 })
