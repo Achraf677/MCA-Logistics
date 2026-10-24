@@ -27,6 +27,10 @@
 - Nom fabriqué par `_shared/triDocuments#nomPropose` (jamais par l'IA), miroir `shared/lib/documentsTri.ts` (types + `cheminDefaut`, testés des deux côtés).
 - Écran À confirmer : champ « Où le ranger dans le Drive » (modifiable, pastilles par niveau « nouveau » si le dossier sera créé, bouton « Sinon : … »). Tant que le chemin n'est pas tapé à la main il suit le type, puis l'année suit la date.
 
+## 5d Choix du dossier et historique (24/10/2026)
+- « Où le ranger » = liste déroulante avec recherche : dossiers EXISTANTS du Drive sous le dossier de rangement (`drive-browse` v14, `arbre: true`, chemins calculés par `documents.logic#cheminsDepuisDossiers`) + chemin proposé par l'IA + alternatives ; les chemins qui n'existent pas portent « nouveau dossier ». Bouton « Créer un sous-dossier ici » (nom saisi, ajouté au chemin choisi). Plus de saisie du chemin à la main.
+- **Historique** (4e onglet, tuile « Rangés ») : 60 derniers documents rangés, groupés par jour (Aujourd'hui / Hier / date), avec dossier du Drive (`documents.drive_chemin`, migration `20261024130000_documents_drive_chemin` appliquée, écrite par la page après un rangement réussi), type, montant, « il y a n min », ouverture dans l'appli (`lireDocumentRange` : Drive, sinon notre stockage) et lien Drive.
+
 ## 5c Confirmation fluide (24/10/2026)
 - Optimiste : la carte disparaît à la confirmation (`patch` local dans `Documents`, aucun rechargement) ; envoi en arrière-plan par paquets de 8 (`rangerDansDrive`) ; échec → la carte revient avec tes corrections. Message « Envoi vers le Drive : n document(s)… tu peux continuer ». Rejeter est aussi immédiat.
 

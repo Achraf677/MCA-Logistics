@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowRight, Check, CheckCheck, FolderTree, Sparkles, Undo2 } from 'lucide-react'
+import { ArrowRight, Check, CheckCheck, FolderPlus, FolderTree, Sparkles, Undo2, X } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { Button } from '../../shared/ui/Button'
@@ -10,8 +10,8 @@ import { getDownloadUrl } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { TYPES_DOCUMENT, cheminDefaut, nomPropose } from '../../shared/lib/documentsTri'
 import { montantSaisiEnCts } from '../../shared/lib/depenses'
-import { cheminAvecAnnee, cheminEnTexte, texteEnChemin } from './documents.logic'
-import { rangerDansDrive, remettreDansInbox } from './documents.queries'
+import { cheminAvecAnnee, cheminEnTexte, optionsChemin, texteEnChemin } from './documents.logic'
+import { noterCheminDrive, rangerDansDrive, remettreDansInbox } from './documents.queries'
 import { MiniatureDoc } from './MiniatureDoc'
 
 interface Edition {
@@ -45,19 +45,25 @@ function editionInitiale(d: DocumentRow): Edition {
 }
 
 /** À confirmer : l'IA a proposé un nom rangé et des champs ; tu corriges si besoin, tu confirmes (ou tu rejettes). */
-export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk, patch, toast }: {
+export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk, dossiers, onRanges, patch, toast }: {
   docs: DocumentRow[]
   classes: DocumentRow[]
   miniatures: Record<string, string>
   peutEcrire: boolean
   /** Compte Google connecté avec le scope Drive : sans lui, rien ne peut être rangé. */
   driveOk: boolean
+  /** Dossiers existants du Drive (chemins relatifs au dossier de rangement). */
+  dossiers: string[][]
+  /** Appelé après un rangement réussi (le Drive a peut-être de nouveaux dossiers). */
+  onRanges: () => void
   /** Met à jour des documents dans la liste de l'onglet, sans recharger. */
   patch: (ids: string[], maj: Partial<DocumentRow>) => void
   toast: (message: string, type?: 'success' | 'error') => void
 }) {
   const [editions, setEditions] = useState<Record<string, Edition>>({})
   const [envoi, setEnvoi] = useState(0)
+  /** Carte dont on est en train de nommer un nouveau sous-dossier, et le nom en cours de saisie. */
+  const [nouveau, setNouveau] = useState<{ id: string; nom: string } | null>(null)
 
   const edition = (d: DocumentRow): Edition => editions[d.id] ?? editionInitiale(d)
   const nomsPris = useMemo(() => new Set(classes.map(c => c.file_name.toLowerCase())), [classes])
@@ -105,7 +111,13 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
     for (let i = 0; i < items.length; i += PAQUET) {
       const resultats = await rangerDansDrive(items.slice(i, i + PAQUET))
       for (const r of resultats) {
-        if (r.ok) { ok++; continue }
+        if (r.ok) {
+          ok++
+          const chemin = cheminEnTexte(texteEnChemin(edition(avant.get(r.id)!).chemin))
+          patch([r.id], { drive_chemin: chemin })
+          void noterCheminDrive(r.id, chemin)
+          continue
+        }
         premierEchec ??= r.raison ?? 'Envoi impossible'
         const d = avant.get(r.id)
         if (d) patch([r.id], { statut_tri: 'propose', file_name: d.file_name, proposition: d.proposition })
@@ -113,6 +125,7 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
     }
     setEnvoi(n => n - lot.length)
     if (premierEchec) toast(`${lot.length - ok} non rangé${lot.length - ok > 1 ? 's' : ''} : ${premierEchec}`, 'error')
+    if (ok > 0) onRanges()
     if (ok > 0) toast(ok === 1 ? 'Document rangé dans le Drive' : `${ok} documents rangés dans le Drive`)
   }
 
@@ -209,9 +222,29 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
                 <label className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]">
                   <FolderTree size={13} /> Où le ranger dans le Drive
                 </label>
-                <input value={e.chemin} aria-label="Dossier du Drive" disabled={!peutEcrire} placeholder="Dossier / Sous-dossier / Année"
-                  onChange={ev => modifier(d, { chemin: ev.target.value, cheminManuel: true })}
-                  className={`field ${texteEnChemin(e.chemin).length === 0 ? '!border-[var(--warning)]' : ''}`} />
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 min-w-0">
+                    <ListeDeroulante valeur={e.chemin} onChange={v => modifier(d, { chemin: v, cheminManuel: true })} ariaLabel="Dossier du Drive"
+                      placeholder="Choisir un dossier…" recherche disabled={!peutEcrire} invalide={texteEnChemin(e.chemin).length === 0}
+                      options={optionsChemin(dossiers, [texteEnChemin(e.chemin), ...(d.proposition?.chemin ? [d.proposition.chemin] : []), ...(d.proposition?.alternatives ?? []).map(a => a.chemin)])} />
+                  </div>
+                  {peutEcrire && (
+                    <BoutonIcone icone={FolderPlus} libelle="Créer un sous-dossier ici" onClick={() => setNouveau({ id: d.id, nom: '' })} actif={nouveau?.id === d.id} />
+                  )}
+                </div>
+                {nouveau?.id === d.id && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-[var(--text-muted)] shrink-0">{e.chemin || 'Racine'} /</span>
+                    <input autoFocus className="field flex-1 min-w-0" placeholder="Nom du nouveau dossier" value={nouveau.nom} onChange={ev => setNouveau({ id: d.id, nom: ev.target.value })}
+                      onKeyDown={ev => {
+                        if (ev.key === 'Escape') setNouveau(null)
+                        if (ev.key === 'Enter' && nouveau.nom.trim()) { modifier(d, { chemin: cheminEnTexte(texteEnChemin(`${e.chemin} / ${nouveau.nom}`)), cheminManuel: true }); setNouveau(null) }
+                      }} />
+                    <BoutonIcone icone={Check} libelle="Créer ce sous-dossier" taille="sm" disabled={!nouveau.nom.trim()}
+                      onClick={() => { modifier(d, { chemin: cheminEnTexte(texteEnChemin(`${e.chemin} / ${nouveau.nom}`)), cheminManuel: true }); setNouveau(null) }} />
+                    <BoutonIcone icone={X} libelle="Annuler" taille="sm" onClick={() => setNouveau(null)} />
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-1.5 text-xs">
                   {texteEnChemin(e.chemin).map((seg, i) => {
                     const p = d.proposition

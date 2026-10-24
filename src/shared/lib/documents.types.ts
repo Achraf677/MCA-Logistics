@@ -38,6 +38,10 @@ export interface DocumentRow {
   montant_ttc_cts?: number | null
   resume?: string | null
   proposition?: PropositionDocument | null
+  /** Dossier du Drive où le fichier a été rangé (« Achats / Carburant / 2026 »). */
+  drive_chemin?: string | null
+  /** Lien Google Drive du fichier rangé. */
+  drive_url?: string | null
   trie_le?: string | null
 }
 

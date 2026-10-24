@@ -1,7 +1,8 @@
 import { supabase } from '../../app/providers'
 import { lireErreurEdge } from '../../shared/lib/erreurEdge'
-import { uploadDocument } from '../../shared/lib/documents.queries'
+import { getDownloadUrl, uploadDocument } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
+import { cheminsDepuisDossiers, type DossierDrive } from './documents.logic'
 
 /** Tous les documents de la société, plus récents d'abord (RLS). */
 export async function listerDocuments(limite = 3000) {
@@ -121,4 +122,27 @@ export async function renommerDansDrive(fileId: string, nom: string): Promise<st
   const { data, error } = await supabase.functions.invoke('drive-rename', { body: { file_id: fileId, name: nom } })
   if (error || !data?.ok) return (await lireErreurEdge(data, error))?.message ?? 'Renommage impossible'
   return null
+}
+
+/** Dossiers existants du Drive sous le dossier de rangement (chemins relatifs, 4 niveaux au plus) : sert au choix de « Où le ranger ». */
+export async function arborescenceDrive(): Promise<string[][]> {
+  const { data, error } = await supabase.functions.invoke('drive-browse', { body: { arbre: true } })
+  if (error || !data?.ok || !data.racine_id) return []
+  return cheminsDepuisDossiers((data.dossiers ?? []) as DossierDrive[], String(data.racine_id))
+}
+
+/** Mémorise le dossier du Drive où un document a été rangé (historique). */
+export async function noterCheminDrive(id: string, chemin: string) {
+  return supabase.from('documents').update({ drive_chemin: chemin }).eq('id', id)
+}
+
+/** Ouvre dans l'appli un document déjà rangé : depuis le Drive s'il y est, sinon depuis notre stockage. */
+export async function lireDocumentRange(d: DocumentRow): Promise<{ url: string; type: 'image' | 'pdf' } | null> {
+  if (d.drive_file_id) {
+    const mime = d.mime_type ?? (/\.pdf$/i.test(d.file_name) ? 'application/pdf' : 'image/jpeg')
+    const lu = await lireFichierDrive({ id: d.drive_file_id, name: d.file_name, mimeType: mime })
+    if (lu) return lu
+  }
+  const url = await getDownloadUrl(d)
+  return url ? { url, type: d.mime_type?.startsWith('image/') ? 'image' : 'pdf' } : null
 }

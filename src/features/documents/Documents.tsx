@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { BookOpen, CheckCheck, HardDrive, Inbox, Sparkles } from 'lucide-react'
+import { BookOpen, CheckCheck, HardDrive, History, Inbox, Sparkles } from 'lucide-react'
 import { useProfile } from '../../app/providers'
 import { ChiffreCarte } from '../../shared/ui/ChiffreCarte'
 import { Skeleton } from '../../shared/ui/Skeleton'
@@ -7,17 +7,19 @@ import { useToast } from '../../shared/ui/useToast'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { urlsTickets } from '../../shared/lib/receiptsInbox.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
-import { listerDocuments, statutDrive, type StatutDrive } from './documents.queries'
+import { arborescenceDrive, listerDocuments, statutDrive, type StatutDrive } from './documents.queries'
 import { InboxDocuments } from './InboxDocuments'
 import { ConfirmationTri } from './ConfirmationTri'
 import { BibliothequeDocuments } from './BibliothequeDocuments'
+import { HistoriqueDocuments } from './HistoriqueDocuments'
 
-type Vue = 'inbox' | 'confirmer' | 'bibliotheque'
+type Vue = 'inbox' | 'confirmer' | 'historique' | 'bibliotheque'
 
 /**
  * Onglet Documents (Système) : TOUS les fichiers du site au même endroit.
  *  - Inbox : ce qui n'est pas encore rangé (dépôts, pièces jointes des livraisons, véhicules, tournées…). On lance le tri.
  *  - À confirmer : l'IA a lu et PROPOSE un nom rangé, un type, une date, un tiers ; rien n'est appliqué sans confirmation.
+ *  - Historique : les derniers documents rangés, avec leur dossier du Drive.
  *  - Bibliothèque : le Drive de la société (un seul compte Google, branché dans Paramètres) ; les documents confirmés y sont rangés.
  */
 export function Documents() {
@@ -27,6 +29,7 @@ export function Documents() {
   const [vue, setVue] = useState<Vue>('inbox')
   const [docs, setDocs] = useState<DocumentRow[]>([])
   const [drive, setDrive] = useState<StatutDrive | null>(null)
+  const [arbre, setArbre] = useState<string[][]>([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
   const [miniatures, setMiniatures] = useState<Record<string, string>>({})
@@ -46,6 +49,11 @@ export function Documents() {
 
   useEffect(() => { void charger() }, [charger])
 
+  // Dossiers existants du Drive (pour choisir « Où le ranger ») : chargés à l'ouverture de À confirmer, rechargés après un rangement.
+  const rafraichirArbre = useCallback(async () => { setArbre(await arborescenceDrive()) }, [])
+  const driveBranche = !!drive?.connecte && !!drive.drive
+  useEffect(() => { if (vue === 'confirmer' && driveBranche) void rafraichirArbre() }, [vue, driveBranche, rafraichirArbre])
+
   // Mise à jour locale (sans recharger) : une confirmation fait disparaître la carte aussitôt.
   const patch = useCallback((ids: string[], maj: Partial<DocumentRow>) => {
     setDocs(prev => prev.map(d => (ids.includes(d.id) ? { ...d, ...maj } : d)))
@@ -54,22 +62,24 @@ export function Documents() {
   const aTrier = useMemo(() => docs.filter(d => (d.statut_tri ?? 'a_trier') === 'a_trier'), [docs])
   const propositions = useMemo(() => docs.filter(d => d.statut_tri === 'propose'), [docs])
   const classes = useMemo(() => docs.filter(d => d.statut_tri === 'classe'), [docs])
+  const rangesRecents = useMemo(() => classes.filter(d => d.trie_le || d.drive_file_id), [classes])
   const driveOk = !!drive?.connecte && !!drive.drive
 
   // Miniatures des photos affichées (liens signés par lot, une seule fois par chemin).
   useEffect(() => {
-    const visibles = vue === 'inbox' ? aTrier : vue === 'confirmer' ? propositions : []
+    const visibles = vue === 'inbox' ? aTrier : vue === 'confirmer' ? propositions : vue === 'historique' ? rangesRecents.slice(0, 60) : []
     const manquants = visibles.map(d => ({ c: d.storage_path, m: d.mime_type }))
       .filter(x => x.c && x.m?.startsWith('image/') && !miniatures[x.c]).slice(0, 100).map(x => x.c as string)
     if (manquants.length === 0) return
     let annule = false
     void urlsTickets(manquants).then(m => { if (!annule) setMiniatures(prev => ({ ...prev, ...m })) })
     return () => { annule = true }
-  }, [vue, aTrier, propositions, miniatures])
+  }, [vue, aTrier, propositions, rangesRecents, miniatures])
 
   const onglets: Array<{ cle: Vue; libelle: string; n: number; icone: typeof Inbox }> = [
     { cle: 'inbox', libelle: 'Inbox', n: aTrier.length, icone: Inbox },
     { cle: 'confirmer', libelle: 'À confirmer', n: propositions.length, icone: CheckCheck },
+    { cle: 'historique', libelle: 'Historique', n: rangesRecents.length, icone: History },
     { cle: 'bibliotheque', libelle: 'Bibliothèque', n: classes.length, icone: BookOpen },
   ]
 
@@ -84,7 +94,7 @@ export function Documents() {
         <ChiffreCarte libelle="À confirmer" icone={<Sparkles size={13} />} valeur={String(propositions.length)} ton={propositions.length > 0 ? 'warning' : undefined}
           detail="propositions de l'IA" titre="Propositions à confirmer" actif={vue === 'confirmer'} onClick={() => setVue('confirmer')} />
         <ChiffreCarte libelle="Rangés" icone={<BookOpen size={13} />} valeur={String(classes.length)} detail="envoyés dans le Drive"
-          titre="Bibliothèque" actif={vue === 'bibliotheque'} onClick={() => setVue('bibliotheque')} />
+          titre="Historique des documents rangés" actif={vue === 'historique'} onClick={() => setVue('historique')} />
         <ChiffreCarte libelle="Google Drive" icone={<HardDrive size={13} />} valeur={driveOk ? 'Connecté' : drive?.connecte ? 'Drive refusé' : 'Non connecté'}
           ton={driveOk ? undefined : 'warning'} detail={driveOk ? (drive?.email ?? 'compte de la société') : drive?.connecte ? 'reconnecte-toi en cochant Drive' : 'à connecter dans Paramètres'}
           titre="Bibliothèque" actif={false} onClick={() => setVue('bibliotheque')} />
@@ -107,8 +117,9 @@ export function Documents() {
       )}
       {vue === 'confirmer' && (
         <ConfirmationTri docs={propositions} classes={classes} miniatures={miniatures} peutEcrire={peutEcrire} driveOk={driveOk}
-          patch={patch} toast={toast} />
+          patch={patch} dossiers={arbre} onRanges={rafraichirArbre} toast={toast} />
       )}
+      {vue === 'historique' && <HistoriqueDocuments docs={rangesRecents} miniatures={miniatures} toast={toast} />}
       {vue === 'bibliotheque' && (
         <BibliothequeDocuments peutEcrire={peutEcrire} estPresident={profile?.role === 'president'} toast={toast} />
       )}
