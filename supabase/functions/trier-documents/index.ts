@@ -4,6 +4,9 @@
 // Rien n'est appliqué ici : la proposition est gardée dans `documents.proposition` (statut_tri = 'propose') ;
 // c'est l'utilisateur qui confirme dans l'écran « À confirmer ».
 //
+// Exception : les documents d'une tournée de colis (feuilles de route, photos de synthèse, preuves d'arrêt) sont rangés d'après
+// les DONNÉES de la tournée (date, client, salarié, page), sans lecture IA : `lu_via = 'tournee'`.
+//
 // Lecture : photo / image → modèle vision ; PDF contenant des photos (3 pages au plus) → les photos ; PDF « texte » → texte
 // extrait (au mieux) ; sinon « illisible » (jamais de proposition inventée à partir du seul nom de fichier).
 //
@@ -19,7 +22,7 @@ import { jetonAcces, DOSSIER_MIME, NOM_DOSSIER_RACINE } from '../_shared/googleD
 import { texteDuPdf } from '../_shared/pdfTexte.ts';
 import {
   TYPES_DOCUMENT, cheminDefaut, cheminsExistants, nomPropose, normaliserChemin, normaliserProposition, rapprocherTiers, rapprocherVehicule,
-  type DossierDrive, type PropositionBrute,
+  pageDuNom, propositionTournee, type ContexteTournee, type DossierDrive, type PropositionBrute,
 } from '../_shared/triDocuments.ts';
 
 const BUCKET = 'documents';
@@ -103,6 +106,45 @@ async function dossiersDuDrive(service: SupabaseClient, companyId: string): Prom
   }
 }
 
+/** Ce que la tournée sait du document (feuille de route, photo de synthèse, preuve d'arrêt), ou null si ce n'en est pas un. */
+async function contexteTournee(
+  service: SupabaseClient,
+  doc: { id: string; entity_type: string | null; entity_id: string | null; notes: string | null; file_name: string; created_at: string },
+): Promise<ContexteTournee | null> {
+  if (!doc.entity_id) return null;
+  const nature = doc.entity_type === 'tournee_colis' && (doc.notes === 'feuille' || doc.notes === 'synthese') ? doc.notes
+    : doc.entity_type === 'arret_colis' ? 'arret' : null;
+  if (!nature) return null;
+
+  let tourneeId = doc.entity_id;
+  let adresse: string | null = null;
+  if (nature === 'arret') {
+    const { data: a } = await service.from('tournees_colis_arrets').select('tournee_id, numero, rue, commune').eq('id', doc.entity_id).maybeSingle();
+    if (!a?.tournee_id) return null;
+    tourneeId = String(a.tournee_id);
+    adresse = [[a.numero, a.rue].filter(Boolean).join(' '), a.commune].filter(Boolean).join(', ') || null;
+  }
+  // Tournée supprimée depuis : le fichier reste rangé comme document de tournée, à la date de son dépôt.
+  const { data: tr } = await service.from('tournees_colis').select('date, client_id, member_id').eq('id', tourneeId).maybeSingle();
+  const t = tr ?? { date: null, client_id: null, member_id: null };
+  const [client, salarie] = await Promise.all([
+    t.client_id ? service.from('clients').select('name').eq('id', t.client_id).maybeSingle() : Promise.resolve({ data: null }),
+    t.member_id ? service.from('team_members').select('full_name').eq('id', t.member_id).maybeSingle() : Promise.resolve({ data: null }),
+  ]);
+
+  let numero: number | null = null;
+  if (nature === 'feuille') numero = pageDuNom(doc.file_name);
+  if (nature === 'synthese') {
+    const { data: freres } = await service.from('documents').select('id').eq('entity_type', 'tournee_colis').eq('entity_id', doc.entity_id).eq('notes', 'synthese').order('created_at').order('id');
+    const rang = (freres ?? []).findIndex(f => f.id === doc.id);
+    numero = rang >= 0 ? rang + 1 : null;
+  }
+  return {
+    nature, date: (t.date as string | null) ?? String(doc.created_at).slice(0, 10), numero, adresse,
+    client: (client.data as { name?: string } | null)?.name ?? null, salarie: (salarie.data as { full_name?: string } | null)?.full_name ?? null,
+  };
+}
+
 async function noms(service: SupabaseClient, table: string, colonne: string, companyId: string): Promise<string[]> {
   const { data } = await service.from(table).select(colonne).eq('company_id', companyId).limit(500);
   return ((data ?? []) as unknown as Array<Record<string, unknown>>).map(r => String(r[colonne] ?? '').trim()).filter(Boolean);
@@ -120,8 +162,7 @@ Deno.serve(async (req) => {
   }
   if (ids.length === 0) return jsonResponse({ ok: false, error: 'ids requis' }, 400);
 
-  const apiKey = Deno.env.get('MISTRAL_API_KEY');
-  if (!apiKey) return jsonResponse({ ok: false, error: 'missing MISTRAL_API_KEY' }, 500);
+  const apiKey = Deno.env.get('MISTRAL_API_KEY') ?? '';
 
   const service = getServiceClient();
   const acces = await exigerPermission(req, service, 'systeme.documents', 'update');
@@ -144,10 +185,30 @@ Deno.serve(async (req) => {
   const resultats: Array<{ id: string; ok: boolean; raison?: string }> = [];
   for (const id of ids) {
     const { data: doc } = await service.from('documents')
-      .select('id, company_id, storage_path, file_name, mime_type, category, entity_type, statut_tri')
+      .select('id, company_id, storage_path, file_name, mime_type, category, entity_type, entity_id, notes, created_at, statut_tri')
       .eq('id', id).maybeSingle();
     if (!doc || doc.company_id !== acces.companyId) { resultats.push({ id, ok: false, raison: 'document introuvable' }); continue; }
     if (doc.statut_tri === 'classe') { resultats.push({ id, ok: false, raison: 'déjà classé' }); continue; }
+
+    // Feuille de route, synthèse, preuve d'arrêt : la tournée connaît déjà la date, le client et le salarié → pas de lecture IA.
+    const tournee = await contexteTournee(service, doc);
+    if (tournee) {
+      const r = propositionTournee(tournee, String(doc.file_name), pris);
+      pris.add(r.nom.toLowerCase());
+      const choix = normaliserChemin(r.chemin, existants, r.chemin);
+      const { error } = await service.from('documents').update({
+        proposition: {
+          type: r.type, date: r.date, tiers: r.tiers, tiers_connu: !!tournee.client, montant_ttc_cts: null, reference: r.reference, resume: r.resume,
+          confiance: { type: 1, date: r.date ? 1 : 0, tiers: r.tiers ? 1 : 0, montant: 1 }, vehicule: null, nom: r.nom, lu_via: 'tournee', propose_le: new Date().toISOString(),
+          chemin: choix.chemin, chemin_nouveaux: choix.nouveaux, chemin_confiance: 1, alternatives: [],
+        },
+        statut_tri: 'propose',
+      }).eq('id', doc.id);
+      resultats.push(error ? { id, ok: false, raison: 'enregistrement impossible' } : { id, ok: true });
+      continue;
+    }
+
+    if (!apiKey) { resultats.push({ id, ok: false, raison: 'lecture IA indisponible (clé manquante)' }); continue; }
     if (!doc.storage_path) { resultats.push({ id, ok: false, raison: 'fichier absent (ancien lien Drive)' }); continue; }
 
     const { data: blob } = await service.storage.from(BUCKET).download(doc.storage_path);

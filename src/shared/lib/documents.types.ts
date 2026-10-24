@@ -62,7 +62,7 @@ export interface PropositionDocument {
   chemin_confiance?: number
   /** Autres emplacements possibles (convention par défaut). */
   alternatives?: Array<{ chemin: string[]; nouveaux: boolean[] }>
-  lu_via: 'image' | 'texte'
+  lu_via: 'image' | 'texte' | 'tournee'
   propose_le: string
 }
 

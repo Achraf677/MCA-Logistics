@@ -10,6 +10,7 @@ export const TYPES_DOCUMENT: readonly TypeDocument[] = [
   { cle: 'lettre_de_voiture', libelle: 'Lettre de voiture / CMR', dossier: 'Transport' },
   { cle: 'preuve_livraison', libelle: 'Preuve de livraison', dossier: 'Transport' },
   { cle: 'feuille_de_route', libelle: 'Feuille de route', dossier: 'Transport' },
+  { cle: 'synthese_tournee', libelle: 'Synthèse de tournée', dossier: 'Transport' },
   { cle: 'releve_bancaire', libelle: 'Relevé bancaire', dossier: 'Banque' },
   { cle: 'contrat', libelle: 'Contrat', dossier: 'Juridique' },
   { cle: 'assurance', libelle: 'Assurance', dossier: 'Juridique' },

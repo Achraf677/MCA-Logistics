@@ -12,6 +12,7 @@ export const TYPES_DOCUMENT: readonly TypeDocument[] = [
   { cle: 'lettre_de_voiture', libelle: 'Lettre de voiture / CMR', dossier: 'Transport' },
   { cle: 'preuve_livraison', libelle: 'Preuve de livraison', dossier: 'Transport' },
   { cle: 'feuille_de_route', libelle: 'Feuille de route', dossier: 'Transport' },
+  { cle: 'synthese_tournee', libelle: 'Synthèse de tournée', dossier: 'Transport' },
   { cle: 'releve_bancaire', libelle: 'Relevé bancaire', dossier: 'Banque' },
   { cle: 'contrat', libelle: 'Contrat', dossier: 'Juridique' },
   { cle: 'assurance', libelle: 'Assurance', dossier: 'Juridique' },
@@ -218,4 +219,44 @@ export function rapprocherTiers(lu: string | null | undefined, connus: readonly 
 export function rapprocherVehicule(lu: string | null | undefined, plaques: readonly string[]): string | null {
   const k = cleePlaque(lu)
   return k.length >= 5 ? plaques.find(p => cleePlaque(p) === k) ?? null : null
+}
+
+// ── Documents d'une tournée de colis : rangés d'après les DONNÉES de la tournée, sans lecture par l'IA ──────────
+
+export interface ContexteTournee {
+  nature: 'feuille' | 'synthese' | 'arret'
+  /** Date de la tournée (AAAA-MM-JJ) ; à défaut celle du dépôt du fichier. */
+  date: string | null
+  client: string | null
+  salarie: string | null
+  /** Feuille : numéro de page (feuille-de-route-page-2.jpg → 2). Synthèse : rang de la photo dans la tournée. */
+  numero: number | null
+  /** Arrêt : adresse (« 12 rue des Lilas, Brumath »). */
+  adresse?: string | null
+}
+
+export const DOSSIER_TOURNEES = 'Tournées de colis'
+const SOUS_DOSSIER: Record<ContexteTournee['nature'], string> = { feuille: 'Feuilles de route', synthese: 'Synthèses de tournée', arret: 'Preuves de livraison' }
+const TYPE_TOURNEE: Record<ContexteTournee['nature'], string> = { feuille: 'feuille_de_route', synthese: 'synthese_tournee', arret: 'preuve_livraison' }
+
+/** Numéro de page lu dans le nom d'un scan (« feuille-de-route-page-3.jpg » → 3), sinon null. */
+export const pageDuNom = (nom: string): number | null => {
+  const m = /page[-_ ]?(\d{1,2})/i.exec(nom)
+  return m ? Number(m[1]) : null
+}
+
+/**
+ * Proposition complète pour un document de tournée : type, date, tiers (client de la tournée, à défaut le salarié), référence,
+ * nom rangé et dossier `Transport / Tournées de colis / <nature> / AAAA-MM`. Rien n'est deviné : tout vient de la tournée.
+ */
+export function propositionTournee(c: ContexteTournee, nomActuel: string, pris: ReadonlySet<string> = new Set()) {
+  const date = c.date && /^\d{4}-\d{2}-\d{2}$/.test(c.date) ? c.date : null
+  const tiers = c.client || c.salarie || null
+  const reference = c.nature === 'arret' ? (c.adresse ?? null) : c.numero != null ? (c.nature === 'feuille' ? `p${c.numero}` : String(c.numero)) : null
+  const type = TYPE_TOURNEE[c.nature]
+  const chemin = ['Transport', DOSSIER_TOURNEES, SOUS_DOSSIER[c.nature], date ? date.slice(0, 7) : SANS_DATE]
+  const resume = c.nature === 'feuille' ? `Feuille de route de la tournée du ${date ?? 'jour inconnu'}${c.numero != null ? `, page ${c.numero}` : ''}.`
+    : c.nature === 'synthese' ? `Photo de synthèse de fin de tournée du ${date ?? 'jour inconnu'}${c.salarie ? `, ${c.salarie}` : ''}.`
+      : `Preuve de livraison de la tournée du ${date ?? 'jour inconnu'}${c.adresse ? `, ${c.adresse}` : ''}.`
+  return { type, date, tiers, reference, resume, chemin, nom: nomPropose({ date, type, tiers, reference }, nomActuel, pris) }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cheminDefaut as cheminEdge, cheminsExistants, extensionDe, lisible, nomPropose as nomEdge, normaliserChemin, normaliserProposition, rapprocherTiers, rapprocherVehicule, TYPES_DOCUMENT as TYPES_EDGE } from './triDocuments'
+import { pageDuNom, propositionTournee, cheminDefaut as cheminEdge, cheminsExistants, extensionDe, lisible, nomPropose as nomEdge, normaliserChemin, normaliserProposition, rapprocherTiers, rapprocherVehicule, TYPES_DOCUMENT as TYPES_EDGE } from './triDocuments'
 import { cheminDefaut as cheminFront, nomPropose as nomFront, TYPES_DOCUMENT as TYPES_FRONT } from '../../../src/shared/lib/documentsTri'
 
 const brut = { type: 'ticket', type_confiance: 0.9, date: '2026-10-21', date_confiance: 0.9, tiers: "O'TACOS", tiers_confiance: 0.8, montant_ttc: 17.5, montant_confiance: 0.9, reference: 'T-123', resume: 'Repas du midi' }
@@ -65,5 +65,17 @@ describe('triDocuments', () => {
     expect(rapprocherTiers(null, connus)).toEqual({ nom: null, connu: false })
     expect(rapprocherVehicule('ab 123 cd', ['AB-123-CD', 'ZZ-999-ZZ'])).toBe('AB-123-CD')
     expect(rapprocherVehicule('XX', ['AB-123-CD'])).toBeNull()
+  })
+  it('documents de tournée : rangés d’après la tournée', () => {
+    expect(pageDuNom('feuille-de-route-page-3.jpg')).toBe(3)
+    expect(pageDuNom('IMG_3794.jpeg')).toBeNull()
+    const f = propositionTournee({ nature: 'feuille', date: '2026-10-24', client: 'La Poste', salarie: 'MOHAMMED CHIKRI', numero: 2 }, 'feuille-de-route-page-2.jpg')
+    expect(f).toMatchObject({ type: 'feuille_de_route', date: '2026-10-24', tiers: 'La Poste', reference: 'p2', nom: '2026-10-24_Feuille-de-route_La-Poste_p2.jpg', chemin: ['Transport', 'Tournées de colis', 'Feuilles de route', '2026-10'] })
+    const s = propositionTournee({ nature: 'synthese', date: '2026-10-23', client: null, salarie: 'MOHAMMED CHIKRI', numero: 1 }, 'IMG_3794.jpeg')
+    expect(s).toMatchObject({ type: 'synthese_tournee', tiers: 'MOHAMMED CHIKRI', nom: '2026-10-23_Synthese-de-tournee_MOHAMMED-CHIKRI_1.jpeg', chemin: ['Transport', 'Tournées de colis', 'Synthèses de tournée', '2026-10'] })
+    const a = propositionTournee({ nature: 'arret', date: null, client: 'La Poste', salarie: null, numero: null, adresse: '12 rue des Lilas, Brumath' }, 'x.jpg')
+    expect(a).toMatchObject({ type: 'preuve_livraison', date: null, chemin: ['Transport', 'Tournées de colis', 'Preuves de livraison', 'Sans date'] })
+    const pris = new Set([f.nom.toLowerCase()])
+    expect(propositionTournee({ nature: 'feuille', date: '2026-10-24', client: 'La Poste', salarie: null, numero: 2 }, 'x.jpg', pris).nom).toBe('2026-10-24_Feuille-de-route_La-Poste_p2-2.jpg')
   })
 })

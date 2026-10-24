@@ -20,12 +20,18 @@
 - Dépôt = `entity_type = 'depot'`.
 - Ancien Drive (sans `storage_path`) : visible dans l'Inbox, non triable, purgeable (les fichiers eux-mêmes se retrouvent dans la Bibliothèque).
 
-## 5 Edge `trier-documents` (v2, 24/10/2026)
+## 5 Edge `trier-documents` (v4, 24/10/2026)
 - POST `{ids ≤ 6}`, droit `systeme.documents/update`. Image → vision Mistral ; PDF scanné → ses 3 premières photos (pages) ; PDF texte → `_shared/pdfTexte` ; sinon « illisible ».
 - L'IA reçoit : clients, fournisseurs, salariés, plaques de la flotte, et l'arborescence RÉELLE du Drive sous le dossier de rangement (jusqu'à 250 chemins, 4 niveaux).
 - Elle propose : type (19 types), date d'émission, tiers (rattaché à la fiche connue par `rapprocherTiers`, même nom que la fiche), montant, référence, plaque (`rapprocherVehicule`), et un **chemin Drive** (`chemin`, `chemin_nouveaux` par niveau, `chemin_confiance`, `alternatives` = convention `Dossier/Année` ou `Flotte/Plaque/Année`). Chemin choisi parmi les dossiers existants (`normaliserChemin` reprend leur nom exact) ; confiance < 0,4 → convention par défaut.
 - Nom fabriqué par `_shared/triDocuments#nomPropose` (jamais par l'IA), miroir `shared/lib/documentsTri.ts` (types + `cheminDefaut`, testés des deux côtés).
 - Écran À confirmer : champ « Où le ranger dans le Drive » (modifiable, pastilles par niveau « nouveau » si le dossier sera créé, bouton « Sinon : … »). Tant que le chemin n'est pas tapé à la main il suit le type, puis l'année suit la date.
+
+## 5a Documents de tournée (24/10/2026)
+- Feuilles de route (`notes = 'feuille'`), photos de synthèse (`'synthese'`) et photos d'arrêt (`arret_colis`) ne passent PAS par l'IA : `trier-documents` v4 (`contexteTournee` + `_shared/triDocuments#propositionTournee`) les range d'après la tournée (date, client, salarié, page / rang). Badge « Rangé d'après la tournée » (`lu_via = 'tournee'`).
+- Nom : `2026-10-24_Feuille-de-route_<Client>_p2.jpg`, `2026-10-23_Synthese-de-tournee_<Client ou salarié>_1.jpeg`. Dossier : `Transport / Tournées de colis / Feuilles de route | Synthèses de tournée | Preuves de livraison / AAAA-MM`.
+- Tournée supprimée depuis : rangé à la date du dépôt, sans client. Type ajouté : `synthese_tournee`.
+- Les 20 documents de tournée déjà « proposés » par l'IA (dates 2020, « sans-date », tiers inventés) ont été remis dans l'Inbox le 24/10/2026.
 
 ## 5b Edge Drive (24/10/2026)
 - `drive-oauth-start` v17 (scope drive ajouté), `drive-status` v12 (champ `drive`), `drive-browse` v13 (dossier / recherche / définir racine), `drive-fichier` v1 (octets pour l'aperçu, Docs / Sheets → PDF, 25 Mo), `drive-ranger` v2 (reçoit `chemin: string[]`, crée les dossiers manquants). Code commun `_shared/googleDrive.ts` ; droit = président ou `profiles.drive_access`. `drive-rename` sert au renommage.

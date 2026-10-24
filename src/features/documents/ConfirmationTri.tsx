@@ -163,7 +163,7 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
                   <p className="flex items-center gap-2 text-xs text-[var(--text-muted)] min-w-0">
                     <span className="truncate">{d.file_name}</span>
                     <ArrowRight size={12} className="shrink-0" />
-                    <Badge color={d.proposition?.lu_via === 'texte' ? 'info' : 'success'}>{d.proposition?.lu_via === 'texte' ? 'Lu dans le texte' : 'Lu sur l\'image'}</Badge>
+                    <Badge color={d.proposition?.lu_via === 'tournee' ? 'warning' : d.proposition?.lu_via === 'texte' ? 'info' : 'success'}>{d.proposition?.lu_via === 'tournee' ? 'Rangé d\'après la tournée' : d.proposition?.lu_via === 'texte' ? 'Lu dans le texte' : 'Lu sur l\'image'}</Badge>
                   </p>
                   <input value={e.nom} aria-label="Nom proposé" disabled={!peutEcrire}
                     onChange={ev => modifier(d, { nom: ev.target.value, nomManuel: true })}
