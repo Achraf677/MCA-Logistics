@@ -222,7 +222,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 ## 11. État actuel (22/10/2026)
 - 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis) · **Finance** (Trésorerie, Charges ; Encaissement / Relances retirés le 22/10/2026) ·
   **Flotte** (Véhicules, Carburant, Entretiens) · **Planning** (Tournées, Planning : vues Jour / Semaine / Mois, refonte du 19/10/2026 ; l'ancien Calendrier y est fondu) · **Tiers**
-  (Clients, Fournisseurs) · **Équipe** (Équipe, Heures) · **Système** (Paramètres, Admins). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
+  (Clients, Fournisseurs) · **Équipe** (Membres ; onglet Documents à venir) · **Système** (Paramètres, Admins). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
   Les specs `mca-spec/tabs/` n'en couvrent qu'une partie : vérifier le code.
 - Revue onglet par onglet (méthode § 13) : 01 Mes courses ✔ · 02 Dashboard ✔ · 03 Livraisons ✔
   (liste, facturation, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie)
@@ -241,6 +241,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   documents · Facturation).
 
 ## 12. En cours / à décider (mettre à jour à chaque session)
+- **Équipe allégée (24/10/2026, demande de l'utilisateur)** : onglets À valider, Journées, Rapports et Heures SUPPRIMÉS (code, alerte « journées à valider », droits `equipe.journees` / `equipe.heures` du catalogue, outil `get_heures` de l'assistant rendu muet) ; fiche membre sans Messagerie, Notes ni Documents (colonnes `tarif_*`, `clients_messagerie`, `notes`, tables `journees_colis*` / `work_hours` gardées en base, plus lues). **À venir** : un onglet « Documents » unique où TOUS les fichiers téléversés sont rangés et renommés par l'IA.
 - **Tiers refondu (24/10/2026)** : Clients + Fournisseurs = tuiles cliquables (`ChiffreCarte`, comptent sur l'ensemble, pas sur la liste filtrée), barre de recherche, `ListeDeroulante`, pastilles de filtre à bascule (`PastilleFiltre`), lignes avec `AvatarInitiales`, « Tout réinitialiser » ; listes natives de la fiche client / fournisseur passées en `ListeDeroulante`. Équipe (Membres + filtres des journées) refait de même le 24/10/2026. Reste : Système, Flotte, autres `<select>` natifs.
 - **Pennylane = source des montants (24/10/2026)** : plus de « Créer la charge » côté Justificatifs ; une facture supprimée chez Pennylane disparaît du site (charge + carburant / entretiens reliés) à la synchro, avec garde-fou anti-liste tronquée (`pennylane-sync` v23).
 - **Lecture IA des tickets (23/10/2026)** : Edge `lire-ticket` v2 lit le ticket DÈS LE DÉPÔT (lancée par le salarié, une seule fois, `ocr_lu_le`) et préremplit montant / date / catégorie / fournisseur (cases vides seulement ; plus de TVA, Pennylane la lit) ; le bureau confirme, voir `mca-spec/revue/06-finance.md`. Envoi Pennylane = mail PDF (Edge `pennylane-justificatif` v12). Reste F2b (HT / TVA par ligne de ventilation).

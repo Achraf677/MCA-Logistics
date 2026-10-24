@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Activity, FileText, KeyRound, Trash2, UserRound } from 'lucide-react'
+import { Activity, KeyRound, Trash2, UserRound } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
 import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { ContactLinks } from '../../shared/ui/ContactLinks'
-import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { Bloc, Champ } from '../../shared/ui/FicheSaisie'
 import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { useToast } from '../../shared/ui/useToast'
@@ -21,8 +20,6 @@ import {
 } from './equipe.logic'
 import type { TeamMember, TeamMemberInsert } from './equipe.types'
 import { AccesSite } from './AccesSite'
-import { BlocMessagerie } from './BlocMessagerie'
-import { tarifSaisiCts, tarifEnTexte } from './journees.logic'
 import type { EcheanceStatus } from '../../shared/lib/echeances'
 
 interface DrawerMembreProps {
@@ -51,12 +48,11 @@ function VoyantValidite({ status, daysLeft }: { status: EcheanceStatus; daysLeft
   )
 }
 
-type Onglet = 'fiche' | 'activite' | 'documents' | 'acces'
+type Onglet = 'fiche' | 'activite' | 'acces'
 
 const ONGLETS: Array<{ cle: Onglet; libelle: string; icone: typeof UserRound }> = [
   { cle: 'fiche', libelle: 'Fiche', icone: UserRound },
   { cle: 'activite', libelle: 'Activité', icone: Activity },
-  { cle: 'documents', libelle: 'Documents', icone: FileText },
   { cle: 'acces', libelle: 'Accès', icone: KeyRound },
 ]
 
@@ -74,9 +70,6 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
   const [dateFin, setDateFin] = useState('')
   const [deactivating, setDeactivating] = useState(false)
   const [salaireTexte, setSalaireTexte] = useState('')
-  // Messagerie (lot S1) : tarifs saisis en euros, clients fixés par l'admin.
-  const [tarifs, setTarifs] = useState({ domicile: '', relais: '' })
-  const [clientsMessagerie, setClientsMessagerie] = useState<string[]>([])
   const isEdit = !!member
   const conduit = isDriverRole((form.role ?? member?.role ?? null) as TeamMember['role'])
 
@@ -85,8 +78,6 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
     setOnglet('fiche')
     setConfirmDeactivate(false)
     setSalaireTexte(member?.salary_gross_cts != null ? (member.salary_gross_cts / 100).toFixed(2).replace('.', ',') : '')
-    setTarifs({ domicile: tarifEnTexte(member?.tarif_domicile_cts), relais: tarifEnTexte(member?.tarif_relais_cts) })
-    setClientsMessagerie(member?.clients_messagerie ?? [])
     setForm(member ? {
       full_name: member.full_name,
       role: member.role ?? undefined,
@@ -102,7 +93,6 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
       adresse: member.adresse ?? '',
       contact_urgence_nom: member.contact_urgence_nom ?? '',
       contact_urgence_tel: member.contact_urgence_tel ?? '',
-      notes: member.notes ?? '',
       license_type: member.license_type ?? '',
       licence_b_expiry: member.licence_b_expiry ?? '',
       medical_visit_expiry: member.medical_visit_expiry ?? '',
@@ -125,24 +115,11 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
 
   const handleSave = async () => {
     if (!form.full_name?.trim()) { toast('Le nom est requis', 'error'); return }
-    const tarifDom = tarifSaisiCts(tarifs.domicile)
-    const tarifRel = tarifSaisiCts(tarifs.relais)
-    if (tarifDom === 'invalide' || tarifRel === 'invalide') {
-      toast('Tarif au colis illisible : saisir un montant en euros (ex. 1,20) ou laisser vide', 'error'); return
-    }
-    // Champs messagerie envoyés seulement s'ils changent : la fiche reste enregistrable
-    // tant que la migration des journées de colis n'est pas passée.
-    const messagerie: Record<string, unknown> = {}
-    if (tarifDom !== (member?.tarif_domicile_cts ?? null)) messagerie.tarif_domicile_cts = tarifDom
-    if (tarifRel !== (member?.tarif_relais_cts ?? null)) messagerie.tarif_relais_cts = tarifRel
-    const avant = [...(member?.clients_messagerie ?? [])].sort().join(',')
-    if ([...clientsMessagerie].sort().join(',') !== avant) messagerie.clients_messagerie = clientsMessagerie
     setSaving(true)
     // Champs optionnels : '' → null (dates : erreur de type Postgres sinon).
     const vide = (v: string | null | undefined): string | null => (v && v.trim() !== '' ? v : null)
     const payload = {
       ...form,
-      ...messagerie,
       start_date:           form.start_date           || null,
       end_date:             form.end_date             || null,
       licence_b_expiry:     form.licence_b_expiry     || null,
@@ -150,7 +127,6 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
       adresse:              vide(form.adresse),
       contact_urgence_nom:  vide(form.contact_urgence_nom),
       contact_urgence_tel:  vide(form.contact_urgence_tel),
-      notes:                vide(form.notes),
     }
     try {
       if (isEdit && member) {
@@ -332,17 +308,6 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
               </Bloc>
             )}
 
-            <BlocMessagerie
-              tarifDomicile={tarifs.domicile} tarifRelais={tarifs.relais}
-              onTarifs={t => setTarifs(p => ({ ...p, ...t }))}
-              clients={clientsMessagerie} onClients={setClientsMessagerie}
-            />
-
-            <Bloc titre="Notes">
-              <textarea value={texte('notes')} onChange={e => set('notes', e.target.value)} rows={3} className="field field-area resize-none"
-                placeholder="Habitudes, restrictions, infos utiles au bureau…" />
-            </Bloc>
-
             {confirmDeactivate && member && (
               <div className="flex flex-col gap-3 rounded-[var(--r-lg)] border border-[var(--danger)]/40 bg-[var(--danger)]/5 p-4">
                 <p className="text-sm font-semibold text-[var(--text)]">Désactiver {member.full_name} ?</p>
@@ -396,13 +361,6 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
                 ))}
               </ul>
             )}
-          </Bloc>
-        )}
-
-        {/* ── Documents ── */}
-        {isEdit && onglet === 'documents' && (
-          <Bloc titre="Documents du salarié">
-            <DocumentsPanel entityType="team_member" entityId={member?.id ?? null} />
           </Bloc>
         )}
 

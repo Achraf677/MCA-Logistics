@@ -30,7 +30,7 @@ const ASSISTANT_TOOLS: Record<string, (args: Record<string, unknown>) => Promise
   get_carburant_mois:(args) => getCarburantMois(str(args.mois)),
   get_entretiens:    () => getEntretiens(),
   get_equipe:        () => getEquipe(),
-  get_heures:        (args) => getHeures(str(args.membre), str(args.mois)),
+  get_heures:        () => getHeures(),
 }
 
 // Outils d'ÉCRITURE : jamais exécutés automatiquement. Quand l'IA en demande un,

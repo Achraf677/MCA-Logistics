@@ -14,3 +14,7 @@
 - Fiche en blocs : Identité (nom*, téléphone, e-mail, adresse, contact d'urgence) · Poste et contrat (rôle, fonction, contrat, salaire, entrée / sortie, coefficient ; IDCC 16 non saisi) · Conduite et validités · Messagerie (payé au colis) · Notes. Barre d'actions collée en bas ; désactivation avec date de sortie.
 - Migration `20261024100000_team_members_adresse_urgence_notes` (adresse, `contact_urgence_nom`, `contact_urgence_tel`, `notes`) appliquée ; Mes courses liste ses colonnes : le salarié ne les voit pas dans l'appli.
 - Accès au site : blocs Compte de connexion (badge actif / coupé), Mot de passe, Connexion ; création par bascule « mot de passe / invitation ».
+
+## Suppressions (24/10/2026)
+- Onglets À valider, Journées, Rapports, Heures supprimés (fichiers, alerte `journees-a-valider`, catalogue de droits, `features/heures`, `shared/lib/journeesColis.queries.ts`). Restent en code (utilisés ailleurs) : `shared/lib/journeesColis.ts` (livraisons : colis des journées, Mes courses) à nettoyer avec Mes courses.
+- Fiche membre : plus de bloc Messagerie, de Notes, d'onglet Documents (le futur onglet Documents global les remplace).

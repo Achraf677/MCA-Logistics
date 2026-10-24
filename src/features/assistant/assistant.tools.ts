@@ -53,8 +53,6 @@ import { getTeamMembers } from '../equipe/equipe.queries'
 import { getRoleLabel, getContractLabel } from '../equipe/equipe.logic'
 import type { TeamMember } from '../equipe/equipe.types'
 
-import { getWorkHours } from '../heures/heures.queries'
-import type { WorkHourRow } from '../heures/heures.types'
 
 // Rédaction (brouillons) — réutilise la query de l'onglet Brouillons IA
 import { generateDraft } from '../brouillons/brouillons.queries'
@@ -79,10 +77,6 @@ async function getCompanyId(): Promise<string | null> {
   if (!uid) return null
   const { data } = await supabase.from('profiles').select('company_id').eq('id', uid).single()
   return (data as { company_id?: string } | null)?.company_id ?? null
-}
-
-function hoursOf(minutes: number): number {
-  return Math.round((minutes / 60) * 10) / 10
 }
 
 // ── Bornes d'un mois 'YYYY-MM' (défaut : mois courant) ────────────────────────
@@ -481,28 +475,10 @@ export async function getEquipe() {
   }
 }
 
-// ── 9) Heures du mois ──────────────────────────────────────────────────────────
-// Réutilise getWorkHours() (onglet Heures) ; total_minutes calculé en base.
+// ── 9) Heures : l'onglet Heures a été supprimé (24/10/2026). L'Edge assistant-chat déclare encore l'outil : on répond clairement.
 
-export async function getHeures(membre?: string, mois?: string) {
-  const { label, start, end } = monthBounds(mois)
-  const { data } = await getWorkHours({ date_from: start, date_to: end })
-  let rows = (data ?? []) as unknown as WorkHourRow[]
-  if (membre && membre.trim()) {
-    const q = membre.trim().toLowerCase()
-    rows = rows.filter(r => (r.team_members?.full_name ?? '').toLowerCase().includes(q))
-  }
-  const totalMin = rows.reduce((s, r) => s + (r.total_minutes ?? 0), 0)
-  const byMember = new Map<string, number>()
-  for (const r of rows) {
-    const name = r.team_members?.full_name ?? '—'
-    byMember.set(name, (byMember.get(name) ?? 0) + (r.total_minutes ?? 0))
-  }
-  return {
-    mois: label,
-    total_heures: hoursOf(totalMin),
-    par_membre: [...byMember.entries()].slice(0, MAX_LIST).map(([m, min]) => ({ membre: m, heures: hoursOf(min) })),
-  }
+export async function getHeures() {
+  return { info: "Le site ne suit plus les heures travaillées (onglet supprimé). Il faut les consulter ailleurs (livret papier, paie)." }
 }
 
 // ═══════════════════════ ÉCRITURE — create_livraison (avec confirmation) ══════
