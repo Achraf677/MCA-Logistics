@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Package } from 'lucide-react'
+import { Bloc, Champ } from '../../shared/ui/FicheSaisie'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { getClientsActifs } from './equipe.queries'
 
@@ -49,30 +50,23 @@ export function BlocMessagerie({ tarifDomicile, tarifRelais, onTarifs, clients, 
     onClients(clients.includes(id) ? clients.filter(x => x !== id) : [...clients, id])
 
   return (
-    <div className="flex flex-col gap-3 rounded-[var(--r-md)] border border-[var(--border)] p-3">
-      <div className="flex items-center gap-2">
-        <Package size={15} className="text-[var(--brand)]" />
-        <p className="text-sm font-semibold text-[var(--text)]">Messagerie (payé au colis)</p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">Colis domicile (€)</span>
-          <input className="field" inputMode="decimal" placeholder="ex. 1,20" value={tarifDomicile}
+    <Bloc titre="Messagerie — payé au colis" icone={<Package size={15} />}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Champ label="Colis livré à domicile (€)">
+          <input className="field font-mono" inputMode="decimal" placeholder="ex. 1,20" value={tarifDomicile}
             onChange={e => onTarifs({ domicile: e.target.value })} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">Colis point relais (€)</span>
-          <input className="field" inputMode="decimal" placeholder="ex. 0,80" value={tarifRelais}
+        </Champ>
+        <Champ label="Colis livré en point relais (€)">
+          <input className="field font-mono" inputMode="decimal" placeholder="ex. 0,80" value={tarifRelais}
             onChange={e => onTarifs({ relais: e.target.value })} />
-        </label>
+        </Champ>
       </div>
-      <p className="text-xs text-[var(--text-muted)]">
+      <p className="text-xs text-[var(--text-muted)] -mt-1.5">
         Vide = pas de tarif : le rapport affichera « tarif manquant » au lieu d’un montant dû.
       </p>
 
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
+        <span className="text-xs font-medium text-[var(--text-muted)]">
           Clients de messagerie du salarié ({clients.length})
         </span>
         <BarreRecherche value={recherche} onChange={setRecherche} placeholder="Chercher un client" taille="sm" />
@@ -104,6 +98,6 @@ export function BlocMessagerie({ tarifDomicile, tarifRelais, onTarifs, clients, 
           Le salarié déclare une journée par client coché ; il ne peut pas en choisir un autre.
         </p>
       </div>
-    </div>
+    </Bloc>
   )
 }

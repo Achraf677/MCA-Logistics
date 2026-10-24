@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { KeyRound, CheckCircle2, Ban, Link2Off, RotateCcw } from 'lucide-react'
+import { KeyRound, CheckCircle2, Ban, Link2Off, Mail, RotateCcw, ShieldCheck } from 'lucide-react'
+import { Badge } from '../../shared/ui/Badge'
+import { Bloc, Champ } from '../../shared/ui/FicheSaisie'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
@@ -17,8 +19,6 @@ import { erreurAcces, libelleErreurAcces, type ModeAcces } from './equipe.logic'
 import type { TeamMember } from './equipe.types'
 
 type Confirmation = 'mot_de_passe' | 'lien' | 'couper' | 'retablir' | 'delier' | 'mon_compte'
-
-const labelCls = 'text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide'
 
 /**
  * Accès au site d'un membre (lot S0). Le compte créé a le rôle « chauffeur » : il ne
@@ -172,88 +172,92 @@ export function AccesSite({ member, onChanged }: { member: TeamMember; onChanged
   if (relie) {
     if (!isPresident) {
       return (
-        <div className="flex items-center gap-2 rounded-[var(--r-md)] bg-[var(--success)]/10 px-3 py-2.5 text-sm text-[var(--text)]">
-          <CheckCircle2 size={16} className="text-[var(--success)] shrink-0" />
-          {estMoi ? 'Cette fiche est reliée à ton compte.' : 'La fiche est reliée à un compte de connexion.'}
-        </div>
+        <Bloc titre="Accès au site">
+          <div className="flex items-center gap-2 text-sm text-[var(--text)]">
+            <CheckCircle2 size={16} className="text-[var(--success)] shrink-0" />
+            {estMoi ? 'Cette fiche est reliée à ton compte.' : 'La fiche est reliée à un compte de connexion.'}
+          </div>
+        </Bloc>
       )
     }
 
     return (
       <div className="flex flex-col gap-4">
         {/* État du compte */}
-        <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg)] p-3 flex flex-col gap-2 text-sm">
+        <Bloc titre="Compte de connexion" icone={<ShieldCheck size={15} />}
+          droite={acces ? <Badge color={acces.active ? 'success' : 'danger'}>{acces.active ? 'Accès actif' : 'Accès coupé'}</Badge> : undefined}>
           {!accesCharge ? (
-            <p className="text-[var(--text-muted)]">Chargement du compte…</p>
+            <p className="text-sm text-[var(--text-muted)]">Chargement du compte…</p>
           ) : accesErreur ? (
             <div className="flex flex-col gap-2">
-              <p className="text-[var(--danger)]">{accesErreur}</p>
+              <p className="text-sm text-[var(--danger)]">{accesErreur}</p>
               <Button variant="secondary" size="compact" onClick={() => void charger()} className="self-start">Réessayer</Button>
             </div>
           ) : !acces ? (
-            <p className="text-[var(--warning)]">
+            <p className="text-sm text-[var(--warning)]">
               La fiche est reliée à un compte introuvable (supprimé ?). Délie-la pour pouvoir recréer un accès.
             </p>
           ) : (
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
+            <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
               <dt className="text-[var(--text-muted)]">E-mail</dt>
               <dd className="text-[var(--text)] break-all">{acces.email ?? '—'}</dd>
               <dt className="text-[var(--text-muted)]">Rôle</dt>
               <dd className="text-[var(--text)]">{libelleRole(acces.role)}{estMoi ? ' (ton compte)' : ''}</dd>
-              <dt className="text-[var(--text-muted)]">Accès</dt>
-              <dd className={acces.active ? 'text-[var(--success)] font-medium' : 'text-[var(--danger)] font-medium'}>
-                {acces.active ? 'Actif' : 'Coupé'}
-              </dd>
               <dt className="text-[var(--text-muted)]">Dernière connexion</dt>
               <dd className="text-[var(--text)]">{libelleDerniereConnexion(acces.last_sign_in_at)}</dd>
             </dl>
           )}
-        </div>
+        </Bloc>
 
         {/* Mot de passe et coupure : pas sur son propre compte (refusé par le serveur). */}
         {acces && !estMoi && (
           <>
-            <div className="flex flex-col gap-2">
-              <span className={labelCls}>Réinitialiser le mot de passe</span>
+            <Bloc titre="Mot de passe" icone={<KeyRound size={15} />}>
               <div className="flex flex-wrap items-center gap-2">
                 <input type="text" value={nouveauMdp} onChange={e => { setNouveauMdp(e.target.value); setMdpDefini(false) }}
                   placeholder="Nouveau mot de passe (8 caractères min.)" autoComplete="off"
                   className="field flex-1 min-w-[12rem]" />
-                <Button variant="secondary" onClick={() => setConfirmation('mot_de_passe')}
+                <Button variant="primary" onClick={() => setConfirmation('mot_de_passe')}
                   disabled={busy || nouveauMdp.trim().length < 8}>
-                  <KeyRound size={15} /> Définir
+                  Définir
                 </Button>
-                <Button variant="ghost" onClick={() => setConfirmation('lien')} disabled={busy || !acces.email}>
-                  Envoyer un lien
-                </Button>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                <button type="button" onClick={() => setConfirmation('lien')} disabled={busy || !acces.email}
+                  className="inline-flex items-center gap-1.5 text-[var(--brand)] hover:underline disabled:opacity-40">
+                  <Mail size={14} /> Envoyer un lien de réinitialisation par e-mail
+                </button>
               </div>
               {mdpDefini && (
                 <p className="text-xs text-[var(--success)]">Mot de passe enregistré : communique-le, il ne sera plus affiché.</p>
               )}
-            </div>
+            </Bloc>
 
-            <div className="flex flex-wrap gap-2">
-              {acces.active ? (
-                <Button variant="secondary" onClick={() => setConfirmation('couper')} disabled={busy}
-                  className="text-[var(--danger)]">
-                  <Ban size={15} /> Couper l’accès
-                </Button>
-              ) : (
-                <Button variant="secondary" onClick={() => setConfirmation('retablir')} disabled={busy}>
-                  <RotateCcw size={15} /> Rétablir l’accès
-                </Button>
-              )}
-            </div>
+            <Bloc titre="Connexion">
+              <div className="flex flex-wrap items-center gap-3">
+                {acces.active ? (
+                  <Button variant="secondary" onClick={() => setConfirmation('couper')} disabled={busy} className="text-[var(--danger)]">
+                    <Ban size={15} /> Couper l’accès
+                  </Button>
+                ) : (
+                  <Button variant="primary" onClick={() => setConfirmation('retablir')} disabled={busy}>
+                    <RotateCcw size={15} /> Rétablir l’accès
+                  </Button>
+                )}
+                <p className="text-xs text-[var(--text-muted)] flex-1 min-w-[12rem]">
+                  {acces.active ? 'Coupé, le salarié ne peut plus se connecter ; la fiche et son historique restent.' : 'Le salarié ne peut pas se connecter tant que l’accès est coupé.'}
+                </p>
+              </div>
+            </Bloc>
           </>
         )}
 
         {accesCharge && !accesErreur && (
-          <div className="flex flex-col gap-1 pt-3 border-t border-[var(--border)]">
-            <Button variant="ghost" onClick={() => setConfirmation('delier')} disabled={busy}
-              className="self-start text-[var(--danger)]">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
+            <Button variant="ghost" onClick={() => setConfirmation('delier')} disabled={busy} className="text-[var(--danger)]">
               <Link2Off size={15} /> Délier la fiche
             </Button>
-            <p className="text-xs text-[var(--text-muted)]">Le compte reste ; seul le lien avec cette fiche est retiré.</p>
+            <p className="text-xs text-[var(--text-muted)] flex-1 min-w-[12rem]">Le compte reste ; seul le lien avec cette fiche est retiré.</p>
           </div>
         )}
         {dialogueEl}
@@ -262,49 +266,49 @@ export function AccesSite({ member, onChanged }: { member: TeamMember; onChanged
   }
 
   if (!isPresident) {
-    return <p className="text-sm text-[var(--text-muted)]">Pas encore d'accès au site. Seul le président peut le créer.</p>
+    return <Bloc titre="Accès au site"><p className="text-sm text-[var(--text-muted)]">Pas encore d'accès au site. Seul le président peut le créer.</p></Bloc>
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm text-[var(--text-muted)]">
-        Le salarié se connectera au site sur son téléphone. Il ne verra que Mes courses, et
-        uniquement ses propres données (ni salaires, ni finance, ni les autres salariés).
-      </p>
-      <div className="flex flex-col gap-1">
-        <label className={labelCls}>E-mail de connexion</label>
-        <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="field" />
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {(['mot_de_passe', 'invitation'] as const).map(m => (
-          <button key={m} type="button" onClick={() => setMode(m)}
-            className={`px-3 py-1.5 text-sm rounded-[var(--r-md)] border transition-colors ${mode === m
-              ? 'border-[var(--brand)] bg-[var(--brand-soft)] text-[var(--brand)] font-medium'
-              : 'border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}>
-            {m === 'mot_de_passe' ? 'Je donne un mot de passe' : 'Invitation par e-mail'}
-          </button>
-        ))}
-      </div>
-      {mode === 'mot_de_passe' && (
-        <div className="flex flex-col gap-1">
-          <label className={labelCls}>Mot de passe (8 caractères min.)</label>
-          <input type="text" value={motDePasse} onChange={e => setMotDePasse(e.target.value)} className="field" autoComplete="off" />
-        </div>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <Button variant="primary" onClick={creer} disabled={busy || !!erreur}>
-          <KeyRound size={15} /> {busy ? 'Création…' : 'Créer l’accès'}
-        </Button>
-        {/* Associé qui conduit : sa fiche se relie à SON compte, sans en créer un autre. */}
-        <Button variant="secondary" onClick={() => setConfirmation('mon_compte')} disabled={busy || !profile}>
-          C’est mon compte
-        </Button>
-      </div>
-      {niveauMonCompte === 'double' && (
-        <p className="text-xs text-[var(--text-muted)]">
-          L’e-mail de la fiche n’est pas le tien : « C’est mon compte » demandera une double confirmation.
+    <div className="flex flex-col gap-4">
+      <Bloc titre="Créer un accès au site" icone={<KeyRound size={15} />}>
+        <p className="text-sm text-[var(--text-muted)]">
+          Le salarié se connectera au site sur son téléphone. Il ne verra que Mes courses, et
+          uniquement ses propres données (ni salaires, ni finance, ni les autres salariés).
         </p>
-      )}
+        <Champ label="E-mail de connexion" requis>
+          <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="field" />
+        </Champ>
+        <div role="group" aria-label="Mode de création" className="inline-flex self-start rounded-full border border-[var(--border)] bg-[var(--bg-card)] p-1">
+          {(['mot_de_passe', 'invitation'] as const).map(m => (
+            <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)}
+              className={`h-8 px-3.5 rounded-full text-sm font-medium transition-colors ${mode === m
+                ? 'bg-[var(--brand)] text-white'
+                : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+              {m === 'mot_de_passe' ? 'Je donne un mot de passe' : 'Invitation par e-mail'}
+            </button>
+          ))}
+        </div>
+        {mode === 'mot_de_passe' && (
+          <Champ label="Mot de passe (8 caractères min.)" requis>
+            <input type="text" value={motDePasse} onChange={e => setMotDePasse(e.target.value)} className="field" autoComplete="off" />
+          </Champ>
+        )}
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Button variant="primary" className="min-h-10" onClick={creer} disabled={busy || !!erreur}>
+            <KeyRound size={15} /> {busy ? 'Création…' : 'Créer l’accès'}
+          </Button>
+          {/* Associé qui conduit : sa fiche se relie à SON compte, sans en créer un autre. */}
+          <Button variant="secondary" className="min-h-10" onClick={() => setConfirmation('mon_compte')} disabled={busy || !profile}>
+            C’est mon compte
+          </Button>
+        </div>
+        {niveauMonCompte === 'double' && (
+          <p className="text-xs text-[var(--text-muted)]">
+            L’e-mail de la fiche n’est pas le tien : « C’est mon compte » demandera une double confirmation.
+          </p>
+        )}
+      </Bloc>
       {dialogueEl}
     </div>
   )

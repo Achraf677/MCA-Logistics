@@ -8,3 +8,9 @@
 
 ## 8 Reste
 - Fiche membre (428 lignes) : blocs et validation progressive à relire ; accès au site (`AccesSite`) ; onglet Heures (LIC papier, à décider : retirer ?).
+
+## Fiche membre (refonte du 24/10/2026)
+- Tiroir large, en-tête (avatar, poste, contact, badges Actif / contrat / aptitude), 4 onglets en pastille : **Fiche · Activité · Documents · Accès**. L'ancien onglet « Validités » est fondu dans la fiche (bloc « Conduite et validités », chauffeurs seulement, avec voyant par date).
+- Fiche en blocs : Identité (nom*, téléphone, e-mail, adresse, contact d'urgence) · Poste et contrat (rôle, fonction, contrat, salaire, entrée / sortie, coefficient ; IDCC 16 non saisi) · Conduite et validités · Messagerie (payé au colis) · Notes. Barre d'actions collée en bas ; désactivation avec date de sortie.
+- Migration `20261024100000_team_members_adresse_urgence_notes` (adresse, `contact_urgence_nom`, `contact_urgence_tel`, `notes`) appliquée ; Mes courses liste ses colonnes : le salarié ne les voit pas dans l'appli.
+- Accès au site : blocs Compte de connexion (badge actif / coupé), Mot de passe, Connexion ; création par bascule « mot de passe / invitation ».
