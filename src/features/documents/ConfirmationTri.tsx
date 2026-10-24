@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowRight, Check, CheckCheck, Sparkles, Undo2 } from 'lucide-react'
+import { ArrowRight, Check, CheckCheck, FolderTree, Sparkles, Undo2 } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { Button } from '../../shared/ui/Button'
@@ -8,8 +8,9 @@ import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 import { getDownloadUrl } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
-import { TYPES_DOCUMENT, nomPropose } from '../../shared/lib/documentsTri'
+import { TYPES_DOCUMENT, cheminDefaut, nomPropose } from '../../shared/lib/documentsTri'
 import { montantSaisiEnCts } from '../../shared/lib/depenses'
+import { cheminAvecAnnee, cheminEnTexte, texteEnChemin } from './documents.logic'
 import { confirmerClassement, remettreDansInbox } from './documents.queries'
 import { MiniatureDoc } from './MiniatureDoc'
 
@@ -22,6 +23,10 @@ interface Edition {
   nom: string
   /** Le nom a été tapé à la main : on ne le recalcule plus. */
   nomManuel: boolean
+  /** Dossier du Drive, écrit « Achats / Carburant / 2026 ». */
+  chemin: string
+  /** Le chemin a été modifié à la main : il ne suit plus le type / la date. */
+  cheminManuel: boolean
 }
 
 const SEUIL_DOUTE = 0.7
@@ -33,6 +38,7 @@ function editionInitiale(d: DocumentRow): Edition {
   return {
     type: p?.type ?? '', date: p?.date ?? '', tiers: p?.tiers ?? '', montant: montantTexte(p?.montant_ttc_cts), reference: p?.reference ?? '',
     nom: p?.nom ?? d.file_name, nomManuel: false,
+    chemin: cheminEnTexte(p?.chemin?.length ? p.chemin : cheminDefaut({ type: p?.type, date: p?.date, vehicule: p?.vehicule })), cheminManuel: false,
   }
 }
 
@@ -63,6 +69,11 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
         montant_ttc_cts: montant != null && !Number.isNaN(montant) ? montant : null,
       }, d.file_name, nomsPris)
     }
+    // Tant que le chemin n'a pas été tapé à la main, il suit le type (dossier par défaut) puis la date (dossier d'année).
+    if (!e.cheminManuel && !('chemin' in maj)) {
+      if ('type' in maj) e.chemin = cheminEnTexte(cheminDefaut({ type: e.type || null, date: e.date || null, vehicule: d.proposition?.vehicule }))
+      else if ('date' in maj) e.chemin = cheminEnTexte(cheminAvecAnnee(texteEnChemin(e.chemin), e.date || null))
+    }
     setEditions(p => ({ ...p, [d.id]: e }))
   }
 
@@ -70,11 +81,11 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
     const e = edition(d)
     const m = montantSaisiEnCts(e.montant)
     return {
-      nom: e.nom.trim(), type: e.type || null, date: e.date || null, tiers: e.tiers.trim() || null, reference: e.reference.trim() || null,
+      nom: e.nom.trim(), chemin: texteEnChemin(e.chemin), type: e.type || null, date: e.date || null, tiers: e.tiers.trim() || null, reference: e.reference.trim() || null,
       montant_ttc_cts: m != null && !Number.isNaN(m) ? m : null, resume: d.proposition?.resume ?? null,
     }
   }
-  const pret = (d: DocumentRow) => { const e = edition(d); return driveOk && e.nom.trim() !== '' && e.type !== '' }
+  const pret = (d: DocumentRow) => { const e = edition(d); return driveOk && e.nom.trim() !== '' && e.type !== '' && texteEnChemin(e.chemin).length > 0 }
 
   const confirmer = async (d: DocumentRow) => {
     setOccupe(d.id)
@@ -175,12 +186,48 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
                   className="field" />
               </div>
 
+              <div className="flex flex-col gap-1.5">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]">
+                  <FolderTree size={13} /> Où le ranger dans le Drive
+                </label>
+                <input value={e.chemin} aria-label="Dossier du Drive" disabled={!peutEcrire} placeholder="Dossier / Sous-dossier / Année"
+                  onChange={ev => modifier(d, { chemin: ev.target.value, cheminManuel: true })}
+                  className={`field ${texteEnChemin(e.chemin).length === 0 ? '!border-[var(--warning)]' : ''}`} />
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  {texteEnChemin(e.chemin).map((seg, i) => {
+                    const p = d.proposition
+                    const inchange = !!p?.chemin && e.chemin === cheminEnTexte(p.chemin)
+                    const nouveau = inchange ? !!p?.chemin_nouveaux?.[i] : null
+                    return (
+                      <span key={`${seg}-${i}`} className="inline-flex items-center gap-1">
+                        {i > 0 && <span className="text-[var(--text-disabled)]">/</span>}
+                        <Badge color={nouveau === true ? 'warning' : nouveau === false ? 'success' : 'muted'}>{seg}{nouveau === true ? ' · nouveau' : ''}</Badge>
+                      </span>
+                    )
+                  })}
+                  {d.proposition?.chemin && d.proposition.chemin_confiance != null && d.proposition.chemin_confiance < SEUIL_DOUTE && (
+                    <span className="text-[var(--warning)]">emplacement incertain, vérifie</span>
+                  )}
+                </div>
+                {peutEcrire && (d.proposition?.alternatives ?? []).length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                    <span>Sinon :</span>
+                    {(d.proposition?.alternatives ?? []).map(a => (
+                      <button key={a.chemin.join('/')} type="button" onClick={() => modifier(d, { chemin: cheminEnTexte(a.chemin), cheminManuel: true })}
+                        className="rounded-full border border-[var(--border)] px-2.5 py-1 hover:bg-[var(--bg-card-hover)] hover:text-[var(--text)] transition-colors">
+                        {cheminEnTexte(a.chemin)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {peutEcrire && (
                 <div className="flex items-center gap-2">
                   <Button variant="primary" className="min-h-10" disabled={!pret(d) || occupe !== null} onClick={() => void confirmer(d)}>
                     <Check size={15} /> Confirmer
                   </Button>
-                  {driveOk && !pret(d) && <span className="text-xs text-[var(--warning)]">Choisis un type pour confirmer.</span>}
+                  {driveOk && !pret(d) && <span className="text-xs text-[var(--warning)]">Choisis un type et un dossier pour confirmer.</span>}
                   <span className="ml-auto"><BoutonIcone icone={Undo2} libelle="Rejeter : remettre dans l'Inbox" onClick={() => void rejeter(d)} disabled={occupe !== null} /></span>
                 </div>
               )}

@@ -16,6 +16,10 @@ export const TYPES_DOCUMENT: readonly TypeDocument[] = [
   { cle: 'document_vehicule', libelle: 'Document véhicule', dossier: 'Flotte' },
   { cle: 'document_salarie', libelle: 'Document salarié', dossier: 'Équipe' },
   { cle: 'courrier_administratif', libelle: 'Courrier administratif', dossier: 'Administratif' },
+  { cle: 'fiscal_social', libelle: 'Impôts / URSSAF', dossier: 'Fiscal et social' },
+  { cle: 'paie', libelle: 'Bulletin de paie', dossier: 'Équipe' },
+  { cle: 'amende', libelle: 'Amende / PV', dossier: 'Flotte' },
+  { cle: 'statuts_kbis', libelle: 'Statuts / Kbis', dossier: 'Juridique' },
   { cle: 'photo', libelle: 'Photo', dossier: 'Autre' },
   { cle: 'autre', libelle: 'Autre', dossier: 'Autre' },
 ] as const
@@ -65,4 +69,20 @@ export function nomPropose(e: ElementsNom, nomActuel: string, pris: ReadonlySet<
   let nom = `${base}${ext}`
   for (let i = 2; pris.has(nom.toLowerCase()); i++) nom = `${base}-${i}${ext}`
   return nom
+}
+
+/** Plaque normalisée (« ab-123 cd » → « AB123CD ») pour comparer une plaque lue à celles de la flotte. */
+export const cleePlaque = (s: string | null | undefined): string => (s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+
+export const SANS_DATE = 'Sans date'
+
+/**
+ * Chemin de rangement par défaut dans le Drive (sans tenir compte de l'arborescence existante) :
+ * <Dossier>/<Année>, ou Flotte/<Plaque>/<Année> pour un document d'un véhicule connu.
+ */
+export function cheminDefaut(e: { type?: string | null; date?: string | null; vehicule?: string | null }): string[] {
+  const dossier = TYPES_DOCUMENT.find(t => t.cle === e.type)?.dossier ?? 'Autre'
+  const annee = e.date && /^\d{4}/.test(e.date) ? e.date.slice(0, 4) : SANS_DATE
+  if (dossier === 'Flotte' && e.vehicule) return [dossier, e.vehicule, annee]
+  return [dossier, annee]
 }

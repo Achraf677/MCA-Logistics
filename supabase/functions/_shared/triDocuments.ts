@@ -18,6 +18,10 @@ export const TYPES_DOCUMENT: readonly TypeDocument[] = [
   { cle: 'document_vehicule', libelle: 'Document véhicule', dossier: 'Flotte' },
   { cle: 'document_salarie', libelle: 'Document salarié', dossier: 'Équipe' },
   { cle: 'courrier_administratif', libelle: 'Courrier administratif', dossier: 'Administratif' },
+  { cle: 'fiscal_social', libelle: 'Impôts / URSSAF', dossier: 'Fiscal et social' },
+  { cle: 'paie', libelle: 'Bulletin de paie', dossier: 'Équipe' },
+  { cle: 'amende', libelle: 'Amende / PV', dossier: 'Flotte' },
+  { cle: 'statuts_kbis', libelle: 'Statuts / Kbis', dossier: 'Juridique' },
   { cle: 'photo', libelle: 'Photo', dossier: 'Autre' },
   { cle: 'autre', libelle: 'Autre', dossier: 'Autre' },
 ] as const
@@ -116,4 +120,102 @@ export function nomPropose(e: ElementsNom, nomActuel: string, pris: ReadonlySet<
   let nom = `${base}${ext}`
   for (let i = 2; pris.has(nom.toLowerCase()); i++) nom = `${base}-${i}${ext}`
   return nom
+}
+
+/** Plaque normalisée (« ab-123 cd » → « AB123CD ») pour comparer une plaque lue à celles de la flotte. */
+export const cleePlaque = (s: string | null | undefined): string => (s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+
+export const SANS_DATE = 'Sans date'
+
+/**
+ * Chemin de rangement par défaut dans le Drive (sans tenir compte de l'arborescence existante) :
+ * <Dossier>/<Année>, ou Flotte/<Plaque>/<Année> pour un document d'un véhicule connu.
+ */
+export function cheminDefaut(e: { type?: string | null; date?: string | null; vehicule?: string | null }): string[] {
+  const dossier = TYPES_DOCUMENT.find(t => t.cle === e.type)?.dossier ?? 'Autre'
+  const annee = e.date && /^\d{4}/.test(e.date) ? e.date.slice(0, 4) : SANS_DATE
+  if (dossier === 'Flotte' && e.vehicule) return [dossier, e.vehicule, annee]
+  return [dossier, annee]
+}
+
+/** Nettoie un nom de dossier Drive : pas de caractères interdits, 60 caractères au plus. */
+export function segmentPropre(s: unknown): string {
+  return typeof s === 'string' ? s.replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-').replace(/\s+/g, ' ').trim().slice(0, 60) : ''
+}
+
+// ── Aide à la décision de l'IA : arborescence du Drive, tiers et véhicules connus ──────────────────────────
+
+const normal = (s: string) => sansAccents(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+/** Un dossier Drive tel que le renvoie l'API (`parents` : au plus un parent pour un dossier ordinaire). */
+export interface DossierDrive { id: string; name: string; parents?: string[] }
+
+/**
+ * Tous les chemins existants sous `racineId`, relatifs à la racine (au plus `profondeur` niveaux, `max` chemins) :
+ * c'est ce que l'IA reçoit pour choisir un dossier qui existe déjà plutôt que d'en inventer un.
+ */
+export function cheminsExistants(dossiers: readonly DossierDrive[], racineId: string, profondeur = 4, max = 250): string[][] {
+  const enfants = new Map<string, DossierDrive[]>()
+  for (const d of dossiers) for (const p of d.parents ?? []) enfants.set(p, [...(enfants.get(p) ?? []), d])
+  const sortie: string[][] = []
+  const descendre = (id: string, chemin: string[]) => {
+    if (chemin.length >= profondeur) return
+    for (const e of [...(enfants.get(id) ?? [])].sort((a, b) => a.name.localeCompare(b.name, 'fr'))) {
+      if (sortie.length >= max) return
+      const c = [...chemin, e.name]
+      sortie.push(c)
+      descendre(e.id, c)
+    }
+  }
+  descendre(racineId, [])
+  return sortie
+}
+
+export interface CheminPropose { chemin: string[]; /** Pour chaque niveau : le dossier n'existe pas encore (il sera créé). */ nouveaux: boolean[] }
+
+/**
+ * Chemin proposé par l'IA, nettoyé : 4 niveaux au plus, noms identiques à ceux déjà dans le Drive (casse / accents près),
+ * chaque niveau marqué « existe » ou « nouveau ». Réponse vide ou absurde → chemin par défaut.
+ */
+export function normaliserChemin(brut: unknown, existants: readonly string[][], defaut: readonly string[]): CheminPropose {
+  const lu = (Array.isArray(brut) ? brut : typeof brut === 'string' ? brut.split(/\s*[/>]\s*/) : [])
+    .map(segmentPropre).filter(Boolean).slice(0, 4)
+  const segments = lu.length > 0 ? lu : [...defaut]
+  const chemin: string[] = []
+  const nouveaux: boolean[] = []
+  let connu = true
+  for (const seg of segments) {
+    const trouve = connu
+      ? existants.find(e => e.length === chemin.length + 1 && e.slice(0, chemin.length).every((x, i) => x === chemin[i]) && normal(e[chemin.length]) === normal(seg))
+      : undefined
+    if (trouve) { chemin.push(trouve[chemin.length]); nouveaux.push(false) } else { connu = false; chemin.push(seg); nouveaux.push(true) }
+  }
+  return { chemin, nouveaux }
+}
+
+const MOTS_SOCIETE = new Set(['sarl', 'sas', 'sasu', 'eurl', 'sa', 'ets', 'ste', 'societe', 'groupe', 'et', 'de', 'du', 'des', 'la', 'le', 'les', 'l', 'd'])
+const cleTiers = (s: string) => normal(s).split(' ').filter(m => m && !MOTS_SOCIETE.has(m)).join(' ')
+
+/**
+ * Rattache le tiers lu sur le document à une fiche connue (client / fournisseur) : même nom, ou l'un contient l'autre
+ * (5 lettres au moins). Le nom de la fiche l'emporte, pour que « ASDIA SAS » et « Asdia » donnent le même dossier.
+ */
+export function rapprocherTiers(lu: string | null | undefined, connus: readonly string[]): { nom: string | null; connu: boolean } {
+  const cle = lu ? cleTiers(lu).replace(/ /g, '') : ''
+  if (!cle) return { nom: lu?.trim() || null, connu: false }
+  let meilleur: string | null = null
+  let score = 0
+  for (const c of connus) {
+    const k = cleTiers(c).replace(/ /g, '')
+    if (!k) continue
+    if (k === cle) return { nom: c, connu: true }
+    if (Math.min(k.length, cle.length) >= 5 && (k.includes(cle) || cle.includes(k)) && k.length > score) { meilleur = c; score = k.length }
+  }
+  return meilleur ? { nom: meilleur, connu: true } : { nom: lu!.trim(), connu: false }
+}
+
+/** Plaque lue → plaque de la flotte (même plaque une fois normalisée), sinon null. */
+export function rapprocherVehicule(lu: string | null | undefined, plaques: readonly string[]): string | null {
+  const k = cleePlaque(lu)
+  return k.length >= 5 ? plaques.find(p => cleePlaque(p) === k) ?? null : null
 }

@@ -32,3 +32,20 @@ export function tailleLisible(octets: number | null | undefined): string {
   if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`
   return `${(octets / 1024 / 1024).toFixed(1).replace('.', ',')} Mo`
 }
+
+// ── Chemin de rangement dans le Drive ───────────────────────────────────────
+
+export const cheminEnTexte = (c: readonly string[]): string => c.join(' / ')
+
+/** « Achats / Carburant > 2026 » → ['Achats', 'Carburant', '2026'] (4 niveaux au plus, noms nettoyés). */
+export const texteEnChemin = (t: string): string[] =>
+  t.split(/\s*[/>]\s*/).map(x => x.replace(/[\\:*?"<>|]/g, '-').trim().slice(0, 60)).filter(Boolean).slice(0, 4)
+
+/** Le dernier niveau est-il une année (« 2026 ») ou « Sans date » ? Alors il suit la date du document. */
+export const finParAnnee = (c: readonly string[]): boolean => /^(\d{4}|Sans date)$/.test(c[c.length - 1] ?? '')
+
+/** Même chemin, dossier d'année remplacé par celui de la nouvelle date (sans changer le reste). */
+export function cheminAvecAnnee(chemin: readonly string[], date: string | null | undefined): string[] {
+  const annee = date && /^\d{4}/.test(date) ? date.slice(0, 4) : 'Sans date'
+  return finParAnnee(chemin) ? [...chemin.slice(0, -1), annee] : [...chemin]
+}

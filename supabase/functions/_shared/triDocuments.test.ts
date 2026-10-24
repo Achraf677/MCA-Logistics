@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { extensionDe, lisible, nomPropose as nomEdge, normaliserProposition, TYPES_DOCUMENT as TYPES_EDGE } from './triDocuments'
-import { nomPropose as nomFront, TYPES_DOCUMENT as TYPES_FRONT } from '../../../src/shared/lib/documentsTri'
+import { cheminDefaut as cheminEdge, cheminsExistants, extensionDe, lisible, nomPropose as nomEdge, normaliserChemin, normaliserProposition, rapprocherTiers, rapprocherVehicule, TYPES_DOCUMENT as TYPES_EDGE } from './triDocuments'
+import { cheminDefaut as cheminFront, nomPropose as nomFront, TYPES_DOCUMENT as TYPES_FRONT } from '../../../src/shared/lib/documentsTri'
 
 const brut = { type: 'ticket', type_confiance: 0.9, date: '2026-10-21', date_confiance: 0.9, tiers: "O'TACOS", tiers_confiance: 0.8, montant_ttc: 17.5, montant_confiance: 0.9, reference: 'T-123', resume: 'Repas du midi' }
 
@@ -31,5 +31,39 @@ describe('triDocuments', () => {
     expect(TYPES_FRONT).toEqual(TYPES_EDGE)
     const e = { date: '2026-10-21', type: 'devis', tiers: 'ASDIA', montant_ttc_cts: 99900, reference: 'D-2026-014' }
     expect(nomFront(e, 'scan.pdf')).toBe(nomEdge(e, 'scan.pdf'))
+  })
+  it('miroir du chemin par défaut', () => {
+    for (const e of [{ type: 'ticket', date: '2026-10-21' }, { type: 'document_vehicule', date: '2025-01-02', vehicule: 'AB-123-CD' }, { type: null, date: null }]) {
+      expect(cheminFront(e)).toEqual(cheminEdge(e))
+    }
+    expect(cheminEdge({ type: 'ticket', date: '2026-10-21' })).toEqual(['Achats', '2026'])
+    expect(cheminEdge({ type: 'amende', date: '2026-03-01', vehicule: 'AB-123-CD' })).toEqual(['Flotte', 'AB-123-CD', '2026'])
+    expect(cheminEdge({ type: 'contrat' })).toEqual(['Juridique', 'Sans date'])
+  })
+  it('chemins existants sous la racine', () => {
+    const d = [
+      { id: 'a', name: 'Achats', parents: ['r'] }, { id: 'b', name: 'Carburant', parents: ['a'] }, { id: 'c', name: '2026', parents: ['b'] },
+      { id: 'x', name: 'Ailleurs', parents: ['autre'] }, { id: 'v', name: 'Ventes', parents: ['r'] },
+    ]
+    expect(cheminsExistants(d, 'r')).toEqual([['Achats'], ['Achats', 'Carburant'], ['Achats', 'Carburant', '2026'], ['Ventes']])
+    expect(cheminsExistants(d, 'r', 2)).toEqual([['Achats'], ['Achats', 'Carburant'], ['Ventes']])
+  })
+  it('chemin proposé : noms du Drive repris, niveaux nouveaux marqués', () => {
+    const ex = [['Achats'], ['Achats', 'Carburant'], ['Achats', 'Carburant', '2026']]
+    expect(normaliserChemin(['achats', 'Carburant', '2026'], ex, ['Autre'])).toEqual({ chemin: ['Achats', 'Carburant', '2026'], nouveaux: [false, false, false] })
+    expect(normaliserChemin('Achats / Péages / 2026', ex, ['Autre'])).toEqual({ chemin: ['Achats', 'Péages', '2026'], nouveaux: [false, true, true] })
+    expect(normaliserChemin(null, ex, ['Ventes', '2026'])).toEqual({ chemin: ['Ventes', '2026'], nouveaux: [true, true] })
+    expect(normaliserChemin(['a/b', '  ', 'x'.repeat(100)], [], ['Autre']).chemin).toEqual(['a-b', 'x'.repeat(60)])
+  })
+  it('tiers et véhicules rattachés aux fiches', () => {
+    const connus = ['ASDIA', 'Société Générale', 'TotalEnergies']
+    expect(rapprocherTiers('ASDIA SAS', connus)).toEqual({ nom: 'ASDIA', connu: true })
+    expect(rapprocherTiers('Total Energies Marketing France', ['Total'])).toEqual({ nom: 'Total', connu: true })
+    expect(rapprocherTiers('Total Energies', connus)).toEqual({ nom: 'TotalEnergies', connu: true })
+    expect(rapprocherTiers('Axa', ['Axa Assurances'])).toEqual({ nom: 'Axa', connu: false })
+    expect(rapprocherTiers('Boulangerie Müller', connus)).toEqual({ nom: 'Boulangerie Müller', connu: false })
+    expect(rapprocherTiers(null, connus)).toEqual({ nom: null, connu: false })
+    expect(rapprocherVehicule('ab 123 cd', ['AB-123-CD', 'ZZ-999-ZZ'])).toBe('AB-123-CD')
+    expect(rapprocherVehicule('XX', ['AB-123-CD'])).toBeNull()
   })
 })

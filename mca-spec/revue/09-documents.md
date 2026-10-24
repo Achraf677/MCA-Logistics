@@ -20,18 +20,13 @@
 - Dépôt = `entity_type = 'depot'`.
 - Ancien Drive (sans `storage_path`) : visible dans l'Inbox, non triable, purgeable (les fichiers eux-mêmes se retrouvent dans la Bibliothèque).
 
-## 5 Edge `trier-documents` (v1, 24/10/2026)
-- POST `{ids ≤ 6}`, droit `systeme.documents/update`. Image → vision Mistral ; PDF avec photo → la photo ; PDF texte → `_shared/pdfTexte` ; sinon « illisible ». Nom fabriqué par `_shared/triDocuments#nomPropose` (jamais par l'IA), miroir `shared/lib/documentsTri.ts`.
-
-## 6 Fichiers
-- `src/features/documents/` (Documents, InboxDocuments, ConfirmationTri, BibliothequeDocuments, MiniatureDoc, `.logic`, `.queries`).
-
-## 7 Limites connues
-- PDF texte à polices maison : illisible. Pas encore testée sur de vrais documents ni sur le vrai Drive (aperçu des .docx / .xlsx : lien Drive seulement).
-
-## 9 À tester
-- Déposer 2-3 fichiers → Trier → corriger / confirmer → les retrouver en Bibliothèque ; purger les liens Drive.
+## 5 Edge `trier-documents` (v2, 24/10/2026)
+- POST `{ids ≤ 6}`, droit `systeme.documents/update`. Image → vision Mistral ; PDF scanné → ses 3 premières photos (pages) ; PDF texte → `_shared/pdfTexte` ; sinon « illisible ».
+- L'IA reçoit : clients, fournisseurs, salariés, plaques de la flotte, et l'arborescence RÉELLE du Drive sous le dossier de rangement (jusqu'à 250 chemins, 4 niveaux).
+- Elle propose : type (19 types), date d'émission, tiers (rattaché à la fiche connue par `rapprocherTiers`, même nom que la fiche), montant, référence, plaque (`rapprocherVehicule`), et un **chemin Drive** (`chemin`, `chemin_nouveaux` par niveau, `chemin_confiance`, `alternatives` = convention `Dossier/Année` ou `Flotte/Plaque/Année`). Chemin choisi parmi les dossiers existants (`normaliserChemin` reprend leur nom exact) ; confiance < 0,4 → convention par défaut.
+- Nom fabriqué par `_shared/triDocuments#nomPropose` (jamais par l'IA), miroir `shared/lib/documentsTri.ts` (types + `cheminDefaut`, testés des deux côtés).
+- Écran À confirmer : champ « Où le ranger dans le Drive » (modifiable, pastilles par niveau « nouveau » si le dossier sera créé, bouton « Sinon : … »). Tant que le chemin n'est pas tapé à la main il suit le type, puis l'année suit la date.
 
 ## 5b Edge Drive (24/10/2026)
-- `drive-oauth-start` v17 (scope drive ajouté), `drive-status` v12 (champ `drive`), `drive-browse` v13 (dossier / recherche / définir racine), `drive-fichier` v1 (octets pour l'aperçu, Docs / Sheets → PDF, 25 Mo), `drive-ranger` v1. Code commun `_shared/googleDrive.ts` ; droit = président ou `profiles.drive_access`. `drive-rename` sert au renommage.
+- `drive-oauth-start` v17 (scope drive ajouté), `drive-status` v12 (champ `drive`), `drive-browse` v13 (dossier / recherche / définir racine), `drive-fichier` v1 (octets pour l'aperçu, Docs / Sheets → PDF, 25 Mo), `drive-ranger` v2 (reçoit `chemin: string[]`, crée les dossiers manquants). Code commun `_shared/googleDrive.ts` ; droit = président ou `profiles.drive_access`. `drive-rename` sert au renommage.
 - Reconnecter Google après déploiement (ancien jeton = Gmail seul).

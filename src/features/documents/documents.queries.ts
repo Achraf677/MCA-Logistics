@@ -2,7 +2,6 @@ import { supabase } from '../../app/providers'
 import { lireErreurEdge } from '../../shared/lib/erreurEdge'
 import { uploadDocument } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
-import { TYPES_DOCUMENT } from '../../shared/lib/documentsTri'
 
 /** Tous les documents de la société, plus récents d'abord (RLS). */
 export async function listerDocuments(limite = 3000) {
@@ -36,6 +35,8 @@ export async function lancerTri(ids: string[]): Promise<{ resultats: ResultatTri
 
 export interface ClassementConfirme {
   nom: string
+  /** Dossier du Drive où ranger le fichier (de la racine de rangement au dossier final). */
+  chemin: string[]
   type: string | null
   date: string | null
   tiers: string | null
@@ -45,12 +46,11 @@ export interface ClassementConfirme {
 }
 
 /**
- * Applique le classement confirmé : le fichier part dans le Drive (<dossier de rangement>/<Dossier>/<Année>/<nom>), puis le
+ * Applique le classement confirmé : le fichier part dans le Drive (<dossier de rangement>/<chemin choisi>/<nom>), puis le
  * document est noté « classé ». Sans Drive ou en cas d'échec, rien ne change (le document reste à confirmer).
  */
 export async function confirmerClassement(id: string, c: ClassementConfirme): Promise<{ error: { message: string } | null }> {
-  const dossier = TYPES_DOCUMENT.find(t => t.cle === c.type)?.dossier ?? 'Autre'
-  const { data, error: errEdge } = await supabase.functions.invoke('drive-ranger', { body: { id, nom: c.nom, dossier, annee: c.date?.slice(0, 4) ?? null } })
+  const { data, error: errEdge } = await supabase.functions.invoke('drive-ranger', { body: { id, nom: c.nom, chemin: c.chemin } })
   if (errEdge || !data?.ok) {
     const echec = await lireErreurEdge(data, errEdge)
     const brut = echec?.message ?? ''

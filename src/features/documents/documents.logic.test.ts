@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lisibleParIA, lotsDe, tailleLisible } from './documents.logic'
+import { cheminAvecAnnee, cheminEnTexte, finParAnnee, lisibleParIA, lotsDe, tailleLisible, texteEnChemin } from './documents.logic'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 
 const doc = (o: Partial<DocumentRow>): DocumentRow => ({
@@ -19,5 +19,15 @@ describe('documents', () => {
     expect(tailleLisible(500)).toBe('500 o')
     expect(tailleLisible(2048)).toBe('2 Ko')
     expect(tailleLisible(3 * 1024 * 1024)).toBe('3,0 Mo')
+  })
+  it('chemin de rangement', () => {
+    expect(cheminEnTexte(['Achats', 'Carburant', '2026'])).toBe('Achats / Carburant / 2026')
+    expect(texteEnChemin(' Achats / Carburant > 2026 / / ')).toEqual(['Achats', 'Carburant', '2026'])
+    expect(texteEnChemin('a/b/c/d/e')).toEqual(['a', 'b', 'c', 'd'])
+    expect(finParAnnee(['Ventes', '2025'])).toBe(true)
+    expect(finParAnnee(['Ventes', 'ASDIA'])).toBe(false)
+    expect(cheminAvecAnnee(['Achats', '2025'], '2026-03-02')).toEqual(['Achats', '2026'])
+    expect(cheminAvecAnnee(['Achats', '2025'], null)).toEqual(['Achats', 'Sans date'])
+    expect(cheminAvecAnnee(['Achats', 'Carburant'], '2026-03-02')).toEqual(['Achats', 'Carburant'])
   })
 })

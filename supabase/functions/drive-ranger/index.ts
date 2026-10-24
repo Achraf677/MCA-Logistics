@@ -1,5 +1,5 @@
-// Edge `drive-ranger` — range un document CONFIRMÉ dans le Drive : <racine>/<Dossier>/<Année>/<nom>.
-// POST { id, nom, dossier, annee } → { ok, data: { drive_file_id, drive_url } }
+// Edge `drive-ranger` — range un document CONFIRMÉ dans le Drive : <racine>/<chemin…>/<nom>.
+// POST { id, nom, chemin: string[] (4 niveaux au plus) }  (ancien format { dossier, annee } toujours accepté) → { ok, data: { drive_file_id, drive_url } }
 // Lit le fichier dans Storage `documents`, le téléverse dans le Drive, note `documents.drive_file_id / drive_url`.
 // La Bibliothèque lit le Drive : un document sans Drive reste dans l'Inbox / À confirmer.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
@@ -28,9 +28,10 @@ Deno.serve(async (req) => {
 
   try {
     const racine = await racineRangement(a);
-    const dossier = await dossierDans(a.token, racine, propre(b.dossier, 'Autre'));
-    const annee = /^\d{4}$/.test(String(b.annee ?? '')) ? String(b.annee) : 'Sans date';
-    const dest = await dossierDans(a.token, dossier, annee);
+    const segments = (Array.isArray(b.chemin) ? b.chemin : [b.dossier, /^\d{4}$/.test(String(b.annee ?? '')) ? String(b.annee) : 'Sans date'])
+      .map(x => propre(x, '')).filter(Boolean).slice(0, 4);
+    let dest = racine;
+    for (const seg of segments.length ? segments : ['Autre']) dest = await dossierDans(a.token, dest, seg);
     const nom = propre(b.nom, String(doc.file_name));
     const fichier = await televerser(a.token, dest, nom, String(doc.mime_type ?? ''), new Uint8Array(await blob.arrayBuffer()));
     await service.from('documents').update({ drive_file_id: fichier.id, drive_url: fichier.lien }).eq('id', doc.id);
