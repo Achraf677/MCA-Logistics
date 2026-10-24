@@ -14,6 +14,7 @@ import {
   bornesPeriode, libellePeriode, nomFichierRapport, rapportParJour, totalRapport, filtrerJournees,
   optionsDistinctes,
 } from './journees.logic'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 
 type Mode = 'jour' | 'mois'
 
@@ -79,14 +80,10 @@ export function RapportsColis() {
         {mode === 'jour'
           ? <input type="date" className="field !w-auto" value={jour} onChange={e => e.target.value && setJour(e.target.value)} />
           : <input type="month" className="field !w-auto" value={mois} onChange={e => e.target.value && setMois(e.target.value)} />}
-        <select className="field !w-auto" value={membreId} onChange={e => setMembreId(e.target.value)}>
-          <option value="">Tous les salariés</option>
-          {membres.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
-        </select>
-        <select className="field !w-auto" value={clientId} onChange={e => setClientId(e.target.value)}>
-          <option value="">Tous les clients</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-        </select>
+        <div className="w-52"><ListeDeroulante valeur={membreId} onChange={setMembreId} ariaLabel="Salarié"
+          options={[{ valeur: '', libelle: 'Tous les salariés' }, ...membres.map(m => ({ valeur: m.id, libelle: m.full_name }))]} /></div>
+        <div className="w-52"><ListeDeroulante valeur={clientId} onChange={setClientId} ariaLabel="Client"
+          options={[{ valeur: '', libelle: 'Tous les clients' }, ...clients.map(c => ({ valeur: c.id, libelle: c.nom }))]} /></div>
         <Button variant="secondary" size="compact" className="ml-auto" disabled={lignes.length === 0} onClick={exporter}>
           <Download size={14} /> Export CSV
         </Button>

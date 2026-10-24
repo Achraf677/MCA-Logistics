@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { UserCheck } from 'lucide-react'
+import { ChevronRight, ShieldAlert, UserCheck, Users, Wallet, CalendarRange } from 'lucide-react'
 import { Shell } from '../../app/Shell'
-import { KpiCard } from '../../shared/ui/KpiCard'
+import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
+import { BarreRecherche } from '../../shared/ui/BarreRecherche'
+import { ChiffreCarte } from '../../shared/ui/ChiffreCarte'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
+import { PastilleFiltre } from '../../shared/ui/PastilleFiltre'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
@@ -62,6 +66,7 @@ export function Equipe() {
   const [filters, setFilters] = useState<TeamFilters>({ active: true })
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<TeamMember | null>(null)
+  const [search, setSearch] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
@@ -93,102 +98,104 @@ export function Equipe() {
     isDriverRole(m.role) && aptitude(m, today) === 'a_regulariser'
   ).length
 
-  const displayedMembers = filters.echeance === 'urgent'
-    ? members.filter(m => isDriverRole(m.role) && aptitude(m, today) === 'a_regulariser')
-    : members
+  const mot = search.trim().toLowerCase()
+  const displayedMembers = members
+    .filter(m => filters.echeance !== 'urgent' || (isDriverRole(m.role) && aptitude(m, today) === 'a_regulariser'))
+    .filter(m => !mot || `${m.full_name} ${m.role ? ROLE_LABELS[m.role] : (m.role_label ?? '')}`.toLowerCase().includes(mot))
+  const filtresActifs = search !== '' || (filters.role && filters.role !== 'all') || (filters.contract_type && filters.contract_type !== 'all') || filters.echeance === 'urgent'
 
   return (
     <Shell pageTitle="Équipe" actions={['nouveau', 'export']} onAction={handleAction}>
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
-        {loading ? <SkeletonKpis count={4} /> : <>
-          <KpiCard label="Membres actifs" value={actifs} />
-          <KpiCard label="Masse salariale / mois" value={formatSalaryMonthly(masse)} />
-          <KpiCard label="Masse salariale / an" value={formatSalaryAnnual(masse)} />
-          <KpiCard label="À régulariser" value={aRegulariser} accent={aRegulariser > 0} />
-        </>}
-      </div>
+      {/* Tuiles */}
+      {loading ? <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5"><SkeletonKpis count={4} /></div> : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <ChiffreCarte libelle="Membres actifs" icone={<Users size={13} />} valeur={String(actifs)} detail="dans l'équipe" titre="Tous les membres actifs"
+            actif={filters.echeance !== 'urgent'} onClick={() => setFilters(f => ({ ...f, echeance: undefined }))} />
+          <ChiffreCarte libelle="Masse salariale / mois" icone={<Wallet size={13} />} valeur={formatSalaryMonthly(masse)} detail="brut" titre="Masse salariale mensuelle"
+            actif={false} onClick={() => setFilters(f => ({ ...f, echeance: undefined }))} />
+          <ChiffreCarte libelle="Masse salariale / an" icone={<CalendarRange size={13} />} valeur={formatSalaryAnnual(masse)} detail="brut" titre="Masse salariale annuelle"
+            actif={false} onClick={() => setFilters(f => ({ ...f, echeance: undefined }))} />
+          <ChiffreCarte libelle="À régulariser" icone={<ShieldAlert size={13} />} valeur={String(aRegulariser)} ton={aRegulariser > 0 ? 'danger' : undefined}
+            detail="permis ou visite à revoir" titre="Membres à régulariser"
+            actif={filters.echeance === 'urgent'} onClick={() => setFilters(f => ({ ...f, echeance: f.echeance === 'urgent' ? undefined : 'urgent' }))} />
+        </div>
+      )}
 
-      {/* Filtres */}
-      <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
-        <select
-          value={filters.role ?? 'all'}
-          onChange={e => setFilters(f => ({ ...f, role: (e.target.value || 'all') as TeamFilters['role'] }))}
-          className="h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] text-[length:var(--fs-sm)] focus:outline-none"
-        >
-          <option value="all">Tous rôles</option>
-          {(Object.entries(ROLE_LABELS) as [string, string][]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-        <select
-          value={filters.contract_type ?? 'all'}
-          onChange={e => setFilters(f => ({ ...f, contract_type: (e.target.value || 'all') as TeamFilters['contract_type'] }))}
-          className="h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] text-[length:var(--fs-sm)] focus:outline-none"
-        >
-          <option value="all">Tous contrats</option>
-          {(Object.entries(CONTRACT_LABELS) as [string, string][]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-        </select>
-        <Button
-          variant={filters.active === true ? 'primary' : 'secondary'} size="compact"
-          onClick={() => setFilters(f => ({ ...f, active: f.active === true ? undefined : true }))}
-        >Actifs uniquement</Button>
-        <Button
-          variant={filters.echeance === 'urgent' ? 'primary' : 'secondary'} size="compact"
-          onClick={() => setFilters(f => ({ ...f, echeance: f.echeance === 'urgent' ? undefined : 'urgent' }))}
-        >À régulariser</Button>
+      {/* Recherche + filtres */}
+      <div className="flex flex-wrap items-center gap-2.5 mb-4">
+        <BarreRecherche value={search} onChange={setSearch} placeholder="Chercher un membre : nom, rôle…" ariaLabel="Rechercher un membre"
+          raccourci className="flex-1 min-w-[14rem] max-w-xl" compteur={`${displayedMembers.length} résultat${displayedMembers.length > 1 ? 's' : ''}`} />
+        <div className="w-44">
+          <ListeDeroulante valeur={filters.role ?? 'all'} ariaLabel="Rôle" recherche={false}
+            onChange={v => setFilters(f => ({ ...f, role: v as TeamFilters['role'] }))}
+            options={[{ valeur: 'all', libelle: 'Tous les rôles' }, ...(Object.entries(ROLE_LABELS) as [string, string][]).map(([v, l]) => ({ valeur: v, libelle: l }))]} />
+        </div>
+        <div className="w-52">
+          <ListeDeroulante valeur={filters.contract_type ?? 'all'} ariaLabel="Contrat" recherche={false}
+            onChange={v => setFilters(f => ({ ...f, contract_type: v as TeamFilters['contract_type'] }))}
+            options={[{ valeur: 'all', libelle: 'Tous les contrats' }, ...(Object.entries(CONTRACT_LABELS) as [string, string][]).map(([v, l]) => ({ valeur: v, libelle: l }))]} />
+        </div>
+        <PastilleFiltre actif={filters.active === true} onClick={() => setFilters(f => ({ ...f, active: f.active === true ? undefined : true }))}>Actifs uniquement</PastilleFiltre>
+        {filtresActifs && (
+          <button type="button" onClick={() => { setSearch(''); setFilters({ active: true }) }}
+            className="text-sm text-[var(--text-muted)] hover:text-[var(--brand)] underline-offset-2 hover:underline">Tout réinitialiser</button>
+        )}
       </div>
 
       {loading ? <SkeletonTable rows={4} />
         : error ? (
           <div className="flex flex-col items-center py-16 gap-3">
-            <p className="text-[var(--danger)] text-[length:var(--fs-sm)]">{error}</p>
+            <p className="text-[var(--danger)] text-sm">{error}</p>
             <Button variant="secondary" onClick={load}>Réessayer</Button>
           </div>
         ) : displayedMembers.length === 0 ? (
           <EmptyState
             icon={<UserCheck size={48} />}
             title="Aucun membre"
-            description="Ajoutez les membres de votre équipe."
-            action={{ label: '+ Ajouter un membre', onClick: () => openDrawer() }}
+            description={filtresActifs ? 'Aucun membre ne correspond à ces filtres.' : 'Ajoutez les membres de votre équipe.'}
+            action={!filtresActifs ? { label: '+ Ajouter un membre', onClick: () => openDrawer() } : undefined}
           />
         ) : (
           <>
             {/* Desktop */}
-            <div className="hidden md:block overflow-x-auto panel rounded-[var(--r-xl)]">
-              <table className="w-full text-[length:var(--fs-sm)]">
+            <div className="hidden md:block overflow-x-auto rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)]">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                    {['Nom', 'Rôle', 'Contrat', 'Salaire brut / mois', 'Aptitude', ''].map(h => (
-                      <th key={h} className="px-4 py-2.5 font-medium text-[length:var(--fs-xs)] uppercase tracking-wide">{h}</th>
+                  <tr className="text-left text-xs text-[var(--text-muted)] border-b border-[var(--border)]">
+                    {['Membre', 'Rôle', 'Contrat', 'Salaire brut / mois', 'Aptitude', ''].map(h => (
+                      <th key={h} className={`px-4 py-2.5 font-medium ${h.startsWith('Salaire') ? 'text-right' : ''}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {displayedMembers.map((m, i) => (
-                    <tr key={m.id} onClick={() => openDrawer(m)}
-                      className={`border-t border-[var(--border)] cursor-pointer hover:bg-[var(--bg-card-hover)] transition-colors
-                        ${i % 2 === 0 ? 'bg-[var(--bg)]' : 'bg-[var(--bg-card)]/40'}`}>
-                      <td className="px-4 py-3 font-medium text-[var(--text)]">
-                        <div className="flex items-center gap-2">
-                          <EcheancePastille member={m} />
-                          {m.full_name}
-                          {!m.active && <span className="text-[var(--text-disabled)] text-[length:var(--fs-xs)]">(inactif)</span>}
-                        </div>
+                  {displayedMembers.map(m => (
+                    <tr key={m.id} onClick={() => openDrawer(m)} tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') openDrawer(m) }}
+                      className="group border-b border-[var(--border)] last:border-0 cursor-pointer hover:bg-[var(--bg-card-hover)] transition-colors">
+                      <td className="px-4 py-2.5">
+                        <span className="flex items-center gap-3 min-w-0">
+                          <AvatarInitiales nom={m.full_name} discret={!m.active} />
+                          <span className="min-w-0">
+                            <span className={`flex items-center gap-2 font-medium ${m.active ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'}`}>
+                              <span className="truncate">{m.full_name}</span>
+                              <EcheancePastille member={m} />
+                            </span>
+                            {!m.active && <span className="block text-xs text-[var(--text-muted)]">Inactif</span>}
+                          </span>
+                        </span>
                       </td>
-                      <td className="px-4 py-3 text-[var(--text-muted)]">
+                      <td className="px-4 py-2.5 text-[var(--text-muted)]">
                         {m.role ? ROLE_LABELS[m.role] : (m.role_label ?? '—')}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         {m.contract_type
                           ? <Badge color="info">{getContractLabel(m.contract_type)}</Badge>
                           : <span className="text-[var(--text-disabled)]">—</span>}
                       </td>
-                      <td className="px-4 py-3 font-mono text-[var(--text)]">{formatSalaryMonthly(m.salary_gross_cts)}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5 text-right font-mono tabular-nums text-[var(--text)]">{formatSalaryMonthly(m.salary_gross_cts)}</td>
+                      <td className="px-4 py-2.5">
                         <AptitudeBadge member={m} />
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="compact" onClick={e => { e.stopPropagation(); openDrawer(m) }}>Voir</Button>
-                      </td>
+                      <td className="pr-3 text-[var(--text-disabled)] group-hover:text-[var(--text-muted)]"><ChevronRight size={16} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -196,23 +203,23 @@ export function Equipe() {
             </div>
 
             {/* Mobile */}
-            <div className="md:hidden flex flex-col gap-3">
+            <div className="md:hidden flex flex-col gap-2.5">
               {displayedMembers.map(m => (
                 <button key={m.id} onClick={() => openDrawer(m)}
-                  className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 hover:bg-[var(--bg-card-hover)] transition-colors">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <div className="flex items-center gap-2">
-                      <EcheancePastille member={m} />
-                      <span className="font-medium text-[var(--text)]">{m.full_name}</span>
-                    </div>
-                    <AptitudeBadge member={m} />
-                  </div>
-                  <div className="text-[length:var(--fs-xs)] text-[var(--text-muted)]">
-                    {(m.role ? ROLE_LABELS[m.role] : m.role_label) && (
-                      <span>{m.role ? ROLE_LABELS[m.role] : m.role_label} · </span>
-                    )}
-                    {m.contract_type && <Badge color="info">{getContractLabel(m.contract_type)}</Badge>}
-                  </div>
+                  className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-3.5 flex items-center gap-3 hover:bg-[var(--bg-card-hover)] transition-colors">
+                  <AvatarInitiales nom={m.full_name} discret={!m.active} />
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-2 min-w-0">
+                        <span className="font-medium text-[var(--text)] truncate">{m.full_name}</span>
+                        <EcheancePastille member={m} />
+                      </span>
+                      <AptitudeBadge member={m} />
+                    </span>
+                    <span className="block text-xs text-[var(--text-muted)] truncate">
+                      {(m.role ? ROLE_LABELS[m.role] : m.role_label) ?? '—'}{m.contract_type ? ` · ${getContractLabel(m.contract_type)}` : ''}
+                    </span>
+                  </span>
                 </button>
               ))}
             </div>

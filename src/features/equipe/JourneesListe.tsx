@@ -13,6 +13,7 @@ import { getTeamMembers } from './equipe.queries'
 import { dateFr } from './equipe.logic'
 import { bornesPeriode, filtrerJournees, optionsDistinctes } from './journees.logic'
 import { DrawerJournee } from './DrawerJournee'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 
 const STATUTS: StatutJournee[] = ['envoyee', 'validee', 'refusee', 'brouillon']
 
@@ -54,18 +55,12 @@ export function JourneesListe() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <input type="month" className="field !w-auto" value={mois} onChange={e => e.target.value && setMois(e.target.value)} />
-        <select className="field !w-auto" value={membreId} onChange={e => setMembreId(e.target.value)}>
-          <option value="">Tous les salariés</option>
-          {membres.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
-        </select>
-        <select className="field !w-auto" value={clientId} onChange={e => setClientId(e.target.value)}>
-          <option value="">Tous les clients</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-        </select>
-        <select className="field !w-auto" value={statut} onChange={e => setStatut(e.target.value as StatutJournee | '')}>
-          <option value="">Tous les statuts</option>
-          {STATUTS.map(s => <option key={s} value={s}>{LIBELLE_STATUT_JOURNEE[s]}</option>)}
-        </select>
+        <div className="w-52"><ListeDeroulante valeur={membreId} onChange={setMembreId} ariaLabel="Salarié"
+          options={[{ valeur: '', libelle: 'Tous les salariés' }, ...membres.map(m => ({ valeur: m.id, libelle: m.full_name }))]} /></div>
+        <div className="w-52"><ListeDeroulante valeur={clientId} onChange={setClientId} ariaLabel="Client"
+          options={[{ valeur: '', libelle: 'Tous les clients' }, ...clients.map(c => ({ valeur: c.id, libelle: c.nom }))]} /></div>
+        <div className="w-48"><ListeDeroulante valeur={statut} onChange={v => setStatut(v as StatutJournee | '')} ariaLabel="Statut" recherche={false}
+          options={[{ valeur: '', libelle: 'Tous les statuts' }, ...STATUTS.map(s => ({ valeur: s, libelle: LIBELLE_STATUT_JOURNEE[s] }))]} /></div>
         <Button variant="ghost" size="compact" onClick={() => void charger()} title="Actualiser"><RefreshCw size={14} /></Button>
         <p className="ml-auto text-sm text-[var(--text-muted)]">
           {visibles.length} journée{visibles.length > 1 ? 's' : ''} · domicile {t.domicile} · relais {t.relais} · litiges {t.litige}

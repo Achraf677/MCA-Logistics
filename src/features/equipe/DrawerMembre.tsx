@@ -16,6 +16,7 @@ import {
 import type { TeamMember, TeamMemberInsert } from './equipe.types'
 import { AccesSite } from './AccesSite'
 import { BlocMessagerie } from './BlocMessagerie'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { tarifSaisiCts, tarifEnTexte } from './journees.logic'
 import type { EcheanceStatus } from '../../shared/lib/echeances'
 
@@ -254,12 +255,8 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
 
             <div className="grid grid-cols-2 gap-3">
               <FieldGroup label="Rôle">
-                <select value={form.role ?? ''} onChange={e => set('role', e.target.value || null)} className={inputClass}>
-                  <option value="">—</option>
-                  {(Object.entries(ROLE_LABELS) as [string, string][]).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
+                <ListeDeroulante valeur={form.role ?? ''} onChange={v => set('role', v || null)} ariaLabel="Rôle" recherche={false}
+                  options={[{ valeur: '', libelle: '—' }, ...(Object.entries(ROLE_LABELS) as [string, string][]).map(([v, l]) => ({ valeur: v, libelle: l }))]} />
               </FieldGroup>
               <FieldGroup label="Fonction / Poste">
                 <input value={form.role_label ?? ''} onChange={e => set('role_label', e.target.value)} className={inputClass} placeholder="ex. Chauffeur-livreur" />
@@ -268,10 +265,8 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
 
             <div className="grid grid-cols-2 gap-3">
               <FieldGroup label="Type de contrat">
-                <select value={form.contract_type ?? ''} onChange={e => set('contract_type', e.target.value || null)} className={inputClass}>
-                  <option value="">—</option>
-                  {(Object.entries(CONTRACT_LABELS) as [string, string][]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
+                <ListeDeroulante valeur={form.contract_type ?? ''} onChange={v => set('contract_type', v || null)} ariaLabel="Type de contrat" recherche={false}
+                  options={[{ valeur: '', libelle: '—' }, ...(Object.entries(CONTRACT_LABELS) as [string, string][]).map(([v, l]) => ({ valeur: v, libelle: l }))]} />
               </FieldGroup>
               <FieldGroup label="Permis">
                 <input value={form.license_type ?? ''} onChange={e => set('license_type', e.target.value)} className={inputClass} placeholder="B, C…" />

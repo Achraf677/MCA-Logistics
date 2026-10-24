@@ -16,6 +16,7 @@ import {
   declares, ecarts, nombresSaisis, versSaisie, filtrerJournees, optionsDistinctes, LIBELLE_CHAMP,
   type NombresColis,
 } from './journees.logic'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 
 /**
  * Équipe › À valider : journées de colis envoyées par les salariés, plus anciennes d'abord.
@@ -147,14 +148,10 @@ export function ValidationJournees({ onChange }: { onChange?: () => void }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <select className="field !w-auto" value={filtreMembre} onChange={e => setFiltreMembre(e.target.value)}>
-          <option value="">Tous les salariés</option>
-          {membres.map(m => <option key={m.id} value={m.id}>{m.nom}</option>)}
-        </select>
-        <select className="field !w-auto" value={filtreClient} onChange={e => setFiltreClient(e.target.value)}>
-          <option value="">Tous les clients</option>
-          {clients.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
-        </select>
+        <div className="w-52"><ListeDeroulante valeur={filtreMembre} onChange={setFiltreMembre} ariaLabel="Salarié"
+          options={[{ valeur: '', libelle: 'Tous les salariés' }, ...membres.map(m => ({ valeur: m.id, libelle: m.nom }))]} /></div>
+        <div className="w-52"><ListeDeroulante valeur={filtreClient} onChange={setFiltreClient} ariaLabel="Client"
+          options={[{ valeur: '', libelle: 'Tous les clients' }, ...clients.map(c => ({ valeur: c.id, libelle: c.nom }))]} /></div>
         <span className="text-sm text-[var(--text-muted)]">{visibles.length} journée{visibles.length > 1 ? 's' : ''} à valider</span>
         {peutAgir && (
           <div className="flex flex-wrap items-center gap-2 ml-auto">
