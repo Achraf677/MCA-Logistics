@@ -17,4 +17,4 @@
 
 ## Suppressions (24/10/2026)
 - Onglets À valider, Journées, Rapports, Heures supprimés (fichiers, alerte `journees-a-valider`, catalogue de droits, `features/heures`, `shared/lib/journeesColis.queries.ts`). Restent en code (utilisés ailleurs) : `shared/lib/journeesColis.ts` (livraisons : colis des journées, Mes courses) à nettoyer avec Mes courses.
-- Fiche membre : plus de bloc Messagerie, de Notes, d'onglet Documents (le futur onglet Documents global les remplace).
+- Fiche membre : plus de bloc Messagerie, de Notes, d'onglet Documents (remplacés par Système › Documents, voir `09-documents.md`).
