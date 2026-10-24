@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **24/10/2026** (refonte par onglet : Livraisons mergée PR #80 ; Planning / Tournées en cours).
+> Dernière mise à jour : **24/10/2026** (refonte par onglet : Livraisons, Planning / Tournées, Finance, Tiers, Équipe, Documents mergés ; reste Système et Flotte).
 
 ---
 
@@ -141,6 +141,7 @@ supabase/
 - `clients.siret` = 14 chiffres SEULEMENT ; le SIREN (9) va dans `clients.siren` (U2).
 - Délai de paiement transport ≤ 30 j date de facture : options `conforme` seulement ; l'Edge
   plafonne l'échéance (`echeanceTransport`).
+- `documents.statut_tri` ∈ `a_trier, propose, classe` ; `documents.proposition` (jsonb) = proposition de l'IA, vidée à la confirmation ; `drive_file_id / drive_url / drive_chemin` = fichier rangé dans le Drive. Les justificatifs de dépense sont dans `receipts_inbox`, PAS dans `documents`.
 - Migrations : UP **et** DOWN, colonnes nullables / additives, appliquées via MCP Supabase.
 
 ## 6. Machine à états Livraisons (source : `shared/lib/livraisonStatuts.ts`)
@@ -169,6 +170,7 @@ Exemples déjà payés cher : une colonne ajoutée au `select` du front avant la
 l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquante » chez le chauffeur.
 
 ## 8. UI — conventions validées
+- **Actions longues (24/10/2026)** : optimiste, jamais de rechargement de liste : l'élément disparaît / change tout de suite, l'envoi part en arrière-plan, un échec le remet avec un message (modèle : `documents/ConfirmationTri`, `patch` local).
 - Gestes secondaires en pictogramme : `shared/ui/BoutonIcone` (40 px ; `taille="sm"` 28 px en
   liste ; `actif` = ouvert). Réglages d'affichage dans `PanneauReglages` (roue). Pictos lucide,
   **pas d'emoji**.
@@ -219,10 +221,10 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
    fichiers, pas de SQL, pas de détails techniques, pas de rappel de ce qui n'a pas changé.
    Le détail technique va dans la PR et dans ce fichier, pas dans le message.
 
-## 11. État actuel (22/10/2026)
+## 11. État actuel (24/10/2026)
 - 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis) · **Finance** (Trésorerie, Charges ; Encaissement / Relances retirés le 22/10/2026) ·
   **Flotte** (Véhicules, Carburant, Entretiens) · **Planning** (Tournées, Planning : vues Jour / Semaine / Mois, refonte du 19/10/2026 ; l'ancien Calendrier y est fondu) · **Tiers**
-  (Clients, Fournisseurs) · **Équipe** (Membres ; onglet Documents à venir) · **Système** (Paramètres, Admins). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
+  (Clients, Fournisseurs) · **Équipe** (Membres) · **Système** (Paramètres, **Documents**, Admins). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
   Les specs `mca-spec/tabs/` n'en couvrent qu'une partie : vérifier le code.
 - Revue onglet par onglet (méthode § 13) : 01 Mes courses ✔ · 02 Dashboard ✔ · 03 Livraisons ✔
   (liste, facturation, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie)
@@ -241,8 +243,8 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   documents · Facturation).
 
 ## 12. En cours / à décider (mettre à jour à chaque session)
-- **Onglet Documents (24/10/2026, Système › Documents)** : Inbox → tri par l'IA (Edge `trier-documents` v4 déployée (feuilles de route / synthèses / preuves de tournée rangées d'après la tournée, sans IA) : l'IA reçoit les fiches clients / fournisseurs / salariés / plaques et l'arborescence réelle du Drive, propose un chemin de rangement) → À confirmer → Bibliothèque ; migration `20261024110000_documents_tri` appliquée ; fiche `mca-spec/revue/09-documents.md`. Bibliothèque = Drive (voir ci-dessous). Pas encore testé sur de vrais fichiers. Suite : Système (Paramètres, Admins), Flotte, `<select>` natifs restants, code mort « journées colis » dans Mes courses.
-- **Équipe allégée (24/10/2026, demande de l'utilisateur)** : onglets À valider, Journées, Rapports et Heures SUPPRIMÉS (code, alerte « journées à valider », droits `equipe.journees` / `equipe.heures` du catalogue, outil `get_heures` de l'assistant rendu muet) ; fiche membre sans Messagerie, Notes ni Documents (colonnes `tarif_*`, `clients_messagerie`, `notes`, tables `journees_colis*` / `work_hours` gardées en base, plus lues). **À venir** : un onglet « Documents » unique où TOUS les fichiers téléversés sont rangés et renommés par l'IA.
+- **Onglet Documents (Système › Documents) — MERGÉ le 24/10/2026 (PR #89, `bc657b7`)** : fiche `mca-spec/revue/09-documents.md` (écran, Edge, données, limites). Inbox → tri IA (`trier-documents` v4) → À confirmer (dossier du Drive à choisir) → rangé dans le Drive (`drive-ranger` v3, confirmation instantanée) → Historique ; Bibliothèque = Drive (`drive-browse` v14, `drive-fichier` v1). Feuilles de route / synthèses / preuves de tournée rangées d'après la tournée, sans IA. Migrations `20261024110000`, `…120000`, `…130000` appliquées ; toutes les Edge déployées. **À faire par l'utilisateur** : reconnecter Google (Paramètres, cocher Drive), choisir le dossier de rangement, tester sur de vrais fichiers. Reste : aperçu .docx / .xlsx dans l'appli, décider de la copie Storage après rangement. Suite des refontes : Système (Paramètres, Admins), Flotte, `<select>` natifs restants, code mort « journées colis » dans Mes courses.
+- **Équipe allégée (24/10/2026, demande de l'utilisateur)** : onglets À valider, Journées, Rapports et Heures SUPPRIMÉS (code, alerte « journées à valider », droits `equipe.journees` / `equipe.heures` du catalogue, outil `get_heures` de l'assistant rendu muet) ; fiche membre sans Messagerie, Notes ni Documents (colonnes `tarif_*`, `clients_messagerie`, `notes`, tables `journees_colis*` / `work_hours` gardées en base, plus lues).
 - **Tiers refondu (24/10/2026)** : Clients + Fournisseurs = tuiles cliquables (`ChiffreCarte`, comptent sur l'ensemble, pas sur la liste filtrée), barre de recherche, `ListeDeroulante`, pastilles de filtre à bascule (`PastilleFiltre`), lignes avec `AvatarInitiales`, « Tout réinitialiser » ; listes natives de la fiche client / fournisseur passées en `ListeDeroulante`. Équipe (Membres + filtres des journées) refait de même le 24/10/2026. Reste : Système, Flotte, autres `<select>` natifs.
 - **Pennylane = source des montants (24/10/2026)** : plus de « Créer la charge » côté Justificatifs ; une facture supprimée chez Pennylane disparaît du site (charge + carburant / entretiens reliés) à la synchro, avec garde-fou anti-liste tronquée (`pennylane-sync` v23).
 - **Lecture IA des tickets (23/10/2026)** : Edge `lire-ticket` v2 lit le ticket DÈS LE DÉPÔT (lancée par le salarié, une seule fois, `ocr_lu_le`) et préremplit montant / date / catégorie / fournisseur (cases vides seulement ; plus de TVA, Pennylane la lit) ; le bureau confirme, voir `mca-spec/revue/06-finance.md`. Envoi Pennylane = mail PDF (Edge `pennylane-justificatif` v12). Reste F2b (HT / TVA par ligne de ventilation).
