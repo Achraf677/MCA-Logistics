@@ -11,7 +11,7 @@ import type { DocumentRow } from '../../shared/lib/documents.types'
 import { TYPES_DOCUMENT, cheminDefaut, nomPropose } from '../../shared/lib/documentsTri'
 import { montantSaisiEnCts } from '../../shared/lib/depenses'
 import { cheminAvecAnnee, cheminEnTexte, texteEnChemin } from './documents.logic'
-import { confirmerClassement, remettreDansInbox } from './documents.queries'
+import { rangerDansDrive, remettreDansInbox } from './documents.queries'
 import { MiniatureDoc } from './MiniatureDoc'
 
 interface Edition {
@@ -30,6 +30,8 @@ interface Edition {
 }
 
 const SEUIL_DOUTE = 0.7
+/** Documents envoyés au Drive par requête. */
+const PAQUET = 8
 
 const montantTexte = (cts: number | null | undefined) => (cts != null ? (cts / 100).toFixed(2).replace('.', ',') : '')
 
@@ -43,18 +45,19 @@ function editionInitiale(d: DocumentRow): Edition {
 }
 
 /** À confirmer : l'IA a proposé un nom rangé et des champs ; tu corriges si besoin, tu confirmes (ou tu rejettes). */
-export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk, onChange, toast }: {
+export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk, patch, toast }: {
   docs: DocumentRow[]
   classes: DocumentRow[]
   miniatures: Record<string, string>
   peutEcrire: boolean
   /** Compte Google connecté avec le scope Drive : sans lui, rien ne peut être rangé. */
   driveOk: boolean
-  onChange: () => Promise<void>
+  /** Met à jour des documents dans la liste de l'onglet, sans recharger. */
+  patch: (ids: string[], maj: Partial<DocumentRow>) => void
   toast: (message: string, type?: 'success' | 'error') => void
 }) {
   const [editions, setEditions] = useState<Record<string, Edition>>({})
-  const [occupe, setOccupe] = useState<string | 'tous' | null>(null)
+  const [envoi, setEnvoi] = useState(0)
 
   const edition = (d: DocumentRow): Edition => editions[d.id] ?? editionInitiale(d)
   const nomsPris = useMemo(() => new Set(classes.map(c => c.file_name.toLowerCase())), [classes])
@@ -87,34 +90,45 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
   }
   const pret = (d: DocumentRow) => { const e = edition(d); return driveOk && e.nom.trim() !== '' && e.type !== '' && texteEnChemin(e.chemin).length > 0 }
 
-  const confirmer = async (d: DocumentRow) => {
-    setOccupe(d.id)
-    const { error } = await confirmerClassement(d.id, classement(d))
-    setOccupe(null)
-    if (error) { toast(error.message, 'error'); return }
-    toast('Document rangé dans le Drive')
-    await onChange()
-  }
-
-  const rejeter = async (d: DocumentRow) => {
-    setOccupe(d.id)
-    const { error } = await remettreDansInbox(d.id)
-    setOccupe(null)
-    if (error) { toast(error.message, 'error'); return }
-    toast('Remis dans l\'Inbox')
-    await onChange()
-  }
-
-  const toutConfirmer = async () => {
-    const aFaire = docs.filter(pret)
-    setOccupe('tous')
+  /**
+   * Range un lot : les cartes disparaissent TOUT DE SUITE (le document passe « classé » dans la liste), l'envoi vers le Drive se fait en
+   * arrière-plan par paquets de 8 (une requête par paquet). Un document qui échoue revient dans À confirmer, tes corrections gardées.
+   */
+  const envoyer = async (lot: DocumentRow[]) => {
+    if (lot.length === 0) return
+    const items = lot.map(d => ({ id: d.id, classement: classement(d) }))
+    const avant = new Map(lot.map(d => [d.id, d]))
+    for (const it of items) patch([it.id], { statut_tri: 'classe', file_name: it.classement.nom, proposition: null })
+    setEnvoi(n => n + lot.length)
     let ok = 0
     let premierEchec: string | null = null
-    for (const d of aFaire) { const { error } = await confirmerClassement(d.id, classement(d)); if (!error) ok++; else premierEchec ??= error.message }
-    setOccupe(null)
-    if (premierEchec) toast(premierEchec, 'error')
-    toast(`${ok} document${ok > 1 ? 's' : ''} rangé${ok > 1 ? 's' : ''}${aFaire.length < docs.length ? ` · ${docs.length - aFaire.length} à compléter (type ou nom manquant)` : ''}`)
-    await onChange()
+    for (let i = 0; i < items.length; i += PAQUET) {
+      const resultats = await rangerDansDrive(items.slice(i, i + PAQUET))
+      for (const r of resultats) {
+        if (r.ok) { ok++; continue }
+        premierEchec ??= r.raison ?? 'Envoi impossible'
+        const d = avant.get(r.id)
+        if (d) patch([r.id], { statut_tri: 'propose', file_name: d.file_name, proposition: d.proposition })
+      }
+    }
+    setEnvoi(n => n - lot.length)
+    if (premierEchec) toast(`${lot.length - ok} non rangé${lot.length - ok > 1 ? 's' : ''} : ${premierEchec}`, 'error')
+    if (ok > 0) toast(ok === 1 ? 'Document rangé dans le Drive' : `${ok} documents rangés dans le Drive`)
+  }
+
+  const confirmer = (d: DocumentRow) => { void envoyer([d]) }
+
+  const rejeter = async (d: DocumentRow) => {
+    patch([d.id], { statut_tri: 'a_trier', proposition: null })
+    const { error } = await remettreDansInbox(d.id)
+    if (error) { patch([d.id], { statut_tri: 'propose', proposition: d.proposition }); toast(error.message, 'error'); return }
+    toast('Remis dans l\'Inbox')
+  }
+
+  const toutConfirmer = () => {
+    const aFaire = docs.filter(pret)
+    if (docs.length > aFaire.length) toast(`${docs.length - aFaire.length} à compléter (type ou dossier manquant)`, 'error')
+    void envoyer(aFaire)
   }
 
   const ouvrir = async (d: DocumentRow) => {
@@ -130,6 +144,11 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
 
   return (
     <div className="flex flex-col gap-3">
+      {envoi > 0 && (
+        <p role="status" className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+          <span className="size-2 rounded-full bg-[var(--brand)] animate-pulse" /> Envoi vers le Drive : {envoi} document{envoi > 1 ? 's' : ''}… tu peux continuer.
+        </p>
+      )}
       {!driveOk && (
         <p className="rounded-[var(--r-xl)] border border-[var(--warning)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text)]">
           Le Drive n'est pas branché : rien ne peut être rangé. Connecte le compte Google de la société dans Paramètres › Google (coche bien « Drive »).
@@ -141,7 +160,7 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
           <p className="flex-1 min-w-[12rem] text-sm text-[var(--text-muted)]">
             L'IA a lu <strong className="text-[var(--text)]">{docs.length}</strong> document{docs.length > 1 ? 's' : ''}. Vérifie le nom et le type, corrige si besoin : rien n'est rangé sans ta confirmation.
           </p>
-          <Button variant="primary" className="min-h-10" disabled={prets === 0 || occupe !== null} onClick={() => void toutConfirmer()}>
+          <Button variant="primary" className="min-h-10" disabled={prets === 0} onClick={toutConfirmer}>
             <CheckCheck size={15} /> Tout confirmer ({prets})
           </Button>
         </div>
@@ -224,11 +243,11 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
 
               {peutEcrire && (
                 <div className="flex items-center gap-2">
-                  <Button variant="primary" className="min-h-10" disabled={!pret(d) || occupe !== null} onClick={() => void confirmer(d)}>
+                  <Button variant="primary" className="min-h-10" disabled={!pret(d)} onClick={() => confirmer(d)}>
                     <Check size={15} /> Confirmer
                   </Button>
                   {driveOk && !pret(d) && <span className="text-xs text-[var(--warning)]">Choisis un type et un dossier pour confirmer.</span>}
-                  <span className="ml-auto"><BoutonIcone icone={Undo2} libelle="Rejeter : remettre dans l'Inbox" onClick={() => void rejeter(d)} disabled={occupe !== null} /></span>
+                  <span className="ml-auto"><BoutonIcone icone={Undo2} libelle="Rejeter : remettre dans l'Inbox" onClick={() => void rejeter(d)} /></span>
                 </div>
               )}
             </li>

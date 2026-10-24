@@ -16,7 +16,7 @@
 ## 4 Données
 - `documents.statut_tri` : `a_trier` (défaut, tous les anciens documents) → `propose` → `classe`.
 - Colonnes : `type_document, date_document, tiers, reference, montant_ttc_cts, resume, proposition (jsonb), trie_le`. Migration `20261024110000_documents_tri` appliquée.
-- Confirmer = Edge `drive-ranger` envoie le fichier dans `<racine>/<Dossier>/<Année>/<nom>` du Drive, puis met à jour `file_name` et ces colonnes + `drive_file_id` / `drive_url` (migration `20261024120000_documents_drive`, appliquée). Le fichier reste aussi dans Storage (liens des livraisons, tournées…). Sans Drive : Confirmer désactivé.
+- Confirmer = Edge `drive-ranger` (v3, par lots de 12 : dossiers créés une fois, 4 envois en parallèle, écrit aussi `documents`) envoie le fichier dans `<racine>/<Dossier>/<Année>/<nom>` du Drive, puis met à jour `file_name` et ces colonnes + `drive_file_id` / `drive_url` (migration `20261024120000_documents_drive`, appliquée). Le fichier reste aussi dans Storage (liens des livraisons, tournées…). Sans Drive : Confirmer désactivé.
 - Dépôt = `entity_type = 'depot'`.
 - Ancien Drive (sans `storage_path`) : visible dans l'Inbox, non triable, purgeable (les fichiers eux-mêmes se retrouvent dans la Bibliothèque).
 
@@ -26,6 +26,9 @@
 - Elle propose : type (19 types), date d'émission, tiers (rattaché à la fiche connue par `rapprocherTiers`, même nom que la fiche), montant, référence, plaque (`rapprocherVehicule`), et un **chemin Drive** (`chemin`, `chemin_nouveaux` par niveau, `chemin_confiance`, `alternatives` = convention `Dossier/Année` ou `Flotte/Plaque/Année`). Chemin choisi parmi les dossiers existants (`normaliserChemin` reprend leur nom exact) ; confiance < 0,4 → convention par défaut.
 - Nom fabriqué par `_shared/triDocuments#nomPropose` (jamais par l'IA), miroir `shared/lib/documentsTri.ts` (types + `cheminDefaut`, testés des deux côtés).
 - Écran À confirmer : champ « Où le ranger dans le Drive » (modifiable, pastilles par niveau « nouveau » si le dossier sera créé, bouton « Sinon : … »). Tant que le chemin n'est pas tapé à la main il suit le type, puis l'année suit la date.
+
+## 5c Confirmation fluide (24/10/2026)
+- Optimiste : la carte disparaît à la confirmation (`patch` local dans `Documents`, aucun rechargement) ; envoi en arrière-plan par paquets de 8 (`rangerDansDrive`) ; échec → la carte revient avec tes corrections. Message « Envoi vers le Drive : n document(s)… tu peux continuer ». Rejeter est aussi immédiat.
 
 ## 5a Documents de tournée (24/10/2026)
 - Feuilles de route (`notes = 'feuille'`), photos de synthèse (`'synthese'`) et photos d'arrêt (`arret_colis`) ne passent PAS par l'IA : `trier-documents` v4 (`contexteTournee` + `_shared/triDocuments#propositionTournee`) les range d'après la tournée (date, client, salarié, page / rang). Badge « Rangé d'après la tournée » (`lu_via = 'tournee'`).

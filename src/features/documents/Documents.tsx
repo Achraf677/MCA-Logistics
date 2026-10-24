@@ -46,6 +46,11 @@ export function Documents() {
 
   useEffect(() => { void charger() }, [charger])
 
+  // Mise à jour locale (sans recharger) : une confirmation fait disparaître la carte aussitôt.
+  const patch = useCallback((ids: string[], maj: Partial<DocumentRow>) => {
+    setDocs(prev => prev.map(d => (ids.includes(d.id) ? { ...d, ...maj } : d)))
+  }, [])
+
   const aTrier = useMemo(() => docs.filter(d => (d.statut_tri ?? 'a_trier') === 'a_trier'), [docs])
   const propositions = useMemo(() => docs.filter(d => d.statut_tri === 'propose'), [docs])
   const classes = useMemo(() => docs.filter(d => d.statut_tri === 'classe'), [docs])
@@ -102,7 +107,7 @@ export function Documents() {
       )}
       {vue === 'confirmer' && (
         <ConfirmationTri docs={propositions} classes={classes} miniatures={miniatures} peutEcrire={peutEcrire} driveOk={driveOk}
-          onChange={() => charger(true)} toast={toast} />
+          patch={patch} toast={toast} />
       )}
       {vue === 'bibliotheque' && (
         <BibliothequeDocuments peutEcrire={peutEcrire} estPresident={profile?.role === 'president'} toast={toast} />

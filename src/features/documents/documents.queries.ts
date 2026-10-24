@@ -45,22 +45,25 @@ export interface ClassementConfirme {
   resume: string | null
 }
 
+export interface ResultatRangement { id: string; ok: boolean; raison?: string }
+
 /**
- * Applique le classement confirmé : le fichier part dans le Drive (<dossier de rangement>/<chemin choisi>/<nom>), puis le
- * document est noté « classé ». Sans Drive ou en cas d'échec, rien ne change (le document reste à confirmer).
+ * Range des documents confirmés dans le Drive (<dossier de rangement>/<chemin choisi>/<nom>) et les marque « classés » : UNE requête pour
+ * tout le lot (dossiers créés une fois, envois en parallèle). En cas d'échec, rien ne change pour le document concerné.
  */
-export async function confirmerClassement(id: string, c: ClassementConfirme): Promise<{ error: { message: string } | null }> {
-  const { data, error: errEdge } = await supabase.functions.invoke('drive-ranger', { body: { id, nom: c.nom, chemin: c.chemin } })
-  if (errEdge || !data?.ok) {
-    const echec = await lireErreurEdge(data, errEdge)
-    const brut = echec?.message ?? ''
-    return { error: { message: brut.includes('drive_not_connected') ? 'Google Drive n\'est pas connecté (Paramètres).' : brut.includes('drive_access_denied') ? 'Tu n\'as pas accès au Drive.' : brut || 'Envoi vers le Drive impossible' } }
+export async function rangerDansDrive(lot: Array<{ id: string; classement: ClassementConfirme }>): Promise<ResultatRangement[]> {
+  const items = lot.map(({ id, classement: c }) => ({
+    id, nom: c.nom, chemin: c.chemin,
+    meta: { type: c.type, date: c.date, tiers: c.tiers, reference: c.reference, montant_ttc_cts: c.montant_ttc_cts, resume: c.resume },
+  }))
+  const { data, error } = await supabase.functions.invoke('drive-ranger', { body: { items } })
+  if (error || !data?.ok) {
+    const brut = (await lireErreurEdge(data, error))?.message ?? ''
+    const raison = brut.includes('drive_not_connected') ? 'Google Drive n\'est pas connecté (Paramètres).' : brut.includes('drive_access_denied') ? 'Tu n\'as pas accès au Drive.' : brut || 'Envoi vers le Drive impossible'
+    return lot.map(l => ({ id: l.id, ok: false, raison }))
   }
-  const { error } = await supabase.from('documents').update({
-    file_name: c.nom, type_document: c.type, date_document: c.date, tiers: c.tiers, reference: c.reference,
-    montant_ttc_cts: c.montant_ttc_cts, resume: c.resume, statut_tri: 'classe', proposition: null, trie_le: new Date().toISOString(),
-  }).eq('id', id).select('id')
-  return { error }
+  const resultats = (data.data?.resultats ?? []) as ResultatRangement[]
+  return lot.map(l => resultats.find(r => r.id === l.id) ?? { id: l.id, ok: false, raison: 'pas de réponse' })
 }
 
 /** Renvoie un document dans l'Inbox (proposition rejetée, ou reclassement d'un document rangé). */
