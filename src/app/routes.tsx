@@ -109,7 +109,7 @@ export function AppRoutes() {
           /equipe redirige vers /equipe-hub?tab=membres : pas de boucle (section ≠ path redirigé). */}
       <Route path="/equipe-hub"    element={guard(features.equipeHub,    <EquipeSection />)} />
       <Route path="/equipe"        element={<Navigate to="/equipe-hub?tab=membres" replace />} />
-      <Route path="/heures"        element={<Navigate to="/equipe-hub?tab=heures"  replace />} />
+      <Route path="/heures"        element={<Navigate to="/equipe-hub"  replace />} />
       {/* Domaine Système à sous-onglets ; anciennes routes → redirection */}
       <Route path="/systeme"       element={guard(features.systeme,      <SystemeSection />)} />
       {/* Alertes : plus d'onglet — désormais une cloche dans le header. Ancien lien → dashboard. */}

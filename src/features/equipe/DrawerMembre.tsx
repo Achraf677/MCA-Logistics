@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react'
+import { Activity, KeyRound, Trash2, UserRound } from 'lucide-react'
 import { Drawer } from '../../shared/ui/Drawer'
+import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
+import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
+import { ContactLinks } from '../../shared/ui/ContactLinks'
+import { Bloc, Champ } from '../../shared/ui/FicheSaisie'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { useToast } from '../../shared/ui/useToast'
-import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { toLocalISO } from '../../shared/lib/dates'
@@ -10,13 +15,11 @@ import { libelleStatutLivraison } from '../../shared/lib/livraisonStatuts'
 import { changerActif } from '../../shared/lib/adminUsers.queries'
 import { createTeamMember, updateTeamMember, deactivateTeamMember, getMemberRecentDeliveries } from './equipe.queries'
 import {
-  CONTRACT_LABELS, ROLE_LABELS, memberEcheances, isDriverRole,
+  CONTRACT_LABELS, ROLE_LABELS, aptitude, getContractLabel, memberEcheances, isDriverRole,
   salaireSaisiCts, dateFr, erreurDateFin, libelleErreurAcces,
 } from './equipe.logic'
 import type { TeamMember, TeamMemberInsert } from './equipe.types'
 import { AccesSite } from './AccesSite'
-import { BlocMessagerie } from './BlocMessagerie'
-import { tarifSaisiCts, tarifEnTexte } from './journees.logic'
 import type { EcheanceStatus } from '../../shared/lib/echeances'
 
 interface DrawerMembreProps {
@@ -26,63 +29,38 @@ interface DrawerMembreProps {
   onSaved: () => void
 }
 
-const inputClass = 'field'
-function FieldGroup({ label, children }: { label: string; children: React.ReactNode }) {
+const TON_ECHEANCE: Record<EcheanceStatus, { couleur: string; texte: string }> = {
+  ok:      { couleur: 'var(--success)', texte: 'À jour' },
+  soon:    { couleur: 'var(--warning)', texte: 'Bientôt' },
+  overdue: { couleur: 'var(--danger)',  texte: 'Dépassée' },
+  none:    { couleur: 'var(--border-strong)', texte: 'À renseigner' },
+}
+
+/** Une validité (permis, visite) : sa date en clair, les jours restants, et un voyant. */
+function VoyantValidite({ status, daysLeft }: { status: EcheanceStatus; daysLeft: number | null }) {
+  const t = TON_ECHEANCE[status]
+  const detail = status !== 'none' && daysLeft !== null ? (daysLeft < 0 ? ` · ${Math.abs(daysLeft)} j de retard` : ` · ${daysLeft} j`) : ''
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-[length:var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
-      {children}
-    </div>
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium" style={{ color: t.couleur }}>
+      <span aria-hidden="true" className="h-2 w-2 rounded-full" style={{ background: t.couleur }} />
+      {t.texte}{detail}
+    </span>
   )
 }
 
-const STATUS_DOT: Record<EcheanceStatus, string> = {
-  ok:      'bg-[var(--success)]',
-  soon:    'bg-[var(--warning)]',
-  overdue: 'bg-[var(--danger)]',
-  none:    'bg-[var(--border)]',
-}
-const STATUS_TEXT: Record<EcheanceStatus, string> = {
-  ok:      'OK',
-  soon:    'Proche',
-  overdue: 'Dépassée',
-  none:    'Non renseignée',
-}
+type Onglet = 'fiche' | 'activite' | 'acces'
 
-function ValiditesBloc({ member }: { member: TeamMember }) {
-  const echeances = memberEcheances(member)
-  return (
-    <div className="flex flex-col gap-2">
-      {echeances.map(e => (
-        <div key={e.label} className="flex items-center justify-between bg-[var(--bg)] rounded-[var(--r-md)] px-3 py-2 text-[length:var(--fs-sm)]">
-          <span className="text-[var(--text-muted)]">{e.label}</span>
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--text-disabled)] font-mono text-[length:var(--fs-xs)]">
-              {dateFr(e.date)}
-            </span>
-            {e.daysLeft !== null && e.status !== 'none' && (
-              <span className="text-[length:var(--fs-xs)] text-[var(--text-muted)]">
-                ({e.daysLeft < 0 ? `${Math.abs(e.daysLeft)} j dépassé` : `${e.daysLeft} j`})
-              </span>
-            )}
-            <span
-              className={`inline-block w-2 h-2 rounded-full ${STATUS_DOT[e.status]}`}
-              title={STATUS_TEXT[e.status]}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-type Tab = 'detail' | 'validites' | 'historique' | 'documents' | 'acces'
+const ONGLETS: Array<{ cle: Onglet; libelle: string; icone: typeof UserRound }> = [
+  { cle: 'fiche', libelle: 'Fiche', icone: UserRound },
+  { cle: 'activite', libelle: 'Activité', icone: Activity },
+  { cle: 'acces', libelle: 'Accès', icone: KeyRound },
+]
 
 export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembreProps) {
   const { companyId, profile } = useProfile()
   const { isPresident } = usePermissions()
   const { toast } = useToast()
-  const [tab, setTab] = useState<Tab>('detail')
+  const [onglet, setOnglet] = useState<Onglet>('fiche')
   const [form, setForm] = useState<Partial<TeamMemberInsert>>({})
   const [saving, setSaving] = useState(false)
   const [deliveries, setDeliveries] = useState<Array<{ id: string; date: string | null; delivery_address: string | null; statut: string | null }>>([])
@@ -92,19 +70,14 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
   const [dateFin, setDateFin] = useState('')
   const [deactivating, setDeactivating] = useState(false)
   const [salaireTexte, setSalaireTexte] = useState('')
-  // Messagerie (lot S1) : tarifs saisis en euros, clients fixés par l'admin.
-  const [tarifs, setTarifs] = useState({ domicile: '', relais: '' })
-  const [clientsMessagerie, setClientsMessagerie] = useState<string[]>([])
   const isEdit = !!member
-  const showValidites = isDriverRole(member?.role ?? null)
+  const conduit = isDriverRole((form.role ?? member?.role ?? null) as TeamMember['role'])
 
   useEffect(() => {
     if (!open) return
-    setTab('detail')
+    setOnglet('fiche')
     setConfirmDeactivate(false)
-    setSalaireTexte(member?.salary_gross_cts != null ? (member.salary_gross_cts / 100).toFixed(2) : '')
-    setTarifs({ domicile: tarifEnTexte(member?.tarif_domicile_cts), relais: tarifEnTexte(member?.tarif_relais_cts) })
-    setClientsMessagerie(member?.clients_messagerie ?? [])
+    setSalaireTexte(member?.salary_gross_cts != null ? (member.salary_gross_cts / 100).toFixed(2).replace('.', ',') : '')
     setForm(member ? {
       full_name: member.full_name,
       role: member.role ?? undefined,
@@ -117,6 +90,9 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
       end_date: member.end_date ?? '',
       phone: member.phone ?? '',
       email: member.email ?? '',
+      adresse: member.adresse ?? '',
+      contact_urgence_nom: member.contact_urgence_nom ?? '',
+      contact_urgence_tel: member.contact_urgence_tel ?? '',
       license_type: member.license_type ?? '',
       licence_b_expiry: member.licence_b_expiry ?? '',
       medical_visit_expiry: member.medical_visit_expiry ?? '',
@@ -126,39 +102,31 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
   }, [open, member, companyId])
 
   useEffect(() => {
-    if (tab !== 'historique' || !member) return
+    if (onglet !== 'activite' || !member) return
     setLoadingHistory(true)
     getMemberRecentDeliveries(member.id).then(({ data }) => {
       setDeliveries(data ?? [])
       setLoadingHistory(false)
     })
-  }, [tab, member])
+  }, [onglet, member])
 
   const set = (k: keyof TeamMemberInsert, v: unknown) => setForm(p => ({ ...p, [k]: v }))
+  const texte = (k: keyof TeamMemberInsert) => (form[k] as string | null | undefined) ?? ''
 
   const handleSave = async () => {
     if (!form.full_name?.trim()) { toast('Le nom est requis', 'error'); return }
-    const tarifDom = tarifSaisiCts(tarifs.domicile)
-    const tarifRel = tarifSaisiCts(tarifs.relais)
-    if (tarifDom === 'invalide' || tarifRel === 'invalide') {
-      toast('Tarif au colis illisible : saisir un montant en euros (ex. 1,20) ou laisser vide', 'error'); return
-    }
-    // Champs messagerie envoyés seulement s'ils changent : la fiche reste enregistrable
-    // tant que la migration des journées de colis n'est pas passée.
-    const messagerie: Record<string, unknown> = {}
-    if (tarifDom !== (member?.tarif_domicile_cts ?? null)) messagerie.tarif_domicile_cts = tarifDom
-    if (tarifRel !== (member?.tarif_relais_cts ?? null)) messagerie.tarif_relais_cts = tarifRel
-    const avant = [...(member?.clients_messagerie ?? [])].sort().join(',')
-    if ([...clientsMessagerie].sort().join(',') !== avant) messagerie.clients_messagerie = clientsMessagerie
     setSaving(true)
-    // Normalize optional date fields: empty string '' → null to avoid Postgres type error.
+    // Champs optionnels : '' → null (dates : erreur de type Postgres sinon).
+    const vide = (v: string | null | undefined): string | null => (v && v.trim() !== '' ? v : null)
     const payload = {
       ...form,
-      ...messagerie,
       start_date:           form.start_date           || null,
       end_date:             form.end_date             || null,
       licence_b_expiry:     form.licence_b_expiry     || null,
       medical_visit_expiry: form.medical_visit_expiry || null,
+      adresse:              vide(form.adresse),
+      contact_urgence_nom:  vide(form.contact_urgence_nom),
+      contact_urgence_tel:  vide(form.contact_urgence_tel),
     }
     try {
       if (isEdit && member) {
@@ -219,113 +187,133 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
     onSaved(); onClose()
   }
 
-  const tabs: Array<{ key: Tab; label: string }> = [
-    { key: 'detail',    label: 'Détail' },
-    ...(showValidites ? [{ key: 'validites' as Tab, label: 'Validités' }] : []),
-    { key: 'historique', label: 'Historique' },
-    { key: 'documents',  label: 'Documents' },
-    { key: 'acces',      label: 'Accès au site' },
-  ]
+  const apte = member && isDriverRole(member.role) ? aptitude({ ...member, ...(form as Partial<TeamMember>) } as TeamMember) : null
+  const echeances = member || conduit ? memberEcheances({ ...(member ?? {}), ...(form as Partial<TeamMember>) } as TeamMember) : []
+  const permis = echeances[0]
+  const visite = echeances[1]
 
   return (
-    <Drawer open={open} onClose={onClose} title={isEdit ? member!.full_name : 'Nouveau membre'}>
-      <div className="flex flex-col gap-4">
+    <Drawer open={open} onClose={onClose} width="max-w-[40rem]" title={isEdit ? 'Fiche du membre' : 'Nouveau membre'}>
+      <div className="flex flex-col gap-4 min-h-full">
+        {/* En-tête : qui est-ce, en un coup d'œil */}
+        {isEdit && member && (
+          <header className="flex items-start gap-3">
+            <AvatarInitiales nom={member.full_name} taille="lg" discret={!member.active} />
+            <div className="min-w-0 flex-1">
+              <h3 className="font-display font-semibold text-lg leading-tight text-[var(--text)] truncate">{member.full_name}</h3>
+              <p className="text-sm text-[var(--text-muted)] truncate">
+                {(member.role_label || (member.role ? ROLE_LABELS[member.role] : '')) || 'Poste non précisé'}
+              </p>
+              <ContactLinks phone={member.phone} email={member.email} iconSize={13} className="mt-1 text-sm" />
+            </div>
+            <div className="flex flex-col items-end gap-1.5 shrink-0">
+              <Badge color={member.active ? 'success' : 'muted'}>{member.active ? 'Actif' : 'Inactif'}</Badge>
+              {member.contract_type && <Badge color="info">{getContractLabel(member.contract_type)}</Badge>}
+              {apte && <Badge color={apte === 'apte' ? 'success' : apte === 'a_completer' ? 'warning' : 'danger'}>
+                {apte === 'apte' ? 'Apte' : apte === 'a_completer' ? 'À compléter' : 'À régulariser'}
+              </Badge>}
+            </div>
+          </header>
+        )}
+
         {/* Onglets */}
         {isEdit && (
-          <div className="flex gap-1 border-b border-[var(--border)] pb-1 overflow-x-auto">
-            {tabs.map(t => (
-              <button key={t.key} onClick={() => setTab(t.key)}
-                className={`shrink-0 whitespace-nowrap px-3 py-1 text-sm rounded-[var(--r-md)] transition-colors
-                  ${tab === t.key
-                    ? 'bg-[var(--brand)] text-white font-medium'
-                    : 'text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}>
-                {t.label}
+          <div role="tablist" className="flex gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-card)] p-1 overflow-x-auto">
+            {ONGLETS.map(({ cle, libelle, icone: Icone }) => (
+              <button key={cle} role="tab" aria-selected={onglet === cle} onClick={() => setOnglet(cle)}
+                className={`flex-1 shrink-0 whitespace-nowrap h-9 px-3 rounded-full text-sm font-medium inline-flex items-center justify-center gap-1.5 transition-colors
+                  ${onglet === cle ? 'bg-[var(--brand)] text-white shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)]'}`}>
+                <Icone size={14} /> {libelle}
               </button>
             ))}
           </div>
         )}
 
-        {/* ── Tab : Détail ── */}
-        {(!isEdit || tab === 'detail') && (
+        {/* ── Fiche ── */}
+        {(!isEdit || onglet === 'fiche') && (
           <>
-            <FieldGroup label="Nom complet *">
-              <input value={form.full_name ?? ''} onChange={e => set('full_name', e.target.value)} className={inputClass} />
-            </FieldGroup>
+            <Bloc titre="Identité">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Champ label="Nom complet" requis>
+                    <input value={texte('full_name')} onChange={e => set('full_name', e.target.value)} className="field" placeholder="Prénom Nom" />
+                  </Champ>
+                </div>
+                <Champ label="Téléphone">
+                  <input type="tel" value={texte('phone')} onChange={e => set('phone', e.target.value)} className="field" placeholder="06 12 34 56 78" />
+                </Champ>
+                <Champ label="E-mail">
+                  <input type="email" value={texte('email')} onChange={e => set('email', e.target.value)} className="field" placeholder="prenom@exemple.fr" />
+                </Champ>
+                <div className="sm:col-span-2">
+                  <Champ label="Adresse">
+                    <input value={texte('adresse')} onChange={e => set('adresse', e.target.value)} className="field" placeholder="Numéro, rue, code postal, ville" />
+                  </Champ>
+                </div>
+                <Champ label="Contact d'urgence — nom">
+                  <input value={texte('contact_urgence_nom')} onChange={e => set('contact_urgence_nom', e.target.value)} className="field" placeholder="ex. Marie Dupont (conjointe)" />
+                </Champ>
+                <Champ label="Contact d'urgence — téléphone">
+                  <input type="tel" value={texte('contact_urgence_tel')} onChange={e => set('contact_urgence_tel', e.target.value)} className="field" />
+                </Champ>
+              </div>
+            </Bloc>
 
-            <div className="grid grid-cols-2 gap-3">
-              <FieldGroup label="Rôle">
-                <select value={form.role ?? ''} onChange={e => set('role', e.target.value || null)} className={inputClass}>
-                  <option value="">—</option>
-                  {(Object.entries(ROLE_LABELS) as [string, string][]).map(([v, l]) => (
-                    <option key={v} value={v}>{l}</option>
-                  ))}
-                </select>
-              </FieldGroup>
-              <FieldGroup label="Fonction / Poste">
-                <input value={form.role_label ?? ''} onChange={e => set('role_label', e.target.value)} className={inputClass} placeholder="ex. Chauffeur-livreur" />
-              </FieldGroup>
-            </div>
+            <Bloc titre="Poste et contrat">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Champ label="Rôle dans le site">
+                  <ListeDeroulante valeur={form.role ?? ''} onChange={v => set('role', v || null)} ariaLabel="Rôle" recherche={false} placeholder="Choisir un rôle"
+                    options={(Object.entries(ROLE_LABELS) as [string, string][]).map(([v, l]) => ({ valeur: v, libelle: l }))} />
+                </Champ>
+                <Champ label="Fonction affichée">
+                  <input value={texte('role_label')} onChange={e => set('role_label', e.target.value)} className="field" placeholder="ex. Chauffeur-livreur" />
+                </Champ>
+                <Champ label="Type de contrat">
+                  <ListeDeroulante valeur={form.contract_type ?? ''} onChange={v => set('contract_type', v || null)} ariaLabel="Type de contrat" recherche={false} placeholder="Choisir un contrat"
+                    options={(Object.entries(CONTRACT_LABELS) as [string, string][]).map(([v, l]) => ({ valeur: v, libelle: l }))} />
+                </Champ>
+                <Champ label="Salaire brut / mois (€)">
+                  <input type="text" inputMode="decimal" value={salaireTexte} className="field font-mono" placeholder="2 500,00"
+                    onChange={e => { setSalaireTexte(e.target.value); set('salary_gross_cts', salaireSaisiCts(e.target.value)) }} />
+                </Champ>
+                <Champ label="Date d'entrée">
+                  <input type="date" value={texte('start_date')} onChange={e => set('start_date', e.target.value || null)} className="field" />
+                </Champ>
+                <Champ label={form.contract_type === 'cdd' || form.contract_type === 'interim' ? 'Fin de contrat' : 'Date de sortie (si départ)'}>
+                  <input type="date" value={texte('end_date')} onChange={e => set('end_date', e.target.value || null)} className="field" />
+                </Champ>
+                <Champ label="Coefficient (convention collective)">
+                  <input type="number" value={form.coefficient ?? ''} onChange={e => set('coefficient', parseInt(e.target.value) || null)} className="field" placeholder="ex. 128" />
+                </Champ>
+                <p className="self-end pb-2 text-xs text-[var(--text-muted)]">Transports routiers · IDCC 16</p>
+              </div>
+            </Bloc>
 
-            <div className="grid grid-cols-2 gap-3">
-              <FieldGroup label="Type de contrat">
-                <select value={form.contract_type ?? ''} onChange={e => set('contract_type', e.target.value || null)} className={inputClass}>
-                  <option value="">—</option>
-                  {(Object.entries(CONTRACT_LABELS) as [string, string][]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                </select>
-              </FieldGroup>
-              <FieldGroup label="Permis">
-                <input value={form.license_type ?? ''} onChange={e => set('license_type', e.target.value)} className={inputClass} placeholder="B, C…" />
-              </FieldGroup>
-            </div>
+            {conduit && (
+              <Bloc titre="Conduite et validités" droite={apte ? <span className="text-xs text-[var(--text-muted)]">Apte = permis et visite à jour</span> : undefined}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Champ label="Catégories de permis">
+                    <input value={texte('license_type')} onChange={e => set('license_type', e.target.value)} className="field" placeholder="B, C…" />
+                  </Champ>
+                  <span aria-hidden="true" className="hidden sm:block" />
+                  <Champ label="Permis B — date d'expiration">
+                    <input type="date" value={texte('licence_b_expiry')} onChange={e => set('licence_b_expiry', e.target.value || null)} className="field" />
+                    {permis && <VoyantValidite status={permis.status} daysLeft={permis.daysLeft} />}
+                  </Champ>
+                  <Champ label="Prochaine visite médicale">
+                    <input type="date" value={texte('medical_visit_expiry')} onChange={e => set('medical_visit_expiry', e.target.value || null)} className="field" />
+                    {visite && <VoyantValidite status={visite.status} daysLeft={visite.daysLeft} />}
+                  </Champ>
+                </div>
+              </Bloc>
+            )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <FieldGroup label="Salaire brut / mois (€)">
-                <input type="text" inputMode="decimal"
-                  value={salaireTexte}
-                  onChange={e => { setSalaireTexte(e.target.value); set('salary_gross_cts', salaireSaisiCts(e.target.value)) }}
-                  className={inputClass} placeholder="2 500,00" />
-              </FieldGroup>
-              <FieldGroup label="Coefficient">
-                <input type="number" value={form.coefficient ?? ''} onChange={e => set('coefficient', parseInt(e.target.value) || null)} className={inputClass} />
-              </FieldGroup>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <FieldGroup label="IDCC">
-                <input value={form.idcc ?? '16'} onChange={e => set('idcc', e.target.value)} className={inputClass} />
-              </FieldGroup>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <FieldGroup label="Date début">
-                <input type="date" value={form.start_date ?? ''} onChange={e => set('start_date', e.target.value || null)} className={inputClass} />
-              </FieldGroup>
-              <FieldGroup label="Date fin">
-                <input type="date" value={form.end_date ?? ''} onChange={e => set('end_date', e.target.value || null)} className={inputClass} />
-              </FieldGroup>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <FieldGroup label="E-mail">
-                <input type="email" value={form.email ?? ''} onChange={e => set('email', e.target.value)} className={inputClass} />
-              </FieldGroup>
-              <FieldGroup label="Téléphone">
-                <input type="tel" value={form.phone ?? ''} onChange={e => set('phone', e.target.value)} className={inputClass} />
-              </FieldGroup>
-            </div>
-
-            <BlocMessagerie
-              tarifDomicile={tarifs.domicile} tarifRelais={tarifs.relais}
-              onTarifs={t => setTarifs(p => ({ ...p, ...t }))}
-              clients={clientsMessagerie} onClients={setClientsMessagerie}
-            />
-
-            {confirmDeactivate && member ? (
-              <div className="flex flex-col gap-3 rounded-[var(--r-md)] border border-[var(--danger)]/40 bg-[var(--danger)]/5 p-3">
-                <p className="text-sm font-medium text-[var(--text)]">Désactiver {member.full_name} ?</p>
-                <FieldGroup label="Date de fin (sortie)">
-                  <input type="date" value={dateFin} onChange={e => setDateFin(e.target.value)} className={inputClass} />
-                </FieldGroup>
+            {confirmDeactivate && member && (
+              <div className="flex flex-col gap-3 rounded-[var(--r-lg)] border border-[var(--danger)]/40 bg-[var(--danger)]/5 p-4">
+                <p className="text-sm font-semibold text-[var(--text)]">Désactiver {member.full_name} ?</p>
+                <Champ label="Date de fin (sortie)">
+                  <input type="date" value={dateFin} onChange={e => setDateFin(e.target.value)} className="field" />
+                </Champ>
                 <p className="text-sm text-[var(--text-muted)]">
                   La fiche sera masquée de l’équipe active (son historique reste).
                   {peutCouperAcces && ' Son accès au site sera aussi coupé : il ne pourra plus se connecter.'}
@@ -333,93 +321,51 @@ export function DrawerMembre({ open, onClose, member, onSaved }: DrawerMembrePro
                   {accesRelie && !accesEstMoi && !isPresident && ' Attention : son accès au site reste ouvert ; seul le président peut le couper (Accès au site).'}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="primary" onClick={doDeactivate} disabled={deactivating}
-                    className="!bg-[var(--danger)] hover:!bg-[var(--danger)]/90">
+                  <Button variant="primary" onClick={doDeactivate} disabled={deactivating} className="!bg-[var(--danger)] hover:!bg-[var(--danger)]/90">
                     {deactivating ? '…' : peutCouperAcces ? 'Désactiver et couper l’accès' : 'Désactiver'}
                   </Button>
                   <Button variant="secondary" onClick={() => setConfirmDeactivate(false)} disabled={deactivating}>Annuler</Button>
                 </div>
               </div>
-            ) : (
-            <div className="flex gap-2 pt-2 border-t border-[var(--border)]">
-              <Button variant="primary" onClick={handleSave} disabled={saving}>
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
-              </Button>
-              <Button variant="secondary" onClick={onClose}>Annuler</Button>
-              {isEdit && member?.active && (
-                <Button variant="ghost" onClick={handleDeactivate} className="ml-auto text-[var(--danger)]">Désactiver</Button>
-              )}
-            </div>
             )}
-          </>
-        )}
 
-        {/* ── Tab : Validités (chauffeurs uniquement) ── */}
-        {isEdit && tab === 'validites' && showValidites && (
-          <>
-            <div className="flex flex-col gap-3">
-              <p className="text-[length:var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">Dates de validité</p>
-              <div className="grid grid-cols-2 gap-3">
-                <FieldGroup label="Permis B — expiration">
-                  <input type="date"
-                    value={form.licence_b_expiry ?? ''}
-                    onChange={e => set('licence_b_expiry', e.target.value || null)}
-                    className={inputClass} />
-                </FieldGroup>
-                <FieldGroup label="Prochaine visite médicale">
-                  <input type="date"
-                    value={form.medical_visit_expiry ?? ''}
-                    onChange={e => set('medical_visit_expiry', e.target.value || null)}
-                    className={inputClass} />
-                </FieldGroup>
+            {!confirmDeactivate && (
+              <div className="sticky bottom-0 -mx-5 -mb-5 mt-auto border-t border-[var(--border)] bg-[var(--bg-elevated)] px-5 py-3 flex items-center gap-2">
+                <Button variant="primary" className="min-h-10" onClick={handleSave} disabled={saving}>
+                  {saving ? 'Enregistrement…' : isEdit ? 'Enregistrer' : 'Ajouter le membre'}
+                </Button>
+                <Button variant="secondary" className="min-h-10" onClick={onClose}>Annuler</Button>
+                {isEdit && member?.active && (
+                  <Button variant="ghost" onClick={handleDeactivate} className="ml-auto text-[var(--danger)]"><Trash2 size={14} /> Désactiver</Button>
+                )}
               </div>
-
-              {/* Pastilles de statut */}
-              <p className="text-[length:var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide mt-2">Statut actuel</p>
-              <ValiditesBloc member={{ ...member!, ...form as Partial<TeamMember> } as TeamMember} />
-            </div>
-
-            <div className="flex gap-2 pt-2 border-t border-[var(--border)]">
-              <Button variant="primary" onClick={handleSave} disabled={saving}>
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
-              </Button>
-              <Button variant="secondary" onClick={onClose}>Annuler</Button>
-            </div>
+            )}
           </>
         )}
 
-        {/* ── Tab : Historique ── */}
-        {isEdit && tab === 'historique' && (
-          <div className="flex flex-col gap-2">
+        {/* ── Activité ── */}
+        {isEdit && onglet === 'activite' && (
+          <Bloc titre="Dernières livraisons">
             {loadingHistory ? (
-              <p className="text-[var(--text-muted)] text-[length:var(--fs-sm)]">Chargement…</p>
+              <p className="text-[var(--text-muted)] text-sm">Chargement…</p>
             ) : deliveries.length === 0 ? (
-              <p className="text-[var(--text-muted)] text-[length:var(--fs-sm)] py-6 text-center">Aucune livraison récente</p>
+              <p className="text-[var(--text-muted)] text-sm py-6 text-center">Aucune livraison récente</p>
             ) : (
-              deliveries.map(d => (
-                <div key={d.id} className="flex items-center justify-between gap-2 bg-[var(--bg)] rounded-[var(--r-md)] px-3 py-2 text-[length:var(--fs-sm)]">
-                  <div className="min-w-0 truncate">
-                    <span className="font-mono text-[var(--text-disabled)] text-xs">{dateFr(d.date)}</span>
-                    {d.delivery_address && (
-                      <span className="ml-2 text-[var(--text-muted)]">{d.delivery_address}</span>
-                    )}
-                  </div>
-                  {d.statut && (
-                    <span className="text-xs text-[var(--text-muted)] shrink-0">{libelleStatutLivraison(d.statut)}</span>
-                  )}
-                </div>
-              ))
+              <ul className="flex flex-col divide-y divide-[var(--border)] -my-1">
+                {deliveries.map(d => (
+                  <li key={d.id} className="flex items-center gap-3 py-2.5 text-sm">
+                    <span className="w-14 shrink-0 font-mono text-xs text-[var(--text-muted)]">{d.date ? dateFr(d.date).slice(0, 5) : '—'}</span>
+                    <span className="flex-1 min-w-0 truncate text-[var(--text)]">{d.delivery_address ?? 'Adresse non renseignée'}</span>
+                    {d.statut && <Badge color={d.statut === 'annulee' ? 'danger' : d.statut === 'payee' || d.statut === 'facturee' ? 'success' : 'muted'}>{libelleStatutLivraison(d.statut)}</Badge>}
+                  </li>
+                ))}
+              </ul>
             )}
-          </div>
+          </Bloc>
         )}
 
-        {/* ── Tab : Documents ── */}
-        {isEdit && tab === 'documents' && (
-          <DocumentsPanel entityType="team_member" entityId={member?.id ?? null} />
-        )}
-
-        {/* ── Tab : Accès au site (lot S0) ── */}
-        {isEdit && tab === 'acces' && member && (
+        {/* ── Accès au site ── */}
+        {isEdit && onglet === 'acces' && member && (
           <AccesSite member={member} onChanged={() => { onSaved(); onClose() }} />
         )}
       </div>

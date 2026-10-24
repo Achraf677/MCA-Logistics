@@ -30,8 +30,7 @@ Permissions : rôles president / dg / chauffeur / comptable. Le front ne bloque 
    - Charges (/finance?tab=charges) — dépenses par catégorie, HT/TVA/TTC auto. « Nouvelle charge », export CSV.
 
 7) ÉQUIPE (/equipe-hub) — Sous-onglets :
-   - Membres (/equipe-hub?tab=membres) — membres (rôles, contrats, salaires, validités permis B/visite médicale), masse salariale. « Nouveau ».
-   - Heures (/equipe-hub?tab=heures) — heures travaillées par chauffeur, rattachables à une livraison ; total net. « Nouveau ».
+   - Membres (/equipe-hub?tab=membres) — membres (rôles, contrats, salaires, validités permis B/visite médicale, accès au site), masse salariale. « Nouveau ».
 
 8) SYSTÈME (/systeme) — Sous-onglets :
    - Alertes (/systeme?tab=alertes) — centre d'alertes en direct (échéances, retards/impayés), filtres ; « Briefing du jour » = synthèse IA. Lecture seule.

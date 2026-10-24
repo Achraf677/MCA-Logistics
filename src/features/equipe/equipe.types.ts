@@ -21,6 +21,11 @@ export interface TeamMember {
   tarif_relais_cts?: number | null
   /** Clients de messagerie du salarié, fixés par l'admin. */
   clients_messagerie?: string[]
+  /** Fiche (24/10/2026) : adresse, contact d'urgence, notes — lus par le bureau seulement (Mes courses liste ses colonnes). */
+  adresse?: string | null
+  contact_urgence_nom?: string | null
+  contact_urgence_tel?: string | null
+  notes?: string | null
   active: boolean
   created_at: string
   updated_at: string
