@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronRight, FileText, Hourglass, Inbox, Send, ThumbsDown, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
-import { supabase, useProfile } from '../../app/providers'
+import { supabase } from '../../app/providers'
 import { Badge } from '../../shared/ui/Badge'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Button } from '../../shared/ui/Button'
@@ -15,15 +15,11 @@ import { useToast } from '../../shared/ui/useToast'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney } from '../../shared/lib/money'
 import { libelleCategorie, manquesValidation, totalARembourser } from '../../shared/lib/depenses'
-import { getCategories } from '../../shared/lib/categories.queries'
-import { indexerFichierExistant } from '../../shared/lib/documents.queries'
 import { grouperParMois } from '../../shared/lib/mois'
 import {
   classerTicket, corrigerTicket, envoyerVersPennylane, lireTicketIa, listerTickets, remettreATraiter, supprimerDepense,
   marquerRembourse, refuserDepense, urlTicket, urlsTickets, type TicketInbox,
 } from '../../shared/lib/receiptsInbox.queries'
-import type { ChargeCategoryRow } from '../../shared/types/categories'
-import { DrawerCharge } from './DrawerCharge'
 import { FicheJustificatif, Paiement, type MajJustificatif } from './FicheJustificatif'
 import { nomsDeclarants } from './charges.queries'
 import {
@@ -51,13 +47,11 @@ function Miniature({ t, url }: { t: TicketInbox; url: string | undefined }) {
  */
 export function Justificatifs() {
   const { toast } = useToast()
-  const { companyId } = useProfile()
   const { can } = usePermissions()
   const peutEcrire = can('finance.charges', 'update')
 
   const [tickets, setTickets] = useState<TicketInbox[]>([])
   const [noms, setNoms] = useState<Record<string, string>>({})
-  const [categories, setCategories] = useState<ChargeCategoryRow[]>([])
   const [fournisseurs, setFournisseurs] = useState<Array<{ id: string; name: string }>>([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
@@ -65,7 +59,6 @@ export function Justificatifs() {
   const [q, setQ] = useState('')
   const [ouvertId, setOuvertId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  const [source, setSource] = useState<TicketInbox | null>(null)
   const [lectureEnCours, setLectureEnCours] = useState(false)
   const [miniatures, setMiniatures] = useState<Record<string, string>>({})
   const dejaLus = useRef(new Set<string>())
@@ -82,7 +75,6 @@ export function Justificatifs() {
   }, [])
 
   useEffect(() => { void charger() }, [charger])
-  useEffect(() => { if (companyId) getCategories(companyId).then(setCategories) }, [companyId])
   useEffect(() => {
     supabase.from('suppliers').select('id, name').eq('active', true).order('name')
       .then(({ data }) => setFournisseurs((data ?? []) as Array<{ id: string; name: string }>))
@@ -294,7 +286,6 @@ export function Justificatifs() {
             onFichier={() => void ouvrirFichier(ouvert)}
             onEnregistrer={maj => void agir(() => corrigerTicket(ouvert.id, maj), 'Justificatif corrigé')}
             onValider={maj => void valider(ouvert, maj)}
-            onCreerCharge={() => setSource(ouvert)}
             onRefuser={motif => void agir(() => refuserDepense(ouvert.id, motif), 'Dépense refusée : le déclarant voit le motif', true)}
             onRembourser={date => void agir(() => marquerRembourse(ouvert.id, date), date ? 'Remboursée : le salarié le voit' : 'Remboursement annulé')}
             peutSupprimer={can('finance.charges', 'delete')}
@@ -302,34 +293,6 @@ export function Justificatifs() {
             onSupprimer={() => void agir(() => supprimerDepense(ouvert), 'Justificatif supprimé', true)} />
         )}
       </Drawer>
-
-      <DrawerCharge
-        open={source != null}
-        onClose={() => setSource(null)}
-        charge={null}
-        onSaved={() => void charger()}
-        categories={categories}
-        prefill={source ? {
-          // Ce qu'on sait VRAIMENT du ticket : ce que le déclarant a tapé, son jour, comment il a payé.
-          // Le montant n'est pas deviné — mieux vaut un champ vide qu'un chiffre faux dans une comptabilité.
-          date: source.date_depense ?? source.created_at.slice(0, 10),
-          label: source.note ?? '',
-          notes: `Ticket : ${source.file_name}`,
-          mode_paiement: source.moyen_paiement === 'personnel' ? 'note_de_frais' : source.moyen_paiement === 'carte_societe' ? 'qonto' : undefined,
-        } : null}
-        onCreated={async chargeId => {
-          if (!source || !companyId) return
-          // La photo est déjà dans le bucket : on l'inscrit au registre des documents de la charge.
-          await indexerFichierExistant({
-            companyId, storagePath: source.storage_path, fileName: source.file_name, mimeType: source.mime_type,
-            sizeBytes: source.size_bytes, entityType: 'charge', entityId: chargeId, category: 'Justificatif', notes: source.note,
-          })
-          await classerTicket(source.id, 'traite', chargeId)
-          setSource(null)
-          setOuvertId(null)
-          await charger()
-        }}
-      />
     </Shell>
   )
 }

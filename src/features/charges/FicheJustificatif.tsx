@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Check, CreditCard, ExternalLink, FilePlus2, FileText, Sparkles, Trash2, Undo2, Wallet, X } from 'lucide-react'
+import { Check, CreditCard, ExternalLink, FileText, Sparkles, Trash2, Undo2, Wallet, X } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { Button } from '../../shared/ui/Button'
@@ -97,7 +97,7 @@ function Apercu({ t, url, onFichier }: { t: TicketInbox; url: string | null; onF
 }
 
 /** Tiroir d'un justificatif : le ticket à gauche, ce qu'on y lit et ce qu'on décide à droite, les gestes en bas. */
-export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onCreerCharge, onRefuser, onRembourser, peutSupprimer, onRemettre, onSupprimer }: {
+export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onRefuser, onRembourser, peutSupprimer, onRemettre, onSupprimer }: {
   t: TicketInbox
   lectureEnCours: boolean
   nom: string
@@ -107,7 +107,6 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   onFichier: () => void
   onEnregistrer: (maj: MajJustificatif) => void
   onValider: (maj: MajJustificatif) => void
-  onCreerCharge: () => void
   onRefuser: (motif: string) => void
   onRembourser: (date: string | null) => void
   peutSupprimer: boolean
@@ -230,7 +229,6 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
               {t.statut === 'a_traiter' && (
                 <>
                   <Button variant="primary" className="min-h-10" onClick={() => onValider(maj)} disabled={busy || manques.length > 0}><Check size={15} /> Valider et envoyer à Pennylane</Button>
-                  <Button variant="secondary" className="min-h-10" onClick={onCreerCharge} disabled={busy}><FilePlus2 size={15} /> Créer la charge</Button>
                 </>
               )}
               {t.statut === 'traite' && noteDeFrais && (
