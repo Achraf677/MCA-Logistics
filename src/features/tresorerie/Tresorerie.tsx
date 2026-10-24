@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowDownLeft, ArrowUpRight, Search, Wallet } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
+import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { GroupeMois } from '../../shared/ui/GroupeMois'
@@ -75,11 +76,8 @@ export function Tresorerie() {
 
       {!loading && txs.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 mb-4">
-          <div className="relative flex-1 min-w-[12rem] max-w-md">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-disabled)] pointer-events-none" />
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Libellé, type d'opération…"
-              aria-label="Rechercher un mouvement" className="field !pl-9" />
-          </div>
+          <BarreRecherche value={q} onChange={setQ} placeholder="Chercher un mouvement : libellé, type d'opération…" ariaLabel="Rechercher un mouvement"
+            raccourci className="flex-1 min-w-[12rem] max-w-xl" compteur={`${visibles.length} sur ${txs.length}`} />
           <div role="group" aria-label="Sens" className="inline-flex rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] p-0.5">
             {SENS.map(s => (
               <button key={s.cle} type="button" aria-pressed={sens === s.cle} onClick={() => setSens(s.cle)}

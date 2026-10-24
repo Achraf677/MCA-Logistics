@@ -107,7 +107,7 @@ function Visionneuse({ url, nom, image, position, onFermer, onPrecedente, onSuiv
           ) : image ? (
             <img src={url} alt={nom} className="max-w-full max-h-full object-contain rounded-[var(--r-md)]" />
           ) : (
-            <a href={url} target="_blank" rel="noopener noreferrer" className="text-white underline text-sm">Ouvrir le fichier</a>
+            <iframe src={url} title={nom} className="w-full h-full max-w-5xl rounded-[var(--r-md)] bg-white" />
           )}
         </div>
         {onSuivante && (

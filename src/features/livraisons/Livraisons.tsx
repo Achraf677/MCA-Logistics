@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react
 import type { ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  Package, RefreshCw, Loader2, FileText, FileClock, Wallet, Mail, Search,
-  CalendarRange, AlertTriangle, Camera, X, Route,
+  Package, RefreshCw, Loader2, FileText, FileClock, Wallet, Mail,
+  CalendarRange, AlertTriangle, Camera, Route,
 } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
 import { ChiffreCarte } from '../../shared/ui/ChiffreCarte'
 import { Badge }       from '../../shared/ui/Badge'
+import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Button }      from '../../shared/ui/Button'
 import { EmptyState }  from '../../shared/ui/EmptyState'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -358,21 +359,10 @@ export function Livraisons() {
         <section className={`${carteCls} flex flex-col min-w-0 lg:flex-1 lg:min-h-0 overflow-hidden`}>
           <div className="flex flex-col gap-2 p-3 pb-2 border-b border-[var(--border)]">
             <div className="flex flex-wrap items-center gap-2">
-              <label className="relative flex-1 min-w-[12rem] basis-full sm:basis-auto">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-disabled)] pointer-events-none" />
-                <input value={saisie} onChange={e => setSaisie(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { const t = saisie.trim(); majParams(p => { if (t) p.set('q', t); else p.delete('q') }) } }}
-                  placeholder="Client, adresse, description, n° facture…"
-                  aria-label="Rechercher une livraison"
-                  className={`${champCls} w-full pl-8 pr-7`} />
-                {saisie && (
-                  <button type="button" onClick={() => { setSaisie(''); majParams(p => p.delete('q')) }}
-                    aria-label="Effacer la recherche" title="Effacer la recherche"
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-[var(--text-muted)] hover:text-[var(--text)]">
-                    <X size={13} />
-                  </button>
-                )}
-              </label>
+              <BarreRecherche value={saisie} onChange={setSaisie} placeholder="Chercher une livraison : client, adresse, n° facture…" ariaLabel="Rechercher une livraison"
+                raccourci taille="sm" className="flex-1 min-w-[12rem] basis-full sm:basis-auto"
+                onKeyDown={e => { if (e.key === 'Enter') { const t = saisie.trim(); majParams(p => { if (t) p.set('q', t); else p.delete('q') }) } }}
+                onEffacer={() => majParams(p => p.delete('q'))} />
 
               <div className="inline-flex rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden shrink-0" role="group" aria-label="Période">
                 {RACCOURCIS.map(r => {

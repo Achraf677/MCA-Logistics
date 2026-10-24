@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Plus, Pencil, X } from 'lucide-react'
+import { Plus, Pencil } from 'lucide-react'
+import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { LIBELLE_TYPE_ARRET, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
 import { libelleAdresse } from './tourneeColis.logic'
 import { modeOrdre, numeroAffiche } from '../../shared/lib/tourneesColisRoute'
@@ -33,20 +34,12 @@ export function RechercheAdresse({ tournee, arrets, verrouillee, onOuvrir, onAjo
   const afficher = ouvert && q.trim().length > 0
   return (
     <div ref={racine} className="relative">
-      <div className="flex items-center gap-1.5 px-2.5 h-9 rounded-full bg-[var(--bg-elevated)] border border-[var(--border)] focus-within:border-[var(--brand)]">
-        <Search size={16} className="shrink-0 text-[var(--text-muted)]" />
-        <input value={q} onChange={e => { setQ(e.target.value); setOuvert(true) }} onFocus={() => setOuvert(true)}
-          type="search" enterKeyHint="search" autoComplete="off" placeholder="Chercher une adresse" aria-label="Chercher une adresse de la tournée"
-          className="flex-1 min-w-0 bg-transparent text-base text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none" />
-        {q && (
-          <button type="button" aria-label="Effacer" onClick={() => { setQ(''); setOuvert(false) }}
-            className="size-7 shrink-0 inline-flex items-center justify-center rounded-full text-[var(--text-muted)]"><X size={16} /></button>
-        )}
-        {!verrouillee && (
+      <BarreRecherche value={q} onChange={v => { setQ(v); setOuvert(true) }} onFocus={() => setOuvert(true)} onEffacer={() => setOuvert(false)}
+        placeholder="Chercher une adresse" ariaLabel="Chercher une adresse de la tournée" enterKeyHint="search"
+        droite={!verrouillee ? (
           <button type="button" aria-label="Ajouter une adresse" onClick={() => setFeuille({ saisie: q })}
             className="size-7 shrink-0 inline-flex items-center justify-center rounded-full bg-[var(--brand)] text-black"><Plus size={16} /></button>
-        )}
-      </div>
+        ) : null} />
 
       {afficher && (
         <ul className="absolute left-0 right-0 top-full mt-1 z-20 max-h-[45vh] overflow-y-auto rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border-strong)] shadow-lg">

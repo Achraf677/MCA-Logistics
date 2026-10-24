@@ -41,7 +41,7 @@ export interface TicketInbox {
 }
 
 export interface LectureTicketIa {
-  lu?: { fournisseur: string | null; date: string | null; total_ttc_cts: number | null; taux_tva: number | null; categorie: string | null } | null
+  lu?: { fournisseur: string | null; date: string | null; total_ttc_cts: number | null; categorie: string | null } | null
   rempli?: string[]
   raison?: string
 }
@@ -122,6 +122,9 @@ export async function deposerTicket(
     await supabase.storage.from(BUCKET).remove([path])
     return { data: null, error: new Error(error.message) }
   }
+
+  // Lecture du ticket par l'IA dès le dépôt, une seule fois (le bureau n'a plus qu'à confirmer). Jamais bloquant.
+  if (data) void lireTicketIa(data.id).catch(() => undefined)
 
   return { data: data as TicketInbox, error: null }
 }

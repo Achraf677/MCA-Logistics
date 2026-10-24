@@ -185,6 +185,8 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - ⚠️ `text-[var(--fs-*)]` = compilé en `color:` par Tailwind v4 → **interdit** dans du code neuf
   (`text-xs`, `text-sm`, `text-[length:var(--fs-xs)]`). ~700 usages anciens : correctif global à décider.
 - `.glass` sans backdrop-filter sur ce qui défile (perf).
+- **Recherche (23/10/2026)** : toute barre de recherche = `shared/ui/BarreRecherche` (halo, effacer, Échap, compteur, raccourci « / »), jamais un `<input>` nu.
+- **Documents (23/10/2026)** : un PDF ou une photo s'ouvre dans l'appli par `ouvrirDocument(url, { titre, type })` (`shared/ui/VisionneuseDocument`, montée à la racine), jamais `window.open`. Exception : liens « Y aller » (navigation).
 
 ## 9. Workflow Git / mise en prod
 - Branche par étape (`feat/…`, `fix/…`, ou la branche imposée par la session). PR vers `main`.
@@ -238,7 +240,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   documents · Facturation).
 
 ## 12. En cours / à décider (mettre à jour à chaque session)
-- **Lecture IA des tickets (23/10/2026)** : Edge `lire-ticket` v1 préremplit montant / date / catégorie / TVA / fournisseur d'un justificatif ouvert (cases vides seulement), voir `mca-spec/revue/06-finance.md`. Envoi Pennylane = mail PDF (Edge `pennylane-justificatif` v12). Reste F2b (HT / TVA par ligne de ventilation).
+- **Lecture IA des tickets (23/10/2026)** : Edge `lire-ticket` v2 lit le ticket DÈS LE DÉPÔT (lancée par le salarié, une seule fois, `ocr_lu_le`) et préremplit montant / date / catégorie / fournisseur (cases vides seulement ; plus de TVA, Pennylane la lit) ; le bureau confirme, voir `mca-spec/revue/06-finance.md`. Envoi Pennylane = mail PDF (Edge `pennylane-justificatif` v12). Reste F2b (HT / TVA par ligne de ventilation).
 - **Drive retiré (23/10/2026, demande de l'utilisateur)** : plus d'écran ni de rapatriement Drive ; Paramètres › « Envoi d'e-mails (Gmail) » (`GmailConnect`, Edge `drive-oauth-start` v16 = scope gmail.send seul, noms d'Edge / table `google_drive_tokens` gardés). Justificatifs validés → mail à `companies.pennylane_depot_email` (Edge `pennylane-justificatif` v10). 14 Edge `drive-*` restent déployées sans appel ; messages d'erreur de `send-client-email` citent encore « Drive » (à reformuler au prochain déploiement).
 - **CHANTIER PRIORITAIRE — Uniformisation Pennylane ↔ site** (demandé le 02/10/2026) : plan
   `mca-spec/UNIFORMISATION-PENNYLANE.md` (écarts cités fichier:ligne, lots U1 → U8). Règle :

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Search } from 'lucide-react'
+import { BarreRecherche } from './BarreRecherche'
 import { PRESTATIONS, PRESTATION_LABELS, PRESTATION_AIDES } from '../lib/prestations'
 import type { Prestation } from '../lib/prestations'
 
@@ -77,8 +78,7 @@ export function ChoixClient({ clients, value, onChange, disabled }: {
   }
   return (
     <div className="flex flex-col gap-1">
-      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher un client…"
-        className="field"
+      <BarreRecherche value={q} onChange={setQ} placeholder="Rechercher un client…" autoFocus taille="sm"
         onKeyDown={e => {
           if (e.key === 'Escape') setOuvert(false)
           if (e.key === 'Enter' && filtres[0]) { e.preventDefault(); onChange(filtres[0].id); setOuvert(false) }

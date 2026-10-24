@@ -90,5 +90,5 @@ export const TAUX_TVA_JUSTIF = [20, 10, 5.5, 2.1, 0] as const
 
 /** Noms lisibles des colonnes préremplies par la lecture IA du ticket. */
 export const LIBELLE_CHAMP_LU: Record<string, string> = {
-  montant_ttc_cts: 'montant', date_depense: 'date', categorie: 'catégorie', tva_rate: 'TVA', supplier_id: 'fournisseur',
+  montant_ttc_cts: 'montant', date_depense: 'date', categorie: 'catégorie', supplier_id: 'fournisseur',
 }

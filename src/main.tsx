@@ -9,6 +9,7 @@ import { ToastProvider } from './shared/ui/useToast'
 import { AppRoutes } from './app/routes'
 import { LoginPage } from './app/LoginPage'
 import { Button } from './shared/ui/Button'
+import { VisionneuseDocument } from './shared/ui/VisionneuseDocument'
 import { AssistantProvider } from './features/assistant/AssistantContext'
 import { AssistantWidget } from './features/assistant/AssistantWidget'
 import { PermissionsProvider } from './shared/permissions/PermissionsProvider'
@@ -92,6 +93,7 @@ function AppCore() {
           <SyncProvider>
             <AssistantProvider>
               <AppRoutes />
+              <VisionneuseDocument />
               {/* Ici et non dans Shell.tsx : Shell se remonte à chaque
                   navigation (une page = un montage), donc l'assistant s'y
                   redémarrait aussi à chaque clic de menu — perte de son état

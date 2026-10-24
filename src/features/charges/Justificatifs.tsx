@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronRight, FileText, Hourglass, Inbox, Search, Send, ThumbsDown, Wallet } from 'lucide-react'
+import { ChevronRight, FileText, Hourglass, Inbox, Send, ThumbsDown, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { supabase, useProfile } from '../../app/providers'
 import { Badge } from '../../shared/ui/Badge'
+import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Button } from '../../shared/ui/Button'
 import { ChiffreCarte } from '../../shared/ui/ChiffreCarte'
 import { Drawer } from '../../shared/ui/Drawer'
+import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { GroupeMois } from '../../shared/ui/GroupeMois'
 import { Skeleton } from '../../shared/ui/Skeleton'
@@ -68,8 +70,8 @@ export function Justificatifs() {
   const [miniatures, setMiniatures] = useState<Record<string, string>>({})
   const dejaLus = useRef(new Set<string>())
 
-  const charger = useCallback(async () => {
-    setLoading(true)
+  const charger = useCallback(async (silencieux = false) => {
+    if (!silencieux) setLoading(true)
     const { data, error } = await listerTickets()
     if (error) { setErreur(error.message); setLoading(false); return }
     setErreur(null)
@@ -104,18 +106,24 @@ export function Justificatifs() {
   const nomDe = (t: TicketInbox) => (t.uploaded_by ? (noms[t.uploaded_by] ?? 'Déclarant inconnu') : 'Déclarant inconnu')
   const ouvert = tickets.find(t => t.id === ouvertId) ?? null
 
-  // Ouverture d'un justificatif pas encore lu : l'IA lit le ticket et préremplit les cases vides, puis on recharge.
+  // La lecture du ticket par l'IA part dès le dépôt (une seule fois). Rattrapage silencieux, sans recharger l'écran, des
+  // tickets déposés avant ou dont la lecture a échoué : une tentative par ticket et par session, huit au plus.
   useEffect(() => {
-    if (!ouvert || !peutEcrire || ouvert.statut !== 'a_traiter' || ouvert.ocr_lu_le || dejaLus.current.has(ouvert.id)) return
-    dejaLus.current.add(ouvert.id)
+    if (!peutEcrire) return
+    const aLire = tickets.filter(t => t.statut === 'a_traiter' && !t.ocr_lu_le && !dejaLus.current.has(t.id)).slice(0, 8)
+    if (aLire.length === 0) return
+    aLire.forEach(t => dejaLus.current.add(t.id))
     setLectureEnCours(true)
-    void lireTicketIa(ouvert.id).then(async ok => { if (ok) await charger() }).finally(() => setLectureEnCours(false))
-  }, [ouvert, peutEcrire, charger])
+    void (async () => {
+      for (const t of aLire) await lireTicketIa(t.id)
+      await charger(true)
+    })().finally(() => setLectureEnCours(false))
+  }, [tickets, peutEcrire, charger])
 
   const ouvrirFichier = async (t: TicketInbox) => {
     const url = await urlTicket(t)
     if (!url) { toast('Fichier introuvable', 'error'); return }
-    window.open(url, '_blank', 'noopener,noreferrer')
+    ouvrirDocument(url, { titre: t.note || t.file_name, type: t.mime_type?.startsWith('image/') ? 'image' : 'pdf' })
   }
 
   const agir = async (action: () => Promise<{ error: { message: string } | null }>, succes: string, fermer = false) => {
@@ -250,11 +258,8 @@ export function Justificatifs() {
                 titre="Justificatifs refusés" actif={filtre === 'refuses'} onClick={() => setFiltre('refuses')} />
             </div>
 
-            <div className="relative max-w-md">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-disabled)] pointer-events-none" />
-              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Note, catégorie, déclarant…"
-                aria-label="Rechercher un justificatif" className="field !pl-9" />
-            </div>
+            <BarreRecherche value={q} onChange={setQ} placeholder="Chercher un justificatif : note, catégorie, déclarant…" ariaLabel="Rechercher un justificatif"
+              raccourci className="max-w-xl" compteur={`${visibles.length} résultat${visibles.length > 1 ? 's' : ''}`} />
 
             {visibles.length === 0 ? (
               <EmptyState icon={<Inbox size={40} />} title="Rien ici"
@@ -280,7 +285,7 @@ export function Justificatifs() {
 
       <Drawer open={ouvert != null} onClose={() => setOuvertId(null)} width="max-w-[68rem]" title="Justificatif">
         {ouvert && (
-          <FicheJustificatif key={`${ouvert.id}-${ouvert.ocr_lu_le ?? ''}`} t={ouvert} lectureEnCours={lectureEnCours} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy} fournisseurs={fournisseurs}
+          <FicheJustificatif key={`${ouvert.id}-${ouvert.ocr_lu_le ?? ''}`} t={ouvert} lectureEnCours={lectureEnCours && !ouvert.ocr_lu_le} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy} fournisseurs={fournisseurs}
             onFichier={() => void ouvrirFichier(ouvert)}
             onEnregistrer={maj => void agir(() => corrigerTicket(ouvert.id, maj), 'Justificatif corrigé')}
             onValider={() => void valider(ouvert)}

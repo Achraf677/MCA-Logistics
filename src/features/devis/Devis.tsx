@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { FileText, Search, X, Send, CheckCircle2, AlarmClock } from 'lucide-react'
+import { FileText, Send, CheckCircle2, AlarmClock } from 'lucide-react'
 import { Shell }       from '../../app/Shell'
 import { Badge }       from '../../shared/ui/Badge'
+import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Button }      from '../../shared/ui/Button'
 import { EmptyState }  from '../../shared/ui/EmptyState'
 import { Skeleton } from '../../shared/ui/Skeleton'
@@ -138,18 +139,8 @@ export function Devis() {
           {!loading && !loadError && quotes.length > 0 && (
             <div className="flex flex-col gap-2 p-3 pb-2 border-b border-[var(--border)]">
               <div className="flex flex-wrap items-center gap-2">
-                <label className="relative flex-1 min-w-[12rem] basis-full sm:basis-auto">
-                  <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-disabled)] pointer-events-none" />
-                  <input value={saisie} onChange={e => setSaisie(e.target.value)}
-                    placeholder="Client, libellé, n° devis, référence…" aria-label="Rechercher un devis"
-                    className={`${champCls} w-full pl-8 pr-7`} />
-                  {saisie && (
-                    <button type="button" onClick={() => setSaisie('')} aria-label="Effacer la recherche" title="Effacer la recherche"
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 text-[var(--text-muted)] hover:text-[var(--text)]">
-                      <X size={13} />
-                    </button>
-                  )}
-                </label>
+                <BarreRecherche value={saisie} onChange={setSaisie} placeholder="Chercher un devis : client, libellé, n°, référence…" ariaLabel="Rechercher un devis"
+                  raccourci taille="sm" className="flex-1 min-w-[12rem] basis-full sm:basis-auto" />
                 <select value={statut} onChange={e => { setStatut(e.target.value as QuoteStatus | 'all'); setDepassesSeuls(false) }}
                   aria-label="Statut" className={`${champCls} sm:w-[9rem]`}>
                   <option value="all">Tous statuts</option>

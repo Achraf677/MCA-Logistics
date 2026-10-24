@@ -4,7 +4,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, CalendarDays, Truck,
   Users, Wallet, UserCheck, Settings,
-  Menu, X, LogOut, Route, Search,
+  Menu, X, LogOut, Route,
 } from 'lucide-react'
 import { features } from '../features.config'
 import { ActionBar } from '../shared/actions/ActionBar'
@@ -12,6 +12,7 @@ import type { ActionKey } from '../shared/actions/ActionBar'
 import { AlertesBell } from '../features/alertes/AlertesBell'
 import { TabActions } from '../shared/ui/TabbedSection'
 import { SyncIndicator } from '../shared/ui/SyncIndicator'
+import { BarreRecherche } from '../shared/ui/BarreRecherche'
 import { supabase, useProfile } from './providers'
 import { usePermissions } from '../shared/permissions/usePermissions'
 import { libelleRole, estCompteSalarie } from '../shared/permissions/roles'
@@ -288,15 +289,9 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
               {pageTitle}
             </h1>
           </div>
-          <div className="relative flex-1 max-w-[30rem] mx-4 hidden md:block">
-            <Search size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-disabled)]" />
-            <input
-              value={q}
-              onChange={e => setQ(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && q.trim()) navigate('/livraisons?q=' + encodeURIComponent(q.trim())) }}
-              placeholder="Rechercher une livraison, un client…"
-              className="w-full h-9 rounded-[var(--r-pill)] bg-[color-mix(in_srgb,var(--bg-card)_70%,transparent)] border border-[var(--border)] pl-10 pr-4 text-[length:var(--fs-sm)] text-[var(--text)] placeholder:text-[var(--text-disabled)] focus:outline-none focus:border-[var(--brand)] transition-colors"
-            />
+          <div className="flex-1 max-w-[32rem] mx-4 hidden md:block">
+            <BarreRecherche value={q} onChange={setQ} placeholder="Rechercher une livraison, un client…" ariaLabel="Recherche dans les livraisons"
+              taille="sm" onKeyDown={e => { if (e.key === 'Enter' && q.trim()) navigate('/livraisons?q=' + encodeURIComponent(q.trim())) }} />
           </div>
           <div className="flex items-center gap-2 ml-auto shrink-0">
             <ActionBar actions={actions} onAction={onAction} />

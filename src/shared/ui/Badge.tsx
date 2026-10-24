@@ -13,7 +13,7 @@ const colorMap: Record<Color, string> = {
 
 export function Badge({ children, color = 'muted' }: { children: ReactNode; color?: Color }) {
   return (
-    <span className={`inline-flex items-center px-2.5 py-1 rounded-[var(--r-pill)] text-[var(--fs-xs)] font-semibold border ${colorMap[color]}`}>
+    <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-[0.1875rem] rounded-[var(--r-pill)] text-[0.8125rem] leading-snug font-semibold border ${colorMap[color]}`}>
       {children}
     </span>
   )

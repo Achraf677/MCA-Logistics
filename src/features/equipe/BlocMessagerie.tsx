@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Package, Search } from 'lucide-react'
+import { Package } from 'lucide-react'
+import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { getClientsActifs } from './equipe.queries'
 
 /**
@@ -74,11 +75,7 @@ export function BlocMessagerie({ tarifDomicile, tarifRelais, onTarifs, clients, 
         <span className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">
           Clients de messagerie du salarié ({clients.length})
         </span>
-        <div className="relative">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-disabled)]" />
-          <input className="field !pl-8" placeholder="Chercher un client" value={recherche}
-            onChange={e => setRecherche(e.target.value)} />
-        </div>
+        <BarreRecherche value={recherche} onChange={setRecherche} placeholder="Chercher un client" taille="sm" />
         {chargement ? (
           <p className="text-sm text-[var(--text-muted)]">Chargement des clients…</p>
         ) : erreur ? (

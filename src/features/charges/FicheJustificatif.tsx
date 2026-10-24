@@ -8,7 +8,7 @@ import { Bloc, Champ } from '../../shared/ui/FicheSaisie'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, TAUX_TVA_JUSTIF, montantSaisiEnCts, type CategorieDepense,
+  CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, montantSaisiEnCts, type CategorieDepense,
 } from '../../shared/lib/depenses'
 import { urlTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import { jourFr } from './charges.logic'
@@ -23,7 +23,7 @@ const dateHeure = (iso: string) => new Date(iso).toLocaleString('fr-FR', { day: 
 
 export interface MajJustificatif {
   montant_ttc_cts: number | null; date_depense: string | null; categorie: string | null
-  moyen_paiement: string | null; supplier_id: string | null; tva_rate: number | null
+  moyen_paiement: string | null; supplier_id: string | null
 }
 
 /** Moyen de paiement : pictogramme + libellé. */
@@ -118,7 +118,6 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   const [categorie, setCategorie] = useState<CategorieDepense | ''>((t.categorie as CategorieDepense | null) ?? '')
   const [moyen, setMoyen] = useState(t.moyen_paiement ?? '')
   const [fournisseur, setFournisseur] = useState(t.supplier_id ?? '')
-  const [tva, setTva] = useState(t.tva_rate != null ? String(t.tva_rate) : '')
   const [refus, setRefus] = useState(false)
   const [suppression, setSuppression] = useState(false)
   const [motif, setMotif] = useState('')
@@ -135,7 +134,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   const modifie = !invalide && (
     cts !== (t.montant_ttc_cts ?? null) || date !== (t.date_depense ?? t.created_at.slice(0, 10))
     || (categorie || null) !== (t.categorie ?? null) || (moyen || null) !== (t.moyen_paiement ?? null)
-    || (fournisseur || null) !== (t.supplier_id ?? null) || (tva === '' ? null : Number(tva)) !== (t.tva_rate ?? null))
+    || (fournisseur || null) !== (t.supplier_id ?? null))
   const etat = etatJustificatif(t)
   const noteDeFrais = t.moyen_paiement === 'personnel'
   const montantAffiche = !invalide && cts != null ? formatMoney(cts) : null
@@ -185,23 +184,19 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
                   <option value="personnel">De sa poche (note de frais)</option>
                 </select>
               </Champ>
-              <Champ label="Fournisseur">
-                <select className="field" value={fournisseur} onChange={e => setFournisseur(e.target.value)} disabled={!peutEcrire}>
-                  <option value="">Note de frais (par défaut)</option>
-                  {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                </select>
-              </Champ>
-              <Champ label="TVA">
-                <select className="field" value={tva} onChange={e => setTva(e.target.value)} disabled={!peutEcrire}>
-                  <option value="">Non précisée</option>
-                  {TAUX_TVA_JUSTIF.map(r => <option key={r} value={String(r)}>{String(r).replace('.', ',')} %</option>)}
-                </select>
-              </Champ>
+              <div className="sm:col-span-2">
+                <Champ label="Fournisseur">
+                  <select className="field" value={fournisseur} onChange={e => setFournisseur(e.target.value)} disabled={!peutEcrire}>
+                    <option value="">Note de frais (par défaut)</option>
+                    {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                </Champ>
+              </div>
             </div>
             {peutEcrire && modifie && (
               <div className="flex items-center gap-3">
                 <Button variant="primary" size="compact" disabled={busy}
-                  onClick={() => onEnregistrer({ montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null, supplier_id: fournisseur || null, tva_rate: tva === '' ? null : Number(tva) })}>
+                  onClick={() => onEnregistrer({ montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null, supplier_id: fournisseur || null })}>
                   Enregistrer les modifications
                 </Button>
                 <span className="text-xs text-[var(--text-muted)]">Enregistre avant de valider.</span>
