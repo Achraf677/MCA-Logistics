@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Check, CreditCard, ExternalLink, FilePlus2, FileText, Sparkles, Trash2, Undo2, Wallet, X } from 'lucide-react'
+import { Check, CreditCard, ExternalLink, FileText, Sparkles, Trash2, Undo2, Wallet, X } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
+import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -13,7 +14,7 @@ import {
 } from '../../shared/lib/depenses'
 import { urlTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import { jourFr } from './charges.logic'
-import { etapesSuivi, etatJustificatif, initiales, type EtapeSuivi } from './justificatifs.logic'
+import { etapesSuivi, etatJustificatif, type EtapeSuivi } from './justificatifs.logic'
 
 const aujourdhuiLocal = () => {
   const d = new Date()
@@ -97,7 +98,7 @@ function Apercu({ t, url, onFichier }: { t: TicketInbox; url: string | null; onF
 }
 
 /** Tiroir d'un justificatif : le ticket à gauche, ce qu'on y lit et ce qu'on décide à droite, les gestes en bas. */
-export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onCreerCharge, onRefuser, onRembourser, peutSupprimer, onRemettre, onSupprimer }: {
+export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onRefuser, onRembourser, peutSupprimer, onRemettre, onSupprimer }: {
   t: TicketInbox
   lectureEnCours: boolean
   nom: string
@@ -107,7 +108,6 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   onFichier: () => void
   onEnregistrer: (maj: MajJustificatif) => void
   onValider: (maj: MajJustificatif) => void
-  onCreerCharge: () => void
   onRefuser: (motif: string) => void
   onRembourser: (date: string | null) => void
   peutSupprimer: boolean
@@ -153,7 +153,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
 
         <div className="flex flex-col gap-4 min-w-0">
           <header className="flex items-start gap-3">
-            <span aria-hidden="true" className="h-11 w-11 shrink-0 rounded-full bg-[var(--brand)]/15 text-[var(--brand)] font-semibold flex items-center justify-center">{initiales(nom)}</span>
+            <AvatarInitiales nom={nom} taille="lg" />
             <div className="min-w-0 flex-1">
               <div className="font-mono font-semibold text-3xl leading-none text-[var(--text)]">
                 {montantAffiche ?? <span className="text-xl font-sans font-medium text-[var(--danger)]">Montant à saisir</span>}
@@ -230,7 +230,6 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
               {t.statut === 'a_traiter' && (
                 <>
                   <Button variant="primary" className="min-h-10" onClick={() => onValider(maj)} disabled={busy || manques.length > 0}><Check size={15} /> Valider et envoyer à Pennylane</Button>
-                  <Button variant="secondary" className="min-h-10" onClick={onCreerCharge} disabled={busy}><FilePlus2 size={15} /> Créer la charge</Button>
                 </>
               )}
               {t.statut === 'traite' && noteDeFrais && (

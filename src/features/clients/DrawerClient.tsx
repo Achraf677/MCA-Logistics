@@ -22,6 +22,7 @@ import { PAYS, estUE, autoliquidationParDefaut } from '../../shared/lib/pays'
 import { SUPPLEMENTS_USUELS, lireSupplements } from '../../shared/lib/supplements'
 import type { Supplement } from '../../shared/lib/supplements'
 import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import type { Client, ClientInsert, DeliveryForEncours, TariffMode } from './clients.types'
 import { useProfile } from '../../app/providers'
 import { usePermissions } from '../../shared/permissions/usePermissions'
@@ -272,10 +273,8 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
                     placeholder="Celui qui commande ET paie (la plateforme, pas le particulier)" />
                 </FieldGroup>
                 <FieldGroup label="Type">
-                  <select value={form.type ?? ''} onChange={e => set('type', e.target.value || null)} className={inputClass}>
-                    <option value="">— Non précisé —</option>
-                    {CLIENT_TYPES.map(v => <option key={v} value={v}>{CLIENT_TYPE_LABELS[v]}</option>)}
-                  </select>
+                  <ListeDeroulante valeur={form.type ?? ''} onChange={v => set('type', v || null)} ariaLabel="Type de client" recherche={false}
+                    options={[{ valeur: '', libelle: '— Non précisé —' }, ...CLIENT_TYPES.map(v => ({ valeur: v, libelle: CLIENT_TYPE_LABELS[v] }))]} />
                 </FieldGroup>
                 {/* SIRET et TVA n'ont de sens que pour un professionnel. */}
                 {estPro && (
@@ -302,9 +301,8 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
                     <Input value={form.city ?? ''} onChange={v => set('city', v)} />
                   </FieldGroup>
                   <FieldGroup label="Pays">
-                    <select value={form.pays ?? 'FR'} onChange={e => set('pays', e.target.value)} className={inputClass}>
-                      {PAYS.map(p => <option key={p.code} value={p.code}>{p.libelle}</option>)}
-                    </select>
+                    <ListeDeroulante valeur={form.pays ?? 'FR'} onChange={v => set('pays', v)} ariaLabel="Pays"
+                      options={PAYS.map(p => ({ valeur: p.code, libelle: p.libelle }))} />
                   </FieldGroup>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -319,21 +317,11 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
 
               <Bloc titre="Facturation">
                 <FieldGroup label="Délai de paiement">
-                  <select
-                    value={form.payment_terms_label ?? '30'}
-                    onChange={e => {
-                      const code = e.target.value
-                      set('payment_terms_label', code)
-                      set('payment_terms', paymentTermDays(code))
-                    }}
-                    className={inputClass}
-                  >
-                    {PAYMENT_TERM_OPTIONS
+                  <ListeDeroulante valeur={form.payment_terms_label ?? '30'} ariaLabel="Délai de paiement" recherche={false}
+                    onChange={code => { set('payment_terms_label', code); set('payment_terms', paymentTermDays(code)) }}
+                    options={PAYMENT_TERM_OPTIONS
                       .filter(o => o.conforme || o.code === (form.payment_terms_label ?? '30'))
-                      .map(o => (
-                        <option key={o.code} value={o.code}>{o.label}{o.conforme ? '' : ' — non conforme'}</option>
-                      ))}
-                  </select>
+                      .map(o => ({ valeur: o.code, libelle: `${o.label}${o.conforme ? '' : ' — non conforme'}` }))} />
                   {!delaiConforme(form.payment_terms_label) && (
                     <span className="text-xs text-[var(--warning)]">
                       Transport : 30 jours maximum à compter de la facture (art. L441-11 C. com.).
@@ -363,12 +351,8 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
               <Bloc titre="Tarif">
                 <div className="grid grid-cols-2 gap-3">
                   <FieldGroup label="Mode tarifaire">
-                    <select value={form.tariff_mode ?? 'manuel'}
-                      onChange={e => set('tariff_mode', e.target.value as TariffMode)} className={inputClass}>
-                      {(Object.entries(TARIFF_MODE_LABELS) as [TariffMode, string][]).map(([v, l]) => (
-                        <option key={v} value={v}>{l}</option>
-                      ))}
-                    </select>
+                    <ListeDeroulante valeur={form.tariff_mode ?? 'manuel'} onChange={v => set('tariff_mode', v as TariffMode)} ariaLabel="Mode de tarification" recherche={false}
+                      options={(Object.entries(TARIFF_MODE_LABELS) as [TariffMode, string][]).map(([v, l]) => ({ valeur: v, libelle: l }))} />
                   </FieldGroup>
                   {form.tariff_mode !== 'manuel' && (
                     <FieldGroup label={
@@ -394,10 +378,8 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
 
               <Bloc titre="Habitudes (pré-remplissent ses courses)">
                 <FieldGroup label="Prestation habituelle">
-                  <select value={form.prestation_defaut ?? ''} onChange={e => set('prestation_defaut', e.target.value || null)} className={inputClass}>
-                    <option value="">— Express (par défaut) —</option>
-                    {PRESTATIONS_CLIENT.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                  </select>
+                  <ListeDeroulante valeur={form.prestation_defaut ?? ''} onChange={v => set('prestation_defaut', v || null)} ariaLabel="Prestation habituelle" recherche={false}
+                    options={[{ valeur: '', libelle: '— Express (par défaut) —' }, ...PRESTATIONS_CLIENT.map(([v, l]) => ({ valeur: v, libelle: l }))]} />
                 </FieldGroup>
                 <FieldGroup label="Retrait habituel — adresse">
                   <AddressAutocomplete
@@ -417,16 +399,12 @@ export function DrawerClient({ open, onClose, client, onSaved }: DrawerClientPro
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <FieldGroup label="Chauffeur habituel">
-                    <select value={form.chauffeur_habituel_id ?? ''} onChange={e => set('chauffeur_habituel_id', e.target.value || null)} className={inputClass}>
-                      <option value="">— Aucun —</option>
-                      {choix.chauffeurs.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                    </select>
+                    <ListeDeroulante valeur={form.chauffeur_habituel_id ?? ''} onChange={v => set('chauffeur_habituel_id', v || null)} ariaLabel="Chauffeur habituel"
+                      options={[{ valeur: '', libelle: '— Aucun —' }, ...choix.chauffeurs.map(c => ({ valeur: c.id, libelle: c.full_name }))]} />
                   </FieldGroup>
                   <FieldGroup label="Véhicule habituel">
-                    <select value={form.vehicule_habituel_id ?? ''} onChange={e => set('vehicule_habituel_id', e.target.value || null)} className={inputClass}>
-                      <option value="">— Aucun —</option>
-                      {choix.vehicules.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
-                    </select>
+                    <ListeDeroulante valeur={form.vehicule_habituel_id ?? ''} onChange={v => set('vehicule_habituel_id', v || null)} ariaLabel="Véhicule habituel"
+                      options={[{ valeur: '', libelle: '— Aucun —' }, ...choix.vehicules.map(v => ({ valeur: v.id, libelle: v.label }))]} />
                   </FieldGroup>
                 </div>
               </Bloc>

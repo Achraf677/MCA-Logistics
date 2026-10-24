@@ -1,11 +1,13 @@
 // Edge Function `pennylane-sync` — ingestion factures fournisseurs Pennylane EN LECTURE SEULE.
-// Sens unique : uniquement des GET vers Pennylane. Jamais de POST/PUT/PATCH/DELETE.
+// Sens unique : uniquement des GET vers Pennylane. Jamais de POST/PUT/PATCH/DELETE (la suppression d'une charge locale dont la
+// facture a disparu de Pennylane ne touche que la base du site).
 // Le token n'est ni loggué ni renvoyé au client.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError, fetchJson } from '../_shared/http.ts';
-import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylane.ts';
+import { PENNYLANE_BASE, pennylaneToken, pennylaneHeaders } from '../_shared/pennylaneBase.ts';
+import { decisionSuppression } from '../_shared/suppressionPennylane.ts';
 
 // ── Types Pennylane V2 ─────────────────────────────────────────────────────────
 interface PennylaneSupplierRef {
@@ -310,12 +312,13 @@ Deno.serve(async (req) => {
       cursor = page.has_more ? (page.next_cursor ?? null) : null;
     } while (cursor !== null);
 
-    // ── Détection des factures SUPPRIMÉES côté Pennylane ──────────────────────
-    // On n'arrive ici qu'après avoir parcouru TOUTES les pages : seenPennylaneIds
-    // est complet. Toute charge locale liée à un pennylane_id absent de la liste
-    // courante est SIGNALÉE (pennylane_deleted_at=now()) — jamais supprimée.
-    // Le retour à null en cas de réapparition est géré par l'upsert ci-dessus.
+    // ── Factures SUPPRIMÉES côté Pennylane ────────────────────────────────────
+    // On n'arrive ici qu'après avoir parcouru TOUTES les pages : seenPennylaneIds est complet. Une charge locale liée à un
+    // pennylane_id absent de la liste disparaît du site (décision du 24/10/2026), avec ses lignes de carburant / d'entretien ;
+    // les écritures bancaires et les tickets reliés sont seulement détachés. Garde-fou (`decisionSuppression`) : liste suspecte
+    // → on SIGNALE (`pennylane_deleted_at`) sans rien effacer. Le retour à null en cas de réapparition est géré par l'upsert.
     let deleted_flagged = 0;
+    let deleted_removed = 0;
     {
       const { data: localCharges, error: lcErr } = await supabase
         .from('charges')
@@ -329,13 +332,32 @@ Deno.serve(async (req) => {
         const missingIds = (localCharges ?? [])
           .filter((c) => !seenPennylaneIds.has(c.pennylane_id as string))
           .map((c) => c.id as string);
-        if (missingIds.length > 0) {
+        const decision = decisionSuppression({ locales: localCharges?.length ?? 0, manquantes: missingIds.length, vues: seenPennylaneIds.size });
+        if (decision === 'signaler') {
           const { error: updErr } = await supabase
             .from('charges')
             .update({ pennylane_deleted_at: new Date().toISOString() })
             .in('id', missingIds);
           if (updErr) errors.push(`flag deleted: ${updErr.message}`);
           else deleted_flagged = missingIds.length;
+        } else if (decision === 'supprimer') {
+          const etape = async (nom: string, op: PromiseLike<{ error: { message: string } | null }>) => {
+            const { error } = await op;
+            if (error) { errors.push(`${nom}: ${error.message}`); return false; }
+            return true;
+          };
+          // Pièces jointes de ces charges : fichiers puis lignes du registre.
+          const { data: docs } = await supabase.from('documents').select('id, storage_path')
+            .eq('entity_type', 'charge').in('entity_id', missingIds);
+          const chemins = (docs ?? []).map((d) => d.storage_path as string).filter(Boolean);
+          if (chemins.length > 0) await supabase.storage.from('documents').remove(chemins);
+          let ok = true;
+          ok = ok && await etape('docs', supabase.from('documents').delete().eq('entity_type', 'charge').in('entity_id', missingIds));
+          ok = ok && await etape('carburant', supabase.from('fuel_logs').delete().in('charge_id', missingIds));
+          ok = ok && await etape('entretiens', supabase.from('vehicle_maintenances').delete().in('charge_id', missingIds));
+          ok = ok && await etape('qonto', supabase.from('qonto_transactions').update({ charge_id: null }).in('charge_id', missingIds));
+          ok = ok && await etape('tickets', supabase.from('receipts_inbox').update({ charge_id: null }).in('charge_id', missingIds));
+          if (ok && await etape('charges', supabase.from('charges').delete().in('id', missingIds))) deleted_removed = missingIds.length;
         }
       }
     }
@@ -348,7 +370,7 @@ Deno.serve(async (req) => {
 
     return jsonResponse({
       ok:   true,
-      data: { suppliers_upserts: suppliersUpserts, charges_upserts: chargesUpserts, adoptions, pages, deleted_flagged, errors },
+      data: { suppliers_upserts: suppliersUpserts, charges_upserts: chargesUpserts, adoptions, pages, deleted_flagged, deleted_removed, errors },
     });
 
   } catch (err) {
