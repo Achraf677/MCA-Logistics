@@ -4,9 +4,6 @@
 export const CATEGORIES_TICKET = ['carburant', 'peage', 'parking', 'repas', 'entretien', 'fournitures', 'autre'] as const;
 export type CategorieTicket = typeof CATEGORIES_TICKET[number];
 
-/** Taux de TVA français que le site sait porter (même liste que `TAUX_TVA_JUSTIF`). */
-export const TAUX_TICKET = [20, 10, 5.5, 2.1, 0] as const;
-
 export const SEUIL_CONFIANCE = 0.7;
 /** Un ticket de dépense courante : au-delà, c'est une lecture ratée ou un autre type de document. */
 const MAX_TTC_CTS = 500_000;
@@ -15,7 +12,6 @@ export interface LectureBrute {
   fournisseur?: unknown; fournisseur_confiance?: unknown
   date?: unknown; date_confiance?: unknown
   total_ttc?: unknown; total_confiance?: unknown
-  taux_tva?: unknown; tva_confiance?: unknown
   categorie?: unknown; categorie_confiance?: unknown
 }
 
@@ -23,7 +19,6 @@ export interface Lecture {
   fournisseur: string | null
   date: string | null
   total_ttc_cts: number | null
-  taux_tva: number | null
   categorie: CategorieTicket | null
 }
 
@@ -36,13 +31,11 @@ export function normaliserLecture(brut: LectureBrute | null | undefined, aujourd
   const date = typeof b.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(b.date) && b.date <= aujourdhui && b.date >= '2020-01-01' ? b.date : null;
   const ttc = Number(b.total_ttc);
   const cts = Number.isFinite(ttc) && ttc > 0 ? Math.round(ttc * 100) : null;
-  const taux = Number(b.taux_tva);
   const categorie = typeof b.categorie === 'string' && (CATEGORIES_TICKET as readonly string[]).includes(b.categorie) ? b.categorie as CategorieTicket : null;
   return {
     fournisseur: nom && sur(b.fournisseur_confiance) ? nom : null,
     date: date && sur(b.date_confiance) ? date : null,
     total_ttc_cts: cts != null && cts <= MAX_TTC_CTS && sur(b.total_confiance) ? cts : null,
-    taux_tva: b.taux_tva != null && (TAUX_TICKET as readonly number[]).includes(taux) && sur(b.tva_confiance) ? taux : null,
     categorie: categorie && sur(b.categorie_confiance) ? categorie : null,
   };
 }
@@ -62,7 +55,7 @@ export function fournisseurCorrespondant(lu: string | null, fournisseurs: Array<
 
 export interface TicketLu {
   montant_ttc_cts?: number | null; date_depense?: string | null; categorie?: string | null
-  tva_rate?: number | null; supplier_id?: string | null
+  supplier_id?: string | null
 }
 
 /** Colonnes à écrire : SEULEMENT celles qui sont vides sur le justificatif (ce que le salarié a saisi ne bouge jamais). */
@@ -71,7 +64,6 @@ export function colonnesAPrerempli(t: TicketLu, l: Lecture, fournisseurId: strin
   if (t.montant_ttc_cts == null && l.total_ttc_cts != null) maj.montant_ttc_cts = l.total_ttc_cts;
   if (t.date_depense == null && l.date != null) maj.date_depense = l.date;
   if (t.categorie == null && l.categorie != null) maj.categorie = l.categorie;
-  if (t.tva_rate == null && l.taux_tva != null) maj.tva_rate = l.taux_tva;
   if (t.supplier_id == null && fournisseurId != null) maj.supplier_id = fournisseurId;
   return maj;
 }

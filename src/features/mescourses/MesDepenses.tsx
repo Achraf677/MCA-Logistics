@@ -24,6 +24,7 @@ import { libelleDateCourte } from './mescourses.logic'
 import { Carte, MessageErreur, champCls, boutonPrimaireCls, boutonSecondaireCls } from './EspaceCommun'
 import { VisionneusePhoto, ChoixPhoto } from './VisionneusePhoto'
 import { useReprisePhoto } from './useReprisePhoto'
+import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 
 const aujourdhui = () => toLocalISO(new Date())
 
@@ -76,7 +77,7 @@ export function MesDepenses() {
     if (!estImage(t.mime_type)) {
       const url = await urlTicket(t)
       if (!url) { toast('Justificatif introuvable.', 'error'); return }
-      window.open(url, '_blank', 'noopener,noreferrer')
+      ouvrirDocument(url, { titre: t.note || t.file_name, type: 'pdf' })
       return
     }
     setEnGrand({ t, url: null })

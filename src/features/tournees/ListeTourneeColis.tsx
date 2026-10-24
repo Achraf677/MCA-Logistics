@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
-import { Pencil, Plus, Route, Search } from 'lucide-react'
+import { Pencil, Plus, Route } from 'lucide-react'
+import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import {
@@ -57,12 +58,7 @@ export function ListeTourneeColis({ tournee, arrets, peutModifier, aRecalculer, 
         ))}
       </div>
       <div className="flex items-center gap-2">
-        <div className="flex-1 min-w-0 flex items-center gap-2 px-3 h-10 rounded-full bg-[var(--bg-elevated)] border border-[var(--border)] focus-within:border-[var(--brand)]">
-          <Search size={15} className="shrink-0 text-[var(--text-muted)]" />
-          <input value={q} onChange={e => setQ(e.target.value)} type="search" autoComplete="off" placeholder="Chercher une adresse"
-            aria-label="Chercher une adresse de la tournée"
-            className="flex-1 min-w-0 bg-transparent text-sm text-[var(--text)] placeholder:text-[var(--text-muted)] focus:outline-none" />
-        </div>
+        <BarreRecherche value={q} onChange={setQ} placeholder="Chercher une adresse" ariaLabel="Chercher une adresse de la tournée" className="flex-1 min-w-0" />
         {modifiable && <Button size="compact" onClick={onAjouter}><Plus size={14} /> Ajouter</Button>}
       </div>
       {aRecalculer && modifiable && (

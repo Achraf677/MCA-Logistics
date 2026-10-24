@@ -35,9 +35,11 @@ describe('dépenses', () => {
       { moyen_paiement: 'personnel', montant_ttc_cts: 800, statut: 'traite', rembourse_le: null },
     ])).toBe(800)
   })
-  it('validation refusée sans montant', () => {
-    expect(manquesValidation({ montant_ttc_cts: null })).toEqual(['Montant'])
-    expect(manquesValidation({ montant_ttc_cts: 0 })).toEqual(['Montant'])
-    expect(manquesValidation({ montant_ttc_cts: 1250 })).toEqual([])
+  it('validation : tout est obligatoire', () => {
+    const complet = { montant_ttc_cts: 1250, date_depense: '2026-10-21', categorie: 'repas', moyen_paiement: 'personnel', supplier_id: 's1' }
+    expect(manquesValidation(complet)).toEqual([])
+    expect(manquesValidation({ ...complet, montant_ttc_cts: 0 })).toEqual(['Montant'])
+    expect(manquesValidation({})).toEqual(['Montant', 'Date', 'Catégorie', 'Moyen de paiement', 'Fournisseur'])
+    expect(manquesValidation({ ...complet, supplier_id: null })).toEqual(['Fournisseur'])
   })
 })

@@ -41,7 +41,7 @@ export interface TicketInbox {
 }
 
 export interface LectureTicketIa {
-  lu?: { fournisseur: string | null; date: string | null; total_ttc_cts: number | null; taux_tva: number | null; categorie: string | null } | null
+  lu?: { fournisseur: string | null; date: string | null; total_ttc_cts: number | null; categorie: string | null } | null
   rempli?: string[]
   raison?: string
 }
@@ -123,6 +123,9 @@ export async function deposerTicket(
     return { data: null, error: new Error(error.message) }
   }
 
+  // Lecture du ticket par l'IA dès le dépôt, une seule fois (le bureau n'a plus qu'à confirmer). Jamais bloquant.
+  if (data) void lireTicketIa(data.id).catch(() => undefined)
+
   return { data: data as TicketInbox, error: null }
 }
 
@@ -177,6 +180,16 @@ export async function urlTicket(t: TicketInbox): Promise<string | null> {
     .from(BUCKET)
     .createSignedUrl(t.storage_path, 3600)
   return error ? null : (data?.signedUrl ?? null)
+}
+
+/** Liens signés (1 h) de plusieurs fichiers d'un coup : miniatures de la liste. Chemin → lien ; un chemin refusé est absent. */
+export async function urlsTickets(chemins: string[]): Promise<Record<string, string>> {
+  if (chemins.length === 0) return {}
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrls(chemins, 3600)
+  if (error || !data) return {}
+  const out: Record<string, string> = {}
+  for (const d of data) if (d.path && d.signedUrl) out[d.path] = d.signedUrl
+  return out
 }
 
 /**

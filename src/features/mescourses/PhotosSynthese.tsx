@@ -3,6 +3,7 @@ import { Camera, Images, Loader2, Trash2 } from 'lucide-react'
 import { useToast } from '../../shared/ui/useToast'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { ajouterPhotoSynthese, photosSynthese, retirerPhotoSynthese, urlPhotoArret } from '../../shared/lib/tourneesColis.queries'
+import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 
 const BTN = 'min-h-14 px-3 inline-flex items-center justify-center gap-2 rounded-[var(--r-lg)] text-base font-semibold border border-[var(--border)] text-[var(--text)] disabled:opacity-40 active:scale-[0.98]'
 
@@ -17,7 +18,7 @@ function Vignette({ doc, onRetirer }: { doc: DocumentRow; onRetirer?: () => void
   return (
     <div className="relative size-24 shrink-0 rounded-[var(--r-md)] overflow-hidden border border-[var(--border)] bg-[var(--bg)]">
       {url ? (
-        <a href={url} target="_blank" rel="noopener noreferrer" aria-label="Voir la photo"><img src={url} alt="Synthèse" className="size-full object-cover" /></a>
+        <button type="button" onClick={() => ouvrirDocument(url, { titre: 'Synthèse de tournée', type: 'image' })} aria-label="Voir la photo" className="size-full"><img src={url} alt="Synthèse" className="size-full object-cover" /></button>
       ) : <Loader2 size={18} className="absolute inset-0 m-auto animate-spin text-[var(--text-muted)]" />}
       {onRetirer && (
         <button type="button" onClick={onRetirer} aria-label="Retirer la photo"

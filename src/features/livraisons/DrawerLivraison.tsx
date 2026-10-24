@@ -45,6 +45,7 @@ import {
   getClientLookup, revenirALivree,
 } from './livraisons.queries'
 import type { DeliveryExtraLine, DeliveryRow, DeliveryStatus } from './livraisons.types'
+import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 
 // ── Types locaux ──────────────────────────────────────────────────────────────
 
@@ -2022,15 +2023,15 @@ function PodTab({
       <Loader2 size={20} className="animate-spin text-[var(--text-disabled)]" />
     </div>
   ) : photoUrl ? (
-    <a href={photoUrl} target="_blank" rel="noopener noreferrer"
-      className="block rounded-[var(--r-md)] overflow-hidden border border-[var(--border)]
+    <button type="button" onClick={() => ouvrirDocument(photoUrl, { titre: 'Preuve de livraison', type: 'image' })}
+      className="block w-full text-left rounded-[var(--r-md)] overflow-hidden border border-[var(--border)]
         hover:border-[var(--brand)] transition-colors">
       <img src={photoUrl} alt="Photo POD"
         className="w-full max-h-64 object-contain bg-[var(--bg-elevated)]" />
       <p className="px-3 py-1.5 text-xs text-[var(--text-muted)] text-center">
         Cliquer pour ouvrir en grand
       </p>
-    </a>
+    </button>
   ) : (
     <p className="text-sm text-[var(--text-muted)] italic">Aucune photo trouvée</p>
   )

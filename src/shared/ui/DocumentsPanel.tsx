@@ -12,6 +12,7 @@ import {
   DOCUMENT_CATEGORIES, formatBytes, fileLabel, summarizeUploadBatch,
 } from '../lib/documents.logic'
 import type { DocumentRow, DocumentCategory } from '../lib/documents.types'
+import { ouvrirDocument } from './VisionneuseDocument'
 
 // 'charge' ajoute le 11/09/2026 : une facture d'achat porte elle aussi des
 // justificatifs (ticket photographie par un chauffeur, PDF du fournisseur).
@@ -109,7 +110,7 @@ export function DocumentsPanel({ entityType, entityId }: DocumentsPanelProps) {
   const handleDownload = async (doc: DocumentRow) => {
     const url = await getDownloadUrl(doc)
     if (!url) { toast('Impossible de générer le lien', 'error'); return }
-    window.open(url, '_blank', 'noopener')
+    ouvrirDocument(url, { titre: doc.file_name })
   }
 
   // ── Suppression ───────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Search } from 'lucide-react'
+import { BarreRecherche } from './BarreRecherche'
 import { PRESTATIONS, PRESTATION_LABELS, PRESTATION_AIDES } from '../lib/prestations'
 import type { Prestation } from '../lib/prestations'
 
@@ -8,11 +9,11 @@ import type { Prestation } from '../lib/prestations'
 // même choix du client, même choix de prestation — un seul exemplaire.
 
 /** Champ d'une fiche (libellé lisible, erreur sous le champ). */
-export function Champ({ label, children, error }: { label: string; children: ReactNode; error?: string }) {
+export function Champ({ label, children, error, requis = false }: { label: string; children: ReactNode; error?: string; requis?: boolean }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-xs font-medium text-[var(--text-muted)]">
-        {label}
+        {label}{requis && <span className="text-[var(--danger)]" aria-label="obligatoire"> *</span>}
       </label>
       {children}
       {error && <span className="text-[var(--danger)] text-xs">{error}</span>}
@@ -77,8 +78,7 @@ export function ChoixClient({ clients, value, onChange, disabled }: {
   }
   return (
     <div className="flex flex-col gap-1">
-      <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher un client…"
-        className="field"
+      <BarreRecherche value={q} onChange={setQ} placeholder="Rechercher un client…" autoFocus taille="sm"
         onKeyDown={e => {
           if (e.key === 'Escape') setOuvert(false)
           if (e.key === 'Enter' && filtres[0]) { e.preventDefault(); onChange(filtres[0].id); setOuvert(false) }

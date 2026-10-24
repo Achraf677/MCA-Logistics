@@ -2,6 +2,7 @@ import { useState, type MouseEvent } from 'react'
 import { ExternalLink, Loader } from 'lucide-react'
 import { supabase } from '../../app/providers'
 import { useToast } from './useToast'
+import { ouvrirDocument } from './VisionneuseDocument'
 
 interface Props {
   /** ID facture fournisseur Pennylane. Si présent → URL fraîche via pennylane-file. */
@@ -32,7 +33,7 @@ export function FacturePdfLink({ pennylane_id, receipt_url, label = 'Facture', i
     e.preventDefault()
 
     if (!pennylane_id) {
-      window.open(receipt_url!, '_blank', 'noopener,noreferrer')
+      ouvrirDocument(receipt_url!, { titre: 'Facture', type: 'pdf' })
       return
     }
 
@@ -47,7 +48,7 @@ export function FacturePdfLink({ pennylane_id, receipt_url, label = 'Facture', i
       toast('Impossible d\'accéder au PDF', 'error')
       return
     }
-    window.open(data.url, '_blank', 'noopener,noreferrer')
+    ouvrirDocument(data.url, { titre: 'Facture', type: 'pdf' })
   }
 
   return (

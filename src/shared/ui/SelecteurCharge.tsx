@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { Search, X, FileText, ChevronLeft } from 'lucide-react'
+import { X, FileText, ChevronLeft } from 'lucide-react'
+import { BarreRecherche } from './BarreRecherche'
 import type { ChargePick } from '../types/charges'
 
 const euros = (cts: number | null | undefined) =>
@@ -79,14 +80,7 @@ export function SelecteurCharge({
 
         {/* Barre de recherche */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--border)] shrink-0">
-          <Search size={15} className="text-[var(--text-muted)] shrink-0" />
-          <input
-            ref={inputRef}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Rechercher une charge (libellé, fournisseur…)"
-            className="flex-1 bg-transparent text-[var(--text)] text-[var(--fs-sm)] outline-none placeholder:text-[var(--text-disabled)]"
-          />
+          <BarreRecherche value={search} onChange={setSearch} placeholder="Rechercher une charge (libellé, fournisseur…)" inputRef={inputRef} className="flex-1" />
           <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text)] transition-colors">
             <X size={15} />
           </button>

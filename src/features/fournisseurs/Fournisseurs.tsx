@@ -3,6 +3,7 @@ import { Building2, Trash2 } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
+import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { ContactLinks } from '../../shared/ui/ContactLinks'
@@ -176,11 +177,7 @@ export function Fournisseurs() {
 
       {/* Filtres */}
       <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
-        <input
-          type="search" placeholder="Rechercher…" value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="h-8 px-3 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)] focus:outline-none focus:border-[var(--brand)] w-48"
-        />
+        <BarreRecherche value={search} onChange={setSearch} placeholder="Chercher…" ariaLabel="Rechercher" raccourci taille="sm" className="w-full sm:w-72" />
         <select
           value={filters.category ?? 'all'}
           onChange={e => setFilters(f => ({ ...f, category: (e.target.value || 'all') as SupplierFilters['category'] }))}

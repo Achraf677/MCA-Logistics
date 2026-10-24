@@ -2,10 +2,12 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useSearchParams } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Download, Map as IconeCarte, PackageCheck, Pause, Radio, Route, RotateCcw,
-  ScanText, Search, FileText, Camera, Trash2, TriangleAlert, Truck, Undo2, Gauge,
+  ScanText, FileText, Camera, Trash2, TriangleAlert, Truck, Undo2, Gauge,
 } from 'lucide-react'
 import { useProfile } from '../../app/providers'
 import { Badge } from '../../shared/ui/Badge'
+import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
+import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { Button } from '../../shared/ui/Button'
 import { ChiffreCarte } from '../../shared/ui/ChiffreCarte'
@@ -243,7 +245,7 @@ export function Tournees() {
   }
   const ouvrirPhoto = async (d: DocumentRow) => {
     const u = await urlPhotoArret(d)
-    if (u) window.open(u, '_blank', 'noopener'); else toast('Photo introuvable', 'error')
+    if (u) ouvrirDocument(u, { titre: 'Photo', type: 'image' }); else toast('Photo introuvable', 'error')
   }
 
   const tuile = (f: FiltreTournees) => ({ actif: filtre === f, onClick: () => setFiltre(cur => (cur === f ? 'toutes' : f)) })
@@ -320,11 +322,8 @@ export function Tournees() {
 
           {/* Filtres */}
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[12rem] max-w-md">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-disabled)] pointer-events-none" />
-              <input value={q} onChange={e => setQ(e.target.value)} placeholder="Salarié, client…" aria-label="Rechercher une tournée"
-                className={`${inputCls} !pl-9`} />
-            </div>
+            <BarreRecherche value={q} onChange={setQ} placeholder="Chercher une tournée : salarié, client…" ariaLabel="Rechercher une tournée"
+              raccourci className="flex-1 min-w-[12rem] max-w-xl" />
             {salaries.length > 1 && (
               <select value={membreFiltre} onChange={e => setMembreFiltre(e.target.value)} aria-label="Salarié" className={`${inputCls} !w-auto`}>
                 <option value="">Tous les salariés</option>

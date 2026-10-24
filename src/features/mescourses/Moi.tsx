@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Phone, Mail, IdCard, Stethoscope, FileText, Image as ImageIcon, Upload, User, Navigation, Palette } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
+import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 import { ThemeSelector } from '../../shared/theme/ThemeSelector'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
@@ -95,7 +96,7 @@ function MoiFiche({ fiche }: { fiche: MaFiche }) {
     const url = await getDownloadUrl(d)
     setOuverture(null)
     if (!url) { toast('Ce document est introuvable.', 'error'); return }
-    window.open(url, '_blank', 'noopener,noreferrer')
+    ouvrirDocument(url, { titre: d.file_name })
   }
 
   return (

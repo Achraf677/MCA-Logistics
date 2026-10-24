@@ -15,6 +15,7 @@ import { champCls } from './EspaceCommun'
 import { HorairesRelais } from './HorairesRelais'
 import { SelecteurColis } from './SelecteurColis'
 import { useModifierAdresse } from './AdresseContexte'
+import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 
 type FamilleArret = 'livre' | 'attente' | 'retour' | 'neutre'
 
@@ -198,7 +199,7 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
 
   const voirPhoto = async (doc: DocumentRow) => {
     const url = await urlPhotoArret(doc)
-    if (url) window.open(url, '_blank', 'noopener')
+    if (url) ouvrirDocument(url, { titre: 'Photo', type: 'image' })
     else toast('Photo introuvable', 'error')
   }
 
@@ -528,7 +529,7 @@ function FichePhotos({ photos, note, onFermer }: { photos: DocumentRow[]; note: 
   const { toast } = useToast()
   const voir = async (doc: DocumentRow) => {
     const url = await urlPhotoArret(doc)
-    if (url) window.open(url, '_blank', 'noopener')
+    if (url) ouvrirDocument(url, { titre: 'Photo', type: 'image' })
     else toast('Photo introuvable', 'error')
   }
   return (
