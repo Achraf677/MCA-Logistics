@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Building2, Trash2 } from 'lucide-react'
+import { Building2, ChevronRight, Droplets, Euro, Trash2, Wrench } from 'lucide-react'
 import { Shell } from '../../app/Shell'
-import { KpiCard } from '../../shared/ui/KpiCard'
+import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
+import { ChiffreCarte } from '../../shared/ui/ChiffreCarte'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
+import { PastilleFiltre } from '../../shared/ui/PastilleFiltre'
 import { Badge } from '../../shared/ui/Badge'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Button } from '../../shared/ui/Button'
@@ -42,6 +45,8 @@ export function Fournisseurs() {
   const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState<SupplierFilters>({ active: true })
   const [search, setSearch] = useState('')
+  // Tous les fournisseurs (sans filtre) : les tuiles comptent sur l'ensemble.
+  const [tous, setTous] = useState<Supplier[]>([])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<Supplier | null>(null)
   const [form, setForm] = useState<Partial<SupplierInsert>>({})
@@ -59,6 +64,7 @@ export function Fournisseurs() {
     if (error) setError(error.message)
     else setSuppliers(data ?? [])
     setLoading(false)
+    void getSuppliers({}).then(r => setTous(r.data ?? []))
   }, [filters, search])
 
   // Les depenses se chargent A PART de la liste : elles ne dependent ni du
@@ -155,43 +161,42 @@ export function Fournisseurs() {
     if (key === 'nouveau') openDrawer()
   }
 
-  const byCategory = countByCategory(suppliers)
-  const actifs = suppliers.filter(s => s.active).length
+  const actifsListe = tous.filter(x => x.active)
+  const byCategory = countByCategory(actifsListe)
+  const basculeCategorie = (c: SupplierFilters['category']) => setFilters(f => ({ ...f, category: f.category === c ? 'all' : c }))
+  const filtresActifs = search !== '' || (filters.category && filters.category !== 'all')
 
   return (
     <Shell pageTitle="Fournisseurs" actions={[...(canCreate ? ['nouveau' as const] : []), 'export']} onAction={handleAction}>
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
-        {loading ? <SkeletonKpis count={4} /> : <>
-          <KpiCard label="Actifs" value={actifs} />
-          <KpiCard label="Carburant" value={byCategory.carburant ?? 0} />
-          <KpiCard label="Entretien" value={byCategory.entretien ?? 0} />
-          <KpiCard
-            label="Dépensé 12 mois"
-            value={formatMoney([...depenses.values()].reduce((t, d) => t + d.totalHtCts, 0))}
-            sub="HT, hors immobilisations"
-            tone="warning"
-          />
-        </>}
-      </div>
+      {/* Tuiles cliquables : chaque geste filtre la liste */}
+      {loading && tous.length === 0 ? <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5"><SkeletonKpis count={4} /></div> : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+          <ChiffreCarte libelle="Fournisseurs actifs" icone={<Building2 size={13} />} valeur={String(actifsListe.length)} detail={`sur ${tous.length} au total`}
+            titre="Tous les fournisseurs actifs" actif={filters.active === true && (!filters.category || filters.category === 'all')}
+            onClick={() => setFilters({ active: true })} />
+          <ChiffreCarte libelle="Carburant" icone={<Droplets size={13} />} valeur={String(byCategory.carburant ?? 0)} detail="stations, cartes"
+            titre="Fournisseurs de carburant" actif={filters.category === 'carburant'} onClick={() => basculeCategorie('carburant')} />
+          <ChiffreCarte libelle="Entretien" icone={<Wrench size={13} />} valeur={String(byCategory.entretien ?? 0)} detail="garages, pièces"
+            titre="Fournisseurs d'entretien" actif={filters.category === 'entretien'} onClick={() => basculeCategorie('entretien')} />
+          <ChiffreCarte libelle="Dépensé 12 mois" icone={<Euro size={13} />} valeur={formatMoney([...depenses.values()].reduce((t, d) => t + d.totalHtCts, 0))}
+            ton="warning" detail="HT, hors immobilisations" titre="Total dépensé" actif={false} onClick={() => setFilters({ active: true })} />
+        </div>
+      )}
 
-      {/* Filtres */}
-      <div className="flex flex-wrap items-center gap-3 mb-4 glass rounded-[var(--r-xl)] px-4 py-3">
-        <BarreRecherche value={search} onChange={setSearch} placeholder="Chercher…" ariaLabel="Rechercher" raccourci taille="sm" className="w-full sm:w-72" />
-        <select
-          value={filters.category ?? 'all'}
-          onChange={e => setFilters(f => ({ ...f, category: (e.target.value || 'all') as SupplierFilters['category'] }))}
-          className="h-8 px-2 rounded-[var(--r-md)] bg-[var(--bg-card)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-sm)] focus:outline-none"
-        >
-          <option value="all">Toutes catégories</option>
-          {(Object.entries(CATEGORY_LABELS) as [string, string][]).map(([v, l]) => (
-            <option key={v} value={v}>{l}</option>
-          ))}
-        </select>
-        <Button
-          variant={filters.active === true ? 'primary' : 'secondary'} size="compact"
-          onClick={() => setFilters(f => ({ ...f, active: f.active === true ? undefined : true }))}
-        >Actifs uniquement</Button>
+      {/* Recherche + filtres */}
+      <div className="flex flex-wrap items-center gap-2.5 mb-4">
+        <BarreRecherche value={search} onChange={setSearch} placeholder="Chercher un fournisseur : nom, SIRET…" ariaLabel="Rechercher un fournisseur"
+          raccourci className="flex-1 min-w-[14rem] max-w-xl" compteur={`${suppliers.length} résultat${suppliers.length > 1 ? 's' : ''}`} />
+        <div className="w-52">
+          <ListeDeroulante valeur={filters.category ?? 'all'} ariaLabel="Catégorie" recherche={false}
+            onChange={v => setFilters(f => ({ ...f, category: v as SupplierFilters['category'] }))}
+            options={[{ valeur: 'all', libelle: 'Toutes catégories' }, ...(Object.entries(CATEGORY_LABELS) as [string, string][]).map(([v, l]) => ({ valeur: v, libelle: l }))]} />
+        </div>
+        <PastilleFiltre actif={filters.active === true} onClick={() => setFilters(f => ({ ...f, active: f.active === true ? undefined : true }))}>Actifs uniquement</PastilleFiltre>
+        {filtresActifs && (
+          <button type="button" onClick={() => { setSearch(''); setFilters({ active: true }) }}
+            className="text-sm text-[var(--text-muted)] hover:text-[var(--brand)] underline-offset-2 hover:underline">Tout réinitialiser</button>
+        )}
       </div>
 
       {loading ? <SkeletonTable rows={5} />
@@ -204,57 +209,54 @@ export function Fournisseurs() {
           <EmptyState
             icon={<Building2 size={48} />}
             title="Aucun fournisseur"
-            description="Ajoutez vos fournisseurs récurrents."
-            action={canCreate ? { label: '+ Nouveau fournisseur', onClick: () => openDrawer() } : undefined}
+            description={filtresActifs ? 'Aucun fournisseur ne correspond à ces filtres.' : 'Ajoutez vos fournisseurs récurrents.'}
+            action={!filtresActifs && canCreate ? { label: '+ Nouveau fournisseur', onClick: () => openDrawer() } : undefined}
           />
         ) : (
           <>
             {/* Desktop */}
-            <div className="hidden md:block overflow-x-auto panel rounded-[var(--r-xl)]">
-              <table className="w-full text-[var(--fs-sm)]">
+            <div className="hidden md:block overflow-x-auto rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)]">
+              <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                    {['Nom', 'Catégorie', 'Dépensé 12 mois', 'Dernière facture', 'SIRET', 'Téléphone', ''].map(h => (
-                      <th key={h} className="px-4 py-2.5 font-medium text-[var(--fs-xs)] uppercase tracking-wide">{h}</th>
+                  <tr className="text-left text-xs text-[var(--text-muted)] border-b border-[var(--border)]">
+                    {['Fournisseur', 'Catégorie', 'Dépensé 12 mois', 'Dernière facture', 'SIRET', 'Téléphone', ''].map(h => (
+                      <th key={h} className={`px-4 py-2.5 font-medium ${h === 'Dépensé 12 mois' ? 'text-right' : ''}`}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {suppliers.map((s, i) => (
-                    <tr key={s.id} onClick={() => openDrawer(s)}
-                      className={`border-t border-[var(--border)] cursor-pointer hover:bg-[var(--bg-card-hover)] transition-colors
-                        ${i % 2 === 0 ? 'bg-[var(--bg)]' : 'bg-[var(--bg-card)]/40'}`}>
-                      <td className="px-4 py-3 font-medium text-[var(--text)]">
-                        {s.name}
-                        {isTvaDeductible(s.category) && (
-                          <span className="ml-2.5 inline-flex items-center px-2 py-0.5 rounded-[var(--r-pill)] text-[var(--fs-xs)] font-semibold bg-[var(--success)]/15 text-[var(--success)] border border-[var(--success)]/35 align-middle" title="TVA 100% déductible">TVA ✓</span>
-                        )}
+                  {suppliers.map(s => (
+                    <tr key={s.id} onClick={() => openDrawer(s)} tabIndex={0} onKeyDown={e => { if (e.key === 'Enter') openDrawer(s) }}
+                      className="group border-b border-[var(--border)] last:border-0 cursor-pointer hover:bg-[var(--bg-card-hover)] transition-colors">
+                      <td className="px-4 py-2.5">
+                        <span className="flex items-center gap-3 min-w-0">
+                          <AvatarInitiales nom={s.name} discret={!s.active} />
+                          <span className="min-w-0">
+                            <span className={`block truncate font-medium ${s.active ? 'text-[var(--text)]' : 'text-[var(--text-muted)]'}`}>{s.name}</span>
+                            <span className="block truncate text-xs text-[var(--text-muted)]">
+                              {!s.active ? 'Inactif' : isTvaDeductible(s.category) ? 'TVA 100 % déductible' : (s.email || '—')}
+                            </span>
+                          </span>
+                        </span>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         <Badge color="muted">{getCategoryLabel(s.category)}</Badge>
                       </td>
-                      {/* Les deux colonnes qui manquaient : chez qui on depense,
-                          et depuis quand on n'a plus achete. L'e-mail cede sa
-                          place — il reste accessible dans le tiroir et sur la
-                          carte mobile, et il ne se lit pas en survolant une
-                          liste. */}
-                      <td className="px-4 py-3 font-mono text-[var(--text)]">
+                      <td className="px-4 py-2.5 text-right font-mono tabular-nums text-[var(--text)]">
                         {depenses.has(s.id) ? formatMoney(depenses.get(s.id)!.totalHtCts) : '—'}
                       </td>
-                      <td className="px-4 py-3 text-[var(--fs-xs)] text-[var(--text-muted)]">
+                      <td className="px-4 py-2.5 text-xs text-[var(--text-muted)]">
                         {depenses.get(s.id)?.derniereDate
                           ? new Date(depenses.get(s.id)!.derniereDate!).toLocaleDateString('fr-FR')
                           : '—'}
                       </td>
-                      <td className="px-4 py-3 font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">{s.siret ?? '—'}</td>
-                      <td className="px-4 py-3 text-[var(--text-muted)]" onClick={e => e.stopPropagation()}>
+                      <td className="px-4 py-2.5 font-mono text-xs text-[var(--text-muted)]">{s.siret ?? '—'}</td>
+                      <td className="px-4 py-2.5 text-[var(--text-muted)]" onClick={e => e.stopPropagation()}>
                         {telHref(s.phone)
                           ? <a href={telHref(s.phone)!} className="hover:text-[var(--brand)] transition-colors">{s.phone}</a>
                           : '—'}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="compact" onClick={e => { e.stopPropagation(); openDrawer(s) }}>Voir</Button>
-                      </td>
+                      <td className="pr-3 text-[var(--text-disabled)] group-hover:text-[var(--text-muted)]"><ChevronRight size={16} /></td>
                     </tr>
                   ))}
                 </tbody>
@@ -262,17 +264,20 @@ export function Fournisseurs() {
             </div>
 
             {/* Mobile */}
-            <div className="md:hidden flex flex-col gap-3">
+            <div className="md:hidden flex flex-col gap-2.5">
               {suppliers.map(s => (
                 <button key={s.id} onClick={() => openDrawer(s)}
-                  className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-4 hover:bg-[var(--bg-card-hover)] transition-colors">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-medium text-[var(--text)]">{s.name}</span>
-                    <Badge color="muted">{getCategoryLabel(s.category)}</Badge>
-                  </div>
-                  <div onClick={e => e.stopPropagation()}>
-                    <ContactLinks phone={s.phone} email={s.email} />
-                  </div>
+                  className="w-full text-left bg-[var(--bg-card)] rounded-[var(--r-lg)] border border-[var(--border)] p-3.5 flex items-center gap-3 hover:bg-[var(--bg-card-hover)] transition-colors">
+                  <AvatarInitiales nom={s.name} discret={!s.active} />
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-[var(--text)] truncate">{s.name}</span>
+                      <Badge color="muted">{getCategoryLabel(s.category)}</Badge>
+                    </span>
+                    <span className="block" onClick={e => e.stopPropagation()}>
+                      <ContactLinks phone={s.phone} email={s.email} />
+                    </span>
+                  </span>
                 </button>
               ))}
             </div>
@@ -287,10 +292,8 @@ export function Fournisseurs() {
             <input value={form.name ?? ''} onChange={e => set('name', e.target.value)} className={inputClass} placeholder="Nom du fournisseur" />
           </FieldGroup>
           <FieldGroup label="Catégorie">
-            <select value={form.category ?? ''} onChange={e => set('category', e.target.value || null)} className={inputClass}>
-              <option value="">—</option>
-              {(Object.entries(CATEGORY_LABELS) as [string, string][]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
+            <ListeDeroulante valeur={form.category ?? ''} onChange={v => set('category', v || null)} ariaLabel="Catégorie" placeholder="Choisir une catégorie" recherche={false}
+              options={(Object.entries(CATEGORY_LABELS) as [string, string][]).map(([v, l]) => ({ valeur: v, libelle: l }))} />
           </FieldGroup>
           {form.category === 'carburant' && (
             <p className="text-[var(--success)] text-[var(--fs-xs)] bg-[var(--success)]/10 rounded-[var(--r-md)] px-3 py-2">

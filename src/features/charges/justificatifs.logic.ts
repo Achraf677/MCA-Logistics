@@ -81,6 +81,4 @@ export function etapesSuivi(t: JustifLigne & {
   return etapes
 }
 
-/** Initiales d'un nom (pastille du déclarant). */
-export const initiales = (nom: string): string =>
-  nom.split(/\s+/).filter(Boolean).slice(0, 2).map(m => m[0]?.toUpperCase() ?? '').join('') || '?'
+export { initiales } from '../../shared/lib/initiales'

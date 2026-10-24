@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Check, CreditCard, ExternalLink, FileText, Sparkles, Trash2, Undo2, Wallet, X } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
+import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -13,7 +14,7 @@ import {
 } from '../../shared/lib/depenses'
 import { urlTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import { jourFr } from './charges.logic'
-import { etapesSuivi, etatJustificatif, initiales, type EtapeSuivi } from './justificatifs.logic'
+import { etapesSuivi, etatJustificatif, type EtapeSuivi } from './justificatifs.logic'
 
 const aujourdhuiLocal = () => {
   const d = new Date()
@@ -152,7 +153,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
 
         <div className="flex flex-col gap-4 min-w-0">
           <header className="flex items-start gap-3">
-            <span aria-hidden="true" className="h-11 w-11 shrink-0 rounded-full bg-[var(--brand)]/15 text-[var(--brand)] font-semibold flex items-center justify-center">{initiales(nom)}</span>
+            <AvatarInitiales nom={nom} taille="lg" />
             <div className="min-w-0 flex-1">
               <div className="font-mono font-semibold text-3xl leading-none text-[var(--text)]">
                 {montantAffiche ?? <span className="text-xl font-sans font-medium text-[var(--danger)]">Montant à saisir</span>}

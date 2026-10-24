@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronRight, FileText, Hourglass, Inbox, Send, ThumbsDown, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { supabase } from '../../app/providers'
+import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
 import { Badge } from '../../shared/ui/Badge'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Button } from '../../shared/ui/Button'
@@ -23,7 +24,7 @@ import {
 import { FicheJustificatif, Paiement, type MajJustificatif } from './FicheJustificatif'
 import { nomsDeclarants } from './charges.queries'
 import {
-  compteursJustificatifs, etatJustificatif, filtrerJustificatifs, initiales, jourJustif, type FiltreJustif,
+  compteursJustificatifs, etatJustificatif, filtrerJustificatifs, jourJustif, type FiltreJustif,
 } from './justificatifs.logic'
 
 const jourCourt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
@@ -185,7 +186,7 @@ export function Justificatifs() {
                 </td>
                 <td className="px-2 py-2.5 whitespace-nowrap">
                   <span className="inline-flex items-center gap-2 text-[var(--text)]">
-                    <span aria-hidden="true" className="h-6 w-6 rounded-full bg-[var(--brand)]/15 text-[var(--brand)] text-[0.6875rem] font-semibold flex items-center justify-center">{initiales(nom)}</span>
+                    <AvatarInitiales nom={nom} taille="sm" />
                     {nom}
                   </span>
                 </td>
