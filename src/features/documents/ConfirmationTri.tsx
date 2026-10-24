@@ -37,11 +37,13 @@ function editionInitiale(d: DocumentRow): Edition {
 }
 
 /** À confirmer : l'IA a proposé un nom rangé et des champs ; tu corriges si besoin, tu confirmes (ou tu rejettes). */
-export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, onChange, toast }: {
+export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk, onChange, toast }: {
   docs: DocumentRow[]
   classes: DocumentRow[]
   miniatures: Record<string, string>
   peutEcrire: boolean
+  /** Compte Google connecté avec le scope Drive : sans lui, rien ne peut être rangé. */
+  driveOk: boolean
   onChange: () => Promise<void>
   toast: (message: string, type?: 'success' | 'error') => void
 }) {
@@ -72,14 +74,14 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, onChang
       montant_ttc_cts: m != null && !Number.isNaN(m) ? m : null, resume: d.proposition?.resume ?? null,
     }
   }
-  const pret = (d: DocumentRow) => { const e = edition(d); return e.nom.trim() !== '' && e.type !== '' }
+  const pret = (d: DocumentRow) => { const e = edition(d); return driveOk && e.nom.trim() !== '' && e.type !== '' }
 
   const confirmer = async (d: DocumentRow) => {
     setOccupe(d.id)
     const { error } = await confirmerClassement(d.id, classement(d))
     setOccupe(null)
     if (error) { toast(error.message, 'error'); return }
-    toast('Document rangé')
+    toast('Document rangé dans le Drive')
     await onChange()
   }
 
@@ -96,8 +98,10 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, onChang
     const aFaire = docs.filter(pret)
     setOccupe('tous')
     let ok = 0
-    for (const d of aFaire) { const { error } = await confirmerClassement(d.id, classement(d)); if (!error) ok++ }
+    let premierEchec: string | null = null
+    for (const d of aFaire) { const { error } = await confirmerClassement(d.id, classement(d)); if (!error) ok++; else premierEchec ??= error.message }
     setOccupe(null)
+    if (premierEchec) toast(premierEchec, 'error')
     toast(`${ok} document${ok > 1 ? 's' : ''} rangé${ok > 1 ? 's' : ''}${aFaire.length < docs.length ? ` · ${docs.length - aFaire.length} à compléter (type ou nom manquant)` : ''}`)
     await onChange()
   }
@@ -115,6 +119,11 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, onChang
 
   return (
     <div className="flex flex-col gap-3">
+      {!driveOk && (
+        <p className="rounded-[var(--r-xl)] border border-[var(--warning)] bg-[var(--bg-card)] px-4 py-3 text-sm text-[var(--text)]">
+          Le Drive n'est pas branché : rien ne peut être rangé. Connecte le compte Google de la société dans Paramètres › Google (coche bien « Drive »).
+        </p>
+      )}
       {peutEcrire && (
         <div className="flex flex-wrap items-center gap-3 rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3">
           <Sparkles size={18} className="text-[var(--brand)] shrink-0" />
@@ -171,7 +180,7 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, onChang
                   <Button variant="primary" className="min-h-10" disabled={!pret(d) || occupe !== null} onClick={() => void confirmer(d)}>
                     <Check size={15} /> Confirmer
                   </Button>
-                  {!pret(d) && <span className="text-xs text-[var(--warning)]">Choisis un type pour confirmer.</span>}
+                  {driveOk && !pret(d) && <span className="text-xs text-[var(--warning)]">Choisis un type pour confirmer.</span>}
                   <span className="ml-auto"><BoutonIcone icone={Undo2} libelle="Rejeter : remettre dans l'Inbox" onClick={() => void rejeter(d)} disabled={occupe !== null} /></span>
                 </div>
               )}

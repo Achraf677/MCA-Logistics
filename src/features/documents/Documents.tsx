@@ -7,8 +7,7 @@ import { useToast } from '../../shared/ui/useToast'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { urlsTickets } from '../../shared/lib/receiptsInbox.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
-import { enLigne, tailleLisible, type LigneBibliotheque } from './documents.logic'
-import { listerDocuments, listerJustificatifsPourBibliotheque } from './documents.queries'
+import { listerDocuments, statutDrive, type StatutDrive } from './documents.queries'
 import { InboxDocuments } from './InboxDocuments'
 import { ConfirmationTri } from './ConfirmationTri'
 import { BibliothequeDocuments } from './BibliothequeDocuments'
@@ -19,15 +18,15 @@ type Vue = 'inbox' | 'confirmer' | 'bibliotheque'
  * Onglet Documents (Système) : TOUS les fichiers du site au même endroit.
  *  - Inbox : ce qui n'est pas encore rangé (dépôts, pièces jointes des livraisons, véhicules, tournées…). On lance le tri.
  *  - À confirmer : l'IA a lu et PROPOSE un nom rangé, un type, une date, un tiers ; rien n'est appliqué sans confirmation.
- *  - Bibliothèque : les documents rangés, par dossier, avec recherche ; les justificatifs de Finance y sont aussi (lecture seule).
+ *  - Bibliothèque : le Drive de la société (un seul compte Google, branché dans Paramètres) ; les documents confirmés y sont rangés.
  */
 export function Documents() {
-  const { companyId } = useProfile()
+  const { companyId, profile } = useProfile()
   const { can } = usePermissions()
   const { toast } = useToast()
   const [vue, setVue] = useState<Vue>('inbox')
   const [docs, setDocs] = useState<DocumentRow[]>([])
-  const [justificatifs, setJustificatifs] = useState<LigneBibliotheque[]>([])
+  const [drive, setDrive] = useState<StatutDrive | null>(null)
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
   const [miniatures, setMiniatures] = useState<Record<string, string>>({})
@@ -37,11 +36,11 @@ export function Documents() {
 
   const charger = useCallback(async (silencieux = false) => {
     if (!silencieux) setLoading(true)
-    const [d, j] = await Promise.all([listerDocuments(), listerJustificatifsPourBibliotheque()])
+    const [d, st] = await Promise.all([listerDocuments(), statutDrive()])
     if (d.error) { setErreur(d.error.message); setLoading(false); return }
     setErreur(null)
     setDocs(d.data ?? [])
-    setJustificatifs(j)
+    setDrive(st)
     setLoading(false)
   }, [])
 
@@ -50,24 +49,23 @@ export function Documents() {
   const aTrier = useMemo(() => docs.filter(d => (d.statut_tri ?? 'a_trier') === 'a_trier'), [docs])
   const propositions = useMemo(() => docs.filter(d => d.statut_tri === 'propose'), [docs])
   const classes = useMemo(() => docs.filter(d => d.statut_tri === 'classe'), [docs])
-  const lignes = useMemo(() => [...classes.map(enLigne), ...justificatifs], [classes, justificatifs])
-  const octets = useMemo(() => docs.reduce((s, d) => s + (d.size_bytes ?? 0), 0), [docs])
+  const driveOk = !!drive?.connecte && !!drive.drive
 
   // Miniatures des photos affichées (liens signés par lot, une seule fois par chemin).
   useEffect(() => {
-    const visibles = vue === 'inbox' ? aTrier : vue === 'confirmer' ? propositions : classes
-    const manquants = [...visibles.map(d => ({ c: d.storage_path, m: d.mime_type })), ...(vue === 'bibliotheque' ? justificatifs.map(j => ({ c: j.chemin, m: j.mime })) : [])]
+    const visibles = vue === 'inbox' ? aTrier : vue === 'confirmer' ? propositions : []
+    const manquants = visibles.map(d => ({ c: d.storage_path, m: d.mime_type }))
       .filter(x => x.c && x.m?.startsWith('image/') && !miniatures[x.c]).slice(0, 100).map(x => x.c as string)
     if (manquants.length === 0) return
     let annule = false
     void urlsTickets(manquants).then(m => { if (!annule) setMiniatures(prev => ({ ...prev, ...m })) })
     return () => { annule = true }
-  }, [vue, aTrier, propositions, classes, justificatifs, miniatures])
+  }, [vue, aTrier, propositions, miniatures])
 
   const onglets: Array<{ cle: Vue; libelle: string; n: number; icone: typeof Inbox }> = [
     { cle: 'inbox', libelle: 'Inbox', n: aTrier.length, icone: Inbox },
     { cle: 'confirmer', libelle: 'À confirmer', n: propositions.length, icone: CheckCheck },
-    { cle: 'bibliotheque', libelle: 'Bibliothèque', n: lignes.length, icone: BookOpen },
+    { cle: 'bibliotheque', libelle: 'Bibliothèque', n: classes.length, icone: BookOpen },
   ]
 
   if (loading) return <div className="flex flex-col gap-4"><Skeleton className="h-24" /><Skeleton className="h-64" /></div>
@@ -80,10 +78,11 @@ export function Documents() {
           detail={aTrier.length > 0 ? 'à trier avec l\'IA' : 'tout est rangé'} titre="Documents à trier" actif={vue === 'inbox'} onClick={() => setVue('inbox')} />
         <ChiffreCarte libelle="À confirmer" icone={<Sparkles size={13} />} valeur={String(propositions.length)} ton={propositions.length > 0 ? 'warning' : undefined}
           detail="propositions de l'IA" titre="Propositions à confirmer" actif={vue === 'confirmer'} onClick={() => setVue('confirmer')} />
-        <ChiffreCarte libelle="Classés" icone={<BookOpen size={13} />} valeur={String(lignes.length)} detail="dont justificatifs Finance"
+        <ChiffreCarte libelle="Rangés" icone={<BookOpen size={13} />} valeur={String(classes.length)} detail="envoyés dans le Drive"
           titre="Bibliothèque" actif={vue === 'bibliotheque'} onClick={() => setVue('bibliotheque')} />
-        <ChiffreCarte libelle="Stockage" icone={<HardDrive size={13} />} valeur={tailleLisible(octets)} detail={`${docs.length} fichiers`}
-          titre="Espace utilisé" actif={false} onClick={() => setVue('bibliotheque')} />
+        <ChiffreCarte libelle="Google Drive" icone={<HardDrive size={13} />} valeur={driveOk ? 'Connecté' : drive?.connecte ? 'Drive refusé' : 'Non connecté'}
+          ton={driveOk ? undefined : 'warning'} detail={driveOk ? (drive?.email ?? 'compte de la société') : drive?.connecte ? 'reconnecte-toi en cochant Drive' : 'à connecter dans Paramètres'}
+          titre="Bibliothèque" actif={false} onClick={() => setVue('bibliotheque')} />
       </div>
 
       <div role="tablist" className="flex gap-1 rounded-full border border-[var(--border)] bg-[var(--bg-card)] p-1 self-start max-w-full overflow-x-auto">
@@ -102,12 +101,11 @@ export function Documents() {
           onChange={() => charger(true)} onTermine={(n) => { if (n > 0) setVue('confirmer') }} toast={toast} />
       )}
       {vue === 'confirmer' && (
-        <ConfirmationTri docs={propositions} classes={classes} miniatures={miniatures} peutEcrire={peutEcrire}
+        <ConfirmationTri docs={propositions} classes={classes} miniatures={miniatures} peutEcrire={peutEcrire} driveOk={driveOk}
           onChange={() => charger(true)} toast={toast} />
       )}
       {vue === 'bibliotheque' && (
-        <BibliothequeDocuments lignes={lignes} docs={classes} miniatures={miniatures} peutEcrire={peutEcrire} peutSupprimer={peutSupprimer}
-          onChange={() => charger(true)} toast={toast} />
+        <BibliothequeDocuments peutEcrire={peutEcrire} estPresident={profile?.role === 'president'} toast={toast} />
       )}
     </div>
   )

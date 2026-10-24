@@ -1,6 +1,6 @@
-// Edge `drive-oauth-start` — démarre la connexion Gmail (nom d'Edge gardé : le Drive n'est plus utilisé, 23/10/2026).
+// Edge `drive-oauth-start` — démarre la connexion Google (Gmail + Drive ; Drive rétabli le 24/10/2026 pour la Bibliothèque).
 // Authentifie le user (verify_jwt=true), crée un state (nonce) lié à sa société,
-// et renvoie l'URL d'autorisation Google (scope gmail.send seul, access_type=offline).
+// et renvoie l'URL d'autorisation Google (scopes gmail.send + drive, access_type=offline).
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { exigerPermission } from '../_shared/auth.ts';
 
@@ -19,6 +19,8 @@ const SCOPE = [
   'openid',
   'email',
   'https://www.googleapis.com/auth/gmail.send',
+  // Drive complet : la Bibliothèque lit les fichiers EXISTANTS du Drive de la société (le scope drive.file ne verrait que ceux créés par le site).
+  'https://www.googleapis.com/auth/drive',
 ].join(' ');
 
 Deno.serve(async (req: Request) => {

@@ -26,7 +26,7 @@ Deno.serve(async (req: Request) => {
 
   const { data: tok } = await service
     .from('google_drive_tokens')
-    .select('connected_email, root_folder_id, connected_at')
+    .select('connected_email, root_folder_id, connected_at, scope')
     .eq('company_id', profile.company_id)
     .maybeSingle();
 
@@ -35,6 +35,8 @@ Deno.serve(async (req: Request) => {
     connected: !!tok,
     email: tok?.connected_email ?? null,
     root_folder_id: tok?.root_folder_id ?? null,
+    // Le Drive est utilisable seulement si Google a accordé le scope « drive » (case décochée = Gmail seul).
+    drive: !!tok?.scope && String(tok.scope).split(' ').includes('https://www.googleapis.com/auth/drive'),
     connected_at: tok?.connected_at ?? null,
   });
 });
