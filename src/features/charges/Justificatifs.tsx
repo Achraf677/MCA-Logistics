@@ -24,7 +24,7 @@ import {
 } from '../../shared/lib/receiptsInbox.queries'
 import type { ChargeCategoryRow } from '../../shared/types/categories'
 import { DrawerCharge } from './DrawerCharge'
-import { FicheJustificatif, Paiement } from './FicheJustificatif'
+import { FicheJustificatif, Paiement, type MajJustificatif } from './FicheJustificatif'
 import { nomsDeclarants } from './charges.queries'
 import {
   compteursJustificatifs, etatJustificatif, filtrerJustificatifs, initiales, jourJustif, type FiltreJustif,
@@ -137,10 +137,15 @@ export function Justificatifs() {
     return true
   }
 
-  const valider = (t: TicketInbox) => {
-    const manques = manquesValidation(t)
-    if (manques.length) { toast(`Validation impossible : ${manques.join(', ').toLowerCase()} manquant. Renseigne-le puis enregistre.`, 'error'); return }
-    return validerEtEnvoyer(t)
+  /** Enregistre ce qui est à l'écran, vérifie que tout est rempli, puis valide et envoie. */
+  const valider = async (t: TicketInbox, maj: MajJustificatif) => {
+    const manques = manquesValidation({ ...t, ...maj })
+    if (manques.length) { toast(`Validation impossible : ${manques.join(', ').toLowerCase()} manquant.`, 'error'); return }
+    setBusy(true)
+    const { error } = await corrigerTicket(t.id, maj)
+    setBusy(false)
+    if (error) { toast(error.message, 'error'); return }
+    await validerEtEnvoyer(t)
   }
 
   /** Valide, puis envoie à Pennylane (« À traiter »). Si l'envoi échoue, le justificatif reste validé : « Renvoyer ». */
@@ -288,7 +293,7 @@ export function Justificatifs() {
           <FicheJustificatif key={`${ouvert.id}-${ouvert.ocr_lu_le ?? ''}`} t={ouvert} lectureEnCours={lectureEnCours && !ouvert.ocr_lu_le} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy} fournisseurs={fournisseurs}
             onFichier={() => void ouvrirFichier(ouvert)}
             onEnregistrer={maj => void agir(() => corrigerTicket(ouvert.id, maj), 'Justificatif corrigé')}
-            onValider={() => void valider(ouvert)}
+            onValider={maj => void valider(ouvert, maj)}
             onCreerCharge={() => setSource(ouvert)}
             onRefuser={motif => void agir(() => refuserDepense(ouvert.id, motif), 'Dépense refusée : le déclarant voit le motif', true)}
             onRembourser={date => void agir(() => marquerRembourse(ouvert.id, date), date ? 'Remboursée : le salarié le voit' : 'Remboursement annulé')}

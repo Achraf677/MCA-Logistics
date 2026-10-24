@@ -76,12 +76,19 @@ export function totalARembourser(depenses: DepenseRemb[]): number {
 }
 
 /**
- * Ce qui empêche de VALIDER une dépense côté bureau : sans montant elle ne peut ni devenir une charge,
- * ni être remboursée. (Les anciens tickets sans montant se corrigent un par un.)
+ * Ce qui empêche de VALIDER une dépense côté bureau : tout est obligatoire (montant, date, catégorie, moyen de paiement,
+ * fournisseur) — décision du 24/10/2026. Les anciens tickets incomplets se complètent un par un.
  */
-export function manquesValidation(t: { montant_ttc_cts?: number | null; date_depense?: string | null }): string[] {
+export function manquesValidation(t: {
+  montant_ttc_cts?: number | null; date_depense?: string | null; categorie?: string | null
+  moyen_paiement?: string | null; supplier_id?: string | null
+}): string[] {
   const m: string[] = []
   if (t.montant_ttc_cts == null || t.montant_ttc_cts <= 0) m.push('Montant')
+  if (!t.date_depense) m.push('Date')
+  if (!t.categorie) m.push('Catégorie')
+  if (!t.moyen_paiement) m.push('Moyen de paiement')
+  if (!t.supplier_id) m.push('Fournisseur')
   return m
 }
 

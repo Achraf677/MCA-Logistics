@@ -9,11 +9,11 @@ import type { Prestation } from '../lib/prestations'
 // même choix du client, même choix de prestation — un seul exemplaire.
 
 /** Champ d'une fiche (libellé lisible, erreur sous le champ). */
-export function Champ({ label, children, error }: { label: string; children: ReactNode; error?: string }) {
+export function Champ({ label, children, error, requis = false }: { label: string; children: ReactNode; error?: string; requis?: boolean }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-xs font-medium text-[var(--text-muted)]">
-        {label}
+        {label}{requis && <span className="text-[var(--danger)]" aria-label="obligatoire"> *</span>}
       </label>
       {children}
       {error && <span className="text-[var(--danger)] text-xs">{error}</span>}

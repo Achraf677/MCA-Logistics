@@ -5,10 +5,11 @@ import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { Bloc, Champ } from '../../shared/ui/FicheSaisie'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, montantSaisiEnCts, type CategorieDepense,
+  CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, manquesValidation, montantSaisiEnCts, type CategorieDepense,
 } from '../../shared/lib/depenses'
 import { urlTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import { jourFr } from './charges.logic'
@@ -105,7 +106,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   fournisseurs: Array<{ id: string; name: string }>
   onFichier: () => void
   onEnregistrer: (maj: MajJustificatif) => void
-  onValider: () => void
+  onValider: (maj: MajJustificatif) => void
   onCreerCharge: () => void
   onRefuser: (motif: string) => void
   onRembourser: (date: string | null) => void
@@ -132,12 +133,16 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   const cts = montantSaisiEnCts(montant)
   const invalide = Number.isNaN(cts)
   const modifie = !invalide && (
-    cts !== (t.montant_ttc_cts ?? null) || date !== (t.date_depense ?? t.created_at.slice(0, 10))
+    cts !== (t.montant_ttc_cts ?? null) || date !== (t.date_depense ?? t.created_at.slice(0, 10)) || (t.date_depense == null && !!date)
     || (categorie || null) !== (t.categorie ?? null) || (moyen || null) !== (t.moyen_paiement ?? null)
     || (fournisseur || null) !== (t.supplier_id ?? null))
   const etat = etatJustificatif(t)
   const noteDeFrais = t.moyen_paiement === 'personnel'
   const montantAffiche = !invalide && cts != null ? formatMoney(cts) : null
+  const a_traiter = t.statut === 'a_traiter'
+  const maj: MajJustificatif = { montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null, supplier_id: fournisseur || null }
+  // Ce qui manque, d'après ce qui est à l'écran (pas seulement ce qui est enregistré).
+  const manques = invalide ? ['Montant'] : manquesValidation(maj)
 
   return (
     <div className="flex flex-col gap-5 min-h-full">
@@ -163,43 +168,36 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
             <BandeauLecture t={t} lectureEnCours={lectureEnCours} montantSaisi={Number.isNaN(cts) ? null : cts} />
           )}
 
-          <Bloc titre="Dépense">
+          <Bloc titre="Dépense" droite={peutEcrire && t.statut === 'a_traiter' ? <span className="text-xs text-[var(--text-muted)]"><span className="text-[var(--danger)]">*</span> tout est obligatoire</span> : undefined}>
             <div className="grid gap-3 sm:grid-cols-2">
-              <Champ label="Montant TTC (€)" error={invalide ? 'Montant invalide (ex. 12,50)' : undefined}>
+              <Champ label="Montant TTC (€)" requis error={invalide ? 'Montant invalide (ex. 12,50)' : undefined}>
                 <input className="field font-mono" inputMode="decimal" value={montant} onChange={e => setMontant(e.target.value)} placeholder="12,50" disabled={!peutEcrire} aria-invalid={invalide} />
               </Champ>
-              <Champ label="Date de la dépense">
+              <Champ label="Date de la dépense" requis>
                 <input className="field" type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!peutEcrire} />
               </Champ>
-              <Champ label="Catégorie">
-                <select className="field" value={categorie} onChange={e => setCategorie(e.target.value as CategorieDepense | '')} disabled={!peutEcrire}>
-                  <option value="">Non précisée</option>
-                  {CATEGORIES_DEPENSE.map(c => <option key={c.valeur} value={c.valeur}>{c.libelle}</option>)}
-                </select>
+              <Champ label="Catégorie" requis>
+                <ListeDeroulante valeur={categorie} onChange={v => setCategorie(v as CategorieDepense)} disabled={!peutEcrire}
+                  placeholder="Choisir une catégorie" ariaLabel="Catégorie" invalide={a_traiter && !categorie}
+                  options={CATEGORIES_DEPENSE.map(c => ({ valeur: c.valeur, libelle: c.libelle }))} />
               </Champ>
-              <Champ label="Payé avec">
-                <select className="field" value={moyen} onChange={e => setMoyen(e.target.value)} disabled={!peutEcrire}>
-                  <option value="">Non précisé</option>
-                  <option value="carte_societe">Carte de la société</option>
-                  <option value="personnel">De sa poche (note de frais)</option>
-                </select>
+              <Champ label="Payé avec" requis>
+                <ListeDeroulante valeur={moyen} onChange={setMoyen} disabled={!peutEcrire} placeholder="Choisir" ariaLabel="Payé avec" invalide={a_traiter && !moyen}
+                  options={[{ valeur: 'carte_societe', libelle: 'Carte de la société' }, { valeur: 'personnel', libelle: 'De sa poche (note de frais)' }]} />
               </Champ>
               <div className="sm:col-span-2">
-                <Champ label="Fournisseur">
-                  <select className="field" value={fournisseur} onChange={e => setFournisseur(e.target.value)} disabled={!peutEcrire}>
-                    <option value="">Note de frais (par défaut)</option>
-                    {fournisseurs.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                  </select>
+                <Champ label="Fournisseur" requis>
+                  <ListeDeroulante valeur={fournisseur} onChange={setFournisseur} disabled={!peutEcrire} placeholder="Choisir un fournisseur" ariaLabel="Fournisseur"
+                    invalide={a_traiter && !fournisseur} recherche options={fournisseurs.map(f => ({ valeur: f.id, libelle: f.name }))} />
                 </Champ>
               </div>
             </div>
             {peutEcrire && modifie && (
               <div className="flex items-center gap-3">
-                <Button variant="primary" size="compact" disabled={busy}
-                  onClick={() => onEnregistrer({ montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null, supplier_id: fournisseur || null })}>
+                <Button variant="primary" size="compact" disabled={busy || invalide}
+                  onClick={() => onEnregistrer(maj)}>
                   Enregistrer les modifications
                 </Button>
-                <span className="text-xs text-[var(--text-muted)]">Enregistre avant de valider.</span>
               </div>
             )}
           </Bloc>
@@ -226,9 +224,12 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-2">
+              {a_traiter && manques.length > 0 && (
+                <p className="basis-full text-xs text-[var(--warning)]">Il manque pour valider : {manques.join(', ').toLowerCase()}.</p>
+              )}
               {t.statut === 'a_traiter' && (
                 <>
-                  <Button variant="primary" className="min-h-10" onClick={onValider} disabled={busy || modifie}><Check size={15} /> Valider et envoyer à Pennylane</Button>
+                  <Button variant="primary" className="min-h-10" onClick={() => onValider(maj)} disabled={busy || manques.length > 0}><Check size={15} /> Valider et envoyer à Pennylane</Button>
                   <Button variant="secondary" className="min-h-10" onClick={onCreerCharge} disabled={busy}><FilePlus2 size={15} /> Créer la charge</Button>
                 </>
               )}
