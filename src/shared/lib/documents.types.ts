@@ -29,6 +29,31 @@ export interface DocumentRow {
   uploaded_by: string | null
   notes: string | null
   created_at: string
+  /** Onglet Documents (migration 20261024110000) : Inbox → proposition de l'IA → classé. */
+  statut_tri?: 'a_trier' | 'propose' | 'classe'
+  type_document?: string | null
+  date_document?: string | null
+  tiers?: string | null
+  reference?: string | null
+  montant_ttc_cts?: number | null
+  resume?: string | null
+  proposition?: PropositionDocument | null
+  trie_le?: string | null
+}
+
+/** Ce que l'IA propose pour un document (Edge `trier-documents`), en attendant la confirmation. */
+export interface PropositionDocument {
+  type: string | null
+  date: string | null
+  tiers: string | null
+  montant_ttc_cts: number | null
+  reference: string | null
+  resume: string | null
+  confiance: { type: number; date: number; tiers: number; montant: number }
+  /** Nom rangé proposé. */
+  nom: string
+  lu_via: 'image' | 'texte'
+  propose_le: string
 }
 
 export interface UploadDocumentOptions {
