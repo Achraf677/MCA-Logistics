@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **24/10/2026** (refonte par onglet : Livraisons, Planning / Tournées, Finance, Tiers, Équipe, Documents mergés ; reste Système et Flotte).
+> Dernière mise à jour : **26/10/2026** (refonte par onglet : Livraisons, Planning / Tournées, Finance, Tiers, Équipe, Documents mergés ; page de connexion refaite ; reste Système et Flotte).
 
 ---
 
@@ -32,6 +32,7 @@
 - **Règle de réponse (demandée le 18/10/2026, pour TOUTES les conversations)** : simple, que des
   tirets, zéro phrase d'introduction ou de conclusion, mots de tous les jours (pas de jargon
   technique sans l'expliquer). L'utilisateur ne lit pas les longs messages.
+- **Style des rapports (26/10/2026, TOUJOURS)** : pas de blabla ; rapports UNIQUEMENT en tirets, courts, mots simples ; pas de paragraphes ni de phrases d'introduction / conclusion.
 - **Réponses (rappel du 22/10/2026, toute la conversation)** : que des tirets, aucun blabla, aller vite.
   Rapports d'agents présentés par tiret, simples mais détaillés ; l'utilisateur valide les plans par onglet
   AVANT le code ; ensuite preview → « quoi tester » en tirets → validation → merge → onglet suivant.
@@ -85,9 +86,8 @@
   uniquement dans les Edge (`Deno.env`).
 - **Hébergement : Cloudflare Pages fait foi** (CNAME → `mca-logistics-app.pages.dev`). Netlify
   (« MCA LOGISTICS APP ») = mort pour le domaine, sert parfois des previews.
-- Preview de PR : `https://<branche>.mca-logistics-app.pages.dev` (commentaire du bot Cloudflare).
-  Ses URL doivent être dans Supabase → Auth → Redirect URLs, sinon la connexion Google renvoie
-  vers la prod et on teste l'ancien code sans le savoir.
+- **Liens de preview (règle du 26/10/2026)** : donner à l'utilisateur UNIQUEMENT le lien « deploy » de la PR, du type `https://deploy-preview-<n°PR>--gleaming-marzipan-9f0a30.netlify.app` (commentaire du bot Netlify, ex. PR 92 → `deploy-preview-92--…`). Jamais les liens `*.pages.dev` de Cloudflare.
+  Connexion Google sur une preview : son URL doit être dans Supabase → Auth → Redirect URLs, sinon retour vers la prod (tester par e-mail).
 - ⚠️ La preview tape la **base de PROD** : une colonne nouvelle n'existe pour elle qu'une fois la
   migration appliquée (additive = sans risque, on demande avant).
 - IA : Mistral (UE). Lecture des justificatifs par **vision** (`ministral-14b-2512`,
@@ -204,6 +204,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   vérifications sont vertes (tests, relecture, migration testée). Il le signale en une ligne
   dans son rapport. Il demande seulement avant une action destructive (suppression de table,
   de colonne ou de données) ou un changement de droits d'accès existants.
+- **Mise à jour du CLAUDE.md à CHAQUE PR (26/10/2026, automatique, sans qu'on le demande)** : avant de pousser la PR, mettre à jour ce fichier (§ 11-12, date en tête) + la fiche de revue + la carte des interconnexions si concernées, dans la MÊME PR. Après un merge, si l'état a changé, PR « Mémoire : … » de suite.
 - Jamais d'identifiant de modèle IA dans un commit / une PR. Confirmer les hash après merge.
 
 ## 10. Rituel de fin de grosse session (OBLIGATOIRE)
@@ -243,7 +244,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   documents · Facturation).
 
 ## 12. En cours / à décider (mettre à jour à chaque session)
-- **Connexion refaite (26/10/2026)** : `LoginPage.tsx` (panneau de marque + carte, œil mot de passe, alerte majuscules, pause navigateur après 5 échecs `login.logic.ts`, message d'erreur unique). Verrou serveur : table `auth_echecs` + fonction `hook_password_verification_attempt` (migration `20261026090000` appliquée) — 5 échecs = 5 min, 10 = 30 min, 15 = 2 h ; **inerte tant que le hook n'est pas activé** dans Supabase → Authentication → Hooks → « Password verification attempt ». Reste à l'utilisateur : activer ce hook (+ option : Captcha Turnstile dans Auth → Attack Protection).
+- **Connexion refaite — MERGÉE le 26/10/2026 (PR #92, `fc90e0f`)** : `LoginPage.tsx` = UNE carte centrée, identique PC et mobile (logo, Google, e-mail, mot de passe avec œil, alerte majuscules, message d'erreur unique). Pas de panneau latéral, pas de routes animées, pas de champ piège (un gestionnaire de mots de passe le remplissait et bloquait l'envoi en silence). Les valeurs sont lues dans le formulaire à l'envoi (autofill). Bouton Google débloqué après 8 s ou au retour arrière. Pause navigateur après 5 échecs (`login.logic.ts`, `localStorage`), contournable : la vraie barrière est le verrou serveur (table `auth_echecs` + fonction `hook_password_verification_attempt`, migration `20261026090000` appliquée ; 5 échecs = 5 min, 10 = 30 min, 15 = 2 h). **Inerte tant que le hook n'est pas activé** : Supabase → Authentication → Hooks → « Password verification attempt » (à faire par l'utilisateur ; option : Captcha Turnstile dans Auth → Attack Protection). Un e-mail inconnu n'a pas de compte à verrouiller : seule la limite par IP de Supabase joue. Logs du 26/10 : 15 refus en 10 s sur la prod (mot de passe faux ou oublié), réinitialisation demandée.
 - **Onglet Documents (Système › Documents) — MERGÉ le 24/10/2026 (PR #89, `bc657b7`)** : fiche `mca-spec/revue/09-documents.md` (écran, Edge, données, limites). Inbox → tri IA (`trier-documents` v4) → À confirmer (dossier du Drive à choisir) → rangé dans le Drive (`drive-ranger` v3, confirmation instantanée) → Historique ; Bibliothèque = Drive (`drive-browse` v14, `drive-fichier` v1). Feuilles de route / synthèses / preuves de tournée rangées d'après la tournée, sans IA. Migrations `20261024110000`, `…120000`, `…130000` appliquées ; toutes les Edge déployées. **À faire par l'utilisateur** : reconnecter Google (Paramètres, cocher Drive), choisir le dossier de rangement, tester sur de vrais fichiers. Reste : aperçu .docx / .xlsx dans l'appli, décider de la copie Storage après rangement. Suite des refontes : Système (Paramètres, Admins), Flotte, `<select>` natifs restants, code mort « journées colis » dans Mes courses.
 - **Équipe allégée (24/10/2026, demande de l'utilisateur)** : onglets À valider, Journées, Rapports et Heures SUPPRIMÉS (code, alerte « journées à valider », droits `equipe.journees` / `equipe.heures` du catalogue, outil `get_heures` de l'assistant rendu muet) ; fiche membre sans Messagerie, Notes ni Documents (colonnes `tarif_*`, `clients_messagerie`, `notes`, tables `journees_colis*` / `work_hours` gardées en base, plus lues).
 - **Tiers refondu (24/10/2026)** : Clients + Fournisseurs = tuiles cliquables (`ChiffreCarte`, comptent sur l'ensemble, pas sur la liste filtrée), barre de recherche, `ListeDeroulante`, pastilles de filtre à bascule (`PastilleFiltre`), lignes avec `AvatarInitiales`, « Tout réinitialiser » ; listes natives de la fiche client / fournisseur passées en `ListeDeroulante`. Équipe (Membres + filtres des journées) refait de même le 24/10/2026. Reste : Système, Flotte, autres `<select>` natifs.
