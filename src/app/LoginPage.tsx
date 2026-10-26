@@ -66,7 +66,6 @@ export function LoginPage() {
   const [secousse, setSecousse] = useState(0)
   const [etat, setEtat] = useState(lireEtat)
   const [maintenant, setMaintenant] = useState(() => Date.now())
-  const [piege, setPiege] = useState('') // champ invisible : un humain ne le remplit jamais
   const carte = useRef<HTMLDivElement>(null)
   const emailRef = useRef<HTMLInputElement>(null)
 
@@ -120,7 +119,7 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (piege || enPause || loading) return
+    if (enPause || loading) return
     setLoading(true)
     setError(null)
     // Lit les champs dans le formulaire : le remplissage automatique du navigateur
@@ -192,13 +191,6 @@ export function LoginPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="relative flex flex-col gap-4">
-              {/* Piège à robots : caché aux humains et aux lecteurs d'écran */}
-              <input
-                type="text" name="site_web" tabIndex={-1} autoComplete="off" aria-hidden="true"
-                value={piege} onChange={e => setPiege(e.target.value)}
-                className="absolute left-0 top-0 w-0 h-0 opacity-0 pointer-events-none"
-              />
-
               <Champ
                 id="email" label="E-mail" type="email" value={email} onChange={setEmail}
                 icone={<Mail size={18} />} autoComplete="username" inputRef={emailRef}
