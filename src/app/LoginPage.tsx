@@ -45,7 +45,7 @@ function Champ({ id, label, type, value, onChange, icone, autoComplete, invalide
           onChange={e => onChange(e.target.value)}
           onKeyDown={onKeyState} onKeyUp={onKeyState}
           aria-invalid={invalide || undefined}
-          className="min-w-0 flex-1 h-12 px-3 bg-transparent text-[var(--text)] text-base outline-none placeholder:text-[var(--text-disabled)]"
+          className="login-input min-w-0 flex-1 h-12 px-3 bg-transparent text-[var(--text)] text-base outline-none placeholder:text-[var(--text-disabled)]"
         />
         {droite}
       </div>
@@ -81,6 +81,13 @@ export function LoginPage() {
   }, [enPause])
 
   useEffect(() => { emailRef.current?.focus() }, [])
+
+  // Retour arrière depuis Google (page restaurée avec « Redirection… » figé) : on débloque.
+  useEffect(() => {
+    const debloquer = () => setGoogleLoading(false)
+    window.addEventListener('pageshow', debloquer)
+    return () => window.removeEventListener('pageshow', debloquer)
+  }, [])
 
   const suivreSouris = (e: React.PointerEvent) => {
     const r = carte.current?.getBoundingClientRect()
@@ -134,10 +141,11 @@ export function LoginPage() {
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     })
     if (error) { setError(messageErreur(error)); setGoogleLoading(false) }
-    // En cas de succès le navigateur quitte la page.
+    // En cas de succès le navigateur quitte la page ; sinon on rend la main après 8 s.
+    else setTimeout(() => setGoogleLoading(false), 8000)
   }
 
-  const occupe = loading || googleLoading
+  const occupe = loading
   const echecsRestants = ECHECS_AVANT_PAUSE - etat.echecs
 
   return (
@@ -163,7 +171,7 @@ export function LoginPage() {
             </div>
 
             <button
-              type="button" onClick={handleGoogle} disabled={occupe || enPause}
+              type="button" onClick={handleGoogle} disabled={googleLoading || loading || enPause}
               className="w-full flex items-center justify-center gap-2.5 h-12 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)]
                 text-[var(--text)] font-medium hover:border-[var(--border-strong)] hover:-translate-y-px active:translate-y-0
                 transition-all disabled:opacity-50 disabled:cursor-not-allowed"

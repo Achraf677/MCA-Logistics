@@ -405,3 +405,9 @@ body::before {
 .login-shake { animation: loginShake .45s cubic-bezier(.36,.07,.19,.97); }
 .login-glow { background: radial-gradient(28rem circle at var(--mx,50%) var(--my,0%), var(--brand-soft), transparent 60%); }
 @media (prefers-reduced-motion: reduce) { .login-shake { animation: none; } }
+/* Remplissage automatique du navigateur : garde le fond sombre de la carte */
+.login-input:-webkit-autofill, .login-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  box-shadow: 0 0 0 100rem var(--bg-elevated) inset;
+  caret-color: var(--text);
+}
