@@ -40,7 +40,7 @@ function Champ({ id, label, type, value, onChange, icone, autoComplete, invalide
         ${invalide ? 'border-[var(--danger)]' : 'border-[var(--border)]'}`}>
         <span className="pl-3.5 text-[var(--text-disabled)] group-focus-within:text-[var(--brand)] transition-colors">{icone}</span>
         <input
-          id={id} ref={inputRef} type={type} value={value} required
+          id={id} name={id} ref={inputRef} type={type} value={value} required
           autoComplete={autoComplete} spellCheck={false} autoCapitalize="none"
           onChange={e => onChange(e.target.value)}
           onKeyDown={onKeyState} onKeyUp={onKeyState}
@@ -123,7 +123,12 @@ export function LoginPage() {
     if (piege || enPause || loading) return
     setLoading(true)
     setError(null)
-    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+    // Lit les champs dans le formulaire : le remplissage automatique du navigateur
+    // ne met pas toujours l'état React à jour avant le premier clic.
+    const f = new FormData(e.currentTarget as HTMLFormElement)
+    const mail = String(f.get('email') ?? email).trim()
+    const mdp = String(f.get('password') ?? password)
+    const { error } = await supabase.auth.signInWithPassword({ email: mail, password: mdp })
     if (error) {
       echec(messageErreur(error))
       setPassword('')
@@ -246,7 +251,7 @@ export function LoginPage() {
               )}
 
               <button
-                type="submit" disabled={occupe || enPause || !email || !password}
+                type="submit" disabled={occupe || enPause}
                 className="group relative h-12 rounded-xl font-semibold text-white overflow-hidden
                   bg-[linear-gradient(120deg,var(--brand-deep),var(--brand))] shadow-[0_0.6rem_1.6rem_-0.6rem_var(--brand)]
                   hover:-translate-y-px hover:shadow-[0_0.9rem_2rem_-0.6rem_var(--brand)] active:translate-y-0
