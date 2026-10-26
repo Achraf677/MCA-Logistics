@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, MapPin, ShieldCheck, Timer, Truck } from 'lucide-react'
+import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck, Timer } from 'lucide-react'
 import { supabase } from './providers'
 import {
   apresEchec, ecrireEtat, ECHECS_AVANT_PAUSE, emailPlausible, formaterDuree,
@@ -14,46 +14,6 @@ function GoogleIcon() {
       <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
       <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
     </svg>
-  )
-}
-
-/** Panneau de marque : une route animée entre deux arrêts, comme une course MCA. */
-function PanneauMarque() {
-  return (
-    <aside className="relative hidden lg:flex flex-col justify-between overflow-hidden p-12 text-white
-      bg-[linear-gradient(145deg,#1b0d10_0%,#2a0f14_45%,#7a0a14_100%)]">
-      <div className="absolute inset-0 opacity-40 bg-[radial-gradient(40rem_circle_at_85%_10%,rgba(245,180,36,.28),transparent_55%)]" />
-      <svg className="absolute inset-0 w-full h-full" viewBox="0 0 600 800" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-        <path className="login-route" d="M-20 640 C 140 560, 160 420, 300 440 S 470 300, 380 200 S 520 90, 640 120"
-          fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="3" strokeLinecap="round" />
-        <circle cx="300" cy="440" r="7" fill="#f5b424" />
-        <circle cx="300" cy="440" r="16" fill="none" stroke="#f5b424" strokeOpacity=".4" />
-        <circle cx="380" cy="200" r="7" fill="#ff2e3e" />
-        <circle cx="380" cy="200" r="16" fill="none" stroke="#ff2e3e" strokeOpacity=".5" />
-      </svg>
-
-      <div className="relative flex items-center gap-3">
-        <span className="inline-grid place-items-center w-12 h-12 rounded-2xl bg-white shadow-lg">
-          <img src="/logo-mca.png" alt="" className="w-10 h-10 object-contain" />
-        </span>
-        <span className="font-display font-bold text-xl tracking-tight">MCA <span className="text-[#ff5563]">Logistics</span></span>
-      </div>
-
-      <div className="relative max-w-md">
-        <div className="login-float inline-flex items-center gap-2 rounded-full bg-white/10 backdrop-blur px-3 py-1.5 text-sm mb-6">
-          <Truck size={16} /> Transport express &amp; messagerie
-        </div>
-        <h2 className="font-display font-bold text-4xl leading-tight">
-          Chaque course,<br />du retrait à la <span className="text-[#f5b424]">livraison</span>.
-        </h2>
-        <ul className="mt-8 space-y-3 text-white/80 text-sm">
-          <li className="flex items-center gap-3"><MapPin size={18} className="text-[#f5b424]" /> Tournées et planning en temps réel</li>
-          <li className="flex items-center gap-3"><ShieldCheck size={18} className="text-[#f5b424]" /> Accès protégé, tentatives surveillées</li>
-        </ul>
-      </div>
-
-      <p className="relative text-xs text-white/50">Strasbourg · Ostwald</p>
-    </aside>
   )
 }
 
@@ -181,11 +141,9 @@ export function LoginPage() {
   const echecsRestants = ECHECS_AVANT_PAUSE - etat.echecs
 
   return (
-    <div className="min-h-screen grid grid-cols-[minmax(0,1fr)] lg:grid-cols-[1.05fr_1fr] bg-[var(--bg)]">
-      <PanneauMarque />
-
-      <main className="relative flex items-center justify-center px-4 py-10 sm:px-8 overflow-clip">
-        <div className="pointer-events-none absolute -top-40 -right-40 w-[28rem] h-[28rem] rounded-full bg-[var(--brand-soft)] blur-3xl" />
+    <div className="min-h-screen bg-[var(--bg)]">
+      <main className="relative flex min-h-screen items-center justify-center px-4 py-10 sm:px-8 overflow-clip">
+        <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[34rem] h-[34rem] rounded-full bg-[var(--brand-soft)] blur-3xl" />
 
         <div
           ref={carte}
@@ -195,9 +153,9 @@ export function LoginPage() {
           <div className="login-glow pointer-events-none absolute inset-0" />
 
           <div className="relative">
-            {/* Marque (mobile : le panneau de gauche est masqué) */}
+            {/* Marque */}
             <div className="flex flex-col items-center text-center mb-7">
-              <span className="lg:hidden inline-grid place-items-center w-20 h-20 rounded-2xl bg-white mb-3 shadow-[0_0.4rem_1.5rem_-0.5rem_rgba(0,0,0,.35)]">
+              <span className="inline-grid place-items-center w-20 h-20 rounded-2xl bg-white mb-3 shadow-[0_0.4rem_1.5rem_-0.5rem_rgba(0,0,0,.35)]">
                 <img src="/logo-mca.png" alt="MCA Logistics" className="w-16 h-16 object-contain" />
               </span>
               <h1 className="font-display font-bold text-[var(--text)] text-3xl leading-tight">Bon retour</h1>
