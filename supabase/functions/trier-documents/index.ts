@@ -21,8 +21,8 @@ import { detecterImage, estPdf, jpegsDuPdf, versDataUrl } from '../_shared/justi
 import { jetonAcces, DOSSIER_MIME, NOM_DOSSIER_RACINE } from '../_shared/googleDrive.ts';
 import { texteDuPdf } from '../_shared/pdfTexte.ts';
 import {
-  TYPES_DOCUMENT, cheminDefaut, cheminsExistants, nomPropose, normaliserChemin, normaliserProposition, rapprocherTiers, rapprocherVehicule,
-  pageDuNom, propositionTournee, type ContexteTournee, type DossierDrive, type PropositionBrute,
+  TYPES_DOCUMENT, cheminConvention, cheminDefaut, cheminsExistants, nomPropose, normaliserChemin, normaliserProposition, rapprocherTiers, rapprocherVehicule,
+  pageDuNom, propositionTournee, salarieDuNom, typeDe, typeSensibleDuNom, type ContexteTournee, type DossierDrive, type PropositionBrute,
 } from '../_shared/triDocuments.ts';
 
 const BUCKET = 'documents';
@@ -54,13 +54,12 @@ SENS DES FACTURES : émise PAR MCA Logistics → facture_client, tiers = le dest
 - date : date d'ÉMISSION du document (AAAA-MM-JJ), pas l'échéance ni la date de paiement
 - tiers : nom du client, du fournisseur, de l'organisme ou du salarié concerné (bulletin de paie, document salarié : le salarié)
 - montant_ttc : total TTC à payer ou payé, en euros (nombre), seulement si le document en porte un
-- reference : numéro de facture, de devis, de contrat, de lettre de voiture, de dossier…
+- reference : le numéro de pièce TEL QU'IMPRIMÉ (n° de facture, de devis, de contrat, de contravention, de dossier, d'ordre de transport…), sinon null. Jamais un libellé.
 - vehicule : plaque d'immatriculation si le document concerne un véhicule (carte grise, assurance, entretien, amende, carburant…), sinon null
 - resume : une phrase courte qui dit ce qu'est le document
-- chemin : le dossier du Drive où le ranger, sous forme de liste de noms de dossiers (3 niveaux au plus, jamais le nom du fichier).
-  RÈGLE : choisis un chemin qui existe DÉJÀ dans la liste ci-dessous, tel quel, avec l'année du document si la liste range par année.
-  Si aucun ne convient, crée un nouveau dossier en respectant la convention visible dans la liste (sinon : Dossier / Année).
-  Exemples : ["Achats","Carburant","2026"] · ["Ventes","ASDIA","2026"] · ["Flotte","AB-123-CD","2025"] · ["Équipe","2026"].
+- chemin : le dossier du Drive où le ranger, sous forme de liste de noms de dossiers (4 niveaux au plus, jamais le nom du fichier).
+  RÈGLE : choisis un chemin qui existe DÉJÀ dans la liste ci-dessous, tel quel. Si aucun ne convient, crée un nouveau dossier en respectant la convention visible dans la liste.
+  Exemples réels : ["Comptabilite & finances","Clients","CLIENTA","2026-07"] · ["Comptabilite & finances","Fournisseurs","ORGANISME"] · ["Vehicules et Flotte","RENAULT TRAFIC AB-123-CD","Amendes"] · ["Fiscal","TVA","2026-05"] · ["Assurances","Flotte automobile","FORD TRANSIT EF-456-GH"].
 
 Donne une confiance (0 à 1) SÉPARÉE pour le type, la date, le tiers, le montant et le chemin.
 Réponds UNIQUEMENT en JSON :
@@ -169,8 +168,9 @@ Deno.serve(async (req) => {
   if (!acces.ok) return acces.response;
 
   // Noms déjà pris (documents classés) : une proposition ne doit jamais doubler un nom existant.
-  const { data: classes } = await service.from('documents').select('file_name').eq('company_id', acces.companyId).eq('statut_tri', 'classe');
-  const pris = new Set((classes ?? []).map(d => String(d.file_name).toLowerCase()));
+  const { data: classes } = await service.from('documents').select('file_name, type_document, date_document, tiers, reference').eq('company_id', acces.companyId).eq('statut_tri', 'classe');
+  const classesInfos = (classes ?? []) as Array<{ file_name: string; type_document: string | null; date_document: string | null; tiers: string | null; reference: string | null }>;
+  const pris = new Set(classesInfos.map(d => String(d.file_name).toLowerCase()));
   const jourParis = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date());
 
   // Ce que l'IA doit connaître pour ne pas inventer : fiches du site + arborescence réelle du Drive.
@@ -201,6 +201,27 @@ Deno.serve(async (req) => {
           type: r.type, date: r.date, tiers: r.tiers, tiers_connu: !!tournee.client, montant_ttc_cts: null, reference: r.reference, resume: r.resume,
           confiance: { type: 1, date: r.date ? 1 : 0, tiers: r.tiers ? 1 : 0, montant: 1 }, vehicule: null, nom: r.nom, lu_via: 'tournee', propose_le: new Date().toISOString(),
           chemin: choix.chemin, chemin_nouveaux: choix.nouveaux, chemin_confiance: 1, alternatives: [],
+        },
+        statut_tri: 'propose',
+      }).eq('id', doc.id);
+      resultats.push(error ? { id, ok: false, raison: 'enregistrement impossible' } : { id, ok: true });
+      continue;
+    }
+
+    // Pièce personnelle ou secrète (identité, permis, casier, Carte Vitale, codes) : reconnue d'après le nom, JAMAIS envoyée à l'IA.
+    const sensible = typeSensibleDuNom(String(doc.file_name));
+    if (sensible) {
+      const salarie = salarieDuNom(String(doc.file_name), salaries);
+      const dateDepot = String(doc.created_at).slice(0, 10);
+      const defaut = cheminDefaut({ type: sensible, date: dateDepot, tiers: salarie }, existants);
+      const choix = normaliserChemin(defaut, existants, defaut);
+      const nom = nomPropose({ type: sensible, dateDepot, tiers: salarie }, String(doc.file_name), pris);
+      pris.add(nom.toLowerCase());
+      const { error } = await service.from('documents').update({
+        proposition: {
+          type: sensible, date: typeDe(sensible)?.intemporel ? null : dateDepot, tiers: salarie, tiers_connu: !!salarie, montant_ttc_cts: null, reference: null,
+          resume: 'Pièce personnelle ou secrète : reconnue d\'après son nom, non lue par l\'IA.', confiance: { type: 0.9, date: 1, tiers: salarie ? 0.9 : 0, montant: 1 },
+          vehicule: null, nom, lu_via: 'nom', propose_le: new Date().toISOString(), chemin: choix.chemin, chemin_nouveaux: choix.nouveaux, chemin_confiance: 0.9, alternatives: [],
         },
         statut_tri: 'propose',
       }).eq('id', doc.id);
@@ -245,18 +266,27 @@ Deno.serve(async (req) => {
     const p = normaliserProposition(brut, jourParis);
     const tiers = rapprocherTiers(p.tiers, connus);
     const vehicule = rapprocherVehicule(typeof brut?.vehicule === 'string' ? brut.vehicule : null, plaques);
-    const defaut = cheminDefaut({ type: p.type, date: p.date, vehicule });
-    const confChemin = Math.min(1, Math.max(0, Number(brut?.chemin_confiance) || 0));
-    const choix = normaliserChemin(confChemin >= SEUIL_CHEMIN ? brut?.chemin : null, existants, defaut);
-    const alt = normaliserChemin(defaut, existants, defaut);
-    const alternatives = alt.chemin.join('/') === choix.chemin.join('/') ? [] : [alt];
+    const dateDepot = String(doc.created_at).slice(0, 10);
+    // Dossier : la règle de la convention d'abord (type + tiers + véhicule) ; sans règle, le choix de l'IA ; sinon le dossier de transit.
+    const regle = cheminConvention({ type: p.type, date: p.date ?? (typeDe(p.type)?.intemporel ? null : dateDepot), tiers: tiers.nom, vehicule }, existants);
+    const defaut = regle ?? cheminDefaut({ type: p.type }, existants);
+    const confIA = Math.min(1, Math.max(0, Number(brut?.chemin_confiance) || 0));
+    const confChemin = regle ? 1 : confIA;
+    const choix = normaliserChemin(regle ?? (confIA >= SEUIL_CHEMIN ? brut?.chemin : null), existants, defaut);
+    // Si la règle a décidé, le choix de l'IA reste proposé en « Sinon : » quand il diffère.
+    const choixIA = regle && confIA >= SEUIL_CHEMIN && brut?.chemin ? normaliserChemin(brut.chemin, existants, defaut) : null;
+    const alternatives = !choixIA || choixIA.chemin.join('/') === choix.chemin.join('/') ? [] : [choixIA];
 
-    const nom = nomPropose({ date: p.date, type: p.type, tiers: tiers.nom, montant_ttc_cts: p.montant_ttc_cts, reference: p.reference }, String(doc.file_name), pris);
+    const nom = nomPropose({ date: p.date, dateDepot, type: p.type, tiers: tiers.nom, reference: p.reference }, String(doc.file_name), pris);
     pris.add(nom.toLowerCase());
+    // Déjà rangé ? Même type, même date, même tiers et même référence qu'un document classé.
+    const doublon = p.type && p.date && tiers.nom && p.reference
+      ? (classesInfos.find(c => c.type_document === p.type && c.date_document === p.date && (c.tiers ?? '').toLowerCase() === tiers.nom!.toLowerCase() && (c.reference ?? '').toLowerCase() === p.reference!.toLowerCase())?.file_name ?? null)
+      : null;
     const { error } = await service.from('documents')
       .update({
         proposition: {
-          ...p, tiers: tiers.nom, tiers_connu: tiers.connu, vehicule, nom, lu_via: luVia, propose_le: new Date().toISOString(),
+          ...p, tiers: tiers.nom, tiers_connu: tiers.connu, vehicule, nom, lu_via: luVia, propose_le: new Date().toISOString(), doublon_de: doublon,
           chemin: choix.chemin, chemin_nouveaux: choix.nouveaux, chemin_confiance: confChemin, alternatives,
         },
         statut_tri: 'propose',

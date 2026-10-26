@@ -58,6 +58,8 @@ export interface PropositionDocument {
   nom: string
   /** Le tiers lu correspond à une fiche client / fournisseur / salarié (son nom est alors celui de la fiche). */
   tiers_connu?: boolean
+  /** Nom du document déjà rangé qui ressemble à celui-ci (même type, date, tiers et référence). */
+  doublon_de?: string | null
   /** Plaque d'un véhicule de la flotte reconnue sur le document. */
   vehicule?: string | null
   /** Dossier du Drive proposé (de la racine de rangement au dossier final) et, par niveau, « n'existe pas encore ». */
@@ -66,7 +68,7 @@ export interface PropositionDocument {
   chemin_confiance?: number
   /** Autres emplacements possibles (convention par défaut). */
   alternatives?: Array<{ chemin: string[]; nouveaux: boolean[] }>
-  lu_via: 'image' | 'texte' | 'tournee'
+  lu_via: 'image' | 'texte' | 'tournee' | 'nom'
   propose_le: string
 }
 

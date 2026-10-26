@@ -1,5 +1,6 @@
 // Logique pure de l'onglet Documents (Système) : sources, lecture IA, lots, tailles. Aucune dépendance DB ni DOM.
 import type { DocumentRow } from '../../shared/lib/documents.types'
+import { libelleType, typeDe } from '../../shared/lib/conventionDocuments'
 
 export const SOURCES: Record<string, string> = {
   delivery: 'Livraison', vehicle: 'Véhicule', client: 'Client', team_member: 'Salarié', tournee_colis: 'Tournée de colis',
@@ -104,4 +105,48 @@ export function depuisQuand(iso: string | null | undefined, maintenant = new Dat
   const heure = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
   if (d.toDateString() === hier.toDateString()) return `hier ${heure}`
   return `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${heure}`
+}
+
+// ── À confirmer : documents sûrs, recherche, alignement sur les dossiers existants ───────────────────────
+
+/** En dessous de ce score, l'écran surligne le champ. */
+export const SEUIL_SUR = 0.85
+
+/**
+ * Document « sûr » : type, date et tiers lus avec assurance (ou rangés d'après une tournée), dossier déjà existant,
+ * pas un doublon, pas une pièce sensible. Ceux-là se confirment d'un seul geste.
+ */
+export function estSur(d: Pick<DocumentRow, 'proposition'>): boolean {
+  const p = d.proposition
+  if (!p || !p.type || p.lu_via === 'nom' || p.doublon_de) return false
+  if ((p.chemin_nouveaux ?? []).some(Boolean) || !(p.chemin?.length)) return false
+  if (p.lu_via === 'tournee') return true
+  const intemporel = !!typeDe(p.type)?.intemporel
+  const c = p.confiance
+  if (c.type < SEUIL_SUR) return false
+  if (!intemporel && (!p.date || c.date < SEUIL_SUR)) return false
+  return !!p.tiers && c.tiers >= SEUIL_SUR && !!p.tiers_connu
+}
+
+const normal = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+
+/** Un document correspond-il aux mots tapés (nom, type, tiers, référence, résumé) ? Tous les mots doivent y être. */
+export function correspondRecherche(d: Pick<DocumentRow, 'file_name' | 'proposition' | 'type_document' | 'tiers' | 'reference'>, q: string): boolean {
+  const mots = normal(q).split(' ').filter(Boolean)
+  if (mots.length === 0) return true
+  const p = d.proposition
+  const texte = normal([d.file_name, p?.nom, libelleType(p?.type ?? d.type_document), p?.tiers ?? d.tiers, p?.reference ?? d.reference, p?.resume, p?.chemin?.join(' ')].filter(Boolean).join(' '))
+  return mots.every(m => texte.includes(m))
+}
+
+/** Reprend, niveau par niveau, l'orthographe des dossiers déjà présents dans le Drive (« Comptabilité » → « Comptabilite »). */
+export function aligner(chemin: readonly string[], existants: ReadonlyArray<readonly string[]>): string[] {
+  const sortie: string[] = []
+  let connu = true
+  for (const seg of chemin) {
+    const trouve = connu ? existants.find(e => e.length === sortie.length + 1 && sortie.every((x, i) => x === e[i]) && normal(e[sortie.length]) === normal(seg)) : undefined
+    if (trouve) sortie.push(trouve[sortie.length])
+    else { connu = false; sortie.push(seg) }
+  }
+  return sortie
 }

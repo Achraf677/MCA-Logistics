@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
-import { ArrowRight, Check, CheckCheck, FolderPlus, FolderTree, Sparkles, Undo2, X } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Check, CheckCheck, FolderPlus, FolderTree, ShieldCheck, Sparkles, Undo2, X } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
+import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
@@ -8,9 +9,9 @@ import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 import { getDownloadUrl } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
-import { TYPES_DOCUMENT, cheminDefaut, nomPropose } from '../../shared/lib/documentsTri'
+import { TYPES_DOCUMENT, cheminConvention, cheminDefaut, nomPropose, typeDe } from '../../shared/lib/documentsTri'
 import { montantSaisiEnCts } from '../../shared/lib/depenses'
-import { cheminAvecAnnee, cheminEnTexte, optionsChemin, texteEnChemin } from './documents.logic'
+import { aligner, cheminAvecAnnee, cheminEnTexte, correspondRecherche, estSur, optionsChemin, texteEnChemin } from './documents.logic'
 import { noterCheminDrive, rangerDansDrive, remettreDansInbox } from './documents.queries'
 import { MiniatureDoc } from './MiniatureDoc'
 
@@ -35,12 +36,21 @@ const PAQUET = 8
 
 const montantTexte = (cts: number | null | undefined) => (cts != null ? (cts / 100).toFixed(2).replace('.', ',') : '')
 
-function editionInitiale(d: DocumentRow): Edition {
+const depotDe = (d: DocumentRow) => d.created_at.slice(0, 10)
+
+/** Dossier d'après la convention (type, tiers, véhicule, date du document ou du dépôt), aligné sur les dossiers du Drive. */
+function cheminRegle(d: DocumentRow, e: { type: string; date: string; tiers: string }, dossiers: string[][]): string[] | null {
+  const t = e.type || null
+  const r = cheminConvention({ type: t, date: e.date || (typeDe(t)?.intemporel ? null : depotDe(d)), tiers: e.tiers || null, vehicule: d.proposition?.vehicule }, dossiers)
+  return r ? aligner(r, dossiers) : null
+}
+
+function editionInitiale(d: DocumentRow, dossiers: string[][]): Edition {
   const p = d.proposition
   return {
     type: p?.type ?? '', date: p?.date ?? '', tiers: p?.tiers ?? '', montant: montantTexte(p?.montant_ttc_cts), reference: p?.reference ?? '',
     nom: p?.nom ?? d.file_name, nomManuel: false,
-    chemin: cheminEnTexte(p?.chemin?.length ? p.chemin : cheminDefaut({ type: p?.type, date: p?.date, vehicule: p?.vehicule })), cheminManuel: false,
+    chemin: cheminEnTexte(p?.chemin?.length ? p.chemin : cheminDefaut({ type: p?.type, date: p?.date, tiers: p?.tiers, vehicule: p?.vehicule }, dossiers)), cheminManuel: false,
   }
 }
 
@@ -64,23 +74,23 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
   const [envoi, setEnvoi] = useState(0)
   /** Carte dont on est en train de nommer un nouveau sous-dossier, et le nom en cours de saisie. */
   const [nouveau, setNouveau] = useState<{ id: string; nom: string } | null>(null)
+  const [q, setQ] = useState('')
+  const [filtre, setFiltre] = useState<'tous' | 'surs' | 'verifier'>('tous')
 
-  const edition = (d: DocumentRow): Edition => editions[d.id] ?? editionInitiale(d)
+  const edition = (d: DocumentRow): Edition => editions[d.id] ?? editionInitiale(d, dossiers)
   const nomsPris = useMemo(() => new Set(classes.map(c => c.file_name.toLowerCase())), [classes])
 
   const modifier = (d: DocumentRow, maj: Partial<Edition>) => {
     const e = { ...edition(d), ...maj }
-    // Tant que le nom n'a pas été tapé à la main, il suit le type / la date / le tiers / le montant / la référence.
+    // Tant que le nom n'a pas été tapé à la main, il suit le type / la date / le tiers / la référence (jamais le montant : convention).
     if (!e.nomManuel && !('nom' in maj)) {
-      const montant = montantSaisiEnCts(e.montant)
-      e.nom = nomPropose({
-        date: e.date || null, type: e.type || null, tiers: e.tiers || null, reference: e.reference || null,
-        montant_ttc_cts: montant != null && !Number.isNaN(montant) ? montant : null,
-      }, d.file_name, nomsPris)
+      e.nom = nomPropose({ date: e.date || null, dateDepot: depotDe(d), type: e.type || null, tiers: e.tiers || null, reference: e.reference || null }, d.file_name, nomsPris)
     }
-    // Tant que le chemin n'a pas été tapé à la main, il suit le type (dossier par défaut) puis la date (dossier d'année).
-    if (!e.cheminManuel && !('chemin' in maj)) {
-      if ('type' in maj) e.chemin = cheminEnTexte(cheminDefaut({ type: e.type || null, date: e.date || null, vehicule: d.proposition?.vehicule }))
+    // Tant que le chemin n'a pas été tapé à la main, il suit la règle de la convention (type, tiers, date) ; sans règle, il ne bouge qu'avec l'année.
+    if (!e.cheminManuel && !('chemin' in maj) && ('type' in maj || 'tiers' in maj || 'date' in maj)) {
+      const regle = cheminRegle(d, e, dossiers)
+      if (regle) e.chemin = cheminEnTexte(regle)
+      else if ('type' in maj) e.chemin = cheminEnTexte(cheminDefaut({ type: e.type || null }, dossiers))
       else if ('date' in maj) e.chemin = cheminEnTexte(cheminAvecAnnee(texteEnChemin(e.chemin), e.date || null))
     }
     setEditions(p => ({ ...p, [d.id]: e }))
@@ -139,10 +149,11 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
   }
 
   const toutConfirmer = () => {
-    const aFaire = docs.filter(pret)
-    if (docs.length > aFaire.length) toast(`${docs.length - aFaire.length} à compléter (type ou dossier manquant)`, 'error')
+    const aFaire = visibles.filter(pret)
+    if (visibles.length > aFaire.length) toast(`${visibles.length - aFaire.length} à compléter (type ou dossier manquant)`, 'error')
     void envoyer(aFaire)
   }
+  const confirmerSurs = () => { void envoyer(docs.filter(d => estSur(d) && pret(d))) }
 
   const ouvrir = async (d: DocumentRow) => {
     const url = await getDownloadUrl(d)
@@ -153,7 +164,9 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
     return <EmptyState icon={<Sparkles size={40} />} title="Rien à confirmer" description="Lance le tri depuis l'Inbox : les propositions de l'IA arrivent ici." />
   }
 
-  const prets = docs.filter(pret).length
+  const surs = docs.filter(d => estSur(d) && pret(d)).length
+  const visibles = docs.filter(d => correspondRecherche(d, q) && (filtre === 'tous' || (filtre === 'surs') === estSur(d)))
+  const prets = visibles.filter(pret).length
 
   return (
     <div className="flex flex-col gap-3">
@@ -173,14 +186,30 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
           <p className="flex-1 min-w-[12rem] text-sm text-[var(--text-muted)]">
             L'IA a lu <strong className="text-[var(--text)]">{docs.length}</strong> document{docs.length > 1 ? 's' : ''}. Vérifie le nom et le type, corrige si besoin : rien n'est rangé sans ta confirmation.
           </p>
-          <Button variant="primary" className="min-h-10" disabled={prets === 0} onClick={toutConfirmer}>
-            <CheckCheck size={15} /> Tout confirmer ({prets})
+          {surs > 0 && (
+            <Button variant="primary" className="min-h-10" onClick={confirmerSurs}>
+              <ShieldCheck size={15} /> Confirmer les sûrs ({surs})
+            </Button>
+          )}
+          <Button variant={surs > 0 ? 'secondary' : 'primary'} className="min-h-10" disabled={prets === 0} onClick={toutConfirmer}>
+            <CheckCheck size={15} /> {q || filtre !== 'tous' ? 'Confirmer la sélection' : 'Tout confirmer'} ({prets})
           </Button>
         </div>
       )}
+      <div className="flex flex-wrap items-center gap-2">
+        <BarreRecherche value={q} onChange={setQ} placeholder="Chercher : nom, tiers, type, référence, dossier…" ariaLabel="Rechercher dans À confirmer"
+          className="flex-1 min-w-[14rem] max-w-xl" compteur={`${visibles.length} sur ${docs.length}`} />
+        {([['tous', 'Tous'], ['surs', 'Sûrs'], ['verifier', 'À vérifier']] as const).map(([k, l]) => (
+          <button key={k} type="button" onClick={() => setFiltre(k)} aria-pressed={filtre === k}
+            className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${filtre === k ? 'border-[var(--brand)] bg-[var(--brand)] text-black font-medium' : 'border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}>
+            {l}
+          </button>
+        ))}
+      </div>
 
+      {visibles.length === 0 && <p className="text-sm text-[var(--text-muted)] px-1">Aucun document ne correspond.</p>}
       <ul className="flex flex-col gap-3">
-        {docs.map(d => {
+        {visibles.map(d => {
           const e = edition(d)
           const c = d.proposition?.confiance
           const douteux = (k: 'type' | 'date' | 'tiers' | 'montant') => (c ? c[k] < SEUIL_DOUTE : true)
@@ -195,8 +224,14 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
                   <p className="flex items-center gap-2 text-xs text-[var(--text-muted)] min-w-0">
                     <span className="truncate">{d.file_name}</span>
                     <ArrowRight size={12} className="shrink-0" />
-                    <Badge color={d.proposition?.lu_via === 'tournee' ? 'warning' : d.proposition?.lu_via === 'texte' ? 'info' : 'success'}>{d.proposition?.lu_via === 'tournee' ? 'Rangé d\'après la tournée' : d.proposition?.lu_via === 'texte' ? 'Lu dans le texte' : 'Lu sur l\'image'}</Badge>
+                    <Badge color={d.proposition?.lu_via === 'tournee' || d.proposition?.lu_via === 'nom' ? 'warning' : d.proposition?.lu_via === 'texte' ? 'info' : 'success'}>{d.proposition?.lu_via === 'tournee' ? 'Rangé d\'après la tournée' : d.proposition?.lu_via === 'nom' ? 'Pièce sensible : non lue par l\'IA' : d.proposition?.lu_via === 'texte' ? 'Lu dans le texte' : 'Lu sur l\'image'}</Badge>
+                    {estSur(d) && <Badge color="success">Sûr</Badge>}
                   </p>
+                  {d.proposition?.doublon_de && (
+                    <p className="flex items-center gap-1.5 text-xs text-[var(--warning)]">
+                      <AlertTriangle size={13} /> Peut-être déjà rangé : {d.proposition.doublon_de}
+                    </p>
+                  )}
                   <input value={e.nom} aria-label="Nom proposé" disabled={!peutEcrire}
                     onChange={ev => modifier(d, { nom: ev.target.value, nomManuel: true })}
                     className="field font-medium text-[var(--text)]" />
@@ -212,7 +247,7 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
                   className={`field ${bord('date', e.date === '')}`} />
                 <input value={e.tiers} onChange={ev => modifier(d, { tiers: ev.target.value })} placeholder="Client / fournisseur" aria-label="Tiers" disabled={!peutEcrire}
                   className={`field ${bord('tiers', e.tiers === '')}`} />
-                <input value={e.montant} onChange={ev => modifier(d, { montant: ev.target.value })} placeholder="Montant TTC (€)" inputMode="decimal" aria-label="Montant TTC" disabled={!peutEcrire}
+                <input value={e.montant} onChange={ev => modifier(d, { montant: ev.target.value })} placeholder="Montant TTC (fiche)" inputMode="decimal" aria-label="Montant TTC (pas dans le nom)" disabled={!peutEcrire}
                   className={`field font-mono ${Number.isNaN(montantSaisiEnCts(e.montant) as number) ? '!border-[var(--danger)]' : ''}`} />
                 <input value={e.reference} onChange={ev => modifier(d, { reference: ev.target.value })} placeholder="Référence (n° facture…)" aria-label="Référence" disabled={!peutEcrire}
                   className="field" />
