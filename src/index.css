@@ -399,3 +399,15 @@ body::before {
     transition-duration: .01ms !important;
   }
 }
+
+/* ── Connexion ─────────────────────────────────────────── */
+@keyframes loginShake { 10%,90% { transform: translateX(-2px); } 20%,80% { transform: translateX(4px); } 30%,50%,70% { transform: translateX(-6px); } 40%,60% { transform: translateX(6px); } }
+.login-shake { animation: loginShake .45s cubic-bezier(.36,.07,.19,.97); }
+.login-glow { background: radial-gradient(28rem circle at var(--mx,50%) var(--my,0%), var(--brand-soft), transparent 60%); }
+@media (prefers-reduced-motion: reduce) { .login-shake { animation: none; } }
+/* Remplissage automatique du navigateur : garde le fond sombre de la carte */
+.login-input:-webkit-autofill, .login-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  box-shadow: 0 0 0 100rem var(--bg-elevated) inset;
+  caret-color: var(--text);
+}
