@@ -414,3 +414,53 @@ export function choisirChemin(
   const regle = cheminConvention(e, existants)
   return regle ? { chemin: regle, via: e.parOrigine ? 'origine' : 'convention' } : null
 }
+
+// ── Fichiers déjà dans le Drive : nom conforme ?, origine d'après le dossier, dossiers confidentiels ───────────
+
+/**
+ * Le nom respecte-t-il déjà la convention `[AAAA-MM-JJ_]TYPE_TIERS[_NUMERO][_PARTIE].ext` ?
+ * MAJUSCULES, chiffres, points et tirets dans chaque bloc, blocs séparés par « _ », au moins TYPE et TIERS, TYPE commençant par une lettre,
+ * date complète (jour compris) ou pas de date du tout. Pas d'espace, pas de minuscule.
+ */
+export function estNomConforme(nomFichier: string): boolean {
+  const sans = nomFichier.trim().replace(/\.[A-Za-z0-9]{1,5}$/, '')
+  if (!sans || /\s/.test(sans)) return false
+  let blocs = sans.split('_')
+  if (/^\d{4}-\d{2}-\d{2}$/.test(blocs[0])) blocs = blocs.slice(1)
+  else if (/^\d{4}(-\d{2})?$/.test(blocs[0])) return false
+  if (blocs.length < 2 || !/^[A-Z]/.test(blocs[0])) return false
+  // Noms d'appareil photo / scanner (IMG_3794, SCAN_0012…) : jamais conformes.
+  if (/^(IMG|DSC|DSCN|PXL|SCAN|IMAGE|PHOTO|CAPTURE|SCREENSHOT|DOC|DOCUMENT|NEW)$/.test(blocs[0]) && blocs.slice(1).every(b => /^\d+$/.test(b))) return false
+  return blocs.every(b => /^[A-Z0-9](?:[A-Z0-9.-]*[A-Z0-9])?$/.test(b))
+}
+
+/** Dossiers où l'IA ne lit JAMAIS les fichiers : sécurité, direction, social et RH (n'importe où dans le chemin). */
+export function dossierConfidentiel(chemin: readonly string[]): boolean {
+  return chemin.some(s => /^(securite|direction|social et rh)$/.test(normal(s)))
+}
+
+export interface OrigineDossier { client: string | null; fournisseur: string | null; vehicule: string | null; salarie: string | null }
+
+const RE_PLAQUE = /\b([A-Z]{2})[- ]?(\d{3})[- ]?([A-Z]{2})\b/
+
+/** Plaque trouvée dans un texte (« RENAULT TRAFIC AB-123-CD » → « AB-123-CD »), sinon null. */
+export function plaqueDuTexte(texte: string): string | null {
+  const m = RE_PLAQUE.exec(sansAccents(texte).toUpperCase())
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null
+}
+
+/**
+ * Ce que le DOSSIER apprend sur ses fichiers (chemin depuis la racine du Drive) : Clients / <CLIENT>, Fournisseurs / <FOURNISSEUR>,
+ * Vehicules et Flotte / <MARQUE MODELE PLAQUE> (ou Assurances / Flotte automobile / …), Social et RH / Salaries / <NOM>.
+ */
+export function origineDuDossier(chemin: readonly string[]): OrigineDossier {
+  const o: OrigineDossier = { client: null, fournisseur: null, vehicule: null, salarie: null }
+  const n = chemin.map(normal)
+  const apres = (cle: string) => { const i = n.indexOf(cle); return i >= 0 && i + 1 < chemin.length ? chemin[i + 1] : null }
+  o.client = apres('clients')
+  o.fournisseur = apres('fournisseurs')
+  o.salarie = apres('salaries')
+  const v = apres('vehicules et flotte') ?? apres('flotte automobile')
+  o.vehicule = v ? plaqueDuTexte(v) : null
+  return o
+}

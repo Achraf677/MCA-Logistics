@@ -152,6 +152,34 @@ export async function renommerDansDrive(fileId: string, nom: string): Promise<st
   return null
 }
 
+export interface PropositionRenommage {
+  id: string
+  ancien: string
+  nouveau: string
+  type: string | null
+  tiers: string | null
+  date: string | null
+  reference: string | null
+  partie: string | null
+  deja_conforme: boolean
+  lu_via: 'image' | 'texte' | 'nom'
+  raison?: string
+}
+
+/**
+ * L'IA lit des fichiers DÉJÀ rangés dans le Drive et propose un nom selon la convention (Edge `drive-renommer-ia`, 6 fichiers au plus).
+ * `reserves` = noms déjà proposés dans les paquets précédents du même dossier (jamais deux noms identiques). Rien n'est renommé ici.
+ */
+export async function proposerRenommages(fichiers: Array<{ id: string; nom: string }>, reserves: string[] = []): Promise<{ resultats: PropositionRenommage[]; erreur: string | null }> {
+  const { data, error } = await supabase.functions.invoke('drive-renommer-ia', { body: { fichiers, reserves } })
+  if (error || !data?.ok) {
+    const brut = (await lireErreurEdge(data, error))?.message ?? ''
+    const erreur = brut.includes('drive_not_connected') ? 'Le Drive n\'est pas connecté.' : brut.includes('drive_access_denied') ? 'Tu n\'as pas accès au Drive.' : brut || 'Lecture par l\'IA impossible'
+    return { resultats: [], erreur }
+  }
+  return { resultats: (data.data?.resultats ?? []) as PropositionRenommage[], erreur: null }
+}
+
 /** Dossiers existants du Drive sous le dossier de rangement (chemins relatifs, 4 niveaux au plus) : sert au choix de « Où le ranger ». */
 export async function arborescenceDrive(): Promise<string[][]> {
   const { data, error } = await supabase.functions.invoke('drive-browse', { body: { arbre: true } })

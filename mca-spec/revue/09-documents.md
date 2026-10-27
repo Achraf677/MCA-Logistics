@@ -18,6 +18,8 @@
 - Types nouveaux à ajouter dans le Google Doc : TICKET, FEUILLE-DE-ROUTE, SYNTHESE-TOURNEE, PREUVE-LIVRAISON, ASSURANCE, CAPACITE-TRANSPORT, DPAE, CNI, PERMIS-CONDUIRE, CASIER-JUDICIAIRE, CARTE-VITALE, CODES-ACCES, MODELE, DOCUMENT-VEHICULE, DOCUMENT-SALARIE, DOCUMENT.
 - Banc d'essai : `_shared/conventionDocuments.test.ts` et `documents/decrire.logic.test.ts` (données fictives).
 
+- **Bibliothèque : renommer des fichiers DÉJÀ dans le Drive (27/10/2026)** : baguette « Renommer avec l'IA » à gauche des boutons de chaque fichier (panneau : nom proposé modifiable + « Dis-moi ce que c'est » sans IA + Appliquer) ; bouton « Renommer le dossier » en haut (fichiers directs, 100 par passage, paquets de 5, barre + Arrêter, liste de revue ancien → nouveau, cases, « masquer les conformes » par défaut, Appliquer (n), optimiste, échec = ancien nom remis). Edge `drive-renommer-ia` v1 (verify_jwt, droit `systeme.documents/update` + accès Drive ; la lecture IA est partagée avec `trier-documents` via `_shared/lectureDocument.ts`). Le dossier d'origine (Clients/<C>, Fournisseurs/<F>, Vehicules et Flotte/<VEH>, Salaries/<N>) complète tiers / véhicule (`origineDuDossier`) ; `estNomConforme` écarte les noms déjà bons. **Jamais lus par l'IA** : pièces sensibles (nom) et tout fichier sous Sécurité, Direction, Social et RH (chemin relu côté serveur) ; Docs / Sheets / Word / Excel et fichiers > 15 Mo : d'après le nom seulement. Renommage via `drive-rename` existante.
+
 ## 1 Rôle
 - Un seul endroit pour TOUS les fichiers du site : Inbox → tri par l'IA → confirmation → rangé dans le Drive de la société.
 - Rien n'est rangé sans confirmation. La Bibliothèque = le Drive, rien d'autre.

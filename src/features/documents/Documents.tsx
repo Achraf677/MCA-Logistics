@@ -126,7 +126,7 @@ export function Documents() {
       )}
       {vue === 'historique' && <HistoriqueDocuments docs={rangesRecents} miniatures={miniatures} toast={toast} />}
       {vue === 'bibliotheque' && (
-        <BibliothequeDocuments peutEcrire={peutEcrire} estPresident={profile?.role === 'president'} toast={toast} />
+        <BibliothequeDocuments peutEcrire={peutEcrire} estPresident={profile?.role === 'president'} referents={referents} classes={classes} toast={toast} />
       )}
     </div>
   )

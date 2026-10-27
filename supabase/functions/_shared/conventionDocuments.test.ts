@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   cheminConvention, cheminDefaut, nomPropose, salarieDuNom, typeSensibleDuNom, dossierVehicule, partieDuTexte, cheminHabituel, typeHabituel, exemplesRangement,
-  completerDepuisOrigine, origineDuDocument, choisirChemin, type ClasseHistorique,
+  completerDepuisOrigine, origineDuDocument, choisirChemin, estNomConforme, origineDuDossier, dossierConfidentiel, type ClasseHistorique,
 } from './conventionDocuments'
 
 // Dossiers réels (extrait) de « MCA Documents ».
@@ -183,5 +183,29 @@ describe('habitudes : ce qui a déjà été rangé', () => {
     expect(choisirChemin({ type: 'facture_fournisseur', tiers: 'Garage G' }, { existants: EX })).toMatchObject({ via: 'convention', chemin: ['Comptabilite & finances', 'Fournisseurs', 'GARAGE G'] })
     expect(choisirChemin({ type: 'amende', vehicule: 'AB-123-CD', parOrigine: true }, {})).toMatchObject({ via: 'origine' })
     expect(choisirChemin({ type: 'autre' }, {})).toBeNull()
+  })
+})
+
+describe('fichiers déjà dans le Drive : nom conforme ?', () => {
+  const oui = ['2026-06-09_FACTURE_E.LECLERC_12345.pdf', 'KBIS_MCA-LOGISTICS.pdf', '2026-10-24_CNI_JEAN-DUPONT_VERSO.jpeg', 'RIB_BANQUE_COMPTE-PRINCIPAL.pdf', '2026-10-21_TICKET_SUPER-U-2.pdf']
+  const non = ['Carte identité DUPONT.pdf', 'IMG_3794.jpeg', '2026-09_DECLARATION_TVA-CA3.pdf', 'facture leclerc.pdf', '2026-10-02-2026-10-01-RECAP-TOURNEE_CLIENT-B_53-COLIS.jpg', 'STATUTS.pdf', '2026-06-09_facture_E.LECLERC.pdf', '']
+  for (const n of oui) it(`conforme : ${n}`, () => expect(estNomConforme(n)).toBe(true))
+  for (const n of non) it(`à renommer : ${n || '(vide)'}`, () => expect(estNomConforme(n)).toBe(false))
+})
+
+describe('fichiers du Drive : origine d\'après le dossier, dossiers confidentiels', () => {
+  it('client, fournisseur, véhicule, salarié', () => {
+    expect(origineDuDossier(['MCA Documents', 'Comptabilite & finances', 'Clients', 'CLIENTA', '2026-07'])).toMatchObject({ client: 'CLIENTA' })
+    expect(origineDuDossier(['MCA Documents', 'Comptabilite & finances', 'Fournisseurs', 'ORGANISME'])).toMatchObject({ fournisseur: 'ORGANISME', client: null })
+    expect(origineDuDossier(['MCA Documents', 'Vehicules et Flotte', 'RENAULT TRAFIC AB-123-CD', 'Amendes'])).toMatchObject({ vehicule: 'AB-123-CD' })
+    expect(origineDuDossier(['MCA Documents', 'Assurances', 'Flotte automobile', 'FORD TRANSIT EF-456-GH'])).toMatchObject({ vehicule: 'EF-456-GH' })
+    expect(origineDuDossier(['MCA Documents', 'Social et RH', 'Salaries', 'DUPONT JEAN'])).toMatchObject({ salarie: 'DUPONT JEAN' })
+    expect(origineDuDossier(['MCA Documents', 'Fiscal'])).toEqual({ client: null, fournisseur: null, vehicule: null, salarie: null })
+  })
+  it('dossiers où l\'IA ne lit jamais', () => {
+    expect(dossierConfidentiel(['MCA Documents', 'Social et RH', 'Salaries', 'DUPONT JEAN'])).toBe(true)
+    expect(dossierConfidentiel(['MCA Documents', 'Direction', 'Jean DUPONT'])).toBe(true)
+    expect(dossierConfidentiel(['MCA Documents', 'Sécurité'])).toBe(true)
+    expect(dossierConfidentiel(['MCA Documents', 'Comptabilite & finances', 'Clients'])).toBe(false)
   })
 })

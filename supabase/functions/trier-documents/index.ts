@@ -16,60 +16,17 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
-import { generateJson, generateJsonFromImage } from '../_shared/mistral.ts';
-import { detecterImage, estPdf, jpegsDuPdf, versDataUrl } from '../_shared/justificatif.ts';
+import { consignes, lireDocumentIA } from '../_shared/lectureDocument.ts';
 import { jetonAcces, DOSSIER_MIME, NOM_DOSSIER_RACINE } from '../_shared/googleDrive.ts';
-import { texteDuPdf } from '../_shared/pdfTexte.ts';
 import {
-  TYPES_DOCUMENT, cheminDefaut, cheminsExistants, choisirChemin, completerDepuisOrigine, exemplesRangement, nomPropose, normaliserChemin, normaliserProposition,
+  cheminDefaut, cheminsExistants, choisirChemin, completerDepuisOrigine, exemplesRangement, nomPropose, normaliserChemin, normaliserProposition,
   origineDuDocument, partieDuTexte, rapprocherTiers, rapprocherVehicule, pageDuNom, propositionTournee, salarieDuNom, typeDe, typeHabituel, typeSensibleDuNom,
-  type Annuaire, type ClasseHistorique, type ContexteTournee, type DossierDrive, type PropositionBrute,
+  type Annuaire, type ClasseHistorique, type ContexteTournee, type DossierDrive,
 } from '../_shared/triDocuments.ts';
 
 const BUCKET = 'documents';
 const MAX_PAR_APPEL = 6;
-const PAGES_MAX = 3;
 const SEUIL_CHEMIN = 0.4;
-
-const LISTE_TYPES = TYPES_DOCUMENT.map(t => `${t.cle} (${t.libelle})`).join(', ');
-
-interface Contexte {
-  clients: string[]
-  fournisseurs: string[]
-  salaries: string[]
-  plaques: string[]
-  existants: string[][]
-  /** Habitudes de l'utilisateur : « Type · tiers → dossier » tirés des documents déjà rangés. */
-  exemples: string[]
-}
-
-function consignes(c: Contexte): string {
-  const liste = (titre: string, l: string[], max: number) => (l.length ? `\n${titre} :\n${l.slice(0, max).join(' ; ')}` : '')
-  const arbo = c.existants.length
-    ? `\nDOSSIERS DÉJÀ PRÉSENTS dans le Drive (chemins depuis la racine de rangement) :\n${c.existants.map(e => e.join(' / ')).join('\n')}`
-    : '\nLe Drive ne contient pas encore de dossier de rangement : propose la convention Dossier / Année.'
-  return `Tu classes les documents de MCA Logistics, petite société de transport routier français (véhicules de moins de 3,5 t, express et messagerie de colis, Strasbourg).
-MCA Logistics est NOTRE société. Tu lis le document et tu extrais UNIQUEMENT ce qui est écrit. Tu n'inventes rien : si une information n'apparaît pas, réponds null.
-
-SENS DES FACTURES : émise PAR MCA Logistics → facture_client, tiers = le destinataire (le client). Reçue PAR MCA Logistics → facture_fournisseur, tiers = l'émetteur (le fournisseur). Ticket de caisse, de carburant, de péage ou de restaurant → ticket, tiers = l'enseigne.
-
-- type : une valeur parmi ${LISTE_TYPES}
-- date : date d'ÉMISSION du document (AAAA-MM-JJ), pas l'échéance ni la date de paiement
-- tiers : nom du client, du fournisseur, de l'organisme ou du salarié concerné (bulletin de paie, document salarié : le salarié)
-- montant_ttc : total TTC à payer ou payé, en euros (nombre), seulement si le document en porte un
-- reference : le numéro de pièce TEL QU'IMPRIMÉ (n° de facture, de devis, de contrat, de contravention, de dossier, d'ordre de transport…), sinon null. Jamais un libellé.
-- vehicule : plaque d'immatriculation si le document concerne un véhicule (carte grise, assurance, entretien, amende, carburant…), sinon null
-- resume : une phrase courte qui dit ce qu'est le document
-- chemin : le dossier du Drive où le ranger, sous forme de liste de noms de dossiers (4 niveaux au plus, jamais le nom du fichier).
-  RÈGLE : choisis un chemin qui existe DÉJÀ dans la liste ci-dessous, tel quel. Si aucun ne convient, crée un nouveau dossier en respectant la convention visible dans la liste.
-  Exemples réels : ["Comptabilite & finances","Clients","CLIENTA","2026-07"] · ["Comptabilite & finances","Fournisseurs","ORGANISME"] · ["Vehicules et Flotte","RENAULT TRAFIC AB-123-CD","Amendes"] · ["Fiscal","TVA","2026-05"] · ["Assurances","Flotte automobile","FORD TRANSIT EF-456-GH"].
-
-Donne une confiance (0 à 1) SÉPARÉE pour le type, la date, le tiers, le montant et le chemin.
-Réponds UNIQUEMENT en JSON :
-{"type": <texte|null>, "type_confiance": <0-1>, "date": <texte|null>, "date_confiance": <0-1>, "tiers": <texte|null>, "tiers_confiance": <0-1>, "montant_ttc": <nombre|null>, "montant_confiance": <0-1>, "reference": <texte|null>, "vehicule": <texte|null>, "resume": <texte|null>, "chemin": [<texte>, …], "chemin_confiance": <0-1>}
-${liste('CLIENTS connus', c.clients, 200)}${liste('FOURNISSEURS connus', c.fournisseurs, 200)}${liste('SALARIÉS', c.salaries, 50)}${liste('PLAQUES des véhicules', c.plaques, 50)}
-Quand le tiers est l'un de ces noms, reprends-le exactement.${arbo}${c.exemples.length ? `\nHABITUDES de rangement de l'utilisateur (type · tiers → dossier ; AAAA / AAAA-MM = année / mois du document) : suis-les quand elles s'appliquent :\n${c.exemples.join('\n')}` : ''}`;
-}
 
 const ENTITE: Record<string, string> = {
   delivery: 'joint à une livraison', vehicle: 'joint à un véhicule', client: 'joint à une fiche client', team_member: 'joint à la fiche d\'un salarié',
@@ -273,26 +230,9 @@ Deno.serve(async (req) => {
       doc.category ? `Catégorie indiquée à l'envoi : ${doc.category}` : null,
     ].filter(Boolean).join('\n');
 
-    let brut: (PropositionBrute & { vehicule?: unknown; chemin?: unknown; chemin_confiance?: unknown }) | null = null;
-    let luVia: 'image' | 'texte' = 'image';
-    try {
-      const typeImage = detecterImage(octets) ?? (doc.mime_type?.startsWith('image/') ? doc.mime_type : null);
-      const photos = !typeImage && estPdf(octets) ? jpegsDuPdf(octets, PAGES_MAX, 4 * 1024) : [];
-      if (typeImage || photos.length > 0) {
-        const images = typeImage ? [versDataUrl(octets, typeImage)] : photos.map(p => versDataUrl(p, 'image/jpeg'));
-        brut = await generateJsonFromImage(apiKey, systeme, `${contexte}\n\nLe document à classer est ${images.length > 1 ? `les ${images.length} images jointes (pages du même document)` : 'l\'image jointe'}.`, images, 1500);
-      } else if (estPdf(octets)) {
-        const texte = await texteDuPdf(octets);
-        if (!texte) { resultats.push({ id, ok: false, raison: 'PDF sans texte lisible par l\'IA' }); continue; }
-        luVia = 'texte';
-        brut = await generateJson(apiKey, systeme, `${contexte}\n\nTexte extrait du document :\n${texte}`);
-      } else {
-        resultats.push({ id, ok: false, raison: 'format non pris en charge' }); continue;
-      }
-    } catch (e) {
-      console.error('trier-documents: lecture échouée', id, (e as Error)?.message);
-      resultats.push({ id, ok: false, raison: 'lecture impossible pour le moment' }); continue;
-    }
+    const lu = await lireDocumentIA(apiKey, systeme, contexte, octets, doc.mime_type);
+    if (!lu.ok) { console.error('trier-documents: lecture échouée', id, lu.raison); resultats.push({ id, ok: false, raison: lu.raison }); continue; }
+    const { brut, luVia } = lu;
 
     const p = normaliserProposition(brut, jourParis);
     const tiersLu = rapprocherTiers(p.tiers, connus);
