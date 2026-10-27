@@ -120,7 +120,7 @@ export function estSur(d: Pick<DocumentRow, 'proposition'>): boolean {
   const p = d.proposition
   if (!p || !p.type || p.lu_via === 'nom' || p.doublon_de) return false
   if ((p.chemin_nouveaux ?? []).some(Boolean) || !(p.chemin?.length)) return false
-  if (p.lu_via === 'tournee') return true
+  if (p.lu_via === 'tournee' || p.lu_via === 'saisie') return true
   const intemporel = !!typeDe(p.type)?.intemporel
   const c = p.confiance
   if (c.type < SEUIL_SUR) return false

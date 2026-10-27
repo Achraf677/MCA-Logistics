@@ -1,8 +1,9 @@
 import { supabase } from '../../app/providers'
 import { lireErreurEdge } from '../../shared/lib/erreurEdge'
 import { getDownloadUrl, uploadDocument } from '../../shared/lib/documents.queries'
-import type { DocumentRow } from '../../shared/lib/documents.types'
+import type { DocumentRow, PropositionDocument } from '../../shared/lib/documents.types'
 import { cheminsDepuisDossiers, type DossierDrive } from './documents.logic'
+import type { Referents } from './decrire.logic'
 
 /** Tous les documents de la société, plus récents d'abord (RLS). */
 export async function listerDocuments(limite = 3000) {
@@ -65,6 +66,21 @@ export async function rangerDansDrive(lot: Array<{ id: string; classement: Class
   }
   const resultats = (data.data?.resultats ?? []) as ResultatRangement[]
   return lot.map(l => resultats.find(r => r.id === l.id) ?? { id: l.id, ok: false, raison: 'pas de réponse' })
+}
+
+/** Noms des clients, fournisseurs, salariés et plaques : « Dis-moi ce que c'est » s'en sert pour reconnaître le tiers. */
+export async function chargerReferents(): Promise<Referents> {
+  const noms = async (table: string, col: string) => {
+    const { data } = await supabase.from(table).select(col).limit(500)
+    return ((data ?? []) as unknown as Array<Record<string, unknown>>).map(r => String(r[col] ?? '').trim()).filter(Boolean)
+  }
+  const [clients, fournisseurs, salaries, plaques] = await Promise.all([noms('clients', 'name'), noms('suppliers', 'name'), noms('team_members', 'full_name'), noms('vehicles', 'plate')])
+  return { clients, fournisseurs, salaries, plaques }
+}
+
+/** Enregistre la proposition décrite par l'utilisateur : le document passe dans « À confirmer » sans lecture par l'IA. */
+export async function ecrirePropositionSaisie(id: string, proposition: PropositionDocument) {
+  return supabase.from('documents').update({ proposition, statut_tri: 'propose' }).eq('id', id).select('id')
 }
 
 /** Renvoie un document dans l'Inbox (proposition rejetée, ou reclassement d'un document rangé). */

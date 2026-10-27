@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, ArrowRight, Check, CheckCheck, FolderPlus, FolderTree, ShieldCheck, Sparkles, Undo2, X } from 'lucide-react'
+import { AlertTriangle, Check, CheckCheck, ChevronDown, FolderPlus, FolderTree, ShieldCheck, Sparkles, Undo2, Wand2, X } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
@@ -12,6 +12,7 @@ import type { DocumentRow } from '../../shared/lib/documents.types'
 import { TYPES_DOCUMENT, cheminConvention, cheminDefaut, nomPropose, typeDe } from '../../shared/lib/documentsTri'
 import { montantSaisiEnCts } from '../../shared/lib/depenses'
 import { aligner, cheminAvecAnnee, cheminEnTexte, correspondRecherche, estSur, optionsChemin, texteEnChemin } from './documents.logic'
+import { analyserDescription, aujourdhuiLocal, type Referents } from './decrire.logic'
 import { noterCheminDrive, rangerDansDrive, remettreDansInbox } from './documents.queries'
 import { MiniatureDoc } from './MiniatureDoc'
 
@@ -28,6 +29,8 @@ interface Edition {
   chemin: string
   /** Le chemin a été modifié à la main : il ne suit plus le type / la date. */
   cheminManuel: boolean
+  /** Plaque reconnue (lue sur le document ou décrite par l'utilisateur) : sert au dossier du véhicule. */
+  vehicule: string | null
 }
 
 const SEUIL_DOUTE = 0.7
@@ -35,13 +38,12 @@ const SEUIL_DOUTE = 0.7
 const PAQUET = 8
 
 const montantTexte = (cts: number | null | undefined) => (cts != null ? (cts / 100).toFixed(2).replace('.', ',') : '')
-
 const depotDe = (d: DocumentRow) => d.created_at.slice(0, 10)
 
 /** Dossier d'après la convention (type, tiers, véhicule, date du document ou du dépôt), aligné sur les dossiers du Drive. */
-function cheminRegle(d: DocumentRow, e: { type: string; date: string; tiers: string }, dossiers: string[][]): string[] | null {
+function cheminRegle(d: DocumentRow, e: { type: string; date: string; tiers: string; vehicule: string | null }, dossiers: string[][]): string[] | null {
   const t = e.type || null
-  const r = cheminConvention({ type: t, date: e.date || (typeDe(t)?.intemporel ? null : depotDe(d)), tiers: e.tiers || null, vehicule: d.proposition?.vehicule }, dossiers)
+  const r = cheminConvention({ type: t, date: e.date || (typeDe(t)?.intemporel ? null : depotDe(d)), tiers: e.tiers || null, vehicule: e.vehicule }, dossiers)
   return r ? aligner(r, dossiers) : null
 }
 
@@ -51,11 +53,15 @@ function editionInitiale(d: DocumentRow, dossiers: string[][]): Edition {
     type: p?.type ?? '', date: p?.date ?? '', tiers: p?.tiers ?? '', montant: montantTexte(p?.montant_ttc_cts), reference: p?.reference ?? '',
     nom: p?.nom ?? d.file_name, nomManuel: false,
     chemin: cheminEnTexte(p?.chemin?.length ? p.chemin : cheminDefaut({ type: p?.type, date: p?.date, tiers: p?.tiers, vehicule: p?.vehicule }, dossiers)), cheminManuel: false,
+    vehicule: p?.vehicule ?? null,
   }
 }
 
-/** À confirmer : l'IA a proposé un nom rangé et des champs ; tu corriges si besoin, tu confirmes (ou tu rejettes). */
-export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk, dossiers, onRanges, patch, toast }: {
+/**
+ * À confirmer : une carte compacte par document (nom proposé, dossier d'arrivée, Confirmer). Tout le reste est replié dans « Modifier les détails ».
+ * La case « Dis-moi ce que c'est » renomme et reclasse tout de suite d'après une phrase (« permis Jean Dupont »), sans IA.
+ */
+export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk, dossiers, referents, onRanges, patch, toast }: {
   docs: DocumentRow[]
   classes: DocumentRow[]
   miniatures: Record<string, string>
@@ -64,6 +70,8 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
   driveOk: boolean
   /** Dossiers existants du Drive (chemins relatifs au dossier de rangement). */
   dossiers: string[][]
+  /** Clients, fournisseurs, salariés, plaques : « Dis-moi ce que c'est » reconnaît le tiers avec. */
+  referents: Referents
   /** Appelé après un rangement réussi (le Drive a peut-être de nouveaux dossiers). */
   onRanges: () => void
   /** Met à jour des documents dans la liste de l'onglet, sans recharger. */
@@ -75,7 +83,9 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
   /** Carte dont on est en train de nommer un nouveau sous-dossier, et le nom en cours de saisie. */
   const [nouveau, setNouveau] = useState<{ id: string; nom: string } | null>(null)
   const [q, setQ] = useState('')
-  const [filtre, setFiltre] = useState<'tous' | 'surs' | 'verifier'>('tous')
+  /** Ce que l'utilisateur tape dans « Dis-moi ce que c'est », et la réponse quand la phrase n'est pas comprise. */
+  const [decrits, setDecrits] = useState<Record<string, string>>({})
+  const [messages, setMessages] = useState<Record<string, string>>({})
 
   const edition = (d: DocumentRow): Edition => editions[d.id] ?? editionInitiale(d, dossiers)
   const nomsPris = useMemo(() => new Set(classes.map(c => c.file_name.toLowerCase())), [classes])
@@ -94,6 +104,18 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
       else if ('date' in maj) e.chemin = cheminEnTexte(cheminAvecAnnee(texteEnChemin(e.chemin), e.date || null))
     }
     setEditions(p => ({ ...p, [d.id]: e }))
+  }
+
+  /** « Permis de conduire Jean Dupont » : type, tiers, date, référence d'après la phrase ; le nom et le dossier suivent aussitôt. */
+  const decrire = (d: DocumentRow) => {
+    const texte = (decrits[d.id] ?? '').trim()
+    if (!texte) return
+    const r = analyserDescription(texte, referents, aujourdhuiLocal())
+    if (!r) { setMessages(m => ({ ...m, [d.id]: 'Type non reconnu (permis, facture, amende, assurance…). Ajoute-le dans ta phrase.' })); return }
+    const e = edition(d)
+    modifier(d, { type: r.type, tiers: r.tiers ?? e.tiers, date: r.date ?? e.date, reference: r.reference ?? e.reference, vehicule: r.vehicule ?? e.vehicule, nomManuel: false, cheminManuel: false })
+    setMessages(m => ({ ...m, [d.id]: '' }))
+    setDecrits(t => ({ ...t, [d.id]: '' }))
   }
 
   const classement = (d: DocumentRow) => {
@@ -139,8 +161,6 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
     if (ok > 0) toast(ok === 1 ? 'Document rangé dans le Drive' : `${ok} documents rangés dans le Drive`)
   }
 
-  const confirmer = (d: DocumentRow) => { void envoyer([d]) }
-
   const rejeter = async (d: DocumentRow) => {
     patch([d.id], { statut_tri: 'a_trier', proposition: null })
     const { error } = await remettreDansInbox(d.id)
@@ -148,25 +168,25 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
     toast('Remis dans l\'Inbox')
   }
 
-  const toutConfirmer = () => {
-    const aFaire = visibles.filter(pret)
-    if (visibles.length > aFaire.length) toast(`${visibles.length - aFaire.length} à compléter (type ou dossier manquant)`, 'error')
-    void envoyer(aFaire)
-  }
-  const confirmerSurs = () => { void envoyer(docs.filter(d => estSur(d) && pret(d))) }
-
   const ouvrir = async (d: DocumentRow) => {
     const url = await getDownloadUrl(d)
     if (url) ouvrirDocument(url, { titre: d.file_name, type: d.mime_type?.startsWith('image/') ? 'image' : undefined })
   }
 
   if (docs.length === 0) {
-    return <EmptyState icon={<Sparkles size={40} />} title="Rien à confirmer" description="Lance le tri depuis l'Inbox : les propositions de l'IA arrivent ici." />
+    return <EmptyState icon={<Sparkles size={40} />} title="Rien à confirmer" description="Lance le tri depuis l'Inbox : les propositions arrivent ici." />
   }
 
-  const surs = docs.filter(d => estSur(d) && pret(d)).length
-  const visibles = docs.filter(d => correspondRecherche(d, q) && (filtre === 'tous' || (filtre === 'surs') === estSur(d)))
+  // Les documents sûrs d'abord (tri stable : l'ordre d'arrivée est gardé dans chaque groupe).
+  const visibles = docs.filter(d => correspondRecherche(d, q)).map((d, i) => ({ d, i, sur: estSur(d) }))
+    .sort((a, b) => Number(b.sur) - Number(a.sur) || a.i - b.i).map(x => x.d)
   const prets = visibles.filter(pret).length
+
+  const toutRanger = () => {
+    const aFaire = visibles.filter(pret)
+    if (visibles.length > aFaire.length) toast(`${visibles.length - aFaire.length} à compléter (type ou dossier manquant)`, 'error')
+    void envoyer(aFaire)
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -180,143 +200,132 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
           Le Drive n'est pas branché : rien ne peut être rangé. Connecte le compte Google de la société dans Paramètres › Google (coche bien « Drive »).
         </p>
       )}
-      {peutEcrire && (
-        <div className="flex flex-wrap items-center gap-3 rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] px-4 py-3">
-          <Sparkles size={18} className="text-[var(--brand)] shrink-0" />
-          <p className="flex-1 min-w-[12rem] text-sm text-[var(--text-muted)]">
-            L'IA a lu <strong className="text-[var(--text)]">{docs.length}</strong> document{docs.length > 1 ? 's' : ''}. Vérifie le nom et le type, corrige si besoin : rien n'est rangé sans ta confirmation.
-          </p>
-          {surs > 0 && (
-            <Button variant="primary" className="min-h-10" onClick={confirmerSurs}>
-              <ShieldCheck size={15} /> Confirmer les sûrs ({surs})
-            </Button>
-          )}
-          <Button variant={surs > 0 ? 'secondary' : 'primary'} className="min-h-10" disabled={prets === 0} onClick={toutConfirmer}>
-            <CheckCheck size={15} /> {q || filtre !== 'tous' ? 'Confirmer la sélection' : 'Tout confirmer'} ({prets})
-          </Button>
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-2">
-        <BarreRecherche value={q} onChange={setQ} placeholder="Chercher : nom, tiers, type, référence, dossier…" ariaLabel="Rechercher dans À confirmer"
+      <div className="flex flex-wrap items-center gap-2.5">
+        <BarreRecherche value={q} onChange={setQ} placeholder="Chercher : nom, tiers, type, dossier…" ariaLabel="Rechercher dans À confirmer"
           className="flex-1 min-w-[14rem] max-w-xl" compteur={`${visibles.length} sur ${docs.length}`} />
-        {([['tous', 'Tous'], ['surs', 'Sûrs'], ['verifier', 'À vérifier']] as const).map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setFiltre(k)} aria-pressed={filtre === k}
-            className={`rounded-full border px-3 py-1.5 text-sm transition-colors ${filtre === k ? 'border-[var(--brand)] bg-[var(--brand)] text-black font-medium' : 'border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)]'}`}>
-            {l}
-          </button>
-        ))}
+        {peutEcrire && (
+          <Button variant="primary" className="min-h-10 ml-auto" disabled={prets === 0} onClick={toutRanger}>
+            <CheckCheck size={15} /> Tout ranger ({prets})
+          </Button>
+        )}
       </div>
 
       {visibles.length === 0 && <p className="text-sm text-[var(--text-muted)] px-1">Aucun document ne correspond.</p>}
-      <ul className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-2.5">
         {visibles.map(d => {
           const e = edition(d)
           const c = d.proposition?.confiance
+          const p = d.proposition
           const douteux = (k: 'type' | 'date' | 'tiers' | 'montant') => (c ? c[k] < SEUIL_DOUTE : true)
           const bord = (k: 'type' | 'date' | 'tiers' | 'montant', vide: boolean) => (vide || douteux(k) ? '!border-[var(--warning)]' : '')
+          const segments = texteEnChemin(e.chemin)
+          const dossierNouveau = !!p?.chemin && e.chemin === cheminEnTexte(p.chemin) && (p.chemin_nouveaux ?? []).some(Boolean)
           return (
-            <li key={d.id} className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] p-4 flex flex-col gap-3">
+            <li key={d.id} className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] p-3 flex flex-col gap-2.5">
               <div className="flex items-start gap-3">
                 <button type="button" onClick={() => void ouvrir(d)} aria-label="Ouvrir le document" className="shrink-0">
                   <MiniatureDoc mime={d.mime_type} url={d.storage_path ? miniatures[d.storage_path] : undefined} taille="lg" />
                 </button>
-                <div className="flex-1 min-w-0 flex flex-col gap-2">
-                  <p className="flex items-center gap-2 text-xs text-[var(--text-muted)] min-w-0">
-                    <span className="truncate">{d.file_name}</span>
-                    <ArrowRight size={12} className="shrink-0" />
-                    <Badge color={d.proposition?.lu_via === 'tournee' || d.proposition?.lu_via === 'nom' ? 'warning' : d.proposition?.lu_via === 'texte' ? 'info' : 'success'}>{d.proposition?.lu_via === 'tournee' ? 'Rangé d\'après la tournée' : d.proposition?.lu_via === 'nom' ? 'Pièce sensible : non lue par l\'IA' : d.proposition?.lu_via === 'texte' ? 'Lu dans le texte' : 'Lu sur l\'image'}</Badge>
-                    {estSur(d) && <Badge color="success">Sûr</Badge>}
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <input value={e.nom} aria-label="Nom proposé" disabled={!peutEcrire}
+                      onChange={ev => modifier(d, { nom: ev.target.value, nomManuel: true })}
+                      className="field font-medium text-[var(--text)] flex-1 min-w-0" />
+                    {estSur(d) && <span title="Lu avec certitude" className="shrink-0 text-[var(--success)]"><ShieldCheck size={18} aria-label="Lu avec certitude" /></span>}
+                  </div>
+                  <p className="flex items-center gap-1.5 text-sm text-[var(--text-muted)] min-w-0" title={cheminEnTexte(segments)}>
+                    <FolderTree size={14} className="shrink-0" />
+                    <span className="truncate">{segments.length ? segments.join(' › ') : 'Aucun dossier choisi'}</span>
+                    {dossierNouveau && <Badge color="warning">nouveau dossier</Badge>}
                   </p>
-                  {d.proposition?.doublon_de && (
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)] min-w-0">
+                    <span className="truncate">Fichier : {d.file_name}</span>
+                    {p?.lu_via === 'nom' && <Badge color="warning">Pièce sensible : non lue par l'IA</Badge>}
+                    {p?.lu_via === 'saisie' && <Badge color="info">Décrit par toi</Badge>}
+                  </p>
+                  {p?.doublon_de && (
                     <p className="flex items-center gap-1.5 text-xs text-[var(--warning)]">
-                      <AlertTriangle size={13} /> Peut-être déjà rangé : {d.proposition.doublon_de}
+                      <AlertTriangle size={13} /> Peut-être déjà rangé : {p.doublon_de}
                     </p>
                   )}
-                  <input value={e.nom} aria-label="Nom proposé" disabled={!peutEcrire}
-                    onChange={ev => modifier(d, { nom: ev.target.value, nomManuel: true })}
-                    className="field font-medium text-[var(--text)]" />
-                  {d.proposition?.resume && <p className="text-xs text-[var(--text-muted)] line-clamp-2">{d.proposition.resume}</p>}
                 </div>
-              </div>
-
-              <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
-                <ListeDeroulante valeur={e.type} onChange={v => modifier(d, { type: v })} ariaLabel="Type de document" placeholder="Type…" recherche={false}
-                  invalide={e.type === ''} disabled={!peutEcrire}
-                  options={TYPES_DOCUMENT.map(t => ({ valeur: t.cle, libelle: t.libelle, detail: t.dossier }))} />
-                <input type="date" value={e.date} onChange={ev => modifier(d, { date: ev.target.value })} aria-label="Date du document" disabled={!peutEcrire}
-                  className={`field ${bord('date', e.date === '')}`} />
-                <input value={e.tiers} onChange={ev => modifier(d, { tiers: ev.target.value })} placeholder="Client / fournisseur" aria-label="Tiers" disabled={!peutEcrire}
-                  className={`field ${bord('tiers', e.tiers === '')}`} />
-                <input value={e.montant} onChange={ev => modifier(d, { montant: ev.target.value })} placeholder="Montant TTC (fiche)" inputMode="decimal" aria-label="Montant TTC (pas dans le nom)" disabled={!peutEcrire}
-                  className={`field font-mono ${Number.isNaN(montantSaisiEnCts(e.montant) as number) ? '!border-[var(--danger)]' : ''}`} />
-                <input value={e.reference} onChange={ev => modifier(d, { reference: ev.target.value })} placeholder="Référence (n° facture…)" aria-label="Référence" disabled={!peutEcrire}
-                  className="field" />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <label className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]">
-                  <FolderTree size={13} /> Où le ranger dans le Drive
-                </label>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 min-w-0">
-                    <ListeDeroulante valeur={e.chemin} onChange={v => modifier(d, { chemin: v, cheminManuel: true })} ariaLabel="Dossier du Drive"
-                      placeholder="Choisir un dossier…" recherche disabled={!peutEcrire} invalide={texteEnChemin(e.chemin).length === 0}
-                      options={optionsChemin(dossiers, [texteEnChemin(e.chemin), ...(d.proposition?.chemin ? [d.proposition.chemin] : []), ...(d.proposition?.alternatives ?? []).map(a => a.chemin)])} />
-                  </div>
-                  {peutEcrire && (
-                    <BoutonIcone icone={FolderPlus} libelle="Créer un sous-dossier ici" onClick={() => setNouveau({ id: d.id, nom: '' })} actif={nouveau?.id === d.id} />
-                  )}
-                </div>
-                {nouveau?.id === d.id && (
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs text-[var(--text-muted)] shrink-0">{e.chemin || 'Racine'} /</span>
-                    <input autoFocus className="field flex-1 min-w-0" placeholder="Nom du nouveau dossier" value={nouveau.nom} onChange={ev => setNouveau({ id: d.id, nom: ev.target.value })}
-                      onKeyDown={ev => {
-                        if (ev.key === 'Escape') setNouveau(null)
-                        if (ev.key === 'Enter' && nouveau.nom.trim()) { modifier(d, { chemin: cheminEnTexte(texteEnChemin(`${e.chemin} / ${nouveau.nom}`)), cheminManuel: true }); setNouveau(null) }
-                      }} />
-                    <BoutonIcone icone={Check} libelle="Créer ce sous-dossier" taille="sm" disabled={!nouveau.nom.trim()}
-                      onClick={() => { modifier(d, { chemin: cheminEnTexte(texteEnChemin(`${e.chemin} / ${nouveau.nom}`)), cheminManuel: true }); setNouveau(null) }} />
-                    <BoutonIcone icone={X} libelle="Annuler" taille="sm" onClick={() => setNouveau(null)} />
-                  </div>
-                )}
-                <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                  {texteEnChemin(e.chemin).map((seg, i) => {
-                    const p = d.proposition
-                    const inchange = !!p?.chemin && e.chemin === cheminEnTexte(p.chemin)
-                    const nouveau = inchange ? !!p?.chemin_nouveaux?.[i] : null
-                    return (
-                      <span key={`${seg}-${i}`} className="inline-flex items-center gap-1">
-                        {i > 0 && <span className="text-[var(--text-disabled)]">/</span>}
-                        <Badge color={nouveau === true ? 'warning' : nouveau === false ? 'success' : 'muted'}>{seg}{nouveau === true ? ' · nouveau' : ''}</Badge>
-                      </span>
-                    )
-                  })}
-                  {d.proposition?.chemin && d.proposition.chemin_confiance != null && d.proposition.chemin_confiance < SEUIL_DOUTE && (
-                    <span className="text-[var(--warning)]">emplacement incertain, vérifie</span>
-                  )}
-                </div>
-                {peutEcrire && (d.proposition?.alternatives ?? []).length > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-muted)]">
-                    <span>Sinon :</span>
-                    {(d.proposition?.alternatives ?? []).map(a => (
-                      <button key={a.chemin.join('/')} type="button" onClick={() => modifier(d, { chemin: cheminEnTexte(a.chemin), cheminManuel: true })}
-                        className="rounded-full border border-[var(--border)] px-2.5 py-1 hover:bg-[var(--bg-card-hover)] hover:text-[var(--text)] transition-colors">
-                        {cheminEnTexte(a.chemin)}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
 
               {peutEcrire && (
-                <div className="flex items-center gap-2">
-                  <Button variant="primary" className="min-h-10" disabled={!pret(d)} onClick={() => confirmer(d)}>
-                    <Check size={15} /> Confirmer
-                  </Button>
-                  {driveOk && !pret(d) && <span className="text-xs text-[var(--warning)]">Choisis un type et un dossier pour confirmer.</span>}
-                  <span className="ml-auto"><BoutonIcone icone={Undo2} libelle="Rejeter : remettre dans l'Inbox" onClick={() => void rejeter(d)} /></span>
-                </div>
+                <>
+                  <form onSubmit={ev => { ev.preventDefault(); decrire(d) }} className="flex items-center gap-2">
+                    <input value={decrits[d.id] ?? ''} onChange={ev => { setDecrits(t => ({ ...t, [d.id]: ev.target.value })); if (messages[d.id]) setMessages(m => ({ ...m, [d.id]: '' })) }}
+                      placeholder="Dis-moi ce que c'est : « permis de conduire Jean Dupont »" aria-label="Dis-moi ce que c'est" className="field flex-1 min-w-0" />
+                    <Button type="submit" variant="secondary" className="min-h-10 shrink-0" disabled={!(decrits[d.id] ?? '').trim()}>
+                      <Wand2 size={15} /> Renommer
+                    </Button>
+                  </form>
+                  {messages[d.id] && <p role="alert" className="text-xs text-[var(--warning)] -mt-1">{messages[d.id]}</p>}
+
+                  <div className="flex items-center gap-2">
+                    <Button variant="primary" className="min-h-11 flex-1 sm:flex-none sm:min-w-[10rem]" disabled={!pret(d)} onClick={() => { void envoyer([d]) }}>
+                      <Check size={16} /> Confirmer
+                    </Button>
+                    {driveOk && !pret(d) && <span className="text-xs text-[var(--warning)]">Choisis un type et un dossier.</span>}
+                    <span className="ml-auto"><BoutonIcone icone={Undo2} libelle="Rejeter : remettre dans l'Inbox" onClick={() => void rejeter(d)} /></span>
+                  </div>
+
+                  <details className="group border-t border-[var(--border)] pt-2">
+                    <summary className="flex items-center gap-1.5 cursor-pointer text-sm text-[var(--text-muted)] hover:text-[var(--text)] select-none list-none">
+                      <ChevronDown size={15} className="transition-transform group-open:rotate-180" /> Modifier les détails
+                    </summary>
+                    <div className="flex flex-col gap-3 pt-3">
+                      <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
+                        <ListeDeroulante valeur={e.type} onChange={v => modifier(d, { type: v })} ariaLabel="Type de document" placeholder="Type…" recherche={false}
+                          invalide={e.type === ''} options={TYPES_DOCUMENT.map(t => ({ valeur: t.cle, libelle: t.libelle, detail: t.dossier }))} />
+                        <input type="date" value={e.date} onChange={ev => modifier(d, { date: ev.target.value })} aria-label="Date du document"
+                          className={`field ${bord('date', false)}`} />
+                        <input value={e.tiers} onChange={ev => modifier(d, { tiers: ev.target.value })} placeholder="Client / fournisseur / salarié" aria-label="Tiers"
+                          className={`field ${bord('tiers', e.tiers === '')}`} />
+                        <input value={e.reference} onChange={ev => modifier(d, { reference: ev.target.value })} placeholder="Référence (n° facture…)" aria-label="Référence" className="field" />
+                        <input value={e.montant} onChange={ev => modifier(d, { montant: ev.target.value })} placeholder="Montant TTC (fiche)" inputMode="decimal" aria-label="Montant TTC (pas dans le nom)"
+                          className={`field font-mono ${Number.isNaN(montantSaisiEnCts(e.montant) as number) ? '!border-[var(--danger)]' : ''}`} />
+                      </div>
+
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-xs font-medium text-[var(--text-muted)]">Dossier du Drive</span>
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 min-w-0">
+                            <ListeDeroulante valeur={e.chemin} onChange={v => modifier(d, { chemin: v, cheminManuel: true })} ariaLabel="Dossier du Drive"
+                              placeholder="Choisir un dossier…" recherche invalide={segments.length === 0}
+                              options={optionsChemin(dossiers, [segments, ...(p?.chemin ? [p.chemin] : []), ...(p?.alternatives ?? []).map(a => a.chemin)])} />
+                          </div>
+                          <BoutonIcone icone={FolderPlus} libelle="Créer un sous-dossier ici" onClick={() => setNouveau({ id: d.id, nom: '' })} actif={nouveau?.id === d.id} />
+                        </div>
+                        {nouveau?.id === d.id && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs text-[var(--text-muted)] shrink-0">{e.chemin || 'Racine'} /</span>
+                            <input autoFocus className="field flex-1 min-w-0" placeholder="Nom du nouveau dossier" value={nouveau.nom} onChange={ev => setNouveau({ id: d.id, nom: ev.target.value })}
+                              onKeyDown={ev => {
+                                if (ev.key === 'Escape') setNouveau(null)
+                                if (ev.key === 'Enter' && nouveau.nom.trim()) { modifier(d, { chemin: cheminEnTexte(texteEnChemin(`${e.chemin} / ${nouveau.nom}`)), cheminManuel: true }); setNouveau(null) }
+                              }} />
+                            <BoutonIcone icone={Check} libelle="Créer ce sous-dossier" taille="sm" disabled={!nouveau.nom.trim()}
+                              onClick={() => { modifier(d, { chemin: cheminEnTexte(texteEnChemin(`${e.chemin} / ${nouveau.nom}`)), cheminManuel: true }); setNouveau(null) }} />
+                            <BoutonIcone icone={X} libelle="Annuler" taille="sm" onClick={() => setNouveau(null)} />
+                          </div>
+                        )}
+                        {(p?.alternatives ?? []).length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                            <span>Sinon :</span>
+                            {(p?.alternatives ?? []).map(a => (
+                              <button key={a.chemin.join('/')} type="button" onClick={() => modifier(d, { chemin: cheminEnTexte(a.chemin), cheminManuel: true })}
+                                className="rounded-full border border-[var(--border)] px-2.5 py-1 hover:bg-[var(--bg-card-hover)] hover:text-[var(--text)] transition-colors">
+                                {cheminEnTexte(a.chemin)}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {p?.resume && <p className="text-xs text-[var(--text-muted)]">{p.resume}</p>}
+                      </div>
+                    </div>
+                  </details>
+                </>
               )}
             </li>
           )

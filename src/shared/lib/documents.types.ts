@@ -68,7 +68,8 @@ export interface PropositionDocument {
   chemin_confiance?: number
   /** Autres emplacements possibles (convention par défaut). */
   alternatives?: Array<{ chemin: string[]; nouveaux: boolean[] }>
-  lu_via: 'image' | 'texte' | 'tournee' | 'nom'
+  /** `saisie` = décrit par l'utilisateur (« Dis-moi ce que c'est »), sans IA. */
+  lu_via: 'image' | 'texte' | 'tournee' | 'nom' | 'saisie'
   propose_le: string
 }
 
