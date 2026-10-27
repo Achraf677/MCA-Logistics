@@ -1,7 +1,10 @@
 // Banc d'essai de la convention de nommage / classement : chaque cas est un VRAI fichier du Drive de MCA Logistics
 // (nom officiel rangé par l'utilisateur) ou un exemple du Google Doc « CONVENTION DE NOMMAGE & CIRCUIT ».
 import { describe, expect, it } from 'vitest'
-import { cheminConvention, cheminDefaut, nomPropose, salarieDuNom, typeSensibleDuNom, dossierVehicule } from './conventionDocuments'
+import {
+  cheminConvention, cheminDefaut, nomPropose, salarieDuNom, typeSensibleDuNom, dossierVehicule, partieDuTexte, cheminHabituel, typeHabituel, exemplesRangement,
+  completerDepuisOrigine, origineDuDocument, choisirChemin, type ClasseHistorique,
+} from './conventionDocuments'
 
 // Dossiers réels (extrait) de « MCA Documents ».
 const DRIVE: string[][] = [
@@ -100,5 +103,85 @@ describe('convention : pièces sensibles reconnues d\'après le nom (jamais envo
   it('salarié retrouvé dans le nom', () => {
     expect(salarieDuNom('2026-10-24_CNI_JEAN-DUPONT_1.jpeg', ['Marie Durand', 'Jean Dupont'])).toBe('Jean Dupont')
     expect(salarieDuNom('IMG_3794.jpeg', ['Marie Durand'])).toBeNull()
+  })
+})
+
+describe('partie : recto, verso, pages', () => {
+  const cas: Array<[string, string | null]> = [
+    ['permis verso.jpg', 'VERSO'], ['carte identité recto', 'RECTO'], ['recto verso', 'RECTO-VERSO'], ['recto et verso', 'RECTO-VERSO'],
+    ['feuille-de-route-page-3.jpg', 'P3'], ['facture p2', 'P2'], ['suite du contrat', 'SUITE'], ['annexes', 'ANNEXE'], ['facture 12345', null],
+  ]
+  for (const [t, p] of cas) it(`${t} → ${p}`, () => expect(partieDuTexte(t)).toBe(p))
+})
+
+describe('origine du document', () => {
+  const a = { salaries: { s1: 'Jean Dupont' }, salariesParProfil: { p1: 'Marie Durand' }, vehicules: { v1: 'AB-123-CD' }, clients: { c1: 'Client A' } }
+  it('lit la fiche d\'où vient le document', () => {
+    expect(origineDuDocument({ entity_type: 'team_member', entity_id: 's1', uploaded_by: 'p1' }, a)).toEqual({ salarie: 'Jean Dupont', vehicule: null, client: null, deposePar: 'Marie Durand' })
+    expect(origineDuDocument({ entity_type: 'vehicle', entity_id: 'v1' }, a).vehicule).toBe('AB-123-CD')
+    expect(origineDuDocument({ entity_type: 'delivery', entity_id: 'd1' }, a, 'Client A').client).toBe('Client A')
+    expect(origineDuDocument({ entity_type: 'depot' }, a)).toEqual({ salarie: null, vehicule: null, client: null, deposePar: null })
+  })
+  it('complète les cases vides, jamais ce qui est dit', () => {
+    const o = { salarie: 'Jean Dupont', vehicule: 'AB-123-CD', client: 'Client A', deposePar: null }
+    expect(completerDepuisOrigine({ type: 'permis' }, o)).toEqual({ tiers: 'Jean Dupont', vehicule: null, parOrigine: true })
+    expect(completerDepuisOrigine({ type: 'permis', tiers: 'Marie Durand' }, o)).toEqual({ tiers: 'Marie Durand', vehicule: null, parOrigine: false })
+    expect(completerDepuisOrigine({ type: 'amende' }, o)).toEqual({ tiers: null, vehicule: 'AB-123-CD', parOrigine: true })
+    expect(completerDepuisOrigine({ type: 'devis' }, o)).toEqual({ tiers: 'Client A', vehicule: null, parOrigine: true })
+    expect(completerDepuisOrigine({ type: 'facture_fournisseur' }, o).tiers).toBeNull()
+  })
+})
+
+describe('habitudes : ce qui a déjà été rangé', () => {
+  const h = (type: string, tiers: string, chemin: string): ClasseHistorique => ({ type_document: type, tiers, drive_chemin: chemin })
+  const EX = [['Comptabilite & finances'], ['Comptabilite & finances', 'Clients'], ['Comptabilite & finances', 'Clients', 'CLIENT A'], ['Comptabilite & finances', 'Fournisseurs'], ['Comptabilite & finances', 'Fournisseurs', 'GARAGE G']]
+  it('dossier le plus fréquent, dossier de mois suivi', () => {
+    const classes = [
+      h('facture_client', 'Client A', 'Comptabilite & finances / Clients / CLIENT A / 2026-09'),
+      h('facture_client', 'client a', 'Comptabilite & finances / Clients / CLIENT A / 2026-08'),
+      h('facture_client', 'Client A', 'Comptabilite & finances / Clients / ANCIEN / 2026-01'),
+    ]
+    expect(cheminHabituel(classes, { type: 'facture_client', tiers: 'CLIENT A', date: '2026-10-05' }, EX)).toEqual(['Comptabilite & finances', 'Clients', 'CLIENT A', '2026-10'])
+    expect(cheminHabituel(classes, { type: 'facture_client', tiers: 'CLIENT A' }, EX)).toEqual(['Comptabilite & finances', 'Clients', 'CLIENT A', 'Sans date'])
+  })
+  it('dossier disparu du Drive, autre tiers ou autre type : pas d\'habitude', () => {
+    const classes = [h('facture_client', 'Client A', 'Comptabilite & finances / Clients / SUPPRIME / 2026-09')]
+    expect(cheminHabituel(classes, { type: 'facture_client', tiers: 'Client A', date: '2026-10-05' }, EX)).toBeNull()
+    expect(cheminHabituel(classes, { type: 'devis', tiers: 'Client A' }, [])).toBeNull()
+    expect(cheminHabituel(classes, { type: 'facture_client', tiers: 'Client B' }, [])).toBeNull()
+    expect(cheminHabituel(classes, { type: 'facture_client', tiers: null }, [])).toBeNull()
+  })
+  it('sans Drive connu, l\'habitude est reprise telle quelle', () => {
+    const classes = [h('ticket', 'Garage G', 'Comptabilite & finances / Fournisseurs / GARAGE G')]
+    expect(cheminHabituel(classes, { type: 'ticket', tiers: 'Garage G' }, [])).toEqual(['Comptabilite & finances', 'Fournisseurs', 'GARAGE G'])
+  })
+  it('type habituel d\'un tiers : au moins 2 documents et 70 %', () => {
+    const f = h('facture_fournisseur', 'Garage G', 'x')
+    expect(typeHabituel([f, f, f], 'garage g')).toBe('facture_fournisseur')
+    expect(typeHabituel([f], 'Garage G')).toBeNull()
+    expect(typeHabituel([f, f, h('devis', 'Garage G', 'x')], 'Garage G')).toBeNull()
+    expect(typeHabituel([f, f], null)).toBeNull()
+  })
+  it('exemples pour l\'IA : distincts, sans pièces personnelles, dates généralisées', () => {
+    const classes = [
+      h('facture_client', 'Client A', 'Comptabilite & finances / Clients / CLIENT A / 2026-09'),
+      h('facture_client', 'Client A', 'Comptabilite & finances / Clients / CLIENT A / 2026-08'),
+      h('permis', 'Jean Dupont', 'Social et RH / Salaries / JEAN DUPONT'),
+      h('paie', 'Jean Dupont', 'Comptabilite & finances / Paie'),
+      h('ticket', 'Garage G', 'Comptabilite & finances / Fournisseurs / GARAGE G'),
+      h('devis', '', 'Comptabilite & finances / Clients'),
+    ]
+    expect(exemplesRangement(classes)).toEqual([
+      'Facture client · Client A → Comptabilite & finances / Clients / CLIENT A / AAAA-MM',
+      'Ticket / reçu · Garage G → Comptabilite & finances / Fournisseurs / GARAGE G',
+    ])
+    expect(exemplesRangement(classes, 1)).toHaveLength(1)
+  })
+  it('dossier choisi : habitude, puis convention (avec l\'origine), sinon rien', () => {
+    const classes = [h('facture_client', 'Client A', 'Comptabilite & finances / Clients / CLIENT A / 2026-09')]
+    expect(choisirChemin({ type: 'facture_client', tiers: 'Client A', date: '2026-10-05' }, { classes, existants: EX })).toMatchObject({ via: 'habitude', chemin: ['Comptabilite & finances', 'Clients', 'CLIENT A', '2026-10'] })
+    expect(choisirChemin({ type: 'facture_fournisseur', tiers: 'Garage G' }, { existants: EX })).toMatchObject({ via: 'convention', chemin: ['Comptabilite & finances', 'Fournisseurs', 'GARAGE G'] })
+    expect(choisirChemin({ type: 'amende', vehicule: 'AB-123-CD', parOrigine: true }, {})).toMatchObject({ via: 'origine' })
+    expect(choisirChemin({ type: 'autre' }, {})).toBeNull()
   })
 })

@@ -11,7 +11,8 @@ import { deleteDocument, getDownloadUrl } from '../../shared/lib/documents.queri
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { correspondRecherche, estAncienDrive, libelleSource, lisibleParIA, lotsDe, tailleLisible } from './documents.logic'
 import { deposerDansInbox, ecrirePropositionSaisie, lancerTri, type ResultatTri } from './documents.queries'
-import { analyserDescription, aujourdhuiLocal, propositionDepuisDescription, type Referents } from './decrire.logic'
+import { analyserDescription, aujourdhuiLocal, propositionDepuisDescription, suggererTypes, type Referents } from './decrire.logic'
+import { origineDuDocument, typeDe, type Annuaire, type ClasseHistorique } from '../../shared/lib/conventionDocuments'
 import { MiniatureDoc } from './MiniatureDoc'
 
 const PAR_LOT = 5
@@ -21,12 +22,14 @@ const jourCourt = (iso: string) => new Date(iso).toLocaleDateString('fr-FR', { d
  * Inbox : tout ce qui n'est pas encore rangé. On dépose, puis UN geste : « Trier » (tout, ou la sélection). L'IA propose, rien n'est appliqué.
  * Un document que l'IA n'a pas su lire se décrit à la main (baguette) : « permis Jean Dupont » → il passe directement dans À confirmer.
  */
-export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrire, peutSupprimer, dossiers, referents, patch, onChange, onTermine, toast }: {
+export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrire, peutSupprimer, dossiers, referents, annuaire, patch, onChange, onTermine, toast }: {
   docs: DocumentRow[]
   /** Documents déjà rangés : leurs noms ne doivent jamais être repris. */
   classes: DocumentRow[]
   dossiers: string[][]
   referents: Referents
+  /** Fiches par identifiant : d'où vient un document (fiche salarié, véhicule, client, déposé par). */
+  annuaire: Annuaire
   patch: (ids: string[], maj: Partial<DocumentRow>) => void
   miniatures: Record<string, string>
   companyId: string
@@ -40,7 +43,7 @@ export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrir
   const [q, setQ] = useState('')
   const [ouvertId, setOuvertId] = useState<string | null>(null)
   const [decrit, setDecrit] = useState('')
-  const [messageDecrit, setMessageDecrit] = useState('')
+  const [messageDecrit, setMessageDecrit] = useState<{ texte: string; suggestions: string[] } | null>(null)
   const [selection, setSelection] = useState<Set<string>>(new Set())
   const [depot, setDepot] = useState<{ fait: number; total: number } | null>(null)
   const [survol, setSurvol] = useState(false)
@@ -58,6 +61,8 @@ export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrir
   /** Sans sélection, « Trier » prend tout ce que l'IA sait lire. */
   const aTrier = choisis.length > 0 ? choisis : lisibles
   const nomsPris = useMemo(() => new Set(classes.map(c => c.file_name.toLowerCase())), [classes])
+  /** Ce que l'utilisateur a déjà rangé (du plus récent au plus ancien) : dossier et type habituels d'un tiers. */
+  const histo = useMemo<ClasseHistorique[]>(() => classes.map(c => ({ type_document: c.type_document, tiers: c.tiers, drive_chemin: c.drive_chemin })), [classes])
 
   const basculer = (id: string) => setSelection(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
 
@@ -99,14 +104,14 @@ export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrir
   }
 
   /** « Dis-moi ce que c'est » : le document passe tout de suite dans À confirmer, avec son nom et son dossier de la convention. */
-  const decrire = async (d: DocumentRow) => {
+  const decrire = async (d: DocumentRow, typeImpose?: string) => {
     const texte = decrit.trim()
     if (!texte) return
-    const r = analyserDescription(texte, referents, aujourdhuiLocal())
-    if (!r) { setMessageDecrit('Type non reconnu (permis, facture, amende, assurance…). Ajoute-le dans ta phrase.'); return }
-    const proposition = propositionDepuisDescription(r, d, dossiers, nomsPris)
+    const r = analyserDescription(texte, referents, aujourdhuiLocal(), { origine: origineDuDocument(d, annuaire), classes: histo, type: typeImpose })
+    if (!r) { setMessageDecrit({ texte: 'Je ne sais pas encore ce que c\'est. Choisis un type :', suggestions: suggererTypes(texte, histo) }); return }
+    const proposition = propositionDepuisDescription(r, d, dossiers, nomsPris, histo)
     patch([d.id], { statut_tri: 'propose', proposition })
-    setOuvertId(null); setDecrit(''); setMessageDecrit('')
+    setOuvertId(null); setDecrit(''); setMessageDecrit(null)
     const { error } = await ecrirePropositionSaisie(d.id, proposition)
     if (error) { patch([d.id], { statut_tri: 'a_trier', proposition: null }); toast(error.message, 'error'); return }
     toast('Renommé : à confirmer dans l\'onglet À confirmer')
@@ -191,16 +196,26 @@ export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrir
                   {estAncienDrive(d) && <Badge color="muted">Ancien Drive</Badge>}
                   {!lisible && !estAncienDrive(d) && <Badge color="muted">Non lisible par l'IA</Badge>}
                   {peutEcrire && !estAncienDrive(d) && <BoutonIcone icone={Wand2} libelle="Dis-moi ce que c'est" taille="sm" actif={ouvertId === d.id} disabled={!!tri}
-                    onClick={() => { setOuvertId(ouvertId === d.id ? null : d.id); setDecrit(''); setMessageDecrit('') }} />}
+                    onClick={() => { setOuvertId(ouvertId === d.id ? null : d.id); setDecrit(''); setMessageDecrit(null) }} />}
                   {peutSupprimer && <BoutonIcone icone={Trash2} libelle="Supprimer" taille="sm" onClick={() => setASupprimer(d)} disabled={!!tri} />}
                   {ouvertId === d.id && (
                     <form onSubmit={ev => { ev.preventDefault(); void decrire(d) }} className="basis-full flex flex-col gap-1.5 pt-1">
                       <div className="flex items-center gap-2">
-                        <input autoFocus value={decrit} onChange={ev => { setDecrit(ev.target.value); setMessageDecrit('') }} aria-label="Dis-moi ce que c'est"
+                        <input autoFocus value={decrit} onChange={ev => { setDecrit(ev.target.value); setMessageDecrit(null) }} aria-label="Dis-moi ce que c'est"
                           placeholder="Dis-moi ce que c'est : « permis de conduire Jean Dupont »" className="field flex-1 min-w-0" />
                         <Button type="submit" variant="primary" className="min-h-10 shrink-0" disabled={!decrit.trim()}>Renommer</Button>
                       </div>
-                      {messageDecrit && <p role="alert" className="text-xs text-[var(--warning)]">{messageDecrit}</p>}
+                      {messageDecrit && (
+                        <div role="alert" className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--warning)]">
+                          <span>{messageDecrit.texte}</span>
+                          {messageDecrit.suggestions.map(c => (
+                            <button key={c} type="button" onClick={() => void decrire(d, c)}
+                              className="rounded-full border border-[var(--border)] px-2.5 py-1 text-[var(--text)] hover:bg-[var(--bg-card-hover)] transition-colors">
+                              {typeDe(c)?.libelle ?? c}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </form>
                   )}
                 </li>

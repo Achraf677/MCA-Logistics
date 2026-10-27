@@ -4,8 +4,11 @@
 
 import { CLES_TYPE, SANS_DATE, cleePlaque, nomPropose } from './conventionDocuments.ts'
 
-export { TYPES_DOCUMENT, CLES_TYPE, bloc, cheminConvention, cheminDefaut, cleePlaque, DOSSIER_TRANSIT, dossierVehicule, extensionDe, libelleType, nomPropose, SANS_DATE, salarieDuNom, typeDe, typeSensibleDuNom } from './conventionDocuments.ts'
-export type { ElementsChemin, ElementsNom, TypeDocument } from './conventionDocuments.ts'
+export {
+  TYPES_DOCUMENT, CLES_TYPE, bloc, cheminConvention, cheminDefaut, cheminHabituel, choisirChemin, cleePlaque, completerDepuisOrigine, DOSSIER_TRANSIT, dossierVehicule, exemplesRangement,
+  extensionDe, libelleType, nomPropose, origineDuDocument, partieDuTexte, SANS_DATE, salarieDuNom, typeDe, typeHabituel, typeSensibleDuNom,
+} from './conventionDocuments.ts'
+export type { Annuaire, ClasseHistorique, ElementsChemin, ElementsNom, Origine, TypeDocument } from './conventionDocuments.ts'
 
 /** En dessous, la valeur lue est écartée (champ vide à remplir à la main). */
 export const SEUIL_PROPOSITION = 0.4
@@ -165,12 +168,13 @@ export const pageDuNom = (nom: string): number | null => {
 }
 
 /**
- * Proposition complète pour un document de tournée : type, date, tiers (client de la tournée, à défaut le salarié), référence,
+ * Proposition complète pour un document de tournée : type, date, tiers (le salarié de la tournée, à défaut le client), référence,
  * nom rangé et dossier `Transport / Tournées de colis / <nature> / AAAA-MM`. Rien n'est deviné : tout vient de la tournée.
  */
 export function propositionTournee(c: ContexteTournee, nomActuel: string, pris: ReadonlySet<string> = new Set()) {
   const date = c.date && /^\d{4}-\d{2}-\d{2}$/.test(c.date) ? c.date : null
-  const tiers = c.client || c.salarie || null
+  // Le document est celui du salarié qui a fait la tournée (nom de la convention : « …_FEUILLE-DE-ROUTE_<SALARIÉ>_P1 ») ; à défaut, le client.
+  const tiers = c.salarie || c.client || null
   const reference = c.nature === 'arret' ? (c.adresse ?? null) : c.numero != null ? (c.nature === 'feuille' ? `p${c.numero}` : String(c.numero)) : null
   const type = TYPE_TOURNEE[c.nature]
   const chemin = ['Transport', DOSSIER_TOURNEES, SOUS_DOSSIER[c.nature], date ? date.slice(0, 7) : SANS_DATE]

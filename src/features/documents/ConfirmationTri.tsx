@@ -9,10 +9,10 @@ import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 import { getDownloadUrl } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
-import { TYPES_DOCUMENT, cheminConvention, cheminDefaut, nomPropose, typeDe } from '../../shared/lib/documentsTri'
+import { TYPES_DOCUMENT, cheminDefaut, choisirChemin, nomPropose, origineDuDocument, typeDe, type Annuaire, type ClasseHistorique } from '../../shared/lib/documentsTri'
 import { montantSaisiEnCts } from '../../shared/lib/depenses'
 import { aligner, cheminAvecAnnee, cheminEnTexte, correspondRecherche, estSur, optionsChemin, texteEnChemin } from './documents.logic'
-import { analyserDescription, aujourdhuiLocal, type Referents } from './decrire.logic'
+import { analyserDescription, aujourdhuiLocal, suggererTypes, type Referents } from './decrire.logic'
 import { noterCheminDrive, rangerDansDrive, remettreDansInbox } from './documents.queries'
 import { MiniatureDoc } from './MiniatureDoc'
 
@@ -31,7 +31,17 @@ interface Edition {
   cheminManuel: boolean
   /** Plaque reconnue (lue sur le document ou décrite par l'utilisateur) : sert au dossier du véhicule. */
   vehicule: string | null
+  /** Partie du document (VERSO, RECTO, P2…) : dernier bloc du nom. */
+  partie: string
+  /** Pourquoi ce dossier : habitude, origine du document, convention, IA. `null` = choisi à la main. */
+  via: ViaChemin | null
 }
+
+type ViaChemin = NonNullable<NonNullable<DocumentRow['proposition']>['chemin_via']>
+
+const libelleVia = (via: ViaChemin | null, tiers: string): string | null =>
+  via === 'habitude' ? `Comme d'habitude${tiers.trim() ? ` pour ${tiers.trim()}` : ''}` : via === 'origine' ? 'Selon l\'origine du document'
+    : via === 'convention' ? 'Selon la convention' : via === 'ia' ? 'Choisi d\'après le document' : null
 
 const SEUIL_DOUTE = 0.7
 /** Documents envoyés au Drive par requête. */
@@ -40,11 +50,11 @@ const PAQUET = 8
 const montantTexte = (cts: number | null | undefined) => (cts != null ? (cts / 100).toFixed(2).replace('.', ',') : '')
 const depotDe = (d: DocumentRow) => d.created_at.slice(0, 10)
 
-/** Dossier d'après la convention (type, tiers, véhicule, date du document ou du dépôt), aligné sur les dossiers du Drive. */
-function cheminRegle(d: DocumentRow, e: { type: string; date: string; tiers: string; vehicule: string | null }, dossiers: string[][]): string[] | null {
+/** Dossier d'après l'habitude de l'utilisateur, puis la convention (type, tiers, véhicule, date du document ou du dépôt), aligné sur les dossiers du Drive. */
+function cheminRegle(d: DocumentRow, e: { type: string; date: string; tiers: string; vehicule: string | null }, dossiers: string[][], histo: ClasseHistorique[]) {
   const t = e.type || null
-  const r = cheminConvention({ type: t, date: e.date || (typeDe(t)?.intemporel ? null : depotDe(d)), tiers: e.tiers || null, vehicule: e.vehicule }, dossiers)
-  return r ? aligner(r, dossiers) : null
+  const r = choisirChemin({ type: t, date: e.date || (typeDe(t)?.intemporel ? null : depotDe(d)), tiers: e.tiers || null, vehicule: e.vehicule, parOrigine: d.proposition?.chemin_via === 'origine' }, { classes: histo, existants: dossiers })
+  return r ? { chemin: aligner(r.chemin, dossiers), via: r.via } : null
 }
 
 function editionInitiale(d: DocumentRow, dossiers: string[][]): Edition {
@@ -53,7 +63,7 @@ function editionInitiale(d: DocumentRow, dossiers: string[][]): Edition {
     type: p?.type ?? '', date: p?.date ?? '', tiers: p?.tiers ?? '', montant: montantTexte(p?.montant_ttc_cts), reference: p?.reference ?? '',
     nom: p?.nom ?? d.file_name, nomManuel: false,
     chemin: cheminEnTexte(p?.chemin?.length ? p.chemin : cheminDefaut({ type: p?.type, date: p?.date, tiers: p?.tiers, vehicule: p?.vehicule }, dossiers)), cheminManuel: false,
-    vehicule: p?.vehicule ?? null,
+    vehicule: p?.vehicule ?? null, partie: p?.partie ?? '', via: p?.chemin_via ?? null,
   }
 }
 
@@ -61,7 +71,7 @@ function editionInitiale(d: DocumentRow, dossiers: string[][]): Edition {
  * À confirmer : une carte compacte par document (nom proposé, dossier d'arrivée, Confirmer). Tout le reste est replié dans « Modifier les détails ».
  * La case « Dis-moi ce que c'est » renomme et reclasse tout de suite d'après une phrase (« permis Jean Dupont »), sans IA.
  */
-export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk, dossiers, referents, onRanges, patch, toast }: {
+export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk, dossiers, referents, annuaire, onRanges, patch, toast }: {
   docs: DocumentRow[]
   classes: DocumentRow[]
   miniatures: Record<string, string>
@@ -72,6 +82,8 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
   dossiers: string[][]
   /** Clients, fournisseurs, salariés, plaques : « Dis-moi ce que c'est » reconnaît le tiers avec. */
   referents: Referents
+  /** Fiches par identifiant : d'où vient un document (fiche salarié, véhicule, client, déposé par). */
+  annuaire: Annuaire
   /** Appelé après un rangement réussi (le Drive a peut-être de nouveaux dossiers). */
   onRanges: () => void
   /** Met à jour des documents dans la liste de l'onglet, sans recharger. */
@@ -85,36 +97,50 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
   const [q, setQ] = useState('')
   /** Ce que l'utilisateur tape dans « Dis-moi ce que c'est », et la réponse quand la phrase n'est pas comprise. */
   const [decrits, setDecrits] = useState<Record<string, string>>({})
-  const [messages, setMessages] = useState<Record<string, string>>({})
+  const [messages, setMessages] = useState<Record<string, { texte: string; suggestions: string[] }>>({})
 
   const edition = (d: DocumentRow): Edition => editions[d.id] ?? editionInitiale(d, dossiers)
   const nomsPris = useMemo(() => new Set(classes.map(c => c.file_name.toLowerCase())), [classes])
+  /** Ce que l'utilisateur a déjà rangé (du plus récent au plus ancien) : dossier et type habituels d'un tiers. */
+  const histo = useMemo<ClasseHistorique[]>(() => classes.map(c => ({ type_document: c.type_document, tiers: c.tiers, drive_chemin: c.drive_chemin })), [classes])
 
   const modifier = (d: DocumentRow, maj: Partial<Edition>) => {
     const e = { ...edition(d), ...maj }
     // Tant que le nom n'a pas été tapé à la main, il suit le type / la date / le tiers / la référence (jamais le montant : convention).
     if (!e.nomManuel && !('nom' in maj)) {
-      e.nom = nomPropose({ date: e.date || null, dateDepot: depotDe(d), type: e.type || null, tiers: e.tiers || null, reference: e.reference || null }, d.file_name, nomsPris)
+      e.nom = nomPropose({ date: e.date || null, dateDepot: depotDe(d), type: e.type || null, tiers: e.tiers || null, reference: e.reference || null, partie: e.partie || null }, d.file_name, nomsPris)
     }
     // Tant que le chemin n'a pas été tapé à la main, il suit la règle de la convention (type, tiers, date) ; sans règle, il ne bouge qu'avec l'année.
     if (!e.cheminManuel && !('chemin' in maj) && ('type' in maj || 'tiers' in maj || 'date' in maj)) {
-      const regle = cheminRegle(d, e, dossiers)
-      if (regle) e.chemin = cheminEnTexte(regle)
-      else if ('type' in maj) e.chemin = cheminEnTexte(cheminDefaut({ type: e.type || null }, dossiers))
+      const regle = cheminRegle(d, e, dossiers, histo)
+      if (regle) { e.chemin = cheminEnTexte(regle.chemin); e.via = regle.via }
+      else if ('type' in maj) { e.chemin = cheminEnTexte(cheminDefaut({ type: e.type || null }, dossiers)); e.via = null }
       else if ('date' in maj) e.chemin = cheminEnTexte(cheminAvecAnnee(texteEnChemin(e.chemin), e.date || null))
     }
+    if ('chemin' in maj && maj.cheminManuel) e.via = null
     setEditions(p => ({ ...p, [d.id]: e }))
   }
 
-  /** « Permis de conduire Jean Dupont » : type, tiers, date, référence d'après la phrase ; le nom et le dossier suivent aussitôt. */
-  const decrire = (d: DocumentRow) => {
+  /**
+   * « Permis de conduire Jean Dupont », « le verso du permis », « facture Leclerc 12345 » : type, tiers, date, référence, partie d'après la phrase ;
+   * ce que la phrase ne dit pas vient de l'origine du document et de tes habitudes. Le nom et le dossier suivent aussitôt.
+   */
+  const decrire = (d: DocumentRow, typeImpose?: string) => {
     const texte = (decrits[d.id] ?? '').trim()
     if (!texte) return
-    const r = analyserDescription(texte, referents, aujourdhuiLocal())
-    if (!r) { setMessages(m => ({ ...m, [d.id]: 'Type non reconnu (permis, facture, amende, assurance…). Ajoute-le dans ta phrase.' })); return }
+    const r = analyserDescription(texte, referents, aujourdhuiLocal(), { origine: origineDuDocument(d, annuaire), classes: histo, type: typeImpose })
+    if (!r) {
+      setMessages(m => ({ ...m, [d.id]: { texte: 'Je ne sais pas encore ce que c\'est. Choisis un type :', suggestions: suggererTypes(texte, histo) } }))
+      return
+    }
     const e = edition(d)
-    modifier(d, { type: r.type, tiers: r.tiers ?? e.tiers, date: r.date ?? e.date, reference: r.reference ?? e.reference, vehicule: r.vehicule ?? e.vehicule, nomManuel: false, cheminManuel: false })
-    setMessages(m => ({ ...m, [d.id]: '' }))
+    modifier(d, {
+      type: r.type, tiers: r.tiers ?? e.tiers, date: r.date ?? e.date, reference: r.reference ?? e.reference, vehicule: r.vehicule ?? e.vehicule,
+      partie: r.partie ?? '', montant: r.montant_ttc_cts != null ? montantTexte(r.montant_ttc_cts) : e.montant, nomManuel: false, cheminManuel: false,
+    })
+    // L'origine a complété le tiers : le dossier est « selon l'origine du document » tant que l'habitude ne le décide pas.
+    if (r.parOrigine) setEditions(p => (p[d.id]?.via === 'convention' ? { ...p, [d.id]: { ...p[d.id], via: 'origine' } } : p))
+    setMessages(m => Object.fromEntries(Object.entries(m).filter(([k]) => k !== d.id)))
     setDecrits(t => ({ ...t, [d.id]: '' }))
   }
 
@@ -238,6 +264,7 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
                     <span className="truncate">{segments.length ? segments.join(' › ') : 'Aucun dossier choisi'}</span>
                     {dossierNouveau && <Badge color="warning">nouveau dossier</Badge>}
                   </p>
+                  {libelleVia(e.via, e.tiers) && <p className="text-xs text-[var(--text-muted)] -mt-1 pl-5">{libelleVia(e.via, e.tiers)}</p>}
                   <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--text-muted)] min-w-0">
                     <span className="truncate">Fichier : {d.file_name}</span>
                     {p?.lu_via === 'nom' && <Badge color="warning">Pièce sensible : non lue par l'IA</Badge>}
@@ -254,13 +281,23 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
               {peutEcrire && (
                 <>
                   <form onSubmit={ev => { ev.preventDefault(); decrire(d) }} className="flex items-center gap-2">
-                    <input value={decrits[d.id] ?? ''} onChange={ev => { setDecrits(t => ({ ...t, [d.id]: ev.target.value })); if (messages[d.id]) setMessages(m => ({ ...m, [d.id]: '' })) }}
+                    <input value={decrits[d.id] ?? ''} onChange={ev => { setDecrits(t => ({ ...t, [d.id]: ev.target.value })); if (messages[d.id]) setMessages(m => Object.fromEntries(Object.entries(m).filter(([k]) => k !== d.id))) }}
                       placeholder="Dis-moi ce que c'est : « permis de conduire Jean Dupont »" aria-label="Dis-moi ce que c'est" className="field flex-1 min-w-0" />
                     <Button type="submit" variant="secondary" className="min-h-10 shrink-0" disabled={!(decrits[d.id] ?? '').trim()}>
                       <Wand2 size={15} /> Renommer
                     </Button>
                   </form>
-                  {messages[d.id] && <p role="alert" className="text-xs text-[var(--warning)] -mt-1">{messages[d.id]}</p>}
+                  {messages[d.id] && (
+                    <div role="alert" className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--warning)] -mt-1">
+                      <span>{messages[d.id].texte}</span>
+                      {messages[d.id].suggestions.map(c => (
+                        <button key={c} type="button" onClick={() => decrire(d, c)}
+                          className="rounded-full border border-[var(--border)] px-2.5 py-1 text-[var(--text)] hover:bg-[var(--bg-card-hover)] transition-colors">
+                          {typeDe(c)?.libelle ?? c}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-2">
                     <Button variant="primary" className="min-h-11 flex-1 sm:flex-none sm:min-w-[10rem]" disabled={!pret(d)} onClick={() => { void envoyer([d]) }}>

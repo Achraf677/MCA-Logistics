@@ -4,6 +4,7 @@ import { getDownloadUrl, uploadDocument } from '../../shared/lib/documents.queri
 import type { DocumentRow, PropositionDocument } from '../../shared/lib/documents.types'
 import { cheminsDepuisDossiers, type DossierDrive } from './documents.logic'
 import type { Referents } from './decrire.logic'
+import type { Annuaire } from '../../shared/lib/conventionDocuments'
 
 /** Tous les documents de la société, plus récents d'abord (RLS). */
 export async function listerDocuments(limite = 3000) {
@@ -76,6 +77,17 @@ export async function chargerReferents(): Promise<Referents> {
   }
   const [clients, fournisseurs, salaries, plaques] = await Promise.all([noms('clients', 'name'), noms('suppliers', 'name'), noms('team_members', 'full_name'), noms('vehicles', 'plate')])
   return { clients, fournisseurs, salaries, plaques }
+}
+
+/** Fiches par identifiant : d'où vient un document (fiche salarié, véhicule, client) et qui l'a déposé (profil → salarié). */
+export async function chargerAnnuaire(): Promise<Annuaire> {
+  const lire = async (table: string, colonnes: string) => ((await supabase.from(table).select(colonnes).limit(1000)).data ?? []) as unknown as Array<Record<string, string | null>>
+  const [salaries, vehicules, clients] = await Promise.all([lire('team_members', 'id, full_name, profile_id'), lire('vehicles', 'id, plate'), lire('clients', 'id, name')])
+  const a: Annuaire = { salaries: {}, salariesParProfil: {}, vehicules: {}, clients: {} }
+  for (const r of salaries) { if (r.id && r.full_name) a.salaries[r.id] = r.full_name; if (r.profile_id && r.full_name) a.salariesParProfil[r.profile_id] = r.full_name }
+  for (const r of vehicules) if (r.id && r.plate) a.vehicules[r.id] = r.plate
+  for (const r of clients) if (r.id && r.name) a.clients[r.id] = r.name
+  return a
 }
 
 /** Enregistre la proposition décrite par l'utilisateur : le document passe dans « À confirmer » sans lecture par l'IA. */
