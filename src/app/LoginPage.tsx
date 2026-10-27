@@ -1,6 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck, Timer } from 'lucide-react'
 import { supabase } from './providers'
-import { Button } from '../shared/ui/Button'
+import {
+  apresEchec, ecrireEtat, ECHECS_AVANT_PAUSE, emailPlausible, formaterDuree,
+  lireEtat, messageErreur, secondesRestantes,
+} from './login.logic'
 
 function GoogleIcon() {
   return (
@@ -13,28 +17,98 @@ function GoogleIcon() {
   )
 }
 
+interface ChampProps {
+  id: string
+  label: string
+  type: string
+  value: string
+  onChange: (v: string) => void
+  icone: React.ReactNode
+  autoComplete: string
+  invalide?: boolean
+  droite?: React.ReactNode
+  onKeyState?: (e: React.KeyboardEvent) => void
+  inputRef?: React.Ref<HTMLInputElement>
+}
+
+function Champ({ id, label, type, value, onChange, icone, autoComplete, invalide, droite, onKeyState, inputRef }: ChampProps) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-medium text-[var(--text-muted)] mb-1.5">{label}</label>
+      <div className={`group relative flex items-center rounded-xl border bg-[var(--bg-elevated)] transition-all
+        focus-within:border-[var(--brand)] focus-within:ring-4 focus-within:ring-[var(--brand-soft)]
+        ${invalide ? 'border-[var(--danger)]' : 'border-[var(--border)]'}`}>
+        <span className="pl-3.5 text-[var(--text-disabled)] group-focus-within:text-[var(--brand)] transition-colors">{icone}</span>
+        <input
+          id={id} name={id} ref={inputRef} type={type} value={value} required
+          autoComplete={autoComplete} spellCheck={false} autoCapitalize="none"
+          onChange={e => onChange(e.target.value)}
+          onKeyDown={onKeyState} onKeyUp={onKeyState}
+          aria-invalid={invalide || undefined}
+          className="login-input min-w-0 flex-1 h-12 px-3 bg-transparent text-[var(--text)] text-base outline-none placeholder:text-[var(--text-disabled)]"
+        />
+        {droite}
+      </div>
+    </div>
+  )
+}
+
 export function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [voirMdp, setVoirMdp] = useState(false)
+  const [majActive, setMajActive] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [googleLoading, setGoogleLoading] = useState(false)
   const [envoiLien, setEnvoiLien] = useState(false)
   const [lienEnvoye, setLienEnvoye] = useState(false)
+  const [secousse, setSecousse] = useState(0)
+  const [etat, setEtat] = useState(lireEtat)
+  const [maintenant, setMaintenant] = useState(() => Date.now())
+  const carte = useRef<HTMLDivElement>(null)
+  const emailRef = useRef<HTMLInputElement>(null)
+
+  const restant = secondesRestantes(etat, maintenant)
+  const enPause = restant > 0
+
+  // Décompte de la pause navigateur.
+  useEffect(() => {
+    if (!enPause) return
+    const t = setInterval(() => setMaintenant(Date.now()), 500)
+    return () => clearInterval(t)
+  }, [enPause])
+
+  useEffect(() => { emailRef.current?.focus() }, [])
+
+  // Retour arrière depuis Google (page restaurée avec « Redirection… » figé) : on débloque.
+  useEffect(() => {
+    const debloquer = () => setGoogleLoading(false)
+    window.addEventListener('pageshow', debloquer)
+    return () => window.removeEventListener('pageshow', debloquer)
+  }, [])
+
+  const suivreSouris = (e: React.PointerEvent) => {
+    const r = carte.current?.getBoundingClientRect()
+    if (!r) return
+    carte.current!.style.setProperty('--mx', `${e.clientX - r.left}px`)
+    carte.current!.style.setProperty('--my', `${e.clientY - r.top}px`)
+  }
+
+  const etatTouches = (e: React.KeyboardEvent) => setMajActive(e.getModifierState('CapsLock'))
+
+  const echec = (message: string) => {
+    const nouveau = apresEchec(etat, Date.now())
+    setEtat(nouveau); ecrireEtat(nouveau); setMaintenant(Date.now())
+    setError(message); setSecousse(n => n + 1)
+  }
 
   /**
-   * Demande d'un lien de reinitialisation.
-   *
-   * Jusqu'ici, seul le president pouvait en declencher un depuis l'ecran
-   * Equipe : un salarie qui oubliait son mot de passe un dimanche soir n'avait
-   * aucun recours. La meme mecanique, offerte ici, le sort de cette impasse.
-   *
-   * Le message de retour est VOLONTAIREMENT identique que l'adresse existe ou
-   * non. Repondre « ce compte n'existe pas » permettrait a n'importe qui de
-   * decouvrir, une adresse a la fois, qui travaille dans l'entreprise.
+   * Demande d'un lien de réinitialisation. Message de retour VOLONTAIREMENT
+   * identique que l'adresse existe ou non (sinon on révèle qui a un compte).
    */
   const demanderLien = async () => {
-    if (!email.trim()) { setError('Saisis ton e-mail au-dessus, puis reclique.'); return }
+    if (!emailPlausible(email)) { setError('Saisis ton e-mail au-dessus, puis reclique.'); setSecousse(n => n + 1); return }
     setEnvoiLien(true); setError(null)
     await supabase.auth.resetPasswordForEmail(email.trim(), {
       redirectTo: `${window.location.origin}/auth/callback`,
@@ -45,10 +119,21 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (enPause || loading) return
     setLoading(true)
     setError(null)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) setError(error.message)
+    // Lit les champs dans le formulaire : le remplissage automatique du navigateur
+    // ne met pas toujours l'état React à jour avant le premier clic.
+    const f = new FormData(e.currentTarget as HTMLFormElement)
+    const mail = String(f.get('email') ?? email).trim()
+    const mdp = String(f.get('password') ?? password)
+    const { error } = await supabase.auth.signInWithPassword({ email: mail, password: mdp })
+    if (error) {
+      echec(messageErreur(error))
+      setPassword('')
+    } else {
+      ecrireEtat({ echecs: 0, jusqua: 0 })
+    }
     setLoading(false)
   }
 
@@ -59,79 +144,140 @@ export function LoginPage() {
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback` },
     })
-    if (error) { setError(error.message); setGoogleLoading(false) }
-    // On success the browser navigates away; no need to reset state
+    if (error) { setError(messageErreur(error)); setGoogleLoading(false) }
+    // En cas de succès le navigateur quitte la page ; sinon on rend la main après 8 s.
+    else setTimeout(() => setGoogleLoading(false), 8000)
   }
 
+  const occupe = loading
+  const echecsRestants = ECHECS_AVANT_PAUSE - etat.echecs
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--bg)]">
-      <div className="w-full max-w-sm p-8 bg-[var(--bg-card)] rounded-[var(--r-xl)] border border-[var(--border)]">
-        <div className="flex flex-col items-center text-center mb-6">
-          <span className="inline-grid place-items-center w-24 h-24 rounded-[var(--r-xl)] bg-white mb-3 shadow-[0_0.4rem_1.5rem_-0.5rem_rgba(0,0,0,.35)]"><img src="/logo-mca.png" alt="MCA Logistics" className="w-20 h-20 object-contain" /></span>
-          <h1 className="font-display font-bold text-[var(--text)] text-2xl leading-tight">MCA <span className="text-[var(--brand)]">Logistics</span></h1>
-          <p className="text-[var(--text-muted)] text-[var(--fs-sm)] mt-1">Votre partenaire logistique</p>
-        </div>
+    <div className="min-h-screen bg-[var(--bg)]">
+      <main className="relative flex min-h-screen items-center justify-center px-4 py-10 sm:px-8 overflow-clip">
+        <div className="pointer-events-none absolute -top-40 left-1/2 -translate-x-1/2 w-[34rem] h-[34rem] rounded-full bg-[var(--brand-soft)] blur-3xl" />
 
-        {/* Google OAuth */}
-        <button
-          type="button"
-          onClick={handleGoogle}
-          disabled={googleLoading || loading}
-          className="w-full flex items-center justify-center gap-2 h-10 px-4 rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text)] text-[var(--fs-body)] font-medium hover:bg-[var(--bg-card)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        <div
+          ref={carte}
+          onPointerMove={suivreSouris}
+          className="relative w-full max-w-md rounded-3xl border border-[var(--border)] bg-[var(--bg-card)] p-7 sm:p-9 shadow-[var(--shadow-card)] overflow-clip page-enter"
         >
-          <GoogleIcon />
-          {googleLoading ? 'Redirection…' : 'Se connecter avec Google'}
-        </button>
+          <div className="login-glow pointer-events-none absolute inset-0" />
 
-        {/* Séparateur */}
-        <div className="flex items-center gap-3 my-5">
-          <div className="flex-1 h-px bg-[var(--border)]" />
-          <span className="text-[var(--text-muted)] text-[var(--fs-sm)]">ou</span>
-          <div className="flex-1 h-px bg-[var(--border)]" />
-        </div>
+          <div className="relative">
+            {/* Marque */}
+            <div className="flex flex-col items-center text-center mb-7">
+              <span className="inline-grid place-items-center w-20 h-20 rounded-2xl bg-white mb-3 shadow-[0_0.4rem_1.5rem_-0.5rem_rgba(0,0,0,.35)]">
+                <img src="/logo-mca.png" alt="MCA Logistics" className="w-16 h-16 object-contain" />
+              </span>
+              <h1 className="font-display font-bold text-[var(--text)] text-3xl leading-tight">Bon retour</h1>
+              <p className="text-[var(--text-muted)] text-sm mt-1.5">Connecte-toi pour accéder à ton espace MCA Logistics.</p>
+            </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-[var(--fs-sm)] text-[var(--text-muted)]" htmlFor="email">E-mail</label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              required
-              className="h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)] transition-colors"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[var(--fs-sm)] text-[var(--text-muted)]" htmlFor="password">Mot de passe</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
-              className="h-9 px-3 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)] text-[var(--text)] text-[var(--fs-body)] focus:outline-none focus:border-[var(--brand)] transition-colors"
-            />
-          </div>
-          {error && <p className="text-[var(--danger)] text-[var(--fs-sm)]">{error}</p>}
-          <Button variant="primary" type="submit" disabled={loading || googleLoading} className="w-full justify-center mt-1">
-            {loading ? 'Connexion…' : 'Se connecter'}
-          </Button>
-
-          {lienEnvoye ? (
-            <p className="text-[var(--fs-sm)] text-[var(--text-muted)] text-center">
-              Si un compte existe pour cette adresse, un lien vient d'être envoyé.
-              Il est valable une heure.
-            </p>
-          ) : (
-            <button type="button" onClick={demanderLien} disabled={envoiLien || loading || googleLoading}
-              className="text-[var(--fs-sm)] text-[var(--text-muted)] hover:text-[var(--brand)]
-                transition-colors disabled:opacity-50">
-              {envoiLien ? 'Envoi…' : 'Mot de passe oublié ?'}
+            <button
+              type="button" onClick={handleGoogle} disabled={googleLoading || loading || enPause}
+              className="w-full flex items-center justify-center gap-2.5 h-12 rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)]
+                text-[var(--text)] font-medium hover:border-[var(--border-strong)] hover:-translate-y-px active:translate-y-0
+                transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {googleLoading ? <Loader2 size={18} className="animate-spin" /> : <GoogleIcon />}
+              {googleLoading ? 'Redirection…' : 'Continuer avec Google'}
             </button>
-          )}
-        </form>
-      </div>
+
+            <div className="flex items-center gap-3 my-6">
+              <div className="flex-1 h-px bg-[var(--border)]" />
+              <span className="text-[var(--text-disabled)] text-xs uppercase tracking-wide">ou par e-mail</span>
+              <div className="flex-1 h-px bg-[var(--border)]" />
+            </div>
+
+            <form onSubmit={handleSubmit} className="relative flex flex-col gap-4">
+              <Champ
+                id="email" label="E-mail" type="email" value={email} onChange={setEmail}
+                icone={<Mail size={18} />} autoComplete="username" inputRef={emailRef}
+              />
+
+              <Champ
+                id="password" label="Mot de passe" type={voirMdp ? 'text' : 'password'}
+                value={password} onChange={setPassword} icone={<Lock size={18} />}
+                autoComplete="current-password" onKeyState={etatTouches}
+                invalide={!!error}
+                droite={
+                  <button
+                    type="button" onClick={() => setVoirMdp(v => !v)}
+                    aria-label={voirMdp ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                    aria-pressed={voirMdp}
+                    className="mr-1.5 grid place-items-center w-9 h-9 rounded-lg text-[var(--text-muted)]
+                      hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                  >
+                    {voirMdp ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                }
+              />
+
+              {majActive && (
+                <p className="flex items-center gap-2 text-sm text-[var(--warning)] -mt-2">
+                  <AlertCircle size={15} /> Verrouillage majuscules activé
+                </p>
+              )}
+
+              {error && (
+                <div key={secousse} role="alert" className="login-shake flex items-start gap-2.5 rounded-xl border border-[var(--danger)]/40
+                  bg-[var(--danger)]/10 px-3.5 py-3 text-sm text-[var(--danger)]">
+                  <AlertCircle size={17} className="mt-0.5 shrink-0" />
+                  <div>
+                    <p>{error}</p>
+                    {!enPause && etat.echecs >= 3 && echecsRestants > 0 && (
+                      <p className="mt-1 text-xs opacity-80">
+                        Encore {echecsRestants} essai{echecsRestants > 1 ? 's' : ''} avant une pause de sécurité.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {enPause && (
+                <div role="status" className="flex items-center gap-2.5 rounded-xl border border-[var(--warning)]/40 bg-[var(--warning)]/10 px-3.5 py-3 text-sm text-[var(--warning)]">
+                  <Timer size={17} className="shrink-0" />
+                  Trop d'essais. Nouvelle tentative possible dans <strong className="tabular-nums">{formaterDuree(restant)}</strong>.
+                </div>
+              )}
+
+              <button
+                type="submit" disabled={occupe || enPause}
+                className="group relative h-12 rounded-xl font-semibold text-white overflow-hidden
+                  bg-[linear-gradient(120deg,var(--brand-deep),var(--brand))] shadow-[0_0.6rem_1.6rem_-0.6rem_var(--brand)]
+                  hover:-translate-y-px hover:shadow-[0_0.9rem_2rem_-0.6rem_var(--brand)] active:translate-y-0
+                  transition-all disabled:opacity-50 disabled:shadow-none disabled:translate-y-0 disabled:cursor-not-allowed"
+              >
+                <span className="flex items-center justify-center gap-2">
+                  {loading
+                    ? <><Loader2 size={18} className="animate-spin" /> Connexion…</>
+                    : enPause
+                      ? <><Timer size={18} /> Patiente {formaterDuree(restant)}</>
+                      : <>Se connecter <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" /></>}
+                </span>
+              </button>
+
+              <div className="text-center min-h-5">
+                {lienEnvoye ? (
+                  <p className="text-sm text-[var(--success)]">
+                    Si un compte existe pour cette adresse, un lien vient d'être envoyé (valable 1 h).
+                  </p>
+                ) : (
+                  <button type="button" onClick={demanderLien} disabled={envoiLien || occupe}
+                    className="text-sm text-[var(--text-muted)] hover:text-[var(--brand)] transition-colors disabled:opacity-50">
+                    {envoiLien ? 'Envoi…' : 'Mot de passe oublié ?'}
+                  </button>
+                )}
+              </div>
+            </form>
+
+            <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-[var(--text-disabled)]">
+              <ShieldCheck size={13} /> Connexion chiffrée · tentatives surveillées
+            </p>
+          </div>
+        </div>
+      </main>
     </div>
   )
 }
