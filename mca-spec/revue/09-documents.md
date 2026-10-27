@@ -1,5 +1,16 @@
 # 09 — Documents (Système › Documents) — mergé (PR #89, 24/10/2026)
 
+## 0 Convention du Drive et écrans simplifiés (26-27/10/2026, PR #91)
+- Source : Google Doc « 📋 CONVENTION DE NOMMAGE & CIRCUIT » (Drive, dossier `A traiter`). Code : `_shared/conventionDocuments.ts` = copie exacte de `src/shared/lib/conventionDocuments.ts` (test octet pour octet).
+- Nom : `[AAAA-MM-JJ_]TYPE_TIERS[_NUMERO].ext`, MAJUSCULES, tirets dans un bloc. Date imprimée, sinon date du dépôt, sinon rien (types `intemporel` : KBIS, STATUTS, RIB, CONTRAT, CHARTE, MODELE, CODES-ACCES). Le montant n'est PLUS dans le nom (reste dans la fiche).
+- Dossier : `cheminConvention` = tableau « Où je classe » (Clients/<CLIENT>/<AAAA-MM> ; Fournisseurs/<F> ; Vehicules et Flotte/<VEH>/Amendes… ; dossier véhicule retrouvé par la plaque). Sans règle : choix de l'IA parmi les dossiers existants, sinon `A traiter`. Noms alignés sur les dossiers existants (`aligner`).
+- Pièces sensibles (identité, permis, casier, Carte Vitale, codes) : reconnues d'après le NOM (`typeSensibleDuNom`), jamais envoyées à l'IA (`lu_via = 'nom'`).
+- À confirmer = carte compacte (nom proposé, dossier d'arrivée sur une ligne, Confirmer, Rejeter) ; type / date / tiers / montant / référence / dossier / sous-dossier / alternatives repliés dans « Modifier les détails » ; « Tout ranger (n) » en tête ; documents « sûrs » (`estSur`) en premier avec une coche ; recherche. Inbox = dépôt + un seul geste « Trier (n) » (sans sélection : tout ce que l'IA sait lire).
+- « Dis-moi ce que c'est » (carte À confirmer ET baguette dans l'Inbox) : phrase libre → `decrire.logic#analyserDescription` (pur, sans IA : type par mots-clés, tiers = fiche connue sinon texte en MAJUSCULES, date « 5 octobre » / 05/10/2026 / « octobre 2026 » (jour 01), référence = numéro isolé, plaque) → nom + dossier de la convention aussitôt. Dans l'Inbox : `propositionDepuisDescription` + `ecrirePropositionSaisie` (`lu_via = 'saisie'`), le document passe en À confirmer. Type introuvable = message, rien ne change. « facture » = client si le tiers est une fiche client, sinon fournisseur.
+- Doublon = même type + date + tiers + référence qu'un document classé (`proposition.doublon_de`).
+- Types nouveaux à ajouter dans le Google Doc : TICKET, FEUILLE-DE-ROUTE, SYNTHESE-TOURNEE, PREUVE-LIVRAISON, ASSURANCE, CAPACITE-TRANSPORT, DPAE, CNI, PERMIS-CONDUIRE, CASIER-JUDICIAIRE, CARTE-VITALE, CODES-ACCES, MODELE, DOCUMENT-VEHICULE, DOCUMENT-SALARIE, DOCUMENT.
+- Banc d'essai : `_shared/conventionDocuments.test.ts` et `documents/decrire.logic.test.ts` (données fictives).
+
 ## 1 Rôle
 - Un seul endroit pour TOUS les fichiers du site : Inbox → tri par l'IA → confirmation → rangé dans le Drive de la société.
 - Rien n'est rangé sans confirmation. La Bibliothèque = le Drive, rien d'autre.
