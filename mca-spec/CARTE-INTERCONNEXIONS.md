@@ -69,10 +69,14 @@
   `_shared/referentiel.ts`. Écrite : par la fonction `apprendre_position_arret` (security
   definer, appelée par `tourneesColis.queries#placerArret` : un arrêt placé à la main apprend
   son numéro), sinon président / `planning.tournees`. RLS : lecture société.
-  **Zones (22/10/2026)** : colonnes `zone` (zone unique de la rue) et `zones` (toutes ses zones, fichier Excel
-  « Tournée Brumath et villages 23 », 161 rues) ; écrites par la fonction `appliquer_zones_tournee` (security
-  definer : apprend la zone lue sur une feuille pour les rues absentes du fichier, remplit `tournees_colis_arrets.zone`),
-  appelée par `tourneesColis.queries#appliquerZones` (création de tournée, avant chaque recalcul, après une correction d'adresse).
+  **Zones : plus lues ici depuis le 27/10/2026** (colonnes `zone` / `zones` gardées, ancien fichier Excel, numérotation fausse) —
+  voir `zones_rues`.
+- **zones_rues** (27/10/2026) : zones de Brumath d'après « Brumath adresses par zone.xlsx » (151 rues, une ligne par rue :
+  `commune_cle`, `rue_cle`, `zones`). SEULE source des zones. Lue par la fonction `appliquer_zones_tournee` (security definer ;
+  écrit `tournees_colis_arrets.zone` : rue à une zone = cette zone, rue coupée = zone de la feuille si permise sinon zone du point
+  voisin, rue absente = zone voisine ; n'apprend plus rien), appelée par `tourneesColis.queries#appliquerZones` (création de
+  tournée, avant chaque recalcul, après une correction d'adresse). RLS : lecture société, écriture président / `planning.tournees`.
+  Lue ensuite par l'Edge `optimiser-tournee-colis` (colonne `zone` des arrêts, zones 1 → 7 imposées dans la recherche).
 - **positions_livreurs** (lot 3) : dernière position du livreur (une ligne par fiche, pas
   d'historique), écrite par Ma tournée si le salarié active « Partager ma position » (toutes
   les ~30 s, effacée à l'arrêt du partage et à la clôture) ; lue par Tournées › « Carte du

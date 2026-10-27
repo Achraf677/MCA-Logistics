@@ -38,3 +38,10 @@
 - Tiroir : Arrêts / Feuille de route / Synthèse ; Rouvrir une clôturée ; Supprimer une non clôturée.
 - Scanner une feuille : à la création, les pages apparaissent dans Feuille de route.
 - Mobile 390 : boutons sans retour à la ligne, tuiles sur 2 colonnes.
+
+## 8. Zones de Brumath (27/10/2026)
+- Source unique : table `zones_rues` (fichier `Brumath adresses par zone.xlsx`, 151 rues, 1 sud → 7 ouest). Modifier une zone = modifier cette table.
+- `appliquer_zones_tournee` (création de tournée, chaque « Recalculer », correction d'adresse) pose `tournees_colis_arrets.zone` : rue du fichier = sa zone ; rue coupée = zone de la feuille si permise, sinon zone du point voisin ; rue absente = zone voisine.
+- Edge `optimiser-tournee-colis` : zones 1 → 7 imposées dans la recherche (`penaliserOrdreZones`), un bloc par zone, meilleur point d'entrée / sortie par zone. Tournée du 27/10 : 42,5 → 39,4 km (estimation).
+- Reste : 10 rues du référentiel absentes du fichier (zone voisine), ordre des villages de l'Excel, relance du calcul sur les tournées déjà créées.
+- À tester : Recalculer une tournée de Brumath → zones 1 → 7 dans la liste et sur la carte, une seule suite de blocs ; ajouter une adresse à Brumath → zone du fichier.
