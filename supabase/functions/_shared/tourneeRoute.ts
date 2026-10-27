@@ -178,7 +178,27 @@ export function rangZone(cle: string | null | undefined): number | null {
 }
 
 /**
- * Les zones de Brumath se font dans l'ordre du fichier d'origine : zone 1, 2, … jusqu'à la zone 7 (fin).
+ * Zones de Brumath dans l'ordre 1 → 7 PENDANT la recherche (et non réordonnées après coup) : toute arête entre deux nœuds
+ * de zone qui saute une zone ou revient en arrière coûte `PENALITE_VILLAGE` de plus. Le solveur choisit alors, zone par
+ * zone, le point d'entrée et de sortie le plus court. `cles[i]` = clé du nœud i (« Brumath ZONE 3 ») ; zones absentes de
+ * la tournée ignorées (la suivante présente suit). Sans zone dans les clés : matrice inchangée.
+ */
+export function penaliserOrdreZones(c: number[][], cles: (string | null)[], penalite = PENALITE_VILLAGE): number[][] {
+  const rangs = cles.map(k => rangZone(k))
+  const presentes = [...new Set(rangs.filter((r): r is number => r != null))].sort((a, b) => a - b)
+  if (presentes.length < 2) return c
+  const place = new Map(presentes.map((r, i) => [r, i]))
+  return c.map((l, i) => l.map((v, j) => {
+    const a = rangs[i]; const b = rangs[j]
+    if (a == null || b == null) return v
+    const ecart = place.get(b)! - place.get(a)!
+    return ecart === 0 || ecart === 1 ? v : v + penalite
+  }))
+}
+
+/**
+ * Filet de sécurité : les zones de Brumath se font dans l'ordre 1, 2, … jusqu'à la zone 7 (fin) ; normalement déjà acquis par
+ * `penaliserOrdreZones` (sans effet dans ce cas).
  * `ordre` = indices de nœuds dans l'ordre trouvé ; `cles[i]` = village / zone du nœud i. Les blocs de zone
  * gardent leur place dans la tournée mais se rangent par numéro ; chaque bloc garde son ordre interne.
  */

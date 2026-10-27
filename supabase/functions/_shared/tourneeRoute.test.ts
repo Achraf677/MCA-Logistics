@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   regrouperNoeuds, blocsMatrice, troncons, resoudre, coutParcours, passages, matricesVolOiseau,
-  completerMatrices, ordonnerZones, rangZone, matriceCouts, noeudsDansOrdre, passagesDepuisEtapes, polirParFenetres, penaliserChangementsVillage, encoderPolyligne, decoderPolyligne, distanceM, type ArretAPlacer,
+  completerMatrices, ordonnerZones, rangZone, matriceCouts, noeudsDansOrdre, passagesDepuisEtapes, polirParFenetres, penaliserChangementsVillage, penaliserOrdreZones, encoderPolyligne, decoderPolyligne, distanceM, type ArretAPlacer,
 } from './tourneeRoute.ts';
 
 const arret = (id: string, lat: number | null, lng: number | null, numero: string | null = null, rang = 1): ArretAPlacer =>
@@ -245,5 +245,54 @@ describe('zones de Brumath dans l\'ordre du fichier', () => {
   })
   it('sans zone : rien ne change', () => {
     expect(ordonnerZones([3, 1, 2], [null, 'A', 'B', 'C'])).toEqual([3, 1, 2])
+  })
+})
+
+describe('penaliserOrdreZones', () => {
+  const rangsDe = (ordre: number[], cles: (string | null)[]) => ordre.map(i => rangZone(cles[i]))
+
+  it('une seule zone ou aucune : matrice inchangée', () => {
+    const c = [[0, 1, 2], [1, 0, 3], [2, 3, 0]]
+    expect(penaliserOrdreZones(c, [null, 'Brumath ZONE 2', 'Brumath ZONE 2'])).toBe(c)
+    expect(penaliserOrdreZones(c, [null, 'Wingersheim', 'Kriegsheim'])).toBe(c)
+  })
+
+  it('saut de zone ou retour en arrière pénalisés, zone suivante / même zone gratuites', () => {
+    const cles = [null, 'Brumath ZONE 1', 'Brumath ZONE 2', 'Brumath ZONE 3']
+    const c = Array.from({ length: 4 }, () => new Array(4).fill(10))
+    const p = penaliserOrdreZones(c, cles, 1000)
+    expect(p[1][2]).toBe(10); expect(p[2][3]).toBe(10); expect(p[1][1]).toBe(10)
+    expect(p[1][3]).toBe(1010); expect(p[3][1]).toBe(1010); expect(p[2][1]).toBe(1010)
+    expect(p[0][3]).toBe(10); expect(p[3][0]).toBe(10)
+  })
+
+  it('une zone absente de la tournée est sautée sans pénalité', () => {
+    const cles = [null, 'Brumath ZONE 1', 'Brumath ZONE 4']
+    const c = [[0, 5, 5], [5, 0, 5], [5, 5, 0]]
+    expect(penaliserOrdreZones(c, cles, 1000)[1][2]).toBe(5)
+  })
+
+  it('le solveur range les zones 1 → 7 et choisit les meilleurs points d’entrée / sortie', () => {
+    // 3 zones côte à côte sur une ligne, points mélangés dans chaque zone ; départ à gauche.
+    const xs = [0, 12, 10, 11, 22, 20, 21, 32, 30, 31]
+    const cles: (string | null)[] = [null, ...['Brumath ZONE 1', 'Brumath ZONE 1', 'Brumath ZONE 1', 'Brumath ZONE 2', 'Brumath ZONE 2', 'Brumath ZONE 2', 'Brumath ZONE 3', 'Brumath ZONE 3', 'Brumath ZONE 3']]
+    const c = xs.map(a => xs.map(b => Math.abs(a - b)))
+    const couts = penaliserOrdreZones(penaliserChangementsVillage(c, cles), cles)
+    const ordre = resoudre(couts, 0, [1, 2, 3, 4, 5, 6, 7, 8, 9], 0, { limiteMs: 200 })
+    expect(rangsDe(ordre, cles)).toEqual([1, 1, 1, 2, 2, 2, 3, 3, 3])
+    // le plus court dans ce cadre : aller à droite en ligne, retour au départ (2 × 32)
+    expect(coutParcours(c, 0, ordre, 0)).toBe(64)
+  })
+
+  it('15 nœuds mélangés sur 5 zones : toujours 1 → 5, jamais plus long qu’un réordonnancement après coup', () => {
+    const { c: base } = grille(16, 7)
+    const cles: (string | null)[] = [null, ...Array.from({ length: 15 }, (_, i) => `Brumath ZONE ${(i % 5) + 1}`)]
+    const couts = penaliserOrdreZones(penaliserChangementsVillage(base, cles), cles)
+    const idx = Array.from({ length: 15 }, (_, i) => i + 1)
+    const ordre = resoudre(couts, 0, idx, 0, { limiteMs: 400 })
+    const rangs = rangsDe(ordre, cles) as number[]
+    expect([...rangs].sort((a, b) => a - b)).toEqual(rangs)
+    const apresCoup = ordonnerZones(resoudre(penaliserChangementsVillage(base, cles), 0, idx, 0, { limiteMs: 400 }), cles)
+    expect(coutParcours(base, 0, ordre, 0)).toBeLessThanOrEqual(coutParcours(base, 0, apresCoup, 0) + 1e-6)
   })
 })
