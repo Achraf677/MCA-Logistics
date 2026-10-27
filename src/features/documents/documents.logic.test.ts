@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cheminAvecAnnee, cheminEnTexte, cheminsDepuisDossiers, depuisQuand, optionsChemin, finParAnnee, lisibleParIA, lotsDe, tailleLisible, texteEnChemin } from './documents.logic'
+import { aligner, correspondRecherche, estSur, cheminAvecAnnee, cheminEnTexte, cheminsDepuisDossiers, depuisQuand, optionsChemin, finParAnnee, lisibleParIA, lotsDe, tailleLisible, texteEnChemin } from './documents.logic'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 
 const doc = (o: Partial<DocumentRow>): DocumentRow => ({
@@ -25,7 +25,7 @@ describe('documents', () => {
     expect(texteEnChemin(' Achats / Carburant > 2026 / / ')).toEqual(['Achats', 'Carburant', '2026'])
     expect(texteEnChemin('a/b/c/d/e')).toEqual(['a', 'b', 'c', 'd'])
     expect(finParAnnee(['Ventes', '2025'])).toBe(true)
-    expect(finParAnnee(['Ventes', 'ASDIA'])).toBe(false)
+    expect(finParAnnee(['Ventes', 'CLIENTD'])).toBe(false)
     expect(cheminAvecAnnee(['Achats', '2025'], '2026-03-02')).toEqual(['Achats', '2026'])
     expect(cheminAvecAnnee(['Achats', '2025'], null)).toEqual(['Achats', 'Sans date'])
     expect(cheminAvecAnnee(['Achats', 'Carburant'], '2026-03-02')).toEqual(['Achats', 'Carburant'])
@@ -50,5 +50,53 @@ describe('documents', () => {
     expect(depuisQuand('2026-10-24T12:00:00', now)).toBe('il y a 3 h')
     expect(depuisQuand('2026-10-23T09:05:00', now)).toBe('hier 09:05')
     expect(depuisQuand(null, now)).toBe('')
+  })
+})
+
+const prop = (o: Record<string, unknown> = {}) => doc({
+  proposition: {
+    type: 'facture_client', date: '2026-10-05', tiers: 'CLIENTA', tiers_connu: true, montant_ttc_cts: null, reference: 'FA-1', resume: null,
+    confiance: { type: 0.95, date: 0.95, tiers: 0.95, montant: 1 }, nom: '2026-10-05_FACTURE_CLIENTA_FA-1.pdf', chemin: ['Comptabilite & finances', 'Clients', 'CLIENTA', '2026-10'],
+    chemin_nouveaux: [false, false, false, true], lu_via: 'image', propose_le: '2026-10-26', ...o,
+  } as never,
+})
+
+describe('estSur : un seul geste pour les documents sûrs', () => {
+  it('sûr : tout est lu avec assurance, tiers connu, dossier existant', () => {
+    expect(estSur(prop({ chemin_nouveaux: [false, false, false, false] }))).toBe(true)
+  })
+  it('pas sûr : nouveau dossier, doublon, tiers inconnu, doute, pièce sensible, sans date', () => {
+    expect(estSur(prop())).toBe(false)
+    const ok = { chemin_nouveaux: [false, false, false, false] }
+    expect(estSur(prop({ ...ok, doublon_de: 'x.pdf' }))).toBe(false)
+    expect(estSur(prop({ ...ok, tiers_connu: false }))).toBe(false)
+    expect(estSur(prop({ ...ok, confiance: { type: 0.95, date: 0.6, tiers: 0.95, montant: 1 } }))).toBe(false)
+    expect(estSur(prop({ ...ok, lu_via: 'nom' }))).toBe(false)
+    expect(estSur(prop({ ...ok, date: null }))).toBe(false)
+  })
+  it('un document intemporel n\'a pas besoin de date', () => {
+    expect(estSur(prop({ type: 'kbis', date: null, chemin_nouveaux: [false, false] }))).toBe(true)
+  })
+  it('un document de tournée est sûr', () => {
+    expect(estSur(prop({ lu_via: 'tournee', chemin_nouveaux: [false, false] }))).toBe(true)
+  })
+})
+
+describe('recherche dans À confirmer', () => {
+  it('tous les mots doivent correspondre (nom, type, tiers, référence, dossier), sans accent ni casse', () => {
+    const d = prop()
+    expect(correspondRecherche(d, '')).toBe(true)
+    expect(correspondRecherche(d, 'clienta facture')).toBe(true)
+    expect(correspondRecherche(d, 'fa-1')).toBe(true)
+    expect(correspondRecherche(d, 'comptabilité')).toBe(true)
+    expect(correspondRecherche(d, 'clienta amende')).toBe(false)
+  })
+})
+
+describe('aligner : reprend l\'orthographe des dossiers du Drive', () => {
+  const ex = [['Comptabilite & finances'], ['Comptabilite & finances', 'Clients'], ['Comptabilite & finances', 'Clients', 'CLIENT B TRANSPORT']]
+  it('niveaux connus alignés, niveaux nouveaux gardés', () => {
+    expect(aligner(['comptabilité & finances', 'clients', 'Client-B-Transport', '2026-10'], ex)).toEqual(['Comptabilite & finances', 'Clients', 'CLIENT B TRANSPORT', '2026-10'])
+    expect(aligner(['Autre', 'Clients'], ex)).toEqual(['Autre', 'Clients'])
   })
 })

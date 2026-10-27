@@ -1,12 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, ChevronRight, ExternalLink, File, FileImage, FileText, Folder, FolderCheck, HardDrive, Pencil, X } from 'lucide-react'
+import { Check, ChevronRight, ExternalLink, File, FileImage, FileText, Folder, FolderCheck, FolderPen, HardDrive, Pencil, Wand2, X } from 'lucide-react'
 import { Button } from '../../shared/ui/Button'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
+import type { ClasseHistorique } from '../../shared/lib/conventionDocuments'
 import { tailleLisible } from './documents.logic'
+import type { Referents } from './decrire.logic'
+import { RenommageDossier } from './RenommageDossier'
+import { RenommageFichier } from './RenommageFichier'
 import { DOSSIER_DRIVE, lireFichierDrive, parcourirDrive, renommerDansDrive, type ContenuDrive, type FichierDrive } from './documents.queries'
 
 interface Etape { id: string; nom: string }
@@ -27,9 +31,13 @@ function IconeFichier({ mime }: { mime: string }) {
  * on cherche par nom dans tout le Drive, on ouvre dans l'appli, on renomme. Les documents confirmés y sont rangés par
  * l'onglet « À confirmer » (<dossier de rangement>/<Dossier>/<Année>).
  */
-export function BibliothequeDocuments({ peutEcrire, estPresident, toast }: {
+export function BibliothequeDocuments({ peutEcrire, estPresident, referents, classes, toast }: {
   peutEcrire: boolean
   estPresident: boolean
+  /** Clients, fournisseurs, salariés, plaques : « Dis-moi ce que c'est » reconnaît le tiers avec. */
+  referents: Referents
+  /** Documents déjà rangés : les habitudes de l'utilisateur. */
+  classes: readonly ClasseHistorique[]
   toast: (message: string, type?: 'success' | 'error') => void
 }) {
   const [pile, setPile] = useState<Etape[]>([{ id: 'root', nom: 'Mon Drive' }])
@@ -39,6 +47,9 @@ export function BibliothequeDocuments({ peutEcrire, estPresident, toast }: {
   const [recherche, setRecherche] = useState('')
   const [edition, setEdition] = useState<{ id: string; nom: string } | null>(null)
   const [ouvrant, setOuvrant] = useState<string | null>(null)
+  /** Fichier dont le panneau « Renommer avec l'IA » est ouvert, et panneau « Renommer le dossier ». */
+  const [renommageIA, setRenommageIA] = useState<string | null>(null)
+  const [dossierOuvert, setDossierOuvert] = useState(false)
   const demande = useRef(0)
 
   const courant = pile[pile.length - 1]
@@ -60,8 +71,8 @@ export function BibliothequeDocuments({ peutEcrire, estPresident, toast }: {
   const { contenu, erreur } = etat
   const chargement = etat.cle !== cle
 
-  const entrer = (f: FichierDrive) => { setQ(''); setRecherche(''); setPile(p => [...p, { id: f.id, nom: f.name }]) }
-  const allerA = (i: number) => { setQ(''); setRecherche(''); setPile(p => p.slice(0, i + 1)) }
+  const entrer = (f: FichierDrive) => { setQ(''); setRecherche(''); setRenommageIA(null); setDossierOuvert(false); setPile(p => [...p, { id: f.id, nom: f.name }]) }
+  const allerA = (i: number) => { setQ(''); setRecherche(''); setRenommageIA(null); setDossierOuvert(false); setPile(p => p.slice(0, i + 1)) }
 
   const ouvrir = async (f: FichierDrive) => {
     setOuvrant(f.id)
@@ -81,6 +92,30 @@ export function BibliothequeDocuments({ peutEcrire, estPresident, toast }: {
     if (echec) { toast(echec, 'error'); return }
     toast('Renommé dans le Drive')
     await charger()
+  }
+
+  /** Renomme dans le Drive APRÈS avoir changé le nom à l'écran : un échec remet l'ancien nom (jamais de rechargement de la liste). */
+  const renommerOptimiste = async (items: Array<{ id: string; ancien: string; nouveau: string }>): Promise<string[]> => {
+    const noms = new Map(items.map(i => [i.id, i.nouveau]))
+    const patcher = (qui: Map<string, string>) => setEtat(e => ({ ...e, contenu: e.contenu && { ...e.contenu, files: e.contenu.files.map(f => (qui.has(f.id) ? { ...f, name: qui.get(f.id)! } : f)) } }))
+    patcher(noms)
+    const echecs: string[] = []
+    const restants = [...items]
+    await Promise.all(Array.from({ length: Math.min(4, restants.length) }, async () => {
+      for (let i = restants.shift(); i; i = restants.shift()) {
+        const echec = await renommerDansDrive(i.id, i.nouveau)
+        if (echec) echecs.push(i.id)
+      }
+    }))
+    if (echecs.length > 0) patcher(new Map(items.filter(i => echecs.includes(i.id)).map(i => [i.id, i.ancien])))
+    return echecs
+  }
+
+  const renommerFichierIA = async (f: FichierDrive, nom: string) => {
+    setRenommageIA(null)
+    const echecs = await renommerOptimiste([{ id: f.id, ancien: f.name, nouveau: nom }])
+    if (echecs.length > 0) toast('Renommage impossible : l\'ancien nom est remis', 'error')
+    else toast('Renommé dans le Drive')
   }
 
   const definirRacine = async () => {
@@ -113,12 +148,21 @@ export function BibliothequeDocuments({ peutEcrire, estPresident, toast }: {
             <FolderCheck size={15} /> Dossier de rangement
           </Button>
         )}
+        {peutEcrire && courant.id !== 'root' && !recherche && fichiers.length > 0 && (
+          <Button variant="secondary" className="min-h-10" onClick={() => { setRenommageIA(null); setDossierOuvert(o => !o) }}>
+            <FolderPen size={15} /> Renommer le dossier
+          </Button>
+        )}
         {estPresident && courant.id !== 'root' && !recherche && (
           <Button variant="secondary" className="min-h-10" disabled={estRacine} onClick={() => void definirRacine()}>
             <FolderCheck size={15} /> {estRacine ? 'Dossier de rangement actuel' : 'Ranger ici les nouveaux documents'}
           </Button>
         )}
       </div>
+
+      {dossierOuvert && !recherche && (
+        <RenommageDossier key={courant.id} dossierNom={courant.nom} fichiers={fichiers} onAppliquer={renommerOptimiste} onFermer={() => setDossierOuvert(false)} toast={toast} />
+      )}
 
       {!recherche && (
         <nav aria-label="Chemin" className="flex flex-wrap items-center gap-1 text-sm">
@@ -146,7 +190,7 @@ export function BibliothequeDocuments({ peutEcrire, estPresident, toast }: {
           {lignes.map(f => {
             const estDossier = f.mimeType === DOSSIER_DRIVE
             return (
-              <li key={f.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-[var(--bg-card-hover)] transition-colors">
+              <li key={f.id} className="flex flex-wrap items-center gap-3 px-3 py-2.5 hover:bg-[var(--bg-card-hover)] transition-colors">
                 {edition?.id === f.id ? (
                   <div className="flex items-center gap-1.5 flex-1 min-w-0">
                     <IconeFichier mime={f.mimeType} />
@@ -169,9 +213,14 @@ export function BibliothequeDocuments({ peutEcrire, estPresident, toast }: {
                     </button>
                     <span className="flex items-center gap-1 shrink-0">
                       {f.webViewLink && <BoutonIcone icone={ExternalLink} libelle="Ouvrir dans Google Drive" taille="sm" onClick={() => window.open(f.webViewLink, '_blank', 'noopener')} />}
+                      {peutEcrire && !estDossier && <BoutonIcone icone={Wand2} libelle="Renommer avec l'IA" taille="sm" actif={renommageIA === f.id} onClick={() => setRenommageIA(r => (r === f.id ? null : f.id))} />}
                       {peutEcrire && <BoutonIcone icone={Pencil} libelle="Renommer" taille="sm" onClick={() => setEdition({ id: f.id, nom: f.name })} />}
                     </span>
                   </>
+                )}
+                {renommageIA === f.id && (
+                  <RenommageFichier fichier={f} voisins={fichiers.filter(x => x.id !== f.id).map(x => x.name)} cheminDossier={pile.map(e => e.nom)} referents={referents} classes={classes}
+                    onAppliquer={nom => void renommerFichierIA(f, nom)} onFermer={() => setRenommageIA(null)} />
                 )}
               </li>
             )

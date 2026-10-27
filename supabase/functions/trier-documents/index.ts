@@ -16,58 +16,17 @@ import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
-import { generateJson, generateJsonFromImage } from '../_shared/mistral.ts';
-import { detecterImage, estPdf, jpegsDuPdf, versDataUrl } from '../_shared/justificatif.ts';
+import { consignes, lireDocumentIA } from '../_shared/lectureDocument.ts';
 import { jetonAcces, DOSSIER_MIME, NOM_DOSSIER_RACINE } from '../_shared/googleDrive.ts';
-import { texteDuPdf } from '../_shared/pdfTexte.ts';
 import {
-  TYPES_DOCUMENT, cheminDefaut, cheminsExistants, nomPropose, normaliserChemin, normaliserProposition, rapprocherTiers, rapprocherVehicule,
-  pageDuNom, propositionTournee, type ContexteTournee, type DossierDrive, type PropositionBrute,
+  cheminDefaut, cheminsExistants, choisirChemin, completerDepuisOrigine, exemplesRangement, nomPropose, normaliserChemin, normaliserProposition,
+  origineDuDocument, partieDuTexte, rapprocherTiers, rapprocherVehicule, pageDuNom, propositionTournee, salarieDuNom, typeDe, typeHabituel, typeSensibleDuNom,
+  type Annuaire, type ClasseHistorique, type ContexteTournee, type DossierDrive,
 } from '../_shared/triDocuments.ts';
 
 const BUCKET = 'documents';
 const MAX_PAR_APPEL = 6;
-const PAGES_MAX = 3;
 const SEUIL_CHEMIN = 0.4;
-
-const LISTE_TYPES = TYPES_DOCUMENT.map(t => `${t.cle} (${t.libelle})`).join(', ');
-
-interface Contexte {
-  clients: string[]
-  fournisseurs: string[]
-  salaries: string[]
-  plaques: string[]
-  existants: string[][]
-}
-
-function consignes(c: Contexte): string {
-  const liste = (titre: string, l: string[], max: number) => (l.length ? `\n${titre} :\n${l.slice(0, max).join(' ; ')}` : '')
-  const arbo = c.existants.length
-    ? `\nDOSSIERS DÉJÀ PRÉSENTS dans le Drive (chemins depuis la racine de rangement) :\n${c.existants.map(e => e.join(' / ')).join('\n')}`
-    : '\nLe Drive ne contient pas encore de dossier de rangement : propose la convention Dossier / Année.'
-  return `Tu classes les documents de MCA Logistics, petite société de transport routier français (véhicules de moins de 3,5 t, express et messagerie de colis, Strasbourg).
-MCA Logistics est NOTRE société. Tu lis le document et tu extrais UNIQUEMENT ce qui est écrit. Tu n'inventes rien : si une information n'apparaît pas, réponds null.
-
-SENS DES FACTURES : émise PAR MCA Logistics → facture_client, tiers = le destinataire (le client). Reçue PAR MCA Logistics → facture_fournisseur, tiers = l'émetteur (le fournisseur). Ticket de caisse, de carburant, de péage ou de restaurant → ticket, tiers = l'enseigne.
-
-- type : une valeur parmi ${LISTE_TYPES}
-- date : date d'ÉMISSION du document (AAAA-MM-JJ), pas l'échéance ni la date de paiement
-- tiers : nom du client, du fournisseur, de l'organisme ou du salarié concerné (bulletin de paie, document salarié : le salarié)
-- montant_ttc : total TTC à payer ou payé, en euros (nombre), seulement si le document en porte un
-- reference : numéro de facture, de devis, de contrat, de lettre de voiture, de dossier…
-- vehicule : plaque d'immatriculation si le document concerne un véhicule (carte grise, assurance, entretien, amende, carburant…), sinon null
-- resume : une phrase courte qui dit ce qu'est le document
-- chemin : le dossier du Drive où le ranger, sous forme de liste de noms de dossiers (3 niveaux au plus, jamais le nom du fichier).
-  RÈGLE : choisis un chemin qui existe DÉJÀ dans la liste ci-dessous, tel quel, avec l'année du document si la liste range par année.
-  Si aucun ne convient, crée un nouveau dossier en respectant la convention visible dans la liste (sinon : Dossier / Année).
-  Exemples : ["Achats","Carburant","2026"] · ["Ventes","ASDIA","2026"] · ["Flotte","AB-123-CD","2025"] · ["Équipe","2026"].
-
-Donne une confiance (0 à 1) SÉPARÉE pour le type, la date, le tiers, le montant et le chemin.
-Réponds UNIQUEMENT en JSON :
-{"type": <texte|null>, "type_confiance": <0-1>, "date": <texte|null>, "date_confiance": <0-1>, "tiers": <texte|null>, "tiers_confiance": <0-1>, "montant_ttc": <nombre|null>, "montant_confiance": <0-1>, "reference": <texte|null>, "vehicule": <texte|null>, "resume": <texte|null>, "chemin": [<texte>, …], "chemin_confiance": <0-1>}
-${liste('CLIENTS connus', c.clients, 200)}${liste('FOURNISSEURS connus', c.fournisseurs, 200)}${liste('SALARIÉS', c.salaries, 50)}${liste('PLAQUES des véhicules', c.plaques, 50)}
-Quand le tiers est l'un de ces noms, reprends-le exactement.${arbo}`;
-}
 
 const ENTITE: Record<string, string> = {
   delivery: 'joint à une livraison', vehicle: 'joint à un véhicule', client: 'joint à une fiche client', team_member: 'joint à la fiche d\'un salarié',
@@ -150,6 +109,17 @@ async function noms(service: SupabaseClient, table: string, colonne: string, com
   return ((data ?? []) as unknown as Array<Record<string, unknown>>).map(r => String(r[colonne] ?? '').trim()).filter(Boolean);
 }
 
+/** Fiches par identifiant : d'où vient un document (fiche salarié, véhicule, client) et qui l'a déposé (profil → salarié). */
+async function annuaireDeLaSociete(service: SupabaseClient, companyId: string): Promise<Annuaire> {
+  const lire = async (table: string, colonnes: string) => ((await service.from(table).select(colonnes).eq('company_id', companyId).limit(1000)).data ?? []) as unknown as Array<Record<string, string | null>>;
+  const [salaries, vehicules, clients] = await Promise.all([lire('team_members', 'id, full_name, profile_id'), lire('vehicles', 'id, plate'), lire('clients', 'id, name')]);
+  const a: Annuaire = { salaries: {}, salariesParProfil: {}, vehicules: {}, clients: {} };
+  for (const r of salaries) { if (r.id && r.full_name) a.salaries[r.id] = r.full_name; if (r.profile_id && r.full_name) a.salariesParProfil[r.profile_id] = r.full_name; }
+  for (const r of vehicules) if (r.id && r.plate) a.vehicules[r.id] = r.plate;
+  for (const r of clients) if (r.id && r.name) a.clients[r.id] = r.name;
+  return a;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return optionsResponse();
 
@@ -169,38 +139,77 @@ Deno.serve(async (req) => {
   if (!acces.ok) return acces.response;
 
   // Noms déjà pris (documents classés) : une proposition ne doit jamais doubler un nom existant.
-  const { data: classes } = await service.from('documents').select('file_name').eq('company_id', acces.companyId).eq('statut_tri', 'classe');
-  const pris = new Set((classes ?? []).map(d => String(d.file_name).toLowerCase()));
+  const { data: classes } = await service.from('documents').select('file_name, type_document, date_document, tiers, reference, drive_chemin').eq('company_id', acces.companyId).eq('statut_tri', 'classe').order('created_at', { ascending: false }).limit(1500);
+  const classesInfos = (classes ?? []) as Array<ClasseHistorique & { file_name: string; date_document: string | null; reference: string | null }>;
+  const pris = new Set(classesInfos.map(d => String(d.file_name).toLowerCase()));
+  // Habitudes : les documents déjà rangés (du plus récent au plus ancien) apprennent le type et le dossier habituels d'un tiers.
+  const historique: ClasseHistorique[] = classesInfos;
   const jourParis = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date());
 
   // Ce que l'IA doit connaître pour ne pas inventer : fiches du site + arborescence réelle du Drive.
-  const [clients, fournisseurs, salaries, plaques, existants] = await Promise.all([
+  const [clients, fournisseurs, salaries, plaques, existants, annuaire] = await Promise.all([
     noms(service, 'clients', 'name', acces.companyId), noms(service, 'suppliers', 'name', acces.companyId),
     noms(service, 'team_members', 'full_name', acces.companyId), noms(service, 'vehicles', 'plate', acces.companyId),
-    dossiersDuDrive(service, acces.companyId),
+    dossiersDuDrive(service, acces.companyId), annuaireDeLaSociete(service, acces.companyId),
   ]);
-  const systeme = consignes({ clients, fournisseurs, salaries, plaques, existants });
+  const systeme = consignes({ clients, fournisseurs, salaries, plaques, existants, exemples: exemplesRangement(historique, 25) });
   const connus = [...clients, ...fournisseurs, ...salaries];
 
   const resultats: Array<{ id: string; ok: boolean; raison?: string }> = [];
   for (const id of ids) {
     const { data: doc } = await service.from('documents')
-      .select('id, company_id, storage_path, file_name, mime_type, category, entity_type, entity_id, notes, created_at, statut_tri')
+      .select('id, company_id, storage_path, file_name, mime_type, category, entity_type, entity_id, notes, created_at, statut_tri, uploaded_by')
       .eq('id', id).maybeSingle();
     if (!doc || doc.company_id !== acces.companyId) { resultats.push({ id, ok: false, raison: 'document introuvable' }); continue; }
     if (doc.statut_tri === 'classe') { resultats.push({ id, ok: false, raison: 'déjà classé' }); continue; }
 
+    // D'où vient le document : fiche salarié / véhicule / client, livraison (son client), qui l'a déposé.
+    let clientDeLaLivraison: string | null = null;
+    if (doc.entity_type === 'delivery' && doc.entity_id) {
+      const { data: l } = await service.from('deliveries').select('client_id').eq('id', doc.entity_id).maybeSingle();
+      clientDeLaLivraison = l?.client_id ? annuaire.clients[String(l.client_id)] ?? null : null;
+    }
+    const origine = origineDuDocument(doc, annuaire, clientDeLaLivraison);
+    const partie = partieDuTexte(String(doc.file_name));
+
     // Feuille de route, synthèse, preuve d'arrêt : la tournée connaît déjà la date, le client et le salarié → pas de lecture IA.
     const tournee = await contexteTournee(service, doc);
     if (tournee) {
+      tournee.salarie ??= origine.deposePar;
       const r = propositionTournee(tournee, String(doc.file_name), pris);
       pris.add(r.nom.toLowerCase());
       const choix = normaliserChemin(r.chemin, existants, r.chemin);
       const { error } = await service.from('documents').update({
         proposition: {
-          type: r.type, date: r.date, tiers: r.tiers, tiers_connu: !!tournee.client, montant_ttc_cts: null, reference: r.reference, resume: r.resume,
+          type: r.type, date: r.date, tiers: r.tiers, tiers_connu: !!(tournee.client || tournee.salarie), montant_ttc_cts: null, reference: r.reference, resume: r.resume,
           confiance: { type: 1, date: r.date ? 1 : 0, tiers: r.tiers ? 1 : 0, montant: 1 }, vehicule: null, nom: r.nom, lu_via: 'tournee', propose_le: new Date().toISOString(),
-          chemin: choix.chemin, chemin_nouveaux: choix.nouveaux, chemin_confiance: 1, alternatives: [],
+          chemin: choix.chemin, chemin_nouveaux: choix.nouveaux, chemin_confiance: 1, chemin_via: 'origine', alternatives: [],
+        },
+        statut_tri: 'propose',
+      }).eq('id', doc.id);
+      resultats.push(error ? { id, ok: false, raison: 'enregistrement impossible' } : { id, ok: true });
+      continue;
+    }
+
+    // Pièce personnelle ou secrète (identité, permis, casier, Carte Vitale, codes) : reconnue d'après le nom, JAMAIS envoyée à l'IA.
+    const sensible = typeSensibleDuNom(String(doc.file_name));
+    if (sensible) {
+      // Le salarié vient d'abord de l'origine (fiche d'où vient la pièce, sinon celui qui l'a déposée), puis du nom du fichier.
+      const parOrigine = origine.salarie ?? origine.deposePar;
+      const salarie = parOrigine ?? salarieDuNom(String(doc.file_name), salaries);
+      const dateDepot = String(doc.created_at).slice(0, 10);
+      const date = typeDe(sensible)?.intemporel ? null : dateDepot;
+      const regle = choisirChemin({ type: sensible, date, tiers: salarie, parOrigine: !!parOrigine }, { classes: historique, existants });
+      const defaut = regle?.chemin ?? cheminDefaut({ type: sensible, date: dateDepot, tiers: salarie }, existants);
+      const choix = normaliserChemin(defaut, existants, defaut);
+      const nom = nomPropose({ type: sensible, dateDepot, tiers: salarie, partie }, String(doc.file_name), pris);
+      pris.add(nom.toLowerCase());
+      const { error } = await service.from('documents').update({
+        proposition: {
+          type: sensible, date, tiers: salarie, tiers_connu: !!salarie, montant_ttc_cts: null, reference: null,
+          resume: 'Pièce personnelle ou secrète : reconnue d\'après son nom, non lue par l\'IA.', confiance: { type: 0.9, date: 1, tiers: salarie ? 0.9 : 0, montant: 1 },
+          vehicule: null, partie, nom, lu_via: 'nom', propose_le: new Date().toISOString(), chemin: choix.chemin, chemin_nouveaux: choix.nouveaux, chemin_confiance: 0.9,
+          chemin_via: regle?.via ?? 'transit', alternatives: [],
         },
         statut_tri: 'propose',
       }).eq('id', doc.id);
@@ -221,43 +230,46 @@ Deno.serve(async (req) => {
       doc.category ? `Catégorie indiquée à l'envoi : ${doc.category}` : null,
     ].filter(Boolean).join('\n');
 
-    let brut: (PropositionBrute & { vehicule?: unknown; chemin?: unknown; chemin_confiance?: unknown }) | null = null;
-    let luVia: 'image' | 'texte' = 'image';
-    try {
-      const typeImage = detecterImage(octets) ?? (doc.mime_type?.startsWith('image/') ? doc.mime_type : null);
-      const photos = !typeImage && estPdf(octets) ? jpegsDuPdf(octets, PAGES_MAX, 4 * 1024) : [];
-      if (typeImage || photos.length > 0) {
-        const images = typeImage ? [versDataUrl(octets, typeImage)] : photos.map(p => versDataUrl(p, 'image/jpeg'));
-        brut = await generateJsonFromImage(apiKey, systeme, `${contexte}\n\nLe document à classer est ${images.length > 1 ? `les ${images.length} images jointes (pages du même document)` : 'l\'image jointe'}.`, images, 1500);
-      } else if (estPdf(octets)) {
-        const texte = await texteDuPdf(octets);
-        if (!texte) { resultats.push({ id, ok: false, raison: 'PDF sans texte lisible par l\'IA' }); continue; }
-        luVia = 'texte';
-        brut = await generateJson(apiKey, systeme, `${contexte}\n\nTexte extrait du document :\n${texte}`);
-      } else {
-        resultats.push({ id, ok: false, raison: 'format non pris en charge' }); continue;
-      }
-    } catch (e) {
-      console.error('trier-documents: lecture échouée', id, (e as Error)?.message);
-      resultats.push({ id, ok: false, raison: 'lecture impossible pour le moment' }); continue;
-    }
+    const lu = await lireDocumentIA(apiKey, systeme, contexte, octets, doc.mime_type);
+    if (!lu.ok) { console.error('trier-documents: lecture échouée', id, lu.raison); resultats.push({ id, ok: false, raison: lu.raison }); continue; }
+    const { brut, luVia } = lu;
 
     const p = normaliserProposition(brut, jourParis);
-    const tiers = rapprocherTiers(p.tiers, connus);
-    const vehicule = rapprocherVehicule(typeof brut?.vehicule === 'string' ? brut.vehicule : null, plaques);
-    const defaut = cheminDefaut({ type: p.type, date: p.date, vehicule });
-    const confChemin = Math.min(1, Math.max(0, Number(brut?.chemin_confiance) || 0));
-    const choix = normaliserChemin(confChemin >= SEUIL_CHEMIN ? brut?.chemin : null, existants, defaut);
-    const alt = normaliserChemin(defaut, existants, defaut);
-    const alternatives = alt.chemin.join('/') === choix.chemin.join('/') ? [] : [alt];
+    const tiersLu = rapprocherTiers(p.tiers, connus);
+    const vehiculeLu = rapprocherVehicule(typeof brut?.vehicule === 'string' ? brut.vehicule : null, plaques);
+    const dateDepot = String(doc.created_at).slice(0, 10);
 
-    const nom = nomPropose({ date: p.date, type: p.type, tiers: tiers.nom, montant_ttc_cts: p.montant_ttc_cts, reference: p.reference }, String(doc.file_name), pris);
+    // Autodidacte : sans type lu, le type habituel du tiers ; l'origine du document complète le tiers et le véhicule manquants.
+    let type = p.type;
+    const confiance = { ...p.confiance };
+    if (!type) { const h = typeHabituel(historique, tiersLu.nom); if (h) { type = h; confiance.type = Math.max(confiance.type, 0.6); } }
+    const comp = completerDepuisOrigine({ type, tiers: tiersLu.nom, vehicule: vehiculeLu }, origine);
+    const tiers = { nom: comp.tiers, connu: tiersLu.connu || (!tiersLu.nom && !!comp.tiers) };
+    const vehicule = comp.vehicule;
+    if (!p.tiers && comp.tiers) confiance.tiers = Math.max(confiance.tiers, 0.9);
+
+    // Dossier : l'habitude de l'utilisateur, puis la règle de la convention ; sans règle, le choix de l'IA ; sinon le dossier de transit.
+    const regle = choisirChemin({ type, date: p.date ?? (typeDe(type)?.intemporel ? null : dateDepot), tiers: tiers.nom, vehicule, parOrigine: comp.parOrigine }, { classes: historique, existants });
+    const defaut = regle?.chemin ?? cheminDefaut({ type }, existants);
+    const confIA = Math.min(1, Math.max(0, Number(brut?.chemin_confiance) || 0));
+    const confChemin = regle ? 1 : confIA;
+    const choix = normaliserChemin(regle?.chemin ?? (confIA >= SEUIL_CHEMIN ? brut?.chemin : null), existants, defaut);
+    const cheminVia = regle?.via ?? (confIA >= SEUIL_CHEMIN ? 'ia' : 'transit');
+    // Si une règle a décidé, le choix de l'IA reste proposé en « Sinon : » quand il diffère.
+    const choixIA = regle && confIA >= SEUIL_CHEMIN && brut?.chemin ? normaliserChemin(brut.chemin, existants, defaut) : null;
+    const alternatives = !choixIA || choixIA.chemin.join('/') === choix.chemin.join('/') ? [] : [choixIA];
+
+    const nom = nomPropose({ date: p.date, dateDepot, type, tiers: tiers.nom, reference: p.reference, partie }, String(doc.file_name), pris);
     pris.add(nom.toLowerCase());
+    // Déjà rangé ? Même type, même date, même tiers et même référence qu'un document classé.
+    const doublon = type && p.date && tiers.nom && p.reference
+      ? (classesInfos.find(c => c.type_document === type && c.date_document === p.date && (c.tiers ?? '').toLowerCase() === tiers.nom!.toLowerCase() && (c.reference ?? '').toLowerCase() === p.reference!.toLowerCase())?.file_name ?? null)
+      : null;
     const { error } = await service.from('documents')
       .update({
         proposition: {
-          ...p, tiers: tiers.nom, tiers_connu: tiers.connu, vehicule, nom, lu_via: luVia, propose_le: new Date().toISOString(),
-          chemin: choix.chemin, chemin_nouveaux: choix.nouveaux, chemin_confiance: confChemin, alternatives,
+          ...p, type, confiance, partie, tiers: tiers.nom, tiers_connu: tiers.connu, vehicule, nom, lu_via: luVia, propose_le: new Date().toISOString(), doublon_de: doublon,
+          chemin: choix.chemin, chemin_nouveaux: choix.nouveaux, chemin_confiance: confChemin, chemin_via: cheminVia, alternatives,
         },
         statut_tri: 'propose',
       })

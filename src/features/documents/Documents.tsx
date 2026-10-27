@@ -7,7 +7,9 @@ import { useToast } from '../../shared/ui/useToast'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { urlsTickets } from '../../shared/lib/receiptsInbox.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
-import { arborescenceDrive, listerDocuments, statutDrive, type StatutDrive } from './documents.queries'
+import { arborescenceDrive, chargerAnnuaire, chargerReferents, listerDocuments, statutDrive, type StatutDrive } from './documents.queries'
+import type { Referents } from './decrire.logic'
+import type { Annuaire } from '../../shared/lib/conventionDocuments'
 import { InboxDocuments } from './InboxDocuments'
 import { ConfirmationTri } from './ConfirmationTri'
 import { BibliothequeDocuments } from './BibliothequeDocuments'
@@ -30,6 +32,8 @@ export function Documents() {
   const [docs, setDocs] = useState<DocumentRow[]>([])
   const [drive, setDrive] = useState<StatutDrive | null>(null)
   const [arbre, setArbre] = useState<string[][]>([])
+  const [referents, setReferents] = useState<Referents>({ clients: [], fournisseurs: [], salaries: [], plaques: [] })
+  const [annuaire, setAnnuaire] = useState<Annuaire>({ salaries: {}, salariesParProfil: {}, vehicules: {}, clients: {} })
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
   const [miniatures, setMiniatures] = useState<Record<string, string>>({})
@@ -48,11 +52,12 @@ export function Documents() {
   }, [])
 
   useEffect(() => { void charger() }, [charger])
+  useEffect(() => { void chargerReferents().then(setReferents); void chargerAnnuaire().then(setAnnuaire) }, [])
 
   // Dossiers existants du Drive (pour choisir « Où le ranger ») : chargés à l'ouverture de À confirmer, rechargés après un rangement.
   const rafraichirArbre = useCallback(async () => { setArbre(await arborescenceDrive()) }, [])
   const driveBranche = !!drive?.connecte && !!drive.drive
-  useEffect(() => { if (vue === 'confirmer' && driveBranche) void rafraichirArbre() }, [vue, driveBranche, rafraichirArbre])
+  useEffect(() => { if ((vue === 'confirmer' || vue === 'inbox') && driveBranche) void rafraichirArbre() }, [vue, driveBranche, rafraichirArbre])
 
   // Mise à jour locale (sans recharger) : une confirmation fait disparaître la carte aussitôt.
   const patch = useCallback((ids: string[], maj: Partial<DocumentRow>) => {
@@ -112,16 +117,16 @@ export function Documents() {
       </div>
 
       {vue === 'inbox' && (
-        <InboxDocuments docs={aTrier} miniatures={miniatures} companyId={companyId ?? ''} peutEcrire={peutEcrire} peutSupprimer={peutSupprimer}
+        <InboxDocuments docs={aTrier} classes={classes} dossiers={arbre} referents={referents} annuaire={annuaire} patch={patch} miniatures={miniatures} companyId={companyId ?? ''} peutEcrire={peutEcrire} peutSupprimer={peutSupprimer}
           onChange={() => charger(true)} onTermine={(n) => { if (n > 0) setVue('confirmer') }} toast={toast} />
       )}
       {vue === 'confirmer' && (
         <ConfirmationTri docs={propositions} classes={classes} miniatures={miniatures} peutEcrire={peutEcrire} driveOk={driveOk}
-          patch={patch} dossiers={arbre} onRanges={rafraichirArbre} toast={toast} />
+          patch={patch} dossiers={arbre} referents={referents} annuaire={annuaire} onRanges={rafraichirArbre} toast={toast} />
       )}
       {vue === 'historique' && <HistoriqueDocuments docs={rangesRecents} miniatures={miniatures} toast={toast} />}
       {vue === 'bibliotheque' && (
-        <BibliothequeDocuments peutEcrire={peutEcrire} estPresident={profile?.role === 'president'} toast={toast} />
+        <BibliothequeDocuments peutEcrire={peutEcrire} estPresident={profile?.role === 'president'} referents={referents} classes={classes} toast={toast} />
       )}
     </div>
   )

@@ -1,8 +1,10 @@
 import { supabase } from '../../app/providers'
 import { lireErreurEdge } from '../../shared/lib/erreurEdge'
 import { getDownloadUrl, uploadDocument } from '../../shared/lib/documents.queries'
-import type { DocumentRow } from '../../shared/lib/documents.types'
+import type { DocumentRow, PropositionDocument } from '../../shared/lib/documents.types'
 import { cheminsDepuisDossiers, type DossierDrive } from './documents.logic'
+import type { Referents } from './decrire.logic'
+import type { Annuaire } from '../../shared/lib/conventionDocuments'
 
 /** Tous les documents de la société, plus récents d'abord (RLS). */
 export async function listerDocuments(limite = 3000) {
@@ -67,6 +69,32 @@ export async function rangerDansDrive(lot: Array<{ id: string; classement: Class
   return lot.map(l => resultats.find(r => r.id === l.id) ?? { id: l.id, ok: false, raison: 'pas de réponse' })
 }
 
+/** Noms des clients, fournisseurs, salariés et plaques : « Dis-moi ce que c'est » s'en sert pour reconnaître le tiers. */
+export async function chargerReferents(): Promise<Referents> {
+  const noms = async (table: string, col: string) => {
+    const { data } = await supabase.from(table).select(col).limit(500)
+    return ((data ?? []) as unknown as Array<Record<string, unknown>>).map(r => String(r[col] ?? '').trim()).filter(Boolean)
+  }
+  const [clients, fournisseurs, salaries, plaques] = await Promise.all([noms('clients', 'name'), noms('suppliers', 'name'), noms('team_members', 'full_name'), noms('vehicles', 'plate')])
+  return { clients, fournisseurs, salaries, plaques }
+}
+
+/** Fiches par identifiant : d'où vient un document (fiche salarié, véhicule, client) et qui l'a déposé (profil → salarié). */
+export async function chargerAnnuaire(): Promise<Annuaire> {
+  const lire = async (table: string, colonnes: string) => ((await supabase.from(table).select(colonnes).limit(1000)).data ?? []) as unknown as Array<Record<string, string | null>>
+  const [salaries, vehicules, clients] = await Promise.all([lire('team_members', 'id, full_name, profile_id'), lire('vehicles', 'id, plate'), lire('clients', 'id, name')])
+  const a: Annuaire = { salaries: {}, salariesParProfil: {}, vehicules: {}, clients: {} }
+  for (const r of salaries) { if (r.id && r.full_name) a.salaries[r.id] = r.full_name; if (r.profile_id && r.full_name) a.salariesParProfil[r.profile_id] = r.full_name }
+  for (const r of vehicules) if (r.id && r.plate) a.vehicules[r.id] = r.plate
+  for (const r of clients) if (r.id && r.name) a.clients[r.id] = r.name
+  return a
+}
+
+/** Enregistre la proposition décrite par l'utilisateur : le document passe dans « À confirmer » sans lecture par l'IA. */
+export async function ecrirePropositionSaisie(id: string, proposition: PropositionDocument) {
+  return supabase.from('documents').update({ proposition, statut_tri: 'propose' }).eq('id', id).select('id')
+}
+
 /** Renvoie un document dans l'Inbox (proposition rejetée, ou reclassement d'un document rangé). */
 export async function remettreDansInbox(id: string) {
   return supabase.from('documents').update({ statut_tri: 'a_trier', proposition: null, trie_le: null }).eq('id', id).select('id')
@@ -122,6 +150,34 @@ export async function renommerDansDrive(fileId: string, nom: string): Promise<st
   const { data, error } = await supabase.functions.invoke('drive-rename', { body: { file_id: fileId, name: nom } })
   if (error || !data?.ok) return (await lireErreurEdge(data, error))?.message ?? 'Renommage impossible'
   return null
+}
+
+export interface PropositionRenommage {
+  id: string
+  ancien: string
+  nouveau: string
+  type: string | null
+  tiers: string | null
+  date: string | null
+  reference: string | null
+  partie: string | null
+  deja_conforme: boolean
+  lu_via: 'image' | 'texte' | 'nom'
+  raison?: string
+}
+
+/**
+ * L'IA lit des fichiers DÉJÀ rangés dans le Drive et propose un nom selon la convention (Edge `drive-renommer-ia`, 6 fichiers au plus).
+ * `reserves` = noms déjà proposés dans les paquets précédents du même dossier (jamais deux noms identiques). Rien n'est renommé ici.
+ */
+export async function proposerRenommages(fichiers: Array<{ id: string; nom: string }>, reserves: string[] = []): Promise<{ resultats: PropositionRenommage[]; erreur: string | null }> {
+  const { data, error } = await supabase.functions.invoke('drive-renommer-ia', { body: { fichiers, reserves } })
+  if (error || !data?.ok) {
+    const brut = (await lireErreurEdge(data, error))?.message ?? ''
+    const erreur = brut.includes('drive_not_connected') ? 'Le Drive n\'est pas connecté.' : brut.includes('drive_access_denied') ? 'Tu n\'as pas accès au Drive.' : brut || 'Lecture par l\'IA impossible'
+    return { resultats: [], erreur }
+  }
+  return { resultats: (data.data?.resultats ?? []) as PropositionRenommage[], erreur: null }
 }
 
 /** Dossiers existants du Drive sous le dossier de rangement (chemins relatifs, 4 niveaux au plus) : sert au choix de « Où le ranger ». */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { pageDuNom, propositionTournee, cheminDefaut as cheminEdge, cheminsExistants, extensionDe, lisible, nomPropose as nomEdge, normaliserChemin, normaliserProposition, rapprocherTiers, rapprocherVehicule, TYPES_DOCUMENT as TYPES_EDGE } from './triDocuments'
-import { cheminDefaut as cheminFront, nomPropose as nomFront, TYPES_DOCUMENT as TYPES_FRONT } from '../../../src/shared/lib/documentsTri'
+import { readFileSync } from 'node:fs'
+import { pageDuNom, propositionTournee, cheminsExistants, extensionDe, nomPropose as nomEdge, normaliserChemin, normaliserProposition, rapprocherTiers, rapprocherVehicule, TYPES_DOCUMENT as TYPES_EDGE } from './triDocuments'
+import { TYPES_DOCUMENT as TYPES_FRONT } from '../../../src/shared/lib/documentsTri'
 
 const brut = { type: 'ticket', type_confiance: 0.9, date: '2026-10-21', date_confiance: 0.9, tiers: "O'TACOS", tiers_confiance: 0.8, montant_ttc: 17.5, montant_confiance: 0.9, reference: 'T-123', resume: 'Repas du midi' }
 
@@ -14,31 +15,16 @@ describe('triDocuments', () => {
     expect(p).toMatchObject({ type: null, date: null, tiers: null, montant_ttc_cts: null })
     expect(normaliserProposition(null, '2026-10-24').type).toBeNull()
   })
-  it('nom rangé : date, type, tiers, référence, montant', () => {
-    expect(nomEdge({ date: '2026-10-21', type: 'ticket', tiers: "O'TACOS", montant_ttc_cts: 1750 }, 'IMG_2231.JPG')).toBe('2026-10-21_Ticket-recu_O-TACOS_17,50EUR.jpg')
-    expect(nomEdge({ type: 'facture_fournisseur', tiers: 'Société Générale Énergies' }, 'a.pdf')).toBe('sans-date_Facture-fournisseur_Societe-Generale-Energie.pdf')
-  })
-  it('jamais deux noms identiques', () => {
-    const pris = new Set(['2026-10-21_ticket-recu_super-u.pdf'])
-    expect(nomEdge({ date: '2026-10-21', type: 'ticket', tiers: 'Super U' }, 'x.pdf', pris)).toBe('2026-10-21_Ticket-recu_Super-U-2.pdf')
-  })
-  it('outils', () => {
-    expect(lisible('  Été / 2026 ')).toBe('Ete-2026')
+  it('extension', () => {
     expect(extensionDe('Photo.HEIC')).toBe('.heic')
     expect(extensionDe('sans-extension')).toBe('')
+    expect(nomEdge({ type: 'ticket', date: '2026-10-21' }, 'a.PDF')).toBe('2026-10-21_TICKET.pdf')
   })
-  it('miroir front = Edge', () => {
+  it('miroir front = Edge : mêmes types, même fichier de règles', () => {
     expect(TYPES_FRONT).toEqual(TYPES_EDGE)
-    const e = { date: '2026-10-21', type: 'devis', tiers: 'ASDIA', montant_ttc_cts: 99900, reference: 'D-2026-014' }
-    expect(nomFront(e, 'scan.pdf')).toBe(nomEdge(e, 'scan.pdf'))
-  })
-  it('miroir du chemin par défaut', () => {
-    for (const e of [{ type: 'ticket', date: '2026-10-21' }, { type: 'document_vehicule', date: '2025-01-02', vehicule: 'AB-123-CD' }, { type: null, date: null }]) {
-      expect(cheminFront(e)).toEqual(cheminEdge(e))
-    }
-    expect(cheminEdge({ type: 'ticket', date: '2026-10-21' })).toEqual(['Achats', '2026'])
-    expect(cheminEdge({ type: 'amende', date: '2026-03-01', vehicule: 'AB-123-CD' })).toEqual(['Flotte', 'AB-123-CD', '2026'])
-    expect(cheminEdge({ type: 'contrat' })).toEqual(['Juridique', 'Sans date'])
+    const edge = readFileSync(new URL('./conventionDocuments.ts', import.meta.url), 'utf8')
+    const front = readFileSync(new URL('../../../src/shared/lib/conventionDocuments.ts', import.meta.url), 'utf8')
+    expect(front).toBe(edge)
   })
   it('chemins existants sous la racine', () => {
     const d = [
@@ -69,13 +55,16 @@ describe('triDocuments', () => {
   it('documents de tournée : rangés d’après la tournée', () => {
     expect(pageDuNom('feuille-de-route-page-3.jpg')).toBe(3)
     expect(pageDuNom('IMG_3794.jpeg')).toBeNull()
-    const f = propositionTournee({ nature: 'feuille', date: '2026-10-24', client: 'La Poste', salarie: 'MOHAMMED CHIKRI', numero: 2 }, 'feuille-de-route-page-2.jpg')
-    expect(f).toMatchObject({ type: 'feuille_de_route', date: '2026-10-24', tiers: 'La Poste', reference: 'p2', nom: '2026-10-24_Feuille-de-route_La-Poste_p2.jpg', chemin: ['Transport', 'Tournées de colis', 'Feuilles de route', '2026-10'] })
-    const s = propositionTournee({ nature: 'synthese', date: '2026-10-23', client: null, salarie: 'MOHAMMED CHIKRI', numero: 1 }, 'IMG_3794.jpeg')
-    expect(s).toMatchObject({ type: 'synthese_tournee', tiers: 'MOHAMMED CHIKRI', nom: '2026-10-23_Synthese-de-tournee_MOHAMMED-CHIKRI_1.jpeg', chemin: ['Transport', 'Tournées de colis', 'Synthèses de tournée', '2026-10'] })
+    const f = propositionTournee({ nature: 'feuille', date: '2026-10-24', client: 'La Poste', salarie: 'PAUL MARTIN', numero: 2 }, 'feuille-de-route-page-2.jpg')
+    expect(f).toMatchObject({ type: 'feuille_de_route', date: '2026-10-24', tiers: 'PAUL MARTIN', reference: 'p2', nom: '2026-10-24_FEUILLE-DE-ROUTE_PAUL-MARTIN_P2.jpg', chemin: ['Transport', 'Tournées de colis', 'Feuilles de route', '2026-10'] })
+    const s = propositionTournee({ nature: 'synthese', date: '2026-10-23', client: null, salarie: 'PAUL MARTIN', numero: 1 }, 'IMG_3794.jpeg')
+    expect(s).toMatchObject({ type: 'synthese_tournee', tiers: 'PAUL MARTIN', nom: '2026-10-23_SYNTHESE-TOURNEE_PAUL-MARTIN_1.jpeg', chemin: ['Transport', 'Tournées de colis', 'Synthèses de tournée', '2026-10'] })
     const a = propositionTournee({ nature: 'arret', date: null, client: 'La Poste', salarie: null, numero: null, adresse: '12 rue des Lilas, Brumath' }, 'x.jpg')
     expect(a).toMatchObject({ type: 'preuve_livraison', date: null, chemin: ['Transport', 'Tournées de colis', 'Preuves de livraison', 'Sans date'] })
-    const pris = new Set([f.nom.toLowerCase()])
-    expect(propositionTournee({ nature: 'feuille', date: '2026-10-24', client: 'La Poste', salarie: null, numero: 2 }, 'x.jpg', pris).nom).toBe('2026-10-24_Feuille-de-route_La-Poste_p2-2.jpg')
+    // Sans salarié connu, le client donne son nom ; deux noms identiques : -2.
+    const sansSalarie = propositionTournee({ nature: 'feuille', date: '2026-10-24', client: 'La Poste', salarie: null, numero: 2 }, 'x.jpg')
+    expect(sansSalarie.nom).toBe('2026-10-24_FEUILLE-DE-ROUTE_LA-POSTE_P2.jpg')
+    const pris = new Set([sansSalarie.nom.toLowerCase()])
+    expect(propositionTournee({ nature: 'feuille', date: '2026-10-24', client: 'La Poste', salarie: null, numero: 2 }, 'x.jpg', pris).nom).toBe('2026-10-24_FEUILLE-DE-ROUTE_LA-POSTE_P2-2.jpg')
   })
 })
