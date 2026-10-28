@@ -179,6 +179,28 @@ export function penaliserChangementsVillage(c: number[][], communes: (string | n
   return c.map((l, i) => l.map((v, j) => (cle[i] && cle[j] && cle[i] !== cle[j] ? v + penalite : v)))
 }
 
+/**
+ * Communes déléguées = un seul village pour le solveur (clés normalisées) : Mittelhausen, Hohatzenheim et Gingsheim font
+ * Wingersheim les Quatre Bans ; Keffendorf fait Ohlungen (CLAUDE.md § 2). L'affichage garde
+ * le nom de la feuille : seule la clé de regroupement change.
+ */
+const ALIAS_VILLAGES: Record<string, string> = {
+  'mittelhausen': 'wingersheim', 'hohatzenheim': 'wingersheim', 'gingsheim': 'wingersheim',
+  'wingersheim les quatre bans': 'wingersheim', 'keffendorf': 'ohlungen',
+}
+
+/** Clé de village pour le solveur : sans accents ni casse, sans le « ZONE n » de Brumath, communes déléguées regroupées. */
+export function cleVillage(commune: string | null | undefined): string | null {
+  const k = (commune ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/ zone \d+$/, '')
+  return k ? (ALIAS_VILLAGES[k] ?? k) : null
+}
+
+/**
+ * Coût d'un changement de village dans la recherche (mètres) : assez pour que chaque village se fasse d'un bloc, pas assez
+ * pour interdire de couper un village en deux quand ça évite un vrai détour. Réglé sur le banc du 28/10/2026.
+ */
+export const PENALITE_CHANGEMENT_VILLAGE = 2000
+
 const cleNorm = (v: string) => v.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 
 /** Numéro de zone d'une clé « Brumath ZONE 3 » (feuille de Brumath) ; null pour un village ordinaire. */
@@ -318,7 +340,16 @@ export function ordonnerTournee(m: Matrices, noeuds: Noeud[], arrivee: number | 
   // Clé de rue = village + rue (deux « Rue Principale » de deux villages restent deux rues).
   const rues = [null, ...noeuds.map(n => (n.rue ? `${n.commune ?? ''} ${n.rue}` : null))]
   const numeros = [null, ...noeuds.map(n => n.numero ?? null)]
-  const couts = penaliserChangementsRue(penaliserOrdreZones(penaliserChangementsVillage(matriceCouts(m), cles), cles), rues)
+  // Village = clé regroupée (communes déléguées, sans le « ZONE n ») ; les zones de Brumath gardent leur pénalité dure.
+  const villages = [null, ...noeuds.map(n => cleVillage(n.commune))]
+  // Brumath reste « dur » comme avant : tout passage entre deux zones, ou entre une zone et un autre village, coûte
+  // PENALITE_VILLAGE (chaque zone d'un seul bloc, Brumath d'un seul tenant). Seuls les villages ordinaires sont « doux ».
+  // Une tournée qui passe par des zones de Brumath garde la règle dure partout (la recherche s'y perd quand les deux
+  // règles se mélangent : banc du 28/10/2026, jusqu'à +8 km) ; seules les communes déléguées y sont regroupées.
+  const avecZones = noeuds.some(n => rangZone(n.commune) != null)
+  const doux = avecZones ? PENALITE_VILLAGE : (opts.penaliteVillage ?? PENALITE_CHANGEMENT_VILLAGE)
+  const parCles = avecZones ? [null, ...noeuds.map(n => { const v = cleVillage(n.commune); const z = rangZone(n.commune); return v && z != null ? `${v} zone ${z}` : v })] : villages
+  const couts = penaliserChangementsRue(penaliserOrdreZones(penaliserChangementsVillage(matriceCouts(m), parCles, doux), cles), rues)
   const ordre = ordonnerZones(resoudre(couts, 0, noeuds.map((_, i) => i + 1), arrivee, opts), cles)
   return rangerNumeros(m.distances, 0, ordre, arrivee, rues, numeros)
 }
@@ -466,6 +497,8 @@ export interface OptionsSolveur {
   limiteMs?: number
   /** Nombre de perturbations (recherche locale itérée) après la première optimisation. */
   perturbations?: number
+  /** Coût (m) d'un changement de village dans `ordonnerTournee` (défaut `PENALITE_CHANGEMENT_VILLAGE`). */
+  penaliteVillage?: number
 }
 
 /** Hasard reproductible (même graine = mêmes tirages). */
