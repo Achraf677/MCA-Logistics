@@ -13,6 +13,8 @@
 //    Sort des minimums locaux que 2-opt seul ne quitte pas. Hasard à graine fixe : déterministe.
 // 3. Découpage des appels : matrice ORS en blocs ≤ 3 500 éléments ; tracé IGN ≤ 17 points
 //    (départ + 15 étapes + arrivée), tracé ORS ≤ 50 points.
+// 4. `ordonnerTournee` = l'ordre complet : village par village, zones de Brumath 1 → 7, chaque rue d'un seul
+//    tenant (`penaliserChangementsRue`), numéros rangés dans chaque rue (`rangerNumeros`).
 
 export interface ArretAPlacer {
   id: string
@@ -22,6 +24,8 @@ export interface ArretAPlacer {
   rang: number
   /** Village de l'arrêt : la tournée fait village par village (`penaliserChangementsVillage`). */
   commune?: string | null
+  /** Rue de l'arrêt : une rue se fait d'un seul tenant (`penaliserChangementsRue`), numéros dans l'ordre (`rangerNumeros`). */
+  rue?: string | null
 }
 
 export interface Noeud {
@@ -34,6 +38,9 @@ export interface Noeud {
   rang: number
   /** Village du nœud (celui de son premier arrêt), null si inconnu. */
   commune: string | null
+  /** Rue et numéro du premier arrêt du nœud (null si inconnus). */
+  rue?: string | null
+  numero?: string | null
 }
 
 export interface Point {
@@ -78,7 +85,10 @@ export function regrouperNoeuds(arrets: ArretAPlacer[]): Noeud[] {
         const a = numeroTri(x.numero); const b = numeroTri(y.numero)
         return a.pair - b.pair || a.valeur - b.valeur || x.rang - y.rang
       })
-      return { cle, lat: n.lat, lng: n.lng, arrets: tries.map(a => a.id), rang: Math.min(...n.arrets.map(a => a.rang)), commune: tries[0].commune?.trim() || null }
+      return {
+        cle, lat: n.lat, lng: n.lng, arrets: tries.map(a => a.id), rang: Math.min(...n.arrets.map(a => a.rang)),
+        commune: tries[0].commune?.trim() || null, rue: tries[0].rue?.trim() || null, numero: tries[0].numero ?? null,
+      }
     })
     .sort((a, b) => a.rang - b.rang || (a.cle < b.cle ? -1 : 1))
 }
@@ -215,6 +225,102 @@ export function ordonnerZones(ordre: number[], cles: (string | null)[]): number[
   const out = [...blocs]
   places.forEach((i, k) => { out[i] = tries[k] })
   return out.flatMap(b => b.noeuds)
+}
+
+/**
+ * Coût d'un changement de rue (mètres) : une rue se fait d'un seul tenant. Bien moins qu'un village (on accepte
+ * de couper une rue si ça évite un vrai détour), assez pour ne plus revenir trois fois dans la même rue.
+ * Réglé sur le banc du 28/10/2026 (tournées réelles de Brumath, matrice routière OSRM).
+ */
+export const PENALITE_RUE = 300
+
+/** Clé de rue : « Rue du Général Duport » = « rue du general duport » (accents, apostrophes, casse ignorés). */
+export function cleRue(rue: string | null | undefined): string | null {
+  const k = rue ? cleNorm(rue) : ''
+  return k || null
+}
+
+/**
+ * Changer de rue coûte `penalite` en plus (`rues[i]` = rue du nœud i, null = départ ou rue inconnue : rien).
+ * Le nombre minimal de changements (une fois par rue) est payé par TOUT ordre : seul un passage en plusieurs fois
+ * dans une même rue coûte vraiment.
+ */
+export function penaliserChangementsRue(c: number[][], rues: (string | null | undefined)[], penalite = PENALITE_RUE): number[][] {
+  const cle = rues.map(cleRue)
+  if (cle.filter(Boolean).length < 2) return c
+  return c.map((l, i) => l.map((v, j) => (cle[i] && cle[j] && cle[i] !== cle[j] ? v + penalite : v)))
+}
+
+/** Numéro de rue utilisable pour trier (« 28A » → 28) ; null si absent. */
+function numeroRue(n: string | null | undefined): number | null {
+  const m = (n ?? '').match(/\d+/)
+  return m ? Number(m[0]) : null
+}
+
+/** Tolérance pour ranger une rue dans l'ordre des numéros : au plus ce surplus de route (mètres) par passage de rue. */
+export const TOLERANCE_NUMEROS_M = 150
+
+/**
+ * Dans chaque passage d'une rue (nœuds consécutifs de même rue, au moins 3), les numéros dans l'ordre (croissant
+ * ou décroissant, le sens le plus court avec la rue d'avant et celle d'après) si ça ne rallonge pas de plus de
+ * `tolerance` mètres : le livreur remonte la rue, il ne fait pas 44 → 31 → 34 → 23 → 37. `d` = distances réelles,
+ * `rues[i]` / `numeros[i]` = rue / numéro du nœud i. Modifie et renvoie `ordre`.
+ */
+export function rangerNumeros(
+  d: number[][], depart: number, ordre: number[], arrivee: number | null,
+  rues: (string | null | undefined)[], numeros: (string | null | undefined)[], tolerance = TOLERANCE_NUMEROS_M,
+): number[] {
+  const cle = rues.map(cleRue)
+  const chemin = (avant: number, seg: number[], apres: number | null) => {
+    let t = 0; let p = avant
+    for (const n of seg) { t += d[p][n]; p = n }
+    return t + (apres == null ? 0 : d[p][apres])
+  }
+  for (let i = 0; i < ordre.length;) {
+    let j = i
+    while (j < ordre.length && cle[ordre[j]] && cle[ordre[j]] === cle[ordre[i]]) j++
+    if (j - i >= 3 && ordre.slice(i, j).every(n => numeroRue(numeros[n]) != null)) {
+      const seg = ordre.slice(i, j)
+      const avant = i === 0 ? depart : ordre[i - 1]
+      const apres = j < ordre.length ? ordre[j] : arrivee
+      const croissant = [...seg].sort((a, b) => numeroRue(numeros[a])! - numeroRue(numeros[b])! || a - b)
+      const pairs = croissant.filter(n => numeroRue(numeros[n])! % 2 === 0)
+      const impairs = croissant.filter(n => numeroRue(numeros[n])! % 2 === 1)
+      // Rue remontée dans l'ordre des numéros, dans un sens ou l'autre, ou un côté à l'aller et l'autre au retour.
+      const candidats = [
+        croissant, [...croissant].reverse(),
+        ...(pairs.length && impairs.length ? [
+          [...pairs, ...[...impairs].reverse()], [...impairs, ...[...pairs].reverse()],
+          [...[...pairs].reverse(), ...impairs], [...[...impairs].reverse(), ...pairs],
+        ] : []),
+      ]
+      const actuel = chemin(avant, seg, apres)
+      let meilleur = candidats[0]; let cout = chemin(avant, meilleur, apres)
+      for (const cand of candidats.slice(1)) {
+        const x = chemin(avant, cand, apres)
+        if (x + EPS < cout) { meilleur = cand; cout = x }
+      }
+      if (cout <= actuel + tolerance) ordre.splice(i, j - i, ...meilleur)
+    }
+    i = Math.max(j, i + 1)
+  }
+  return ordre
+}
+
+/**
+ * L'ordre complet d'une tournée, tel que l'Edge le calcule : le plus court par la route, village par village,
+ * zones de Brumath 1 → 7, chaque rue d'un seul tenant, numéros dans l'ordre. `m` = matrices (index 0 = départ,
+ * index i = nœud i - 1), `noeuds` = `regrouperNoeuds(...)` (commune = « Brumath ZONE 3 » pour une zone),
+ * `arrivee` = 0 (retour au départ) ou null. Renvoie les index (1..n) dans l'ordre de passage.
+ */
+export function ordonnerTournee(m: Matrices, noeuds: Noeud[], arrivee: number | null, opts: OptionsSolveur = {}): number[] {
+  const cles = [null, ...noeuds.map(n => n.commune)]
+  // Clé de rue = village + rue (deux « Rue Principale » de deux villages restent deux rues).
+  const rues = [null, ...noeuds.map(n => (n.rue ? `${n.commune ?? ''} ${n.rue}` : null))]
+  const numeros = [null, ...noeuds.map(n => n.numero ?? null)]
+  const couts = penaliserChangementsRue(penaliserOrdreZones(penaliserChangementsVillage(matriceCouts(m), cles), cles), rues)
+  const ordre = ordonnerZones(resoudre(couts, 0, noeuds.map((_, i) => i + 1), arrivee, opts), cles)
+  return rangerNumeros(m.distances, 0, ordre, arrivee, rues, numeros)
 }
 
 // ── 3. Solveur ──────────────────────────────────────────────────────────────
@@ -394,22 +500,25 @@ function doublePont(ordre: number[], rnd: () => number): number[] {
 export function resoudre(c: number[][], depart: number, noeuds: number[], arrivee: number | null, opts: OptionsSolveur = {}): number[] {
   if (noeuds.length <= 1) return [...noeuds]
   if (noeuds.length <= EXACT_MAX) return exact(c, depart, noeuds, arrivee)
-  const limite = Date.now() + (opts.limiteMs ?? 3000)
+  const duree = opts.limiteMs ?? 3000
+  const limite = Date.now() + duree
+  // Le dernier polissage a sa part du temps : la limite donnée est TENUE (les fonctions Supabase coupent vers 2 s).
+  const avantPolissage = limite - Math.min(150, duree * 0.2)
   let meilleur = plusProcheVoisin(c, depart, noeuds)
-  rechercheLocale(c, depart, meilleur, arrivee, limite)
+  rechercheLocale(c, depart, meilleur, arrivee, avantPolissage)
   if (noeuds.length < 8) return meilleur
-  polirParFenetres(c, depart, meilleur, arrivee, limite)
+  polirParFenetres(c, depart, meilleur, arrivee, avantPolissage)
   let cout = coutParcours(c, depart, meilleur, arrivee)
   const rnd = hasard(noeuds.length * 7919 + depart)
   const essais = opts.perturbations ?? 300
-  for (let e = 0; e < essais && Date.now() < limite; e++) {
+  for (let e = 0; e < essais && Date.now() < avantPolissage; e++) {
     const essai = doublePont(meilleur, rnd)
-    rechercheLocale(c, depart, essai, arrivee, limite)
+    rechercheLocale(c, depart, essai, arrivee, avantPolissage)
     const ce = coutParcours(c, depart, essai, arrivee)
     if (ce + EPS < cout) { meilleur = essai; cout = ce }
   }
-  // Dernier polissage (100 ms de marge au-delà de la limite).
-  polirParFenetres(c, depart, meilleur, arrivee, limite + 100)
+  // Dernier polissage, dans le temps réservé.
+  polirParFenetres(c, depart, meilleur, arrivee, limite)
   return meilleur
 }
 
