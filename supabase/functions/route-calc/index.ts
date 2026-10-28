@@ -1,7 +1,8 @@
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
+import { IGN_ITINERAIRE, IGN_RESSOURCE } from '../_shared/ign.ts'
 
 const GEO_API = 'https://api-adresse.data.gouv.fr/search'
-const IGN_API = 'https://data.geopf.fr/navigation/itineraire'
+const IGN_API = IGN_ITINERAIRE
 
 async function geocode(adresse: string): Promise<[number, number] | null> {
   try {
@@ -41,7 +42,7 @@ Deno.serve(async (req: Request) => {
   let ignRes: Response
   try {
     ignRes = await fetch(
-      `${IGN_API}?resource=bdtopo-osrm&start=${dLon},${dLat}&end=${aLon},${aLat}&profile=car&geometryFormat=geojson`
+      `${IGN_API}?resource=${IGN_RESSOURCE}&start=${dLon},${dLat}&end=${aLon},${aLat}&profile=car&geometryFormat=geojson`
     )
   } catch (e) {
     return jsonResponse({ ok: false, error: `API IGN indisponible : ${(e as Error).message}` })
