@@ -181,12 +181,12 @@ export function penaliserChangementsVillage(c: number[][], communes: (string | n
 
 /**
  * Communes déléguées = un seul village pour le solveur (clés normalisées) : Mittelhausen, Hohatzenheim et Gingsheim font
- * Wingersheim les Quatre Bans ; Keffendorf (et la faute « Ohlingen » lue sur des feuilles) fait Ohlungen. L'affichage garde
+ * Wingersheim les Quatre Bans ; Keffendorf fait Ohlungen (CLAUDE.md § 2). L'affichage garde
  * le nom de la feuille : seule la clé de regroupement change.
  */
 const ALIAS_VILLAGES: Record<string, string> = {
   'mittelhausen': 'wingersheim', 'hohatzenheim': 'wingersheim', 'gingsheim': 'wingersheim',
-  'wingersheim les quatre bans': 'wingersheim', 'keffendorf': 'ohlungen', 'ohlingen': 'ohlungen',
+  'wingersheim les quatre bans': 'wingersheim', 'keffendorf': 'ohlungen',
 }
 
 /** Clé de village pour le solveur : sans accents ni casse, sans le « ZONE n » de Brumath, communes déléguées regroupées. */
