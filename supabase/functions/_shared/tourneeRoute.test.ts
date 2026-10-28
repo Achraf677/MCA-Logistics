@@ -441,7 +441,7 @@ describe('villages : communes déléguées et pénalité douce', () => {
     expect(cleVillage('Gingsheim')).toBe('wingersheim')
     expect(cleVillage('Wingersheim les Quatre Bans')).toBe('wingersheim')
     expect(cleVillage('Keffendorf')).toBe('ohlungen')
-    expect(cleVillage('OHLINGEN')).toBe('ohlingen')
+    expect(cleVillage('OHLINGEN')).toBe('ohlungen')
     expect(cleVillage('Brumath ZONE 3')).toBe('brumath')
     expect(cleVillage('Mommenheim')).toBe('mommenheim')
     expect(cleVillage('  ')).toBeNull()
