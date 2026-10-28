@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   regrouperNoeuds, blocsMatrice, troncons, resoudre, coutParcours, passages, matricesVolOiseau,
   completerMatrices, ordonnerZones, rangZone, matriceCouts, noeudsDansOrdre, passagesDepuisEtapes, polirParFenetres, penaliserChangementsVillage, penaliserOrdreZones, encoderPolyligne, decoderPolyligne, distanceM, type ArretAPlacer,
-  cleRue, penaliserChangementsRue, rangerNumeros, ordonnerTournee, type Matrices,
+  cleRue, penaliserChangementsRue, rangerNumeros, ordonnerTournee, cleVillage, PENALITE_CHANGEMENT_VILLAGE, type Matrices,
 } from './tourneeRoute.ts';
 
 const arret = (id: string, lat: number | null, lng: number | null, numero: string | null = null, rang = 1): ArretAPlacer =>
@@ -416,5 +416,77 @@ describe('ordonnerTournee', () => {
     const ordre = ordonnerTournee(m, noeuds, 0, { limiteMs: 400 })
     expect(Date.now() - t0).toBeLessThan(480)
     expect([...ordre].sort((a, b) => a - b)).toEqual(noeuds.map((_, i) => i + 1))
+  })
+})
+
+describe('villages : communes déléguées et pénalité douce', () => {
+  const matrices = (pts: number[][]): Matrices => {
+    const distances = pts.map(a => pts.map(b => Math.hypot(a[0] - b[0], a[1] - b[1])))
+    return { distances, durees: distances.map(l => l.map(v => v / 10)) }
+  }
+  /** Un nœud par point ; `communes[i]` = village du point i. Départ à (0, 0). */
+  const monde = (pts: number[][], communes: string[]) => {
+    const arrets: ArretAPlacer[] = pts.map((p, i) => ({ id: `a${i}`, lat: 48 + p[1] / 1e5, lng: 7 + p[0] / 1e5, numero: null, rang: i, commune: communes[i] }))
+    const noeuds = regrouperNoeuds(arrets)
+    const parId = new Map(arrets.map((a, i) => [a.id, i]))
+    const m = matrices([[0, 0], ...noeuds.map(n => pts[parId.get(n.arrets[0])!])])
+    return { noeuds, m, communeDe: (i: number) => communes[parId.get(noeuds[i - 1].arrets[0])!] }
+  }
+  const blocs = (ordre: number[], communeDe: (i: number) => string) =>
+    ordre.map(i => cleVillage(communeDe(i))).filter((v, k, a) => k === 0 || v !== a[k - 1])
+
+  it('cleVillage : accents, casse et « ZONE n » ignorés, communes déléguées regroupées', () => {
+    expect(cleVillage('Mittelhausen')).toBe('wingersheim')
+    expect(cleVillage('HOHATZENHEIM')).toBe('wingersheim')
+    expect(cleVillage('Gingsheim')).toBe('wingersheim')
+    expect(cleVillage('Wingersheim les Quatre Bans')).toBe('wingersheim')
+    expect(cleVillage('Keffendorf')).toBe('ohlungen')
+    expect(cleVillage('OHLINGEN')).toBe('ohlungen')
+    expect(cleVillage('Brumath ZONE 3')).toBe('brumath')
+    expect(cleVillage('Mommenheim')).toBe('mommenheim')
+    expect(cleVillage('  ')).toBeNull()
+    expect(cleVillage(null)).toBeNull()
+  })
+
+  it('une commune déléguée et sa commune mère font un seul bloc (pas de va-et-vient entre les deux)', () => {
+    // Wingersheim et Mittelhausen entrelacés sur une ligne, Kriegsheim plus loin : un seul bloc « wingersheim ».
+    const pts: number[][] = []; const communes: string[] = []
+    for (let i = 0; i < 8; i++) { pts.push([200 + i * 40, 0]); communes.push(i % 2 ? 'Mittelhausen' : 'Wingersheim') }
+    for (let i = 0; i < 4; i++) { pts.push([1500 + i * 40, 0]); communes.push('Kriegsheim') }
+    const { noeuds, m, communeDe } = monde(pts, communes)
+    const ordre = ordonnerTournee(m, noeuds, 0, { limiteMs: 300 })
+    expect(blocs(ordre, communeDe).sort()).toEqual(['kriegsheim', 'wingersheim'])
+  })
+
+  it('pénalité douce : un village est coupé quand ça évite un vrai détour, pas sinon', () => {
+    // Tout sur une ligne : A (300 m), B (600 m), A (900 m) ; le plus court est A → B → A (aller simple). Faire A d'un
+    // bloc obligerait à revenir sur ses pas (2 × 300 m de plus) : on coupe A sous le coût d'un changement, pas au-dessus.
+    const pts = [[300, 0], [320, 0], [600, 0], [620, 0], [900, 0], [920, 0]]
+    const communes = ['A', 'A', 'B', 'B', 'A', 'A']
+    const { noeuds, m, communeDe } = monde(pts, communes)
+    const doux = ordonnerTournee(m, noeuds, null, { limiteMs: 200, penaliteVillage: 100 })
+    expect(blocs(doux, communeDe)).toEqual(['a', 'b', 'a'])
+    const dur = ordonnerTournee(m, noeuds, null, { limiteMs: 200, penaliteVillage: 100_000 })
+    expect(blocs(dur, communeDe).length).toBe(2)
+  })
+
+  it('pénalité par défaut : un détour de quelques centaines de mètres ne coupe pas le village', () => {
+    expect(PENALITE_CHANGEMENT_VILLAGE).toBeGreaterThan(1000)
+    const pts = [[300, 0], [320, 0], [400, 0], [420, 0], [500, 0], [520, 0]]
+    const communes = ['A', 'A', 'B', 'B', 'A', 'A']
+    const { noeuds, m, communeDe } = monde(pts, communes)
+    const ordre = ordonnerTournee(m, noeuds, null, { limiteMs: 200 })
+    expect(blocs(ordre, communeDe).length).toBe(2)
+  })
+
+  it('les zones de Brumath restent 1 → 7, même avec la pénalité de village douce', () => {
+    const pts = [[0, 100], [20, 100], [300, 400], [320, 400], [0, 900], [20, 900]]
+    const communes = ['Brumath ZONE 3', 'Brumath ZONE 3', 'Brumath ZONE 1', 'Brumath ZONE 1', 'Brumath ZONE 2', 'Brumath ZONE 2']
+    const { noeuds, m, communeDe } = monde(pts, communes)
+    for (const p of [0, 500, PENALITE_CHANGEMENT_VILLAGE]) {
+      const ordre = ordonnerTournee(m, noeuds, 0, { limiteMs: 200, penaliteVillage: p })
+      const zones = ordre.map(i => rangZone(communeDe(i)))
+      expect([...zones].sort((a, b) => a! - b!)).toEqual(zones)
+    }
   })
 })
