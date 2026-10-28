@@ -16,8 +16,8 @@
 //
 // Calcul : `_shared/tourneeRoute.ts` (pur, testé). Temps de conduite : matrice ORS
 // `driving-car` en blocs ≤ 3 500 éléments ; tracé : itinéraire IGN (Géoplateforme, sans clé)
-// par tronçons de 17 points, ORS en secours, ligne droite pour un tronçon qui échoue.
-// Aucun secours : ORS ou IGN indisponible / quota atteint → erreur claire, rien n'est modifié.
+// par tronçons de 17 points (ressource `_shared/ign.ts`). ORS indisponible / quota atteint → erreur claire, rien
+// n'est modifié ; IGN indisponible → l'ordre est enregistré quand même, la carte n'a pas de ligne.
 //
 // Accès (verify_jwt = true) : la requête tourne avec la session de l'appelant, donc la RLS de
 // `tournees_colis` décide (le salarié sur SA tournée non clôturée, le bureau avec
@@ -26,9 +26,10 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { ExternalApiError, fetchJson } from '../_shared/http.ts'
 import { geocode } from '../_shared/geocode.ts'
+import { IGN_ITINERAIRE, IGN_RESSOURCE } from '../_shared/ign.ts'
 import {
   ARRET_S, IGN_MAX_POINTS, blocsMatrice, completerMatrices, decoderPolyligne, distanceParcours, encoderPolyligne,
-  matriceCouts, noeudsDansOrdre, passages, passagesDepuisEtapes, penaliserChangementsVillage, penaliserOrdreZones, ordonnerZones, regrouperNoeuds, resoudre, troncons, type Matrices, type Point,
+  noeudsDansOrdre, ordonnerTournee, passages, passagesDepuisEtapes, regrouperNoeuds, troncons, type Matrices, type Point,
 } from '../_shared/tourneeRoute.ts'
 
 // Adresse officielle depuis le 28/04/2026 (l'ancienne api.openrouteservice.org n'a plus que 10 % du quota
@@ -38,7 +39,7 @@ const PARALLELE_ECRITURES = 10
 
 interface Arret {
   id: string; rang: number; numero: string | null; lat: number | null; lng: number | null
-  statut: string | null; ordre: number | null; commune: string | null; zone: string | null
+  statut: string | null; ordre: number | null; commune: string | null; zone: string | null; rue: string | null
 }
 
 function pointValide(p: unknown): p is Point {
@@ -77,7 +78,7 @@ async function matriceOrs(cle: string, pts: Point[]): Promise<{ m: Matrices; app
   return { m: completerMatrices({ durees, distances }, pts), appels: blocs.length }
 }
 
-const IGN = 'https://data.geopf.fr/navigation/itineraire'
+const IGN = IGN_ITINERAIRE
 
 interface Etape { distance: number; duration: number }
 
@@ -85,7 +86,7 @@ interface Etape { distance: number; duration: number }
 async function tronconIgn(part: Point[]): Promise<{ pts: Array<[number, number]>; etapes: Etape[] } | null> {
   const p = (q: Point) => `${q.lng.toFixed(6)},${q.lat.toFixed(6)}`
   const params = new URLSearchParams({
-    resource: 'bdtopo-osrm', profile: 'car', optimization: 'fastest', geometryFormat: 'polyline', getSteps: 'false',
+    resource: IGN_RESSOURCE, profile: 'car', optimization: 'fastest', geometryFormat: 'polyline', getSteps: 'false',
     start: p(part[0]), end: p(part[part.length - 1]),
   })
   if (part.length > 2) params.set('intermediates', part.slice(1, -1).map(p).join('|'))
@@ -161,7 +162,7 @@ Deno.serve(async (req: Request) => {
   if (t.statut === 'cloturee') return jsonResponse({ ok: false, error: 'Tournée clôturée : rien à recalculer.' }, 409)
 
   const { data: lus, error: eA } = await db.from('tournees_colis_arrets')
-    .select('id, rang, numero, lat, lng, statut, ordre, commune, zone').eq('tournee_id', tourneeId).order('rang')
+    .select('id, rang, numero, lat, lng, statut, ordre, commune, zone, rue').eq('tournee_id', tourneeId).order('rang')
   if (eA) return jsonResponse({ ok: false, error: eA.message }, 400)
   const arrets = (lus ?? []) as Arret[]
 
@@ -265,11 +266,8 @@ Deno.serve(async (req: Request) => {
   // ~0,8 s de calcul au plus (les fonctions Supabase coupent vers 2 s de calcul).
   // On optimise la DISTANCE par la route (le plus court), village par village (chaque village
   // en un seul bloc : décision du 19/10/2026), pas le temps ni le vol d'oiseau.
-  const cles = [null, ...noeuds.map(n => n.commune)]
-  // Zones de Brumath : 1 → 7 imposé PENDANT la recherche (`penaliserOrdreZones`), pour que chaque zone ait ses meilleurs points
-  // d'entrée / sortie ; `ordonnerZones` ne fait plus que garantir l'ordre (sans effet si déjà rangé).
-  const couts = penaliserOrdreZones(penaliserChangementsVillage(matriceCouts(m), cles), cles)
-  const ordre = ordonnerZones(resoudre(couts, 0, idx, arrivee, { limiteMs: 800 }), cles)
+  // Zones de Brumath 1 → 7 imposées pendant la recherche, chaque rue d'un seul tenant, numéros rangés (`ordonnerTournee`).
+  const ordre = ordonnerTournee(m, noeuds, arrivee, { limiteMs: 800 })
   const pass = passages(m, 0, ordre)
   const kmTotal = distanceParcours(m, 0, ordre, arrivee) / 1000
   const kmFeuille = distanceParcours(m, 0, idx, arrivee) / 1000
@@ -278,12 +276,11 @@ Deno.serve(async (req: Request) => {
 
   // Tracé : départ → nœuds → (retour).
   const parcours = [pts[0], ...ordre.map(i => pts[i]), ...(arrivee != null ? [pts[0]] : [])]
+  // L'ordre vient de la matrice ORS (vraies routes) : il est enregistré même si le tracé IGN échoue (carte sans ligne).
+  // Avant le 28/10/2026 un tracé en échec bloquait tout : la tournée restait dans l'ordre de la feuille.
   const trace = await tracer(parcours)
-  if (!trace) {
-    return jsonResponse({ ok: false, error: "Tracé indisponible (service de l'IGN) : réessaie dans un moment. L'ordre actuel est conservé." }, 503)
-  }
-  appels += trace.appels
-  const polyline = trace.polyline
+  if (trace) appels += trace.appels
+  const polyline = trace?.polyline ?? ''
 
   const trajet = {
     // approximatif / trace_droit : toujours faux (plus de secours), gardés pour l'écran.
@@ -338,5 +335,6 @@ Deno.serve(async (req: Request) => {
     ok: true, approximatif: false,
     km_total: trajet.km_total, duree_min: trajet.duree_min, km_feuille: trajet.km_feuille,
     places: ecritures.filter(e => e.ordre != null).length, a_placer: aPlacer,
+    ...(trace ? {} : { message: `Itinéraire calculé : ${trajet.km_total} km. Tracé de la carte indisponible (IGN) pour l'instant.` }),
   })
 })

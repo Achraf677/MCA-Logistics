@@ -45,3 +45,5 @@
 - Edge `optimiser-tournee-colis` : zones 1 → 7 imposées dans la recherche (`penaliserOrdreZones`), un bloc par zone, meilleur point d'entrée / sortie par zone. Tournée du 27/10 : 42,5 → 39,4 km (estimation).
 - Reste : 10 rues du référentiel absentes du fichier (zone voisine), ordre des villages de l'Excel, relance du calcul sur les tournées déjà créées.
 - À tester : Recalculer une tournée de Brumath → zones 1 → 7 dans la liste et sur la carte, une seule suite de blocs ; ajouter une adresse à Brumath → zone du fichier.
+- 28/10/2026 : panne IGN réparée (ressource `bdtopo-valhalla`, `_shared/ign.ts`) ; ordre enregistré même sans tracé ; solveur `ordonnerTournee` : rues d'un seul tenant, numéros rangés. À tester : « Recalculer » la tournée Brumath du jour → zones 1 → 7, une rue faite d'une traite, numéros qui se suivent.
+- 28/10/2026 : la carte dessine les limites réelles des zones de Brumath (frontières + étiquettes Z1 → Z7) au lieu d'un contour autour des arrêts. À tester : ouvrir la carte d'une tournée de Brumath → zones coloriées, traits noirs aux frontières, bouton calques pour les cacher.

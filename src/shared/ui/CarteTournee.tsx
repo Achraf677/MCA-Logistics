@@ -15,6 +15,8 @@ import 'leaflet/dist/leaflet.css'
 import { Layers, LocateFixed, Maximize2, X } from 'lucide-react'
 import { arretsDansOrdre, contourGroupe, couperTrace, infosGroupes, pointsCarte, tracerParGroupe, type EtatMarqueur, type InfoGroupe, type PointCarte } from '../lib/tourneesColisRoute'
 import type { ArretColis, OrdreMode, TrajetTournee } from '../lib/tourneesColis'
+import { chargerZonesBrumath } from '../lib/tourneesColis.queries'
+import type { DessinZones } from '../lib/zonesCarte.logic'
 
 const TUILES = 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2'
   + '&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}&FORMAT=image/png'
@@ -165,6 +167,15 @@ function CarteTournee({ couches, hauteur = 'h-[60vh] min-h-[22rem]', maPosition,
   }, [maPosition])
 
   const [zonesVisibles, setZonesVisibles] = useState(true)
+  // Limites réelles des zones de Brumath (numéro par numéro), seulement si la tournée a des zones.
+  const [limites, setLimites] = useState<DessinZones | null>(null)
+  const aDesZones = couches.length === 1 && couches[0].arrets.some(a => !!a.zone)
+  useEffect(() => {
+    if (!aDesZones) return
+    let annule = false
+    void chargerZonesBrumath().then(d => { if (!annule) setLimites(d) })
+    return () => { annule = true }
+  }, [aDesZones])
   const calques = useMemo(() => couches.map(c => {
     const points = pointsCarte(c.arrets, c.mode, c.prochainId)
     // Ordre manuel : le tracé calculé ne suit plus les numéros, on ne le montre pas.
@@ -174,13 +185,13 @@ function CarteTournee({ couches, hauteur = 'h-[60vh] min-h-[22rem]', maPosition,
     const trace = couperTrace(ligne, prochain?.lat != null && prochain.lng != null ? { lat: prochain.lat, lng: prochain.lng } : null, toutFait)
     // Une seule tournée à l'écran : village / zone en couleur (marqueurs, contour, route).
     const groupes = couches.length === 1 ? infosGroupes(c.arrets, c.mode) : null
-    const contours = groupes ? [...groupes.values()].map(g => ({
+    const contours = groupes ? [...groupes.values()].filter(g => !(limites && g.cle.includes('|'))).map(g => ({
       g, points: contourGroupe(points.filter(p => p.groupe === g.cle)),
     })).filter(x => x.points.length > 2) : []
     const restants = c.arrets.filter(a => !a.statut)
     const reste = groupes && groupes.size > 1 ? tracerParGroupe(trace.reste, arretsDansOrdre(restants, c.mode)) : []
     return { ...c, points, trace, groupes, contours, reste }
-  }), [couches])
+  }), [couches, limites])
   const legende = useMemo<InfoGroupe[]>(() => (calques.length === 1 && calques[0].groupes && calques[0].groupes.size > 1 ? [...calques[0].groupes.values()] : []), [calques])
 
   const tous = useMemo<[number, number][]>(() => {
@@ -217,6 +228,21 @@ function CarteTournee({ couches, hauteur = 'h-[60vh] min-h-[22rem]', maPosition,
           <Polygon key={`${c.id}-zone-${x.g.cle}`} positions={x.points} interactive={false}
             pathOptions={{ color: x.g.couleur, weight: 2, opacity: 0.7, dashArray: '4 6', fillColor: x.g.couleur, fillOpacity: 0.14 }} />
         )))}
+        {zonesVisibles && limites && calques.length === 1 && limites.zones.flatMap(z => {
+          const couleur = calques[0].groupes?.get(`brumath|${z.zone.toLowerCase()}`)?.couleur ?? '#6b7280'
+          return z.cellules.map((c, i) => (
+            <Polygon key={`lim-${z.zone}-${i}`} positions={c} interactive={false}
+              pathOptions={{ stroke: false, fillColor: couleur, fillOpacity: 0.22 }} />
+          ))
+        })}
+        {zonesVisibles && limites && calques.length === 1 && limites.frontieres.map((f, i) => (
+          <Polyline key={`front-${i}`} positions={f} interactive={false} pathOptions={{ color: '#111827', weight: 2, opacity: 0.7 }} />
+        ))}
+        {zonesVisibles && limites && calques.length === 1 && limites.zones.map(z => (
+          <Marker key={`etiq-${z.zone}`} position={z.etiquette} interactive={false} zIndexOffset={-3000}
+            icon={L.divIcon({ className: 'mca-zone', iconSize: [34, 22], iconAnchor: [17, 11],
+              html: `<div style="font:800 1.1rem/1 system-ui;color:#111;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;text-align:center">Z${z.zone.replace(/\D/g, '')}</div>` })} />
+        ))}
         {calques.map(c => c.trace.reste.length > 1 && (c.reste.length && zonesVisibles
           ? c.reste.map((t, i) => (
             <Polyline key={`${c.id}-reste-${i}`} positions={t.points}

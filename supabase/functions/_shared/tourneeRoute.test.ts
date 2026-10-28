@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   regrouperNoeuds, blocsMatrice, troncons, resoudre, coutParcours, passages, matricesVolOiseau,
   completerMatrices, ordonnerZones, rangZone, matriceCouts, noeudsDansOrdre, passagesDepuisEtapes, polirParFenetres, penaliserChangementsVillage, penaliserOrdreZones, encoderPolyligne, decoderPolyligne, distanceM, type ArretAPlacer,
+  cleRue, penaliserChangementsRue, rangerNumeros, ordonnerTournee, type Matrices,
 } from './tourneeRoute.ts';
 
 const arret = (id: string, lat: number | null, lng: number | null, numero: string | null = null, rang = 1): ArretAPlacer =>
@@ -294,5 +295,126 @@ describe('penaliserOrdreZones', () => {
     expect([...rangs].sort((a, b) => a - b)).toEqual(rangs)
     const apresCoup = ordonnerZones(resoudre(penaliserChangementsVillage(base, cles), 0, idx, 0, { limiteMs: 400 }), cles)
     expect(coutParcours(base, 0, ordre, 0)).toBeLessThanOrEqual(coutParcours(base, 0, apresCoup, 0) + 1e-6)
+  })
+})
+
+describe('rues d’un seul tenant', () => {
+  it('cleRue ignore accents, apostrophes et casse', () => {
+    expect(cleRue('Rue de l’Équerre')).toBe(cleRue("rue de l'equerre"))
+    expect(cleRue('  ')).toBeNull()
+    expect(cleRue(null)).toBeNull()
+  })
+
+  it('changer de rue coûte la pénalité, rester dans la rue ne coûte rien', () => {
+    const c = [[0, 10, 10], [10, 0, 10], [10, 10, 0]]
+    const p = penaliserChangementsRue(c, [null, 'Rue A', 'Rue B'], 300)
+    expect(p[1][2]).toBe(310); expect(p[2][1]).toBe(310); expect(p[0][1]).toBe(10)
+    expect(penaliserChangementsRue(c, [null, 'Rue A', 'rue a'], 300)[1][2]).toBe(10)
+    expect(penaliserChangementsRue(c, [null, null, 'Rue B'], 300)).toBe(c)
+  })
+
+  it('une rue n’est plus faite en deux fois pour quelques mètres gagnés', () => {
+    // Rue A : x = 0, 10, 20 puis 100 ; rue B : x = 50 (au milieu). Sans pénalité : A A A B A (deux passages dans A).
+    const xs = [0, 0, 10, 20, 50, 100]
+    const rues = [null, 'Rue A', 'Rue A', 'Rue A', 'Rue B', 'Rue A']
+    const c = xs.map(a => xs.map(b => Math.abs(a - b)))
+    const sans = resoudre(c, 0, [1, 2, 3, 4, 5], null)
+    const avec = resoudre(penaliserChangementsRue(c, rues, 300), 0, [1, 2, 3, 4, 5], null)
+    const passages = (o: number[]) => o.filter((n, i) => i === 0 || rues[n] !== rues[o[i - 1]]).length
+    expect(passages(sans)).toBe(3)
+    expect(passages(avec)).toBe(2)
+  })
+})
+
+describe('rangerNumeros', () => {
+  // Rue en ligne droite : le numéro n est à n mètres du début.
+  const nums = [null, '23', '31', '34', '37', '44', '56']
+  const pos = [0, 23, 31, 34, 37, 44, 56]
+  const d = pos.map(a => pos.map(b => Math.abs(a - b)))
+  const rues = [null, 'Rue Balzac', 'Rue Balzac', 'Rue Balzac', 'Rue Balzac', 'Rue Balzac', 'Rue Balzac']
+
+  it('remet les numéros dans l’ordre quand c’est aussi court', () => {
+    const ordre = rangerNumeros(d, 0, [5, 2, 3, 1, 4, 6], null, rues, nums, 150)
+    expect(ordre.map(n => nums[n])).toEqual(['23', '31', '34', '37', '44', '56'])
+  })
+
+  it('choisit le sens qui raccorde le mieux (départ au bout de la rue → décroissant)', () => {
+    const p = [60, ...pos.slice(1)]
+    const d2 = p.map(a => p.map(b => Math.abs(a - b)))
+    expect(rangerNumeros(d2, 0, [5, 2, 3, 1, 4, 6], null, rues, nums, 150).map(n => nums[n])).toEqual(['56', '44', '37', '34', '31', '23'])
+  })
+
+  it('ne touche à rien si l’ordre des numéros rallonge trop', () => {
+    // Numéros sans rapport avec la position : trier coûterait cher.
+    const p = [0, 10, 500, 20, 510, 30, 520]
+    const d3 = p.map(a => p.map(b => Math.abs(a - b)))
+    const ordre = [1, 3, 5, 2, 4, 6]
+    expect(rangerNumeros(d3, 0, [...ordre], null, rues, nums, 150)).toEqual(ordre)
+  })
+
+  it('un côté à l’aller, l’autre au retour quand c’est plus court', () => {
+    // Pairs d'un côté (y = 0), impairs en face (y = 30, rue large) ; même abscisse que le numéro.
+    const n2 = [null, '2', '4', '6', '1', '3', '5']
+    const xy = [[0, 0], [2, 0], [4, 0], [6, 0], [1, 30], [3, 30], [5, 30]]
+    const d4 = xy.map(a => xy.map(b => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1])))
+    const r = [null, 'Av', 'Av', 'Av', 'Av', 'Av', 'Av']
+    const ordre = rangerNumeros(d4, 0, [4, 1, 5, 2, 6, 3], 0, r, n2, 150)
+    expect(ordre.map(n => n2[n])).toEqual(['2', '4', '6', '5', '3', '1'])
+  })
+
+  it('moins de 3 arrêts, numéros absents ou rues différentes : inchangé', () => {
+    expect(rangerNumeros(d, 0, [2, 1], null, rues, nums)).toEqual([2, 1])
+    expect(rangerNumeros(d, 0, [3, 1, 2], null, rues, [null, null, '31', '34', '37', '44', '56'])).toEqual([3, 1, 2])
+    expect(rangerNumeros(d, 0, [3, 1, 2], null, [null, 'A', 'B', 'C', 'D', 'E', 'F'], nums)).toEqual([3, 1, 2])
+  })
+})
+
+describe('ordonnerTournee', () => {
+  /** Matrices fictives à partir de points (x, y) en mètres. */
+  const matrices = (pts: number[][]): Matrices => {
+    const distances = pts.map(a => pts.map(b => Math.hypot(a[0] - b[0], a[1] - b[1])))
+    return { distances, durees: distances.map(l => l.map(v => v / 10)) }
+  }
+
+  it('zones 1 → 3 dans l’ordre, chaque rue d’un seul tenant, numéros rangés', () => {
+    // Départ au sud ; zone 1 au sud, zone 2 à l'est, zone 3 au nord. Deux rues par zone, 3 numéros par rue.
+    const arrets: ArretAPlacer[] = []
+    const xy: number[][] = []
+    let k = 0
+    for (const [z, x0, y0] of [[1, 0, 0], [2, 400, 400], [3, 0, 800]] as const) {
+      for (const r of ['A', 'B']) {
+        for (const n of [5, 1, 3]) {
+          const x = x0 + (r === 'A' ? 0 : 60) + n * 10; const y = y0 + (r === 'A' ? 0 : 60)
+          arrets.push({ id: `a${k}`, lat: 48 + y / 1e5, lng: 7 + x / 1e5, numero: String(n), rang: k, commune: `Brumath ZONE ${z}`, rue: `Rue ${r}${z}` })
+          xy.push([x, y]); k++
+        }
+      }
+    }
+    const noeuds = regrouperNoeuds(arrets)
+    const parId = new Map(arrets.map((a, i) => [a.id, i]))
+    const m = matrices([[0, -500], ...noeuds.map(n => xy[parId.get(n.arrets[0])!])])
+    const ordre = ordonnerTournee(m, noeuds, 0, { limiteMs: 200 })
+    const suite = ordre.map(i => arrets[parId.get(noeuds[i - 1].arrets[0])!])
+    const zones = suite.map(a => rangZone(a.commune))
+    expect([...zones].sort((a, b) => a! - b!)).toEqual(zones)
+    const passagesRue = suite.filter((a, i) => i === 0 || a.rue !== suite[i - 1].rue).length
+    expect(passagesRue).toBe(6)
+    for (let i = 0; i < suite.length; i += 3) {
+      const n = suite.slice(i, i + 3).map(a => Number(a.numero))
+      expect((n[0] < n[1] && n[1] < n[2]) || (n[0] > n[1] && n[1] > n[2])).toBe(true)
+    }
+  })
+
+  it('tient la limite de temps (130 nœuds, 400 ms)', () => {
+    const { pts } = grille(131, 3)
+    const m = matrices(pts.map(p => [p.x * 30, p.y * 30]))
+    const noeuds = pts.slice(1).map((p, i) => ({
+      cle: String(i), lat: p.y, lng: p.x, arrets: [String(i)], rang: i,
+      commune: `Brumath ZONE ${(i % 7) + 1}`, rue: `Rue ${i % 40}`, numero: String(i),
+    }))
+    const t0 = Date.now()
+    const ordre = ordonnerTournee(m, noeuds, 0, { limiteMs: 400 })
+    expect(Date.now() - t0).toBeLessThan(480)
+    expect([...ordre].sort((a, b) => a - b)).toEqual(noeuds.map((_, i) => i + 1))
   })
 })

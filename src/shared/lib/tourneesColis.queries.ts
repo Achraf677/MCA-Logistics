@@ -8,6 +8,7 @@ import { lireErreurEdge } from './erreurEdge'
 import { uploadDocument, getDownloadUrl, deleteDocument } from './documents.queries'
 import type { DocumentRow } from './documents.types'
 import { journeeDepuisArrets } from './tourneesColisRoute'
+import { dessinerZones, pointsZones, type DessinZones, type RueReferentiel, type ZoneRue } from './zonesCarte.logic'
 import {
   arretsDepuisLecture, lignesArrets, ordreHabituel, pageDepuisLecture, statutApresGeste, type PageLue,
   type ArretColis, type ArretLu, type EnteteFeuille, type StatutArretColis, type StatutTourneeColis, type TourneeColis, type TypeArretColis,
@@ -541,6 +542,24 @@ export function horairesRelaisPoste(ids: string[], jour: string): Promise<Record
   return p
 }
 
+
+// ── Limites des zones de Brumath (carte) ──
+
+let zonesBrumath: Promise<DessinZones | null> | null = null
+
+/** Limites des zones dessinées numéro par numéro (référentiel + fichier de zones), calculées une fois par session. */
+export function chargerZonesBrumath(): Promise<DessinZones | null> {
+  zonesBrumath ??= (async () => {
+    const [rues, zones] = await Promise.all([
+      supabase.from('referentiel_rues').select('rue_cle, numeros').eq('commune_cle', 'brumath').limit(1000),
+      supabase.from('zones_rues').select('rue_cle, zones').eq('commune_cle', 'brumath').limit(1000),
+    ])
+    if (rues.error || zones.error || !rues.data?.length) return null
+    const dessin = dessinerZones(pointsZones(rues.data as RueReferentiel[], (zones.data ?? []) as ZoneRue[]))
+    return dessin.zones.length ? dessin : null
+  })().catch(() => null)
+  return zonesBrumath
+}
 
 // ── Ajouter / modifier une adresse en cours de tournée ──
 
