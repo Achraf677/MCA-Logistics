@@ -4,7 +4,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Package, CalendarDays, Truck,
   Users, Wallet, UserCheck, Settings,
-  Menu, X, LogOut, Route,
+  Menu, X, LogOut, Route, Smartphone,
 } from 'lucide-react'
 import { features } from '../features.config'
 import { ActionBar } from '../shared/actions/ActionBar'
@@ -16,6 +16,7 @@ import { BarreRecherche } from '../shared/ui/BarreRecherche'
 import { supabase, useProfile } from './providers'
 import { usePermissions } from '../shared/permissions/usePermissions'
 import { libelleRole, estCompteSalarie } from '../shared/permissions/roles'
+import { afficherChromeSalarie, definirApercuSalarie, useApercuSalarie } from '../shared/lib/apercuSalarie'
 
 interface NavItem {
   key:        string
@@ -129,7 +130,9 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
   // latérale, ni burger, ni recherche « livraison », ni synchro, ni alertes.
   // Le rôle vient du profil (déjà chargé par ProfileGate) : aucun flash du menu
   // complet pendant le chargement des droits.
-  const salarie = estCompteSalarie(profile?.role)
+  const compteSalarie = estCompteSalarie(profile?.role)
+  const apercu = useApercuSalarie()
+  const salarie = afficherChromeSalarie(compteSalarie, apercu, location.pathname)
   const initiales = profile
     ? profile.full_name.split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
     : ''
@@ -169,14 +172,23 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
                 <span className="text-xs text-[var(--text-muted)]">{libelleRole(profile.role)}</span>
               </div>
             )}
-            <button
+            {!compteSalarie && (
+              <button
+                onClick={() => { definirApercuSalarie(false); navigate('/pilotage') }}
+                className="flex items-center gap-1.5 h-9 px-3 rounded-[var(--r-md)] bg-[var(--brand)] text-sm font-medium text-white hover:opacity-90 transition-opacity"
+              >
+                <X size={15} />
+                <span>Quitter l’aperçu salarié</span>
+              </button>
+            )}
+            {compteSalarie && <button
               onClick={handleLogout}
               disabled={logoutLoading}
               className="flex items-center gap-1.5 h-9 px-3 rounded-[var(--r-md)] border border-[var(--border)] text-sm text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--bg-card-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <LogOut size={15} />
               <span>{logoutLoading ? 'Déconnexion…' : 'Se déconnecter'}</span>
-            </button>
+            </button>}
           </div>
         </header>
         <main className="flex-1 overflow-auto px-4 pt-4 pb-6 md:px-6 md:pt-5">
@@ -295,6 +307,16 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
           </div>
           <div className="flex items-center gap-2 ml-auto shrink-0">
             <ActionBar actions={actions} onAction={onAction} />
+            {features.mesCourses && (
+              <button
+                onClick={() => { definirApercuSalarie(true); navigate('/mes-courses') }}
+                title="Voir l’écran du salarié sans te déconnecter"
+                className="flex items-center gap-1.5 h-9 px-3 rounded-[var(--r-md)] border border-[var(--border)] text-sm text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--bg-card-hover)] transition-colors"
+              >
+                <Smartphone size={15} />
+                <span className="hidden sm:inline">Interface salarié</span>
+              </button>
+            )}
             <SyncIndicator />
             <AlertesBell />
             {profile && (
