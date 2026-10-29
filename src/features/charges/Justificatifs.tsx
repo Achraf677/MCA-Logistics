@@ -90,6 +90,11 @@ export function Justificatifs() {
   }, [])
 
   useEffect(() => { void charger() }, [charger])
+  // Nouveaux justificatifs : l'onglet se rafraîchit seul toutes les 60 s (onglet visible), sans clignoter ni fermer le tiroir.
+  useEffect(() => {
+    const id = window.setInterval(() => { if (document.visibilityState === 'visible') void charger(true) }, 60_000)
+    return () => window.clearInterval(id)
+  }, [charger])
   useEffect(() => { void vehiculesPourPlein().then(setVehicules) }, [])
   const chargerManuels = useCallback(async () => {
     const { data } = await listerPleinsManuels()
@@ -106,11 +111,17 @@ export function Justificatifs() {
   const dus = useMemo(() => totalARembourser(tickets.map(t => ({
     moyen_paiement: t.moyen_paiement ?? null, montant_ttc_cts: t.montant_ttc_cts ?? null, statut: t.statut, rembourse_le: t.rembourse_le,
   }))), [tickets])
-  const visibles = useMemo(() => filtrerJustificatifs(tickets, filtre, q, noms, criteres), [tickets, filtre, q, noms, criteres])
+  // La recherche porte aussi sur la carte, le véhicule et le montant (« 62,40 »).
+  const texteSup = useCallback((t: TicketInbox) => [
+    libelleCarte(t.carte, cartesBancaires),
+    vehicules.find(v => v.id === t.vehicle_id)?.label ?? '',
+    t.montant_ttc_cts != null ? (t.montant_ttc_cts / 100).toFixed(2).replace('.', ',') : '',
+  ].join(' '), [cartesBancaires, vehicules])
+  const visibles = useMemo(() => filtrerJustificatifs(tickets, filtre, q, noms, criteres, texteSup), [tickets, filtre, q, noms, criteres, texteSup])
   // Pastilles de famille : comptées avec tous les AUTRES filtres appliqués (donc le chiffre annonce ce qu'on obtiendrait en cliquant).
   const parType = useMemo(
-    () => compterParType(filtrerJustificatifs(tickets, filtre, q, noms, { ...criteres, type: 'tous' })),
-    [tickets, filtre, q, noms, criteres])
+    () => compterParType(filtrerJustificatifs(tickets, filtre, q, noms, { ...criteres, type: 'tous' }, texteSup)),
+    [tickets, filtre, q, noms, criteres, texteSup])
   const optionsDeclarants = useMemo(() => {
     const ids = [...new Set(tickets.map(t => t.uploaded_by).filter((x): x is string => !!x))]
     return ids.map(id => ({ valeur: id, libelle: noms[id] ?? 'Déclarant inconnu' })).sort((a, b) => a.libelle.localeCompare(b.libelle))
@@ -163,7 +174,7 @@ export function Justificatifs() {
     if (error) { toast(error.message, 'error'); return false }
     toast(succes)
     if (fermer) setOuvertId(null)
-    await charger()
+    await charger(true)
     return true
   }
 
@@ -192,7 +203,17 @@ export function Justificatifs() {
     setBusy(false)
     if (envoi.ok) toast('Justificatif validé et envoyé à Pennylane (« À traiter »)')
     else toast(`Validé, mais l'envoi à Pennylane a échoué : ${envoi.message}`, 'error')
-    await charger()
+    await charger(true)
+  }
+
+  /** Renvoie un justificatif déjà validé à Pennylane (envoi échoué, ou jamais parti). */
+  const renvoyer = async (t: TicketInbox) => {
+    setBusy(true)
+    const envoi = await envoyerVersPennylane(t.id)
+    setBusy(false)
+    if (envoi.ok) toast('Envoyé à Pennylane (« À traiter »)')
+    else toast(`Envoi à Pennylane échoué : ${envoi.message}`, 'error')
+    await charger(true)
   }
 
   const tableau = (liste: TicketInbox[]) => (
@@ -310,9 +331,12 @@ export function Justificatifs() {
                 titre="Justificatifs refusés" actif={filtre === 'refuses'} onClick={() => setFiltre('refuses')} />
             </div>
 
-            <BarreRecherche value={q} onChange={setQ} placeholder="Chercher un justificatif : note, catégorie, déclarant…" ariaLabel="Rechercher un justificatif"
+            <BarreRecherche value={q} onChange={setQ} placeholder="Chercher : note, déclarant, carte, véhicule, montant…" ariaLabel="Rechercher un justificatif"
               raccourci className="max-w-xl" compteur={`${visibles.length} résultat${visibles.length > 1 ? 's' : ''}`} />
 
+            {tickets.length >= 500 && (
+              <p className="text-xs text-[var(--warning)]">Seuls les 500 justificatifs les plus récents sont affichés : les plus anciens ne sont pas listés.</p>
+            )}
             <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtres">
               <PastilleFiltre actif={criteres.type === 'tous'} onClick={() => majCriteres({ type: 'tous' })}>
                 Tous <span className="font-mono text-xs opacity-70">{parType.note_de_frais + parType.cb + parType.carburant + parType.autre}</span>
@@ -384,7 +408,7 @@ export function Justificatifs() {
 
       <Drawer open={ouvert != null} onClose={() => setOuvertId(null)} width="max-w-[68rem]" title="Justificatif">
         {ouvert && (
-          <FicheJustificatif key={`${ouvert.id}-${ouvert.ocr_lu_le ?? ''}`} t={ouvert} lectureEnCours={lectureEnCours && !ouvert.ocr_lu_le} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy} fournisseurs={fournisseurs} vehicules={vehicules}
+          <FicheJustificatif key={`${ouvert.id}-${ouvert.ocr_lu_le ?? ''}`} t={ouvert} lectureEnCours={lectureEnCours && !ouvert.ocr_lu_le} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy} fournisseurs={fournisseurs} vehicules={vehicules} onRenvoyer={() => void renvoyer(ouvert)}
             onFichier={() => void ouvrirFichier(ouvert)}
             onEnregistrer={maj => void agir(() => corrigerTicket(ouvert.id, maj), 'Justificatif corrigé')}
             onValider={maj => void valider(ouvert, maj)}
