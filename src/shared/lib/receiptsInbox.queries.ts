@@ -147,7 +147,6 @@ export async function listerTicketsATraiter() {
     .from('receipts_inbox')
     .select('*')
     .eq('statut', 'a_traiter')
-    .or('moyen_paiement.is.null,moyen_paiement.neq.carte_carburant') // carte carburant = suivi informatif, rien à traiter
     .order('created_at', { ascending: false })
     .returns<TicketInbox[]>()
 }
@@ -184,7 +183,6 @@ export async function compterTicketsATraiter(): Promise<number> {
     .from('receipts_inbox')
     .select('id', { count: 'exact', head: true })
     .eq('statut', 'a_traiter')
-    .or('moyen_paiement.is.null,moyen_paiement.neq.carte_carburant') // carte carburant = suivi informatif, rien à traiter
   return count ?? 0
 }
 

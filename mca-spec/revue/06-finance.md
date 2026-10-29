@@ -13,6 +13,9 @@
 
 - Charge « Passée en OD » (`charges.passee_en_od`, migration `20261022120000` appliquée) : un avoir saisi directement chez le comptable n'a pas de facture Pennylane → case dans la fiche charge, badge « OD » dans la liste, plus d'alerte « n'existe que dans le site » (`estChargeHorsPennylane`). Avoir E.LECLERC (retour mastic) marqué.
 
+## 2a-bis. À traiter en sous-sections (29/10/2026)
+- « À traiter » : Notes de frais (par salarié) · CB classique · CB carburant (· À préciser pour les anciens). Filtres : famille (pastilles + compteurs), déclarant, carte, mois, « À compléter », Réinitialiser ; valables sur tous les onglets.
+
 ## 2a. Carte carburant (29/10/2026)
 - Justificatifs › vue « Carburant » : tickets payés à la carte carburant (Edenred), par mois (flèches), total / pleins / moyenne, par véhicule (barres), jour par jour (clic = tiroir), export CSV. Informatif : jamais envoyé à Pennylane.
 - « Ajouter un plein » : saisie à la main sans justificatif (date, véhicule, litres, prix au litre → TTC calculé, qui a fait le plein, carte bancaire, note ; tout obligatoire), modifiable / supprimable ; table `pleins_carburant`.

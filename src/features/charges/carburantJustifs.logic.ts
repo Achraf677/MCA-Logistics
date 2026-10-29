@@ -11,11 +11,11 @@ export interface LigneCarburant {
 }
 
 /** Un plein saisi à la main (pas de justificatif) vu comme une ligne de suivi : même mois, mêmes totaux. */
-export function pleinManuelEnLigne<T extends { id: string; vehicle_id: string; date_plein: string; montant_ttc_cts: number; carte: string | null; note: string | null; created_at: string; litres?: number | null; prix_litre?: number | null; fait_par?: string | null; mis_par?: string | null }>(p: T) {
+export function pleinManuelEnLigne<T extends { id: string; vehicle_id: string; date_plein: string; montant_ttc_cts: number; carte: string | null; note: string | null; created_at: string; litres?: number | null; prix_litre?: number | null; fait_par?: string | null }>(p: T) {
   return {
     id: p.id, statut: 'traite', moyen_paiement: 'carte_carburant', montant_ttc_cts: p.montant_ttc_cts, date_depense: p.date_plein,
     vehicle_id: p.vehicle_id, created_at: p.created_at, carte: p.carte, note: p.note, manuel: true as const,
-    litres: p.litres ?? null, prix_litre: p.prix_litre ?? null, fait_par: p.fait_par ?? null, mis_par: p.mis_par ?? null,
+    litres: p.litres ?? null, prix_litre: p.prix_litre ?? null, fait_par: p.fait_par ?? null,
   }
 }
 
