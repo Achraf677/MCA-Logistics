@@ -5,7 +5,8 @@ import { Champ } from '../../shared/ui/FicheSaisie'
 import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
-import { CARTES_CARBURANT, CARTES_SOCIETE } from '../../shared/lib/depenses'
+import { cartesPour, optionsCartes } from '../../shared/lib/cartes'
+import { useCartes } from '../../shared/lib/useCartes'
 import { formatMoney } from '../../shared/lib/money'
 import { decimalSaisi, montantPleinCts } from './carburantJustifs.logic'
 import { toLocalISO } from '../../shared/lib/dates'
@@ -29,7 +30,9 @@ export function PleinManuelDrawer({ plein, companyId, vehicules, membres, peutSu
   const [vehicule, setVehicule] = useState(plein?.vehicle_id ?? '')
   const [litres, setLitres] = useState(plein?.litres != null ? String(plein.litres).replace('.', ',') : '')
   const [prix, setPrix] = useState(plein?.prix_litre != null ? String(plein.prix_litre).replace('.', ',') : '')
-  const [carte, setCarte] = useState(plein?.carte ?? CARTES_CARBURANT[0].valeur)
+  const cartes = useCartes()
+  // Par défaut : la première carte carburant active ce jour-là.
+  const [carte, setCarte] = useState(plein?.carte ?? cartesPour(cartes, 'carburant', toLocalISO(new Date()))[0]?.code ?? '')
   const [faitPar, setFaitPar] = useState(plein?.fait_par ?? '')
   const [note, setNote] = useState(plein?.note ?? '')
   const [busy, setBusy] = useState(false)
@@ -102,7 +105,7 @@ export function PleinManuelDrawer({ plein, companyId, vehicules, membres, peutSu
         </Champ>
         <Champ label="Carte bancaire" requis>
           <ListeDeroulante valeur={carte} onChange={setCarte} recherche placeholder="Chercher une carte" ariaLabel="Carte bancaire"
-            invalide={!carte} options={[...CARTES_CARBURANT, ...CARTES_SOCIETE]} />
+            invalide={!carte} options={optionsCartes(cartes, 'toutes', date, plein?.carte)} />
         </Champ>
         <Champ label="Note" requis>
           <input className="field" value={note} placeholder="Ex. : plein du lundi" onChange={e => setNote(e.target.value)} />

@@ -17,8 +17,10 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney } from '../../shared/lib/money'
-import { CARTES_CARBURANT, CARTES_SOCIETE, estCarburant, libelleCategorie, manquesValidation, totalARembourser } from '../../shared/lib/depenses'
+import { estCarburant, libelleCategorie, manquesValidation, totalARembourser } from '../../shared/lib/depenses'
 import { grouperParMois, libelleMois } from '../../shared/lib/mois'
+import { libelleCarte } from '../../shared/lib/cartes'
+import { useCartes } from '../../shared/lib/useCartes'
 import {
   classerTicket, corrigerTicket, envoyerVersPennylane, lireTicketIa, listerTickets, remettreATraiter, supprimerDepense,
   marquerRembourse, refuserDepense, urlTicket, urlsTickets, vehiculesPourPlein, type TicketInbox,
@@ -56,6 +58,7 @@ export function Justificatifs() {
   const { can } = usePermissions()
   const peutEcrire = can('finance.charges', 'update')
   const { companyId } = useProfile()
+  const cartesBancaires = useCartes()
 
   const [tickets, setTickets] = useState<TicketInbox[]>([])
   const [noms, setNoms] = useState<Record<string, string>>({})
@@ -113,9 +116,9 @@ export function Justificatifs() {
     return ids.map(id => ({ valeur: id, libelle: noms[id] ?? 'Déclarant inconnu' })).sort((a, b) => a.libelle.localeCompare(b.libelle))
   }, [tickets, noms])
   const optionsCartes = useMemo(() => {
-    const presentes = new Set(tickets.map(t => t.carte).filter((x): x is string => !!x))
-    return [...CARTES_SOCIETE, ...CARTES_CARBURANT].filter(c => presentes.has(c.valeur))
-  }, [tickets])
+    const presentes = [...new Set(tickets.map(t => t.carte).filter((x): x is string => !!x))]
+    return presentes.map(code => ({ valeur: code, libelle: libelleCarte(code, cartesBancaires) })).sort((a, b) => a.libelle.localeCompare(b.libelle))
+  }, [tickets, cartesBancaires])
   const optionsMois = useMemo(() => moisPresents(tickets).map(m => ({ valeur: m, libelle: libelleMois(m) })), [tickets])
   const nbCriteres = nbCriteresActifs(criteres)
   const majCriteres = (c: Partial<CriteresJustif>) => setCriteres(prev => ({ ...prev, ...c }))

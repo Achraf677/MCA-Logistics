@@ -4,6 +4,8 @@ import { Plus, Receipt, Pencil, Trash2, FileText, RotateCcw, X, Send, Wallet, Cr
 import { Badge } from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
+import { libelleCarte, optionsCartes, typeCarteDuMoyen, type CarteBancaire } from '../../shared/lib/cartes'
+import { useCartes } from '../../shared/lib/useCartes'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
@@ -11,7 +13,7 @@ import { useProfile } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  LIBELLE_MOYEN, LIBELLE_STATUT_DEPENSE, totalARembourser, cartesDuMoyen, libelleCarte, estCarburant,
+  LIBELLE_MOYEN, LIBELLE_STATUT_DEPENSE, totalARembourser, moyenAvecCarte, estCarburant,
   type MoyenPaiement, type StatutDepense,
 } from '../../shared/lib/depenses'
 import {
@@ -43,6 +45,7 @@ const ACCEPT = 'image/*,application/pdf'
  */
 export function MesDepenses() {
   const { toast } = useToast()
+  const cartesBancaires = useCartes()
   const [liste, setListe] = useState<TicketInbox[]>([])
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
@@ -113,7 +116,7 @@ export function MesDepenses() {
       ) : (
         <ul className="flex flex-col gap-2">
           {liste.map(t => (
-            <LigneDepense key={t.id} t={t} onOuvrir={() => ouvrir(t)}
+            <LigneDepense key={t.id} t={t} cartes={cartesBancaires} onOuvrir={() => ouvrir(t)}
               onModifier={() => setFiche({ depense: t })} onRetirer={() => setARetirer(t)} />
           ))}
         </ul>
@@ -135,7 +138,8 @@ export function MesDepenses() {
   )
 }
 
-function LigneDepense({ t, onOuvrir, onModifier, onRetirer }: {
+function LigneDepense({ t, cartes, onOuvrir, onModifier, onRetirer }: {
+  cartes: CarteBancaire[]
   t: TicketInbox
   onOuvrir: () => void
   onModifier: () => void
@@ -161,7 +165,7 @@ function LigneDepense({ t, onOuvrir, onModifier, onRetirer }: {
         </span>
         {t.moyen_paiement && (
           <span className="text-xs text-[var(--text-muted)]">
-            {LIBELLE_MOYEN[t.moyen_paiement as MoyenPaiement] ?? t.moyen_paiement}{t.carte ? ` · ${libelleCarte(t.carte)}` : ''}
+            {LIBELLE_MOYEN[t.moyen_paiement as MoyenPaiement] ?? t.moyen_paiement}{t.carte ? ` · ${libelleCarte(t.carte, cartes)}` : ''}
           </span>
         )}
         {t.moyen_paiement === 'personnel' && statut === 'traite' && (
@@ -242,15 +246,18 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
   const aUnFichier = !!depense || !!fichier
   const manques = manquesDepenseSalarie(form, aUnFichier, auj)
 
-  const cartes = cartesDuMoyen(form.moyen)
-  const carteChoisie = cartes.find(c => c.valeur === form.carte)?.libelle ?? ''
+  const tousLesCartes = useCartes()
+  const typeCarte = typeCarteDuMoyen(form.moyen)
+  // Seules les cartes actives le jour de la dépense sont proposées (Système › Cartes bancaires).
+  const cartes = typeCarte ? optionsCartes(tousLesCartes, typeCarte, form.date, form.carte) : []
+  const carteChoisie = libelleCarte(form.carte, tousLesCartes)
   const optionsVehicules = vehicules.map(v => ({ valeur: v.id, libelle: v.label, detail: v.plate ?? undefined }))
   const vehiculeChoisi = vehicules.find(v => v.id === form.vehicule)
 
   // Carte choisie : on demande confirmation avant d'envoyer (une mauvaise carte fausse le rapprochement bancaire).
   const demanderEnvoi = () => {
     if (manques.length > 0 || envoi) return
-    if (cartes.length > 0) setAConfirmer(true)
+    if (moyenAvecCarte(form.moyen)) setAConfirmer(true)
     else void envoyer()
   }
 
@@ -332,11 +339,11 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
                 )
               })}
             </div>
-            {cartes.length > 0 && (
+            {moyenAvecCarte(form.moyen) && (
               <div className="flex flex-col gap-1 pt-1">
                 <span className="text-sm font-medium text-[var(--text)]">Quelle carte ? <span className="text-[var(--danger)]">*</span></span>
                 <ListeDeroulante valeur={form.carte} onChange={v => setForm(f => ({ ...f, carte: v }))}
-                  placeholder="Choisis la carte" ariaLabel="Quelle carte" invalide={!form.carte} options={cartes} />
+                  placeholder={cartes.length === 0 ? 'Aucune carte active à cette date' : 'Choisis la carte'} ariaLabel="Quelle carte" invalide={!form.carte} options={cartes} />
               </div>
             )}
             {estCarburant(form.moyen) && (

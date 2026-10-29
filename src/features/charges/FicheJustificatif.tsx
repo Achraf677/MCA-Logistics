@@ -10,8 +10,10 @@ import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, cartesDuMoyen, estCarburant, libelleCarte, manquesValidation, montantSaisiEnCts, type CategorieDepense,
+  CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, moyenAvecCarte, estCarburant, manquesValidation, montantSaisiEnCts, type CategorieDepense,
 } from '../../shared/lib/depenses'
+import { libelleCarte, optionsCartes, typeCarteDuMoyen } from '../../shared/lib/cartes'
+import { useCartes } from '../../shared/lib/useCartes'
 import { urlTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import { jourFr } from './charges.logic'
 import { etapesSuivi, etatJustificatif, type EtapeSuivi } from './justificatifs.logic'
@@ -30,9 +32,10 @@ export interface MajJustificatif {
 
 /** Moyen de paiement : pictogramme + libellé. */
 export function Paiement({ moyen, carte }: { moyen: string | null | undefined; carte?: string | null }) {
+  const cartes = useCartes()
   if (moyen === 'personnel') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><Wallet size={13} className="text-[var(--text-muted)]" /> Note de frais</span>
-  if (moyen === 'carte_carburant') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> Carte carburant{carte ? ` · ${libelleCarte(carte)}` : ''}</span>
-  if (moyen === 'carte_societe') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> Carte société{carte ? ` · ${libelleCarte(carte)}` : ''}</span>
+  if (moyen === 'carte_carburant') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> Carte carburant{carte ? ` · ${libelleCarte(carte, cartes)}` : ''}</span>
+  if (moyen === 'carte_societe') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> Carte société{carte ? ` · ${libelleCarte(carte, cartes)}` : ''}</span>
   return <span className="text-[var(--text-disabled)]">Non précisé</span>
 }
 
@@ -120,6 +123,8 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   const [date, setDate] = useState(t.date_depense ?? t.created_at.slice(0, 10))
   const [categorie, setCategorie] = useState<CategorieDepense | ''>((t.categorie as CategorieDepense | null) ?? '')
   const [moyen, setMoyen] = useState(t.moyen_paiement ?? '')
+  const toutesCartes = useCartes()
+  const jourEnvoi = t.created_at.slice(0, 10)
   const [carte, setCarte] = useState(t.carte ?? '')
   const [vehicule, setVehicule] = useState(t.vehicle_id ?? '')
   const [fournisseur, setFournisseur] = useState(t.supplier_id ?? '')
@@ -139,7 +144,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   const modifie = !invalide && (
     cts !== (t.montant_ttc_cts ?? null) || date !== (t.date_depense ?? t.created_at.slice(0, 10)) || (t.date_depense == null && !!date)
     || (categorie || null) !== (t.categorie ?? null) || (moyen || null) !== (t.moyen_paiement ?? null)
-    || (cartesDuMoyen(moyen).length > 0 ? carte || null : null) !== (t.carte ?? null)
+    || (moyenAvecCarte(moyen) ? carte || null : null) !== (t.carte ?? null)
     || (estCarburant(moyen) ? vehicule || null : null) !== (t.vehicle_id ?? null)
     || (fournisseur || null) !== (t.supplier_id ?? null))
   const etat = etatJustificatif(t)
@@ -147,7 +152,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   const carburant = estCarburant(moyen)
   const montantAffiche = !invalide && cts != null ? formatMoney(cts) : null
   const a_traiter = t.statut === 'a_traiter'
-  const maj: MajJustificatif = { montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null, carte: cartesDuMoyen(moyen).length > 0 ? (carte || null) : null, vehicle_id: estCarburant(moyen) ? (vehicule || null) : null, supplier_id: fournisseur || null }
+  const maj: MajJustificatif = { montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null, carte: moyenAvecCarte(moyen) ? (carte || null) : null, vehicle_id: estCarburant(moyen) ? (vehicule || null) : null, supplier_id: fournisseur || null }
   // Ce qui manque, d'après ce qui est à l'écran (pas seulement ce qui est enregistré).
   const manques = invalide ? ['Montant'] : manquesValidation(maj)
 
@@ -192,10 +197,10 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
                 <ListeDeroulante valeur={moyen} onChange={v => { setMoyen(v); setCarte(''); if (!estCarburant(v)) setVehicule('') }} disabled={!peutEcrire} placeholder="Choisir" ariaLabel="Payé avec" invalide={a_traiter && !moyen}
                   options={[{ valeur: 'carte_societe', libelle: 'Carte de la société' }, { valeur: 'carte_carburant', libelle: 'Carte carburant' }, { valeur: 'personnel', libelle: 'De sa poche (note de frais)' }]} />
               </Champ>
-              {cartesDuMoyen(moyen).length > 0 && (
+              {moyenAvecCarte(moyen) && (
                 <Champ label="Quelle carte" requis>
                   <ListeDeroulante valeur={carte} onChange={setCarte} disabled={!peutEcrire} placeholder="Choisir la carte" ariaLabel="Carte"
-                    invalide={a_traiter && !carte} options={cartesDuMoyen(moyen)} />
+                    invalide={a_traiter && !carte} options={optionsCartes(toutesCartes, typeCarteDuMoyen(moyen) ?? 'toutes', date || jourEnvoi, t.carte)} />
                 </Champ>
               )}
               {carburant && (

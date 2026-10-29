@@ -5,7 +5,8 @@ import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { formatMoney } from '../../shared/lib/money'
-import { libelleCarte } from '../../shared/lib/depenses'
+import { libelleCarte } from '../../shared/lib/cartes'
+import { useCartes } from '../../shared/lib/useCartes'
 import { libelleMois } from '../../shared/lib/mois'
 import type { TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import {
@@ -33,6 +34,7 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
   onOuvrir: (id: string) => void
   onManuelsChange: () => Promise<void>
 }) {
+  const cartesBancaires = useCartes()
   const [saisie, setSaisie] = useState<{ plein: PleinManuel | null } | null>(null)
   const [mois, setMois] = useState(() => moisDe(new Date()))
   const moisCourant = moisDe(new Date())
@@ -51,7 +53,7 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
   const sansMontant = pleins.filter(p => p.montant_ttc_cts == null).length
 
   const exporter = () => {
-    const csv = csvCarburant(pleins, nomVehicule, libelleCarte, nomDeclarant)
+    const csv = csvCarburant(pleins, nomVehicule, c => libelleCarte(c, cartesBancaires), nomDeclarant)
     const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
     const a = document.createElement('a')
     a.href = url
@@ -123,13 +125,12 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
                           {p.vehicle_id ? nomVehicule(p.vehicle_id) : <span className="text-[var(--warning)]">Véhicule non précisé</span>}
                         </span>
                         <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] truncate">
-                          <AvatarInitiales nom={nomDeclarant(p)} taille="sm" /> {nomDeclarant(p)}{p.carte ? ` · ${libelleCarte(p.carte)}` : ''}
+                          <AvatarInitiales nom={nomDeclarant(p)} taille="sm" /> {nomDeclarant(p)}{p.carte ? ` · ${libelleCarte(p.carte, cartesBancaires)}` : ''}
                           {p.manuel && p.litres != null && p.prix_litre != null && ` · ${p.litres.toLocaleString('fr-FR')} L × ${p.prix_litre.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} €`}
                           {p.manuel && p.note && ` · ${p.note}`}
                         </span>
                       </span>
                       {p.manuel && <Badge color="muted">Sans justificatif</Badge>}
-                      {!p.manuel && p.statut === 'a_traiter' && p.vehicle_id == null && <Badge color="warning">À compléter</Badge>}
                       <span className="font-mono font-semibold tabular-nums text-[var(--text)] shrink-0">
                         {p.montant_ttc_cts != null ? formatMoney(p.montant_ttc_cts) : <span className="font-sans text-[var(--danger)]">À saisir</span>}
                       </span>
