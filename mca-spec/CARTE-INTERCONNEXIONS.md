@@ -239,3 +239,4 @@
 
 - **Système › Paramètres (29/10/2026)** : `parametres/Parametres` écrit `companies` (dont `pennylane_depot_email`, lu par l'Edge `pennylane-justificatif`) ; `transport_license_expiry` / `rc_pro_expiry` lus aussi par `alertes.queries` ; `depart_colis_*` lu par `optimiser-tournee-colis`. Règles de saisie : `parametres/parametres.logic.ts`.
 - **Flotte › Véhicules (29/10/2026)** : `vehicles` lue par l'onglet (tuiles, filtres côté client), + `fuel_logs.mileage_km` et `vehicle_maintenances.mileage_km` lus pour le dernier km connu (`vehicules.queries#getKmReleves`, lecture seule). `shared/lib/download#downloadCSV` : lien rattaché à la page (tous les exports).
+- **Système (retouches 29/10/2026)** : `companies.iban / bic` écrits par `cartes/CompteBancaire` (via `shared/lib/compteBancaire.queries`), plus par Paramètres ; aucun autre lecteur. `pennylane_depot_email` écrit par `parametres/PennylaneDepot`.
