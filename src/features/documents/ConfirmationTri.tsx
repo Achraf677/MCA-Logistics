@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, Check, CheckCheck, ChevronDown, FolderPlus, FolderTree, ShieldCheck, Sparkles, Undo2, Wand2, X } from 'lucide-react'
+import { AlertTriangle, Check, CheckCheck, CheckSquare, ChevronDown, FolderPlus, FolderTree, ShieldCheck, Sparkles, Square, Undo2, Wand2, X } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
@@ -10,9 +10,10 @@ import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 import { getDownloadUrl } from '../../shared/lib/documents.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { TYPES_DOCUMENT, cheminDefaut, choisirChemin, nomPropose, origineDuDocument, typeDe, type Annuaire, type ClasseHistorique } from '../../shared/lib/documentsTri'
+import { BoutonsChoix, DescriptionGroupee, type Imposes } from './ChoixDescription'
 import { montantSaisiEnCts } from '../../shared/lib/depenses'
 import { aligner, cheminAvecAnnee, cheminEnTexte, correspondRecherche, estSur, optionsChemin, texteEnChemin } from './documents.logic'
-import { analyserDescription, aujourdhuiLocal, suggererTypes, type Referents } from './decrire.logic'
+import { analyserDescription, aujourdhuiLocal, messageDescription, ordreSerie, partiesGroupe, type MessageDescription, type Referents } from './decrire.logic'
 import { noterCheminDrive, rangerDansDrive, remettreDansInbox } from './documents.queries'
 import { MiniatureDoc } from './MiniatureDoc'
 
@@ -97,7 +98,12 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
   const [q, setQ] = useState('')
   /** Ce que l'utilisateur tape dans « Dis-moi ce que c'est », et la réponse quand la phrase n'est pas comprise. */
   const [decrits, setDecrits] = useState<Record<string, string>>({})
-  const [messages, setMessages] = useState<Record<string, { texte: string; suggestions: string[] }>>({})
+  const [messages, setMessages] = useState<Record<string, MessageDescription>>({})
+  /** Choix déjà faits avec les boutons d'une carte (type, véhicule) : gardés tant que la phrase n'est pas appliquée. */
+  const [choix, setChoix] = useState<Record<string, Imposes>>({})
+  const imposesDe = (d: DocumentRow): Imposes => choix[d.id] ?? {}
+  /** Documents cochés : à partir de 2, une seule phrase les décrit tous (photos d'une même série…). */
+  const [selection, setSelection] = useState<Set<string>>(new Set())
 
   const edition = (d: DocumentRow): Edition => editions[d.id] ?? editionInitiale(d, dossiers)
   const nomsPris = useMemo(() => new Set(classes.map(c => c.file_name.toLowerCase())), [classes])
@@ -108,10 +114,10 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
     const e = { ...edition(d), ...maj }
     // Tant que le nom n'a pas été tapé à la main, il suit le type / la date / le tiers / la référence (jamais le montant : convention).
     if (!e.nomManuel && !('nom' in maj)) {
-      e.nom = nomPropose({ date: e.date || null, dateDepot: depotDe(d), type: e.type || null, tiers: e.tiers || null, reference: e.reference || null, partie: e.partie || null }, d.file_name, nomsPris)
+      e.nom = nomPropose({ date: e.date || null, dateDepot: depotDe(d), type: e.type || null, tiers: e.tiers || null, reference: e.reference || null, partie: e.partie || null, vehicule: e.vehicule }, d.file_name, nomsPris)
     }
     // Tant que le chemin n'a pas été tapé à la main, il suit la règle de la convention (type, tiers, date) ; sans règle, il ne bouge qu'avec l'année.
-    if (!e.cheminManuel && !('chemin' in maj) && ('type' in maj || 'tiers' in maj || 'date' in maj)) {
+    if (!e.cheminManuel && !('chemin' in maj) && ('type' in maj || 'tiers' in maj || 'date' in maj || 'vehicule' in maj)) {
       const regle = cheminRegle(d, e, dossiers, histo)
       if (regle) { e.chemin = cheminEnTexte(regle.chemin); e.via = regle.via }
       else if ('type' in maj) { e.chemin = cheminEnTexte(cheminDefaut({ type: e.type || null }, dossiers)); e.via = null }
@@ -125,23 +131,45 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
    * « Permis de conduire Jean Dupont », « le verso du permis », « facture Leclerc 12345 » : type, tiers, date, référence, partie d'après la phrase ;
    * ce que la phrase ne dit pas vient de l'origine du document et de tes habitudes. Le nom et le dossier suivent aussitôt.
    */
-  const decrire = (d: DocumentRow, typeImpose?: string) => {
-    const texte = (decrits[d.id] ?? '').trim()
-    if (!texte) return
-    const r = analyserDescription(texte, referents, aujourdhuiLocal(), { origine: origineDuDocument(d, annuaire), classes: histo, type: typeImpose })
-    if (!r) {
-      setMessages(m => ({ ...m, [d.id]: { texte: 'Je ne sais pas encore ce que c\'est. Choisis un type :', suggestions: suggererTypes(texte, histo) } }))
-      return
-    }
+  const appliquerDescription = (d: DocumentRow, texte: string, imposes: Imposes, partieGroupe?: string | null): MessageDescription | null => {
+    const r = analyserDescription(texte, referents, aujourdhuiLocal(), { origine: origineDuDocument(d, annuaire), classes: histo, type: imposes.type, vehicule: imposes.vehicule })
+    const message = messageDescription(texte, r, referents, histo)
+    if (message || !r) return message
     const e = edition(d)
     modifier(d, {
       type: r.type, tiers: r.tiers ?? e.tiers, date: r.date ?? e.date, reference: r.reference ?? e.reference, vehicule: r.vehicule ?? e.vehicule,
-      partie: r.partie ?? '', montant: r.montant_ttc_cts != null ? montantTexte(r.montant_ttc_cts) : e.montant, nomManuel: false, cheminManuel: false,
+      partie: partieGroupe !== undefined ? partieGroupe ?? '' : r.partie ?? '', montant: r.montant_ttc_cts != null ? montantTexte(r.montant_ttc_cts) : e.montant, nomManuel: false, cheminManuel: false,
     })
     // L'origine a complété le tiers : le dossier est « selon l'origine du document » tant que l'habitude ne le décide pas.
     if (r.parOrigine) setEditions(p => (p[d.id]?.via === 'convention' ? { ...p, [d.id]: { ...p[d.id], via: 'origine' } } : p))
+    return null
+  }
+
+  /** Une carte : « permis de conduire Jean Dupont », « photos d'inspection du Ford », « facture Leclerc 12345 » → type, tiers, véhicule, date, référence ; le nom et le dossier suivent aussitôt. */
+  const decrire = (d: DocumentRow, imposes: Imposes = {}) => {
+    const texte = (decrits[d.id] ?? '').trim()
+    if (!texte) return
+    const message = appliquerDescription(d, texte, imposes)
+    if (message) { setMessages(m => ({ ...m, [d.id]: message })); setChoix(c => ({ ...c, [d.id]: imposes })); return }
     setMessages(m => Object.fromEntries(Object.entries(m).filter(([k]) => k !== d.id)))
+    setChoix(c => Object.fromEntries(Object.entries(c).filter(([k]) => k !== d.id)))
     setDecrits(t => ({ ...t, [d.id]: '' }))
+  }
+
+  const basculer = (id: string) => setSelection(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n })
+
+  /** Une seule phrase pour plusieurs documents : même type, même tiers / véhicule, même dossier ; les noms sont numérotés dans l'ordre. */
+  const decrireGroupe = (texte: string, imposes: Imposes): MessageDescription | null => {
+    const choisis = ordreSerie(docs.filter(d => selection.has(d.id)))
+    if (choisis.length === 0) return null
+    const r = analyserDescription(texte, referents, aujourdhuiLocal(), { classes: histo, type: imposes.type, vehicule: imposes.vehicule })
+    const message = messageDescription(texte, r, referents, histo)
+    if (message || !r) return message
+    const parties = partiesGroupe(r.type, choisis.length)
+    choisis.forEach((d, i) => appliquerDescription(d, texte, imposes, parties[i]))
+    toast(`${choisis.length} documents décrits : vérifie les noms, puis confirme`)
+    setSelection(new Set())
+    return null
   }
 
   const classement = (d: DocumentRow) => {
@@ -207,6 +235,8 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
   const visibles = docs.filter(d => correspondRecherche(d, q)).map((d, i) => ({ d, i, sur: estSur(d) }))
     .sort((a, b) => Number(b.sur) - Number(a.sur) || a.i - b.i).map(x => x.d)
   const prets = visibles.filter(pret).length
+  const tous = visibles.length > 0 && visibles.every(d => selection.has(d.id))
+  const nbChoisis = docs.filter(d => selection.has(d.id)).length
 
   const toutRanger = () => {
     const aFaire = visibles.filter(pret)
@@ -229,6 +259,12 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
       <div className="flex flex-wrap items-center gap-2.5">
         <BarreRecherche value={q} onChange={setQ} placeholder="Chercher : nom, tiers, type, dossier…" ariaLabel="Rechercher dans À confirmer"
           className="flex-1 min-w-[14rem] max-w-xl" compteur={`${visibles.length} sur ${docs.length}`} />
+        {peutEcrire && visibles.length > 1 && (
+          <button type="button" onClick={() => setSelection(tous ? new Set() : new Set(visibles.map(d => d.id)))}
+            className="inline-flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--text)] min-h-10 px-1">
+            {tous ? <CheckSquare size={18} className="text-[var(--brand)]" /> : <Square size={18} />} {tous ? 'Tout désélectionner' : 'Tout sélectionner'}
+          </button>
+        )}
         {peutEcrire && (
           <Button variant="primary" className="min-h-10 ml-auto" disabled={prets === 0} onClick={toutRanger}>
             <CheckCheck size={15} /> Tout ranger ({prets})
@@ -249,6 +285,12 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
           return (
             <li key={d.id} className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] p-3 flex flex-col gap-2.5">
               <div className="flex items-start gap-3">
+                {peutEcrire && (
+                  <button type="button" onClick={() => basculer(d.id)} aria-label={selection.has(d.id) ? 'Désélectionner' : 'Sélectionner'} aria-pressed={selection.has(d.id)}
+                    className="shrink-0 mt-1 text-[var(--text-muted)] hover:text-[var(--brand)]">
+                    {selection.has(d.id) ? <CheckSquare size={20} className="text-[var(--brand)]" /> : <Square size={20} />}
+                  </button>
+                )}
                 <button type="button" onClick={() => void ouvrir(d)} aria-label="Ouvrir le document" className="shrink-0">
                   <MiniatureDoc mime={d.mime_type} url={d.storage_path ? miniatures[d.storage_path] : undefined} taille="lg" />
                 </button>
@@ -281,21 +323,15 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
               {peutEcrire && (
                 <>
                   <form onSubmit={ev => { ev.preventDefault(); decrire(d) }} className="flex items-center gap-2">
-                    <input value={decrits[d.id] ?? ''} onChange={ev => { setDecrits(t => ({ ...t, [d.id]: ev.target.value })); if (messages[d.id]) setMessages(m => Object.fromEntries(Object.entries(m).filter(([k]) => k !== d.id))) }}
+                    <input value={decrits[d.id] ?? ''} onChange={ev => { setDecrits(t => ({ ...t, [d.id]: ev.target.value })); if (messages[d.id]) { setMessages(m => Object.fromEntries(Object.entries(m).filter(([k]) => k !== d.id))); setChoix(c => Object.fromEntries(Object.entries(c).filter(([k]) => k !== d.id))) } }}
                       placeholder="Dis-moi ce que c'est : « permis de conduire Jean Dupont »" aria-label="Dis-moi ce que c'est" className="field flex-1 min-w-0" />
                     <Button type="submit" variant="secondary" className="min-h-10 shrink-0" disabled={!(decrits[d.id] ?? '').trim()}>
                       <Wand2 size={15} /> Renommer
                     </Button>
                   </form>
                   {messages[d.id] && (
-                    <div role="alert" className="flex flex-wrap items-center gap-1.5 text-xs text-[var(--warning)] -mt-1">
-                      <span>{messages[d.id].texte}</span>
-                      {messages[d.id].suggestions.map(c => (
-                        <button key={c} type="button" onClick={() => decrire(d, c)}
-                          className="rounded-full border border-[var(--border)] px-2.5 py-1 text-[var(--text)] hover:bg-[var(--bg-card-hover)] transition-colors">
-                          {typeDe(c)?.libelle ?? c}
-                        </button>
-                      ))}
+                    <div className="-mt-1">
+                      <BoutonsChoix message={messages[d.id]} onType={type => decrire(d, { ...imposesDe(d), type })} onVehicule={vehicule => decrire(d, { ...imposesDe(d), vehicule })} />
                     </div>
                   )}
 
@@ -368,6 +404,12 @@ export function ConfirmationTri({ docs, classes, miniatures, peutEcrire, driveOk
           )
         })}
       </ul>
+      {peutEcrire && nbChoisis >= 2 && (
+        <div className="sticky bottom-3 z-10 rounded-[var(--r-xl)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] shadow-2xl px-4 py-3 flex flex-wrap items-center gap-3">
+          <p className="text-sm text-[var(--text-muted)] shrink-0"><strong className="text-[var(--text)]">{nbChoisis}</strong> sélectionnés</p>
+          <DescriptionGroupee nb={nbChoisis} onAppliquer={decrireGroupe} onAnnuler={() => setSelection(new Set())} libelle="Décrire" />
+        </div>
+      )}
     </div>
   )
 }

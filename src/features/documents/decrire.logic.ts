@@ -3,13 +3,16 @@
 // Souple : ordre libre, fautes de frappe (1 lettre), abréviations (CT, CG, FDR, BL…), prénom seul s'il est unique, plusieurs dates, montant ignoré.
 // Autodidacte : l'origine du document (fiche d'où il vient) et l'historique des documents rangés complètent ce que la phrase ne dit pas.
 import {
-  SANS_ORIGINE, TYPES_CLIENT, TYPES_DOCUMENT, TYPES_SALARIE, choisirChemin, cleePlaque, completerDepuisOrigine, nomPropose, partieDuTexte, typeDe, typeHabituel,
+  SANS_ORIGINE, TYPES_CLIENT, TYPES_DOCUMENT, TYPES_SALARIE, TYPES_VEHICULE, choisirChemin, cleePlaque, completerDepuisOrigine, nomPropose, partieDuTexte, partiesDeSerie, typeDe, typeHabituel,
   type ClasseHistorique, type Origine,
 } from '../../shared/lib/conventionDocuments'
 import type { PropositionDocument } from '../../shared/lib/documents.types'
 import { aligner } from './documents.logic'
 
-export interface Referents { clients: string[]; fournisseurs: string[]; salaries: string[]; plaques: string[] }
+/** Une fiche de la Flotte : la phrase peut la désigner par sa marque, son modèle, son nom ou un bout de plaque. */
+export interface VehiculeRef { plaque: string; marque: string | null; modele: string | null; nom: string | null }
+
+export interface Referents { clients: string[]; fournisseurs: string[]; salaries: string[]; plaques: string[]; vehicules?: VehiculeRef[] }
 
 export interface Description {
   type: string
@@ -19,6 +22,8 @@ export interface Description {
   date: string | null
   reference: string | null
   vehicule: string | null
+  /** Plusieurs véhicules correspondent à la phrase (plaques) : on demande lequel au lieu de deviner. */
+  vehiculesPossibles: string[]
   /** VERSO, RECTO, P2, SUITE, ANNEXE… */
   partie: string | null
   /** Montant écrit dans la phrase (« 12,50 € ») : va dans la fiche, jamais dans le nom. */
@@ -36,6 +41,8 @@ export interface OptionsDescription {
   classes?: readonly ClasseHistorique[]
   /** Type imposé (bouton de suggestion) : la phrase n'a plus à le dire. */
   type?: string
+  /** Plaque imposée (bouton « quel véhicule ? ») : la phrase n'a plus à la dire. */
+  vehicule?: string
 }
 
 const normal = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
@@ -69,6 +76,7 @@ const VOCABULAIRE = [
   'bulletin', 'attestation', 'courrier', 'ticket', 'statuts', 'statut', 'contrat', 'avenant', 'charte', 'licence', 'capacite', 'cession', 'grise', 'controle', 'technique', 'commande',
   'livraison', 'releve', 'bancaire', 'declaration', 'impots', 'urssaf', 'proces', 'verbal', 'assemblee', 'decision', 'formulaire', 'modele', 'condamnation', 'immatriculation',
   'certificat', 'transport', 'voiture', 'feuille', 'synthese', 'tournee', 'paiement', 'devis', 'recto', 'verso', 'annexe', 'cmr',
+  'inspection', 'inspections', 'photos', 'vehicule', 'vehicules', 'camion', 'camionnette', 'utilitaire', 'fourgon', 'etat', 'lieux', 'check',
   // Mots des expressions (« carte grise », « feuille de route »…) : jamais corrigés en un autre mot-clé.
   'carte', 'route', 'frais', 'notes', 'dispositions', 'particulieres', 'stationnement',
 ]
@@ -77,6 +85,8 @@ const VOCABULAIRE = [
 const MOTS_TYPE: ReadonlyArray<readonly [RegExp, string]> = [
   [/\bavis (de )?paiement\b/, 'avis_paiement'],
   [/\bcontestation\b/, 'contestation'],
+  [/\b(?:photos? )?(?:d |de |des |du )?(?:l )?(?:inspections?|etat des lieux|check ?up|check ?list)\b|\bcheck (?:du |de )?vehicules?\b/, 'photo_inspection'],
+  [/\bphotos? (?:du |des |de la |de l |d )?(?:vehicules?|camions?|camionnettes?|utilitaires?|fourgons?)\b/, 'photo_vehicule'],
   [/\b(amende|contravention|fps)\b|\bpv (de )?stationnement\b/, 'amende'],
   [/\bpermis( (de )?conduire)?\b/, 'permis'],
   [/\b(carte (d )?identite|cni|passeport|piece (d )?identite)\b/, 'identite'],
@@ -114,13 +124,14 @@ const MOTS_TYPE: ReadonlyArray<readonly [RegExp, string]> = [
   [/\b(ticket|recu|note de frais)\b/, 'ticket'],
   [/\b(modele|formulaire)\b/, 'modele'],
   [/\b(courrier|lettre)\b/, 'courrier_administratif'],
-  [/\bphoto\b/, 'photo'],
+  [/\bphotos?\b/, 'photo'],
 ]
 
 const MOTS_VIDES = new Set([
   'de', 'du', 'des', 'le', 'la', 'les', 'l', 'd', 'un', 'une', 'pour', 'a', 'au', 'aux', 'et', 'en', 'sur', 'mon', 'ma', 'mes', 'ce', 'cet', 'cette', 'est', 'c', 'chez', 'ref', 'reference',
   'numero', 'num', 'no', 'n', 'date', 'dans', 'par', 'avec', 'sans', 'concerne', 'voici', 'voila', 'svp', 'stp', 'merci', 'scan', 'scanne', 'document', 'doc', 'fichier', 'piece', 'image',
   'verso', 'recto', 'suite', 'annexe', 'annexes', 'page', 'pages', 'euro', 'euros', 'eur', 'qui', 'que', 'ci', 'joint',
+  'notre', 'nos', 'votre', 'vos', 'leur', 'leurs', 'correspond', 'correspondent', 'correspondre', 'represente', 'representent', 'montre', 'montrent', 'sont', 'ses', 'son', 'sa',
 ])
 
 const MOIS = ['janvier', 'fevrier', 'mars', 'avril', 'mai', 'juin', 'juillet', 'aout', 'septembre', 'octobre', 'novembre', 'decembre']
@@ -183,6 +194,31 @@ function trouverConnu(mots: readonly string[], noms: readonly string[], minSolo:
   return null
 }
 
+/** Mots qui ne désignent pas UN véhicule (« le camion », « notre utilitaire ») : jamais pris pour un nom de fiche. */
+const MOTS_GENERIQUES_VEHICULE = new Set(['vehicule', 'vehicules', 'camion', 'camionnette', 'utilitaire', 'fourgon', 'fourgonnette', 'voiture', 'auto', 'poids', 'lourd', 'leger', 'van'])
+
+/**
+ * Le véhicule de la Flotte que désignent les mots d'une phrase : marque, modèle ou nom de la fiche (« ford », « transit », « le jumpy »).
+ * Un seul véhicule gagne → `plaque` ; plusieurs à égalité (deux Ford) → `possibles`, on demande lequel au lieu de deviner.
+ * `utilises` = les mots de la phrase qui ont désigné un véhicule (à ne pas prendre pour un tiers).
+ */
+export function trouverVehicule(mots: readonly string[], vehicules: readonly VehiculeRef[]): { plaque: string | null; possibles: string[]; utilises: string[] } {
+  const scores: Array<{ plaque: string; score: number; utilises: string[] }> = []
+  for (const v of vehicules) {
+    const siens = [...new Set([v.marque, v.modele, v.nom].flatMap(x => normal(x ?? '').split(' ')).filter(w => w.length >= 3 && !/^\d+$/.test(w) && !MOTS_GENERIQUES_VEHICULE.has(w)))]
+    const trouves = siens.map(w => ({ w, t: mots.find(t => (w.length < 4 || t.length < 4 ? t === w : lie(t, w))) })).filter(x => x.t)
+    if (trouves.length === 0) continue
+    scores.push({ plaque: v.plaque, score: trouves.reduce((n, x) => n + x.w.length, 0), utilises: trouves.map(x => x.t as string) })
+  }
+  if (scores.length === 0) return { plaque: null, possibles: [], utilises: [] }
+  const meilleur = Math.max(...scores.map(x => x.score))
+  const gagnants = scores.filter(x => x.score === meilleur)
+  const utilises = [...new Set(gagnants.flatMap(x => x.utilises))]
+  return gagnants.length === 1 ? { plaque: gagnants[0].plaque, possibles: [], utilises } : { plaque: null, possibles: gagnants.map(x => x.plaque).slice(0, 5), utilises }
+}
+
+const estFragmentPlaque = (tok: string) => /^[a-z]{2}-?\d{3}$/.test(tok) || /^\d{3}-?[a-z]{2}$/.test(tok)
+
 /** Rattrape les fautes de frappe sur les mots-clés (« permi », « facure ») sans toucher aux noms des fiches. */
 function corrigerFautes(brut: string, protege: ReadonlySet<string>): string {
   return brut.split(' ').map(tok => {
@@ -222,7 +258,7 @@ export function analyserDescription(texte: string, ref: Referents, aujourdhui: s
   for (let i = 0; i < 3; i++) { const r = extraireDate(t, aujourdhui); if (r.date == null) break; date ??= r.date; t = r.reste }
 
   // Mots de la phrase : abréviations dépliées, fautes rattrapées (sauf les noms des fiches).
-  const protege = new Set([...ref.clients, ...ref.fournisseurs, ...ref.salaries].flatMap(n => normal(n).split(' ')))
+  const protege = new Set([...ref.clients, ...ref.fournisseurs, ...ref.salaries, ...(ref.vehicules ?? []).flatMap(v => [v.marque ?? '', v.modele ?? '', v.nom ?? ''])].flatMap(n => normal(n).split(' ')))
   const brutMots = normal(t).split(' ').filter(Boolean).map(w => ABREVIATIONS[w] ?? w).join(' ')
   const brut = corrigerFautes(brutMots, protege)
 
@@ -233,16 +269,33 @@ export function analyserDescription(texte: string, ref: Referents, aujourdhui: s
   // Référence (numéro isolé) et plaque : repérées sur les mots bruts (le tiret des numéros compte).
   let reference: string | null = null
   let vehicule: string | null = null
+  let possibles: string[] = []
   const restants: string[] = []
   for (const tok of t.split(/\s+/).filter(Boolean)) {
     const plaque = ref.plaques.find(p => cleePlaque(p) === cleePlaque(tok))
     if (!vehicule && (plaque || estPlaque(tok))) { vehicule = plaque ?? formaterPlaque(tok); continue }
+    // Un bout de plaque (« ab-123 », « 123-cd ») : le seul véhicule qui le contient, sinon on demande lequel.
+    if (!vehicule && TYPES_VEHICULE.has(cle ?? '') && estFragmentPlaque(tok)) {
+      const k = cleePlaque(tok)
+      const m = ref.plaques.filter(p => cleePlaque(p).includes(k))
+      if (m.length === 1) { vehicule = m[0]; continue }
+      if (m.length > 1) { possibles = m.slice(0, 5); continue }
+    }
     if (!reference && /\d/.test(tok) && tok.length >= 3 && /^[a-z]{0,6}[-/_.]?\d[a-z0-9./_-]*$/.test(tok)) { reference = tok.toUpperCase(); continue }
     restants.push(tok)
   }
   const corrigesRestants = corrigerFautes(normal(restants.map(w => ABREVIATIONS[normal(w)] ?? w).join(' ')), protege)
   const motsType = new Set(normal(motType).split(' '))
-  const candidats = corrigesRestants.split(' ').filter(w => w && !motsType.has(w) && !MOTS_VIDES.has(w) && !(VOCABULAIRE.includes(w) && w !== 'transport'))
+  let candidats = corrigesRestants.split(' ').filter(w => w && !motsType.has(w) && !MOTS_VIDES.has(w) && !(VOCABULAIRE.includes(w) && w !== 'transport' && !protege.has(w)))
+
+  // Pièce d'un véhicule : « ford », « le transit », « notre jumpy » désignent une fiche de la Flotte (jamais un tiers).
+  if (cle && TYPES_VEHICULE.has(cle) && (ref.vehicules?.length ?? 0) > 0) {
+    const v = trouverVehicule(candidats, ref.vehicules!)
+    candidats = candidats.filter(w => !v.utilises.includes(w))
+    if (!vehicule) { vehicule = opts.vehicule ?? v.plaque; if (!vehicule && possibles.length === 0) possibles = v.possibles }
+  }
+  if (!vehicule && opts.vehicule) vehicule = opts.vehicule
+  if (vehicule) possibles = []
 
   // Tiers connu : les fiches qui correspondent au type, puis toutes les autres.
   const listes: Array<{ noms: string[]; solo: number }> = !cle ? [{ noms: ref.fournisseurs, solo: 4 }, { noms: ref.clients, solo: 4 }, { noms: ref.salaries, solo: 3 }]
@@ -280,8 +333,36 @@ export function analyserDescription(texte: string, ref: Referents, aujourdhui: s
   // L'origine du document complète les cases vides (permis sans nom → le salarié de la fiche…).
   const o = completerDepuisOrigine({ type, tiers, vehicule }, opts.origine ?? SANS_ORIGINE)
   if (tiers == null && o.tiers) tiersConnu = true
-  return { type, tiers: o.tiers, tiersConnu, date, reference, vehicule: o.vehicule, partie, montant_ttc_cts: montant, parOrigine: o.parOrigine, typeParHabitude }
+  return { type, tiers: o.tiers, tiersConnu, date, reference, vehicule: o.vehicule, vehiculesPossibles: o.vehicule ? [] : possibles, partie, montant_ttc_cts: montant, parOrigine: o.parOrigine, typeParHabitude }
 }
+
+/** Ce que l'écran dit quand la phrase ne suffit pas : type introuvable (3 boutons de types) ou plusieurs véhicules (un bouton par véhicule). */
+export interface MessageDescription { texte: string; suggestions: string[]; vehicules: Array<{ plaque: string; libelle: string }> }
+
+/** « Ford Transit · AB-123-CD » : comment un véhicule est montré dans les boutons de choix. */
+export function libelleVehicule(ref: Referents, plaque: string): string {
+  const v = ref.vehicules?.find(x => cleePlaque(x.plaque) === cleePlaque(plaque))
+  const nom = [v?.marque, v?.modele].filter(Boolean).join(' ') || v?.nom || ''
+  return nom ? `${nom} · ${plaque}` : plaque
+}
+
+/** `null` = la phrase est comprise, on peut appliquer ; sinon le message (et les boutons de choix) à afficher. */
+export function messageDescription(texte: string, r: Description | null, ref: Referents, classes: readonly ClasseHistorique[] = []): MessageDescription | null {
+  if (!r) return { texte: 'Je ne sais pas encore ce que c\'est. Choisis un type :', suggestions: suggererTypes(texte, classes), vehicules: [] }
+  if (r.vehiculesPossibles.length > 1) {
+    return { texte: 'Plusieurs véhicules correspondent. Lequel ?', suggestions: [], vehicules: r.vehiculesPossibles.map(plaque => ({ plaque, libelle: libelleVehicule(ref, plaque) })) }
+  }
+  return null
+}
+
+/** Documents d'une même description groupée, dans l'ordre de prise (date de dépôt, puis nom du fichier en ordre naturel) : c'est l'ordre de la numérotation. */
+export function ordreSerie<T extends { file_name: string; created_at: string }>(docs: readonly T[]): T[] {
+  const naturel = new Intl.Collator('fr', { numeric: true, sensitivity: 'base' })
+  return [...docs].sort((a, b) => a.created_at.localeCompare(b.created_at) || naturel.compare(a.file_name, b.file_name))
+}
+
+/** Parties à donner à `n` documents décrits ensemble (photos : 1, 2… ; autres : P1, P2…). */
+export const partiesGroupe = (type: string, n: number): Array<string | null> => partiesDeSerie(type, n)
 
 /** Les types les plus proches d'une phrase : si le type n'est pas reconnu, l'écran propose 3 boutons. */
 export function suggererTypes(texte: string, classes: readonly ClasseHistorique[] = [], max = 3): string[] {
@@ -320,7 +401,7 @@ export function propositionDepuisDescription(
   return {
     type: d.type, date: d.date, tiers: d.tiers, tiers_connu: d.tiersConnu, montant_ttc_cts: d.montant_ttc_cts, reference: d.reference, resume: null,
     confiance: { type: 1, date: 1, tiers: 1, montant: 1 },
-    nom: nomPropose({ date: d.date, dateDepot, type: d.type, tiers: d.tiers, reference: d.reference, partie: d.partie }, doc.file_name, pris),
+    nom: nomPropose({ date: d.date, dateDepot, type: d.type, tiers: d.tiers, reference: d.reference, partie: d.partie, vehicule: d.vehicule }, doc.file_name, pris),
     vehicule: d.vehicule, partie: d.partie, chemin, chemin_nouveaux: niveauxNouveaux(chemin, existants), chemin_confiance: 1, chemin_via: choix?.via ?? 'transit', alternatives: [],
     lu_via: 'saisie', propose_le: new Date().toISOString(),
   }

@@ -53,6 +53,8 @@ export const TYPES_DOCUMENT: readonly TypeDocument[] = [
   { cle: 'certificat_cession', libelle: 'Certificat de cession', nom: 'CERTIFICAT-CESSION', dossier: 'Vehicules et Flotte' },
   { cle: 'controle_technique', libelle: 'Contrôle technique', nom: 'CONTROLE-TECHNIQUE', dossier: 'Vehicules et Flotte' },
   { cle: 'document_vehicule', libelle: 'Autre document véhicule', nom: 'DOCUMENT-VEHICULE', dossier: 'Vehicules et Flotte' },
+  { cle: 'photo_inspection', libelle: 'Photos d\'inspection véhicule', nom: 'PHOTO-INSPECTION', dossier: 'Vehicules et Flotte' },
+  { cle: 'photo_vehicule', libelle: 'Photo du véhicule', nom: 'PHOTO-VEHICULE', dossier: 'Vehicules et Flotte' },
   { cle: 'amende', libelle: 'Amende / PV', nom: 'AMENDE', dossier: 'Vehicules et Flotte' },
   { cle: 'contestation', libelle: 'Contestation d\'amende', nom: 'CONTESTATION', dossier: 'Vehicules et Flotte' },
   { cle: 'avis_paiement', libelle: 'Avis de paiement', nom: 'AVIS-PAIEMENT', dossier: CF },
@@ -110,10 +112,15 @@ export interface ElementsNom {
   montant_ttc_cts?: number | null
   /** Partie du document : VERSO, RECTO, P2, SUITE, ANNEXE… (dernier bloc du nom). */
   partie?: string | null
+  /** Plaque du véhicule : tient lieu de TIERS pour les pièces d'un véhicule quand aucun tiers n'est donné (PHOTO-INSPECTION_AB-123-CD). */
+  vehicule?: string | null
 }
 
+/** Types dont le nom porte la plaque du véhicule à la place du tiers. */
+const VEHICULE_DANS_NOM = new Set(['photo_inspection', 'photo_vehicule', 'controle_technique', 'carte_grise', 'certificat_cession', 'document_vehicule'])
+
 /** Types qui n'ont jamais de « pages » : deux noms identiques = deux documents distincts (-2), pas recto / verso. */
-const SANS_PARTIES = new Set(['ticket', 'photo', 'autre', 'feuille_de_route', 'synthese_tournee', 'preuve_livraison', 'amende'])
+const SANS_PARTIES = new Set(['ticket', 'photo', 'photo_inspection', 'photo_vehicule', 'autre', 'feuille_de_route', 'synthese_tournee', 'preuve_livraison', 'amende'])
 /** Types à deux faces : le deuxième document de même nom est proposé en VERSO. */
 const DEUX_FACES = new Set(['identite', 'permis', 'carte_vitale', 'carte_grise'])
 
@@ -125,7 +132,8 @@ const DEUX_FACES = new Set(['identite', 'permis', 'carte_vitale', 'carte_grise']
 export function nomPropose(e: ElementsNom, nomActuel: string, pris: ReadonlySet<string> = new Set()): string {
   const t = typeDe(e.type)
   const date = e.date || (t?.intemporel ? null : e.dateDepot) || null
-  const morceaux = [date, t?.nom ?? 'DOCUMENT', bloc(e.tiers), bloc(e.reference, 24)].filter(Boolean) as string[]
+  const tiers = e.tiers?.trim() ? e.tiers : VEHICULE_DANS_NOM.has(e.type ?? '') ? e.vehicule : null
+  const morceaux = [date, t?.nom ?? 'DOCUMENT', bloc(tiers), bloc(e.reference, 24)].filter(Boolean) as string[]
   const ext = extensionDe(nomActuel)
   const avec = (partie: string | null) => `${[...morceaux, partie].filter(Boolean).join('_')}${ext}`
   const partie = bloc(e.partie, 12) || null
@@ -150,6 +158,20 @@ export function partieDuTexte(texte: string): string | null {
   if (/\bsuite\b/.test(n)) return 'SUITE'
   if (/\bannexes?\b/.test(n)) return 'ANNEXE'
   return null
+}
+
+/** Types qui forment une SÉRIE de photos : leur numéro de série est « 1 », « 2 »… (les autres documents groupés sont P1, P2…). */
+const SERIES_PHOTOS = new Set(['photo', 'photo_inspection', 'photo_vehicule', 'preuve_livraison'])
+
+/**
+ * Parties de `n` documents décrits en une seule phrase, dans l'ordre : photos → « 1 », « 2 »… (« 01 »… à partir de 10 documents),
+ * autres documents → « P1 », « P2 »… Un seul document : aucune partie.
+ */
+export function partiesDeSerie(type: string | null | undefined, n: number): Array<string | null> {
+  if (n < 2) return Array.from({ length: n }, () => null)
+  const largeur = String(n).length
+  const photos = SERIES_PHOTOS.has(type ?? '')
+  return Array.from({ length: n }, (_, i) => (photos ? String(i + 1).padStart(largeur, '0') : `P${i + 1}`))
 }
 
 // ── Pièces sensibles : reconnues d'après le NOM, jamais envoyées à l'IA ─────────────────────────────────────
@@ -235,6 +257,8 @@ export function cheminConvention(e: ElementsChemin, existants: ReadonlyArray<rea
     case 'certificat_cession': { const v = veh(flotte); return v ? [...flotte, v, 'Certificat de cession'] : null }
     case 'controle_technique': { const v = veh(flotte); return v ? [...flotte, v, 'Contrôle technique'] : null }
     case 'document_vehicule': { const v = veh(flotte); return v ? [...flotte, v] : null }
+    case 'photo_inspection': { const v = veh(flotte); return v ? [...flotte, v, 'Inspections'] : null }
+    case 'photo_vehicule': { const v = veh(flotte); return v ? [...flotte, v, 'Photos'] : null }
     case 'assurance': { const p = ['Assurances', 'Flotte automobile']; const v = veh(p); return v ? [...p, v] : ['Assurances'] }
     case 'capacite_transport': return ['Transport et Reglementaire', 'Capacite professionnelle de transport']
     case 'licence': return ['Transport et Reglementaire', 'Licence de Transport']
@@ -263,7 +287,7 @@ export function cheminDefaut(e: ElementsChemin, existants: ReadonlyArray<readonl
 // ── Origine du document : de qui / de quoi il vient ─────────────────────────────────────────────────────
 
 export const TYPES_SALARIE: ReadonlySet<string> = new Set(['permis', 'identite', 'casier', 'carte_vitale', 'paie', 'dpae', 'document_salarie'])
-export const TYPES_VEHICULE: ReadonlySet<string> = new Set(['carte_grise', 'certificat_cession', 'controle_technique', 'document_vehicule', 'amende', 'contestation', 'assurance'])
+export const TYPES_VEHICULE: ReadonlySet<string> = new Set(['carte_grise', 'certificat_cession', 'controle_technique', 'document_vehicule', 'photo_inspection', 'photo_vehicule', 'amende', 'contestation', 'assurance'])
 export const TYPES_CLIENT: ReadonlySet<string> = new Set(['facture_client', 'avoir', 'acompte', 'devis', 'bon_commande', 'bon_livraison', 'lettre_de_voiture', 'ordre_transport', 'charte', 'contrat'])
 
 /** Noms des fiches par identifiant (le site et l'Edge les chargent ; ce fichier ne lit aucune base). */

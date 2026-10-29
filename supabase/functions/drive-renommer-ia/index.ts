@@ -157,6 +157,7 @@ Deno.serve(async (req) => {
 
     let type: string | null = null;
     let tiers: string | null = null;
+    let vehicule: string | null = null;
     let date: string | null = null;
     let reference: string | null = null;
     let luVia: 'image' | 'texte' | 'nom' = 'nom';
@@ -185,6 +186,7 @@ Deno.serve(async (req) => {
       const doute = !tiersLu.nom || p.confiance.tiers < 0.7;
       const comp = completerDepuisOrigine({ type, tiers: doute ? null : tiersLu.nom, vehicule: vehiculeLu }, { ...SANS_ORIGINE, client: org.client, salarie: org.salarie, vehicule: org.vehicule });
       tiers = comp.tiers ?? tiersLu.nom;
+      vehicule = comp.vehicule;
       if (doute && !comp.tiers && type && (type === 'facture_fournisseur' || type === 'ticket') && org.fournisseur) tiers = org.fournisseur;
       if (!tiers && type && TYPES_CLIENT.has(type) && org.client) tiers = org.client;
       date = p.date;
@@ -195,7 +197,7 @@ Deno.serve(async (req) => {
       resultats.push({ ...base, tiers, date, reference, partie, nouveau: ancien, deja_conforme: false, lu_via: luVia, raison: raison ?? 'Type de document non reconnu : décris-le avec « Dis-moi ce que c\'est ».' });
       continue;
     }
-    const nouveau = nomPropose({ date, dateDepot: typeDe(type)?.intemporel ? null : dateDepot, type, tiers, reference, partie }, ancien, prisIci);
+    const nouveau = nomPropose({ date, dateDepot: typeDe(type)?.intemporel ? null : dateDepot, type, tiers, reference, partie, vehicule }, ancien, prisIci);
     dejaPris.add(nouveau.toLowerCase());
     resultats.push({ ...base, type, tiers, date, reference, partie, nouveau, deja_conforme: nouveau === ancien, lu_via: luVia, raison });
   }

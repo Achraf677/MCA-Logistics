@@ -3,7 +3,7 @@ import { lireErreurEdge } from '../../shared/lib/erreurEdge'
 import { getDownloadUrl, uploadDocument } from '../../shared/lib/documents.queries'
 import type { DocumentRow, PropositionDocument } from '../../shared/lib/documents.types'
 import { cheminsDepuisDossiers, type DossierDrive } from './documents.logic'
-import type { Referents } from './decrire.logic'
+import type { Referents, VehiculeRef } from './decrire.logic'
 import type { Annuaire } from '../../shared/lib/conventionDocuments'
 
 /** Tous les documents de la société, plus récents d'abord (RLS). */
@@ -75,8 +75,14 @@ export async function chargerReferents(): Promise<Referents> {
     const { data } = await supabase.from(table).select(col).limit(500)
     return ((data ?? []) as unknown as Array<Record<string, unknown>>).map(r => String(r[col] ?? '').trim()).filter(Boolean)
   }
-  const [clients, fournisseurs, salaries, plaques] = await Promise.all([noms('clients', 'name'), noms('suppliers', 'name'), noms('team_members', 'full_name'), noms('vehicles', 'plate')])
-  return { clients, fournisseurs, salaries, plaques }
+  const flotte = async (): Promise<VehiculeRef[]> => {
+    const { data } = await supabase.from('vehicles').select('plate, brand, model, label').limit(500)
+    return ((data ?? []) as unknown as Array<Record<string, string | null>>)
+      .map(r => ({ plaque: String(r.plate ?? '').trim(), marque: r.brand?.trim() || null, modele: r.model?.trim() || null, nom: r.label?.trim() || null }))
+      .filter(v => v.plaque)
+  }
+  const [clients, fournisseurs, salaries, vehicules] = await Promise.all([noms('clients', 'name'), noms('suppliers', 'name'), noms('team_members', 'full_name'), flotte()])
+  return { clients, fournisseurs, salaries, plaques: vehicules.map(v => v.plaque), vehicules }
 }
 
 /** Fiches par identifiant : d'où vient un document (fiche salarié, véhicule, client) et qui l'a déposé (profil → salarié). */

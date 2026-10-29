@@ -259,7 +259,7 @@ Deno.serve(async (req) => {
     const choixIA = regle && confIA >= SEUIL_CHEMIN && brut?.chemin ? normaliserChemin(brut.chemin, existants, defaut) : null;
     const alternatives = !choixIA || choixIA.chemin.join('/') === choix.chemin.join('/') ? [] : [choixIA];
 
-    const nom = nomPropose({ date: p.date, dateDepot, type, tiers: tiers.nom, reference: p.reference, partie }, String(doc.file_name), pris);
+    const nom = nomPropose({ date: p.date, dateDepot, type, tiers: tiers.nom, reference: p.reference, partie, vehicule }, String(doc.file_name), pris);
     pris.add(nom.toLowerCase());
     // Déjà rangé ? Même type, même date, même tiers et même référence qu'un document classé.
     const doublon = type && p.date && tiers.nom && p.reference
