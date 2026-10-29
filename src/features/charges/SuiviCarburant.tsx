@@ -9,7 +9,7 @@ import { libelleCarte } from '../../shared/lib/depenses'
 import { libelleMois } from '../../shared/lib/mois'
 import type { TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import {
-  csvCarburant, moisDe, moisDecale, pleinManuelEnLigne, pleinsDuMois, totalPleins, totauxParVehicule,
+  csvCarburant, moisDe, moisDecale, pleinManuelEnLigne, pleinsDuMois, totalLitres, totalPleins, totauxParVehicule,
 } from './carburantJustifs.logic'
 import { PleinManuelDrawer } from './PleinManuelDrawer'
 import type { PleinManuel } from './pleinsManuels.queries'
@@ -43,6 +43,7 @@ export function SuiviCarburant({ tickets, manuels, vehicules, noms, companyId, p
     () => pleinsDuMois<Plein>([...tickets, ...manuels.map(pleinManuelEnLigne)], mois),
     [tickets, manuels, mois])
   const total = totalPleins(pleins)
+  const litres = totalLitres(pleins)
   const parVehicule = useMemo(() => totauxParVehicule(pleins, nomVehicule), [pleins, vehicules]) // eslint-disable-line react-hooks/exhaustive-deps
   const sansMontant = pleins.filter(p => p.montant_ttc_cts == null).length
 
@@ -76,7 +77,7 @@ export function SuiviCarburant({ tickets, manuels, vehicules, noms, companyId, p
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         <Tuile icone={<Fuel size={13} />} libelle="Total du mois" valeur={formatMoney(total)} detail="carte carburant, TTC" />
         <Tuile icone={<Gauge size={13} />} libelle="Pleins" valeur={String(pleins.length)}
-          detail={pleins.length > 0 ? `${formatMoney(Math.round(total / pleins.length))} en moyenne` : 'aucun ce mois-ci'} />
+          detail={pleins.length === 0 ? 'aucun ce mois-ci' : litres > 0 ? `${litres.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} L · ${formatMoney(Math.round(total / pleins.length))} en moyenne` : `${formatMoney(Math.round(total / pleins.length))} en moyenne`} />
         <Tuile icone={<Truck size={13} />} libelle="Véhicules" valeur={String(parVehicule.filter(v => v.cle !== 'sans-vehicule').length)}
           detail={sansMontant > 0 ? `${sansMontant} sans montant` : 'ayant fait le plein'} className="col-span-2 lg:col-span-1" />
       </div>
@@ -120,6 +121,7 @@ export function SuiviCarburant({ tickets, manuels, vehicules, noms, companyId, p
                         </span>
                         <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] truncate">
                           <AvatarInitiales nom={nomDeclarant(p)} taille="sm" /> {nomDeclarant(p)}{p.carte ? ` · ${libelleCarte(p.carte)}` : ''}
+                          {p.manuel && p.litres != null && p.prix_litre != null && ` · ${p.litres.toLocaleString('fr-FR')} L × ${p.prix_litre.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} €`}
                         </span>
                       </span>
                       {p.manuel && <Badge color="muted">Sans justificatif</Badge>}

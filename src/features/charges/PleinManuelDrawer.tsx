@@ -5,7 +5,9 @@ import { Champ } from '../../shared/ui/FicheSaisie'
 import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
-import { CARTES_CARBURANT, montantSaisiEnCts } from '../../shared/lib/depenses'
+import { CARTES_CARBURANT } from '../../shared/lib/depenses'
+import { formatMoney } from '../../shared/lib/money'
+import { decimalSaisi, montantPleinCts } from './carburantJustifs.logic'
 import { toLocalISO } from '../../shared/lib/dates'
 import {
   creerPleinManuel, modifierPleinManuel, supprimerPleinManuel, type PleinManuel,
@@ -24,24 +26,30 @@ export function PleinManuelDrawer({ plein, companyId, vehicules, peutSupprimer, 
   const auj = toLocalISO(new Date())
   const [date, setDate] = useState(plein?.date_plein ?? auj)
   const [vehicule, setVehicule] = useState(plein?.vehicle_id ?? '')
-  const [montant, setMontant] = useState(plein ? (plein.montant_ttc_cts / 100).toFixed(2).replace('.', ',') : '')
+  const [litres, setLitres] = useState(plein?.litres != null ? String(plein.litres).replace('.', ',') : '')
+  const [prix, setPrix] = useState(plein?.prix_litre != null ? String(plein.prix_litre).replace('.', ',') : '')
   const [carte, setCarte] = useState(plein?.carte ?? CARTES_CARBURANT[0].valeur)
   const [note, setNote] = useState(plein?.note ?? '')
   const [busy, setBusy] = useState(false)
   const [suppression, setSuppression] = useState(false)
 
-  const cts = montantSaisiEnCts(montant)
-  const montantValide = cts != null && !Number.isNaN(cts) && cts > 0
+  const l = decimalSaisi(litres, 2)
+  const pl = decimalSaisi(prix, 3)
+  const litresValides = l != null && !Number.isNaN(l) && l > 0
+  const prixValide = pl != null && !Number.isNaN(pl) && pl > 0
+  // Le TTC n'est jamais saisi : litres × prix au litre.
+  const cts = litresValides && prixValide ? montantPleinCts(l, pl) : null
   const manques = [
     !/^\d{4}-\d{2}-\d{2}$/.test(date) ? 'Date' : null,
     !vehicule ? 'Véhicule' : null,
-    !montantValide ? 'Montant' : null,
+    !litresValides ? 'Litres' : null,
+    !prixValide ? 'Prix au litre' : null,
   ].filter(Boolean) as string[]
 
   const enregistrer = async () => {
-    if (manques.length > 0 || busy || cts == null) return
+    if (manques.length > 0 || busy || cts == null || l == null || pl == null) return
     setBusy(true)
-    const saisie = { vehicle_id: vehicule, date_plein: date, montant_ttc_cts: cts, carte: carte || null, note: note.trim() || null }
+    const saisie = { vehicle_id: vehicule, date_plein: date, montant_ttc_cts: cts, litres: l, prix_litre: pl, carte: carte || null, note: note.trim() || null }
     const { error } = plein ? await modifierPleinManuel(plein.id, saisie) : await creerPleinManuel(companyId, saisie)
     setBusy(false)
     if (error) { toast(error.message, 'error'); return }
@@ -71,9 +79,18 @@ export function PleinManuelDrawer({ plein, companyId, vehicules, peutSupprimer, 
           <ListeDeroulante valeur={vehicule} onChange={setVehicule} placeholder="Choisir le véhicule" ariaLabel="Véhicule" invalide={!vehicule}
             options={vehicules.map(v => ({ valeur: v.id, libelle: v.label, detail: v.plate ?? undefined }))} />
         </Champ>
-        <Champ label="Montant TTC (€)" requis error={montant && !montantValide ? 'Montant invalide (ex. 62,40)' : undefined}>
-          <input className="field font-mono" inputMode="decimal" placeholder="62,40" value={montant} onChange={e => setMontant(e.target.value)} />
-        </Champ>
+        <div className="grid grid-cols-2 gap-3">
+          <Champ label="Litres" requis error={litres && !litresValides ? 'Invalide (ex. 45,2)' : undefined}>
+            <input className="field font-mono" inputMode="decimal" placeholder="45,2" value={litres} onChange={e => setLitres(e.target.value)} />
+          </Champ>
+          <Champ label="Prix au litre TTC (€)" requis error={prix && !prixValide ? 'Invalide (ex. 1,789)' : undefined}>
+            <input className="field font-mono" inputMode="decimal" placeholder="1,789" value={prix} onChange={e => setPrix(e.target.value)} />
+          </Champ>
+        </div>
+        <div className="rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] px-3.5 py-2.5 flex items-baseline justify-between">
+          <span className="text-sm text-[var(--text-muted)]">Montant TTC (litres × prix)</span>
+          <span className="font-mono font-semibold text-xl tabular-nums text-[var(--text)]">{cts != null ? formatMoney(cts) : '—'}</span>
+        </div>
         <Champ label="Carte">
           <ListeDeroulante valeur={carte} onChange={setCarte} placeholder="Choisir la carte" ariaLabel="Carte" options={CARTES_CARBURANT} />
         </Champ>

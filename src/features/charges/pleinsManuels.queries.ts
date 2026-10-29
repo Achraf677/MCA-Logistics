@@ -9,6 +9,9 @@ export interface PleinManuel {
   montant_ttc_cts: number
   carte: string | null
   note: string | null
+  /** Litres × prix au litre = montant TTC (colonnes `litres`, `prix_litre`, migration 20261029120000). */
+  litres: number | null
+  prix_litre: number | null
   created_at: string
 }
 
@@ -18,6 +21,8 @@ export interface SaisiePlein {
   montant_ttc_cts: number
   carte: string | null
   note: string | null
+  litres: number
+  prix_litre: number
 }
 
 export async function listerPleinsManuels(limite = 1000) {

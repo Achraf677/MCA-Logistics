@@ -15,7 +15,7 @@
 
 ## 2a. Carte carburant (29/10/2026)
 - Justificatifs › vue « Carburant » : tickets payés à la carte carburant (Edenred), par mois (flèches), total / pleins / moyenne, par véhicule (barres), jour par jour (clic = tiroir), export CSV. Informatif : jamais envoyé à Pennylane.
-- « Ajouter un plein » : saisie à la main sans justificatif (date, véhicule, montant, carte, note), modifiable / supprimable ; table `pleins_carburant`.
+- « Ajouter un plein » : saisie à la main sans justificatif (date, véhicule, litres, prix au litre → TTC calculé, carte, note), modifiable / supprimable ; table `pleins_carburant`.
 - Salarié : véhicule obligatoire (`receipts_inbox.vehicle_id`) ; absents de la liste « À traiter ».
 
 ## 2b. Fait (F2a, 22/10/2026) — onglet Justificatifs
