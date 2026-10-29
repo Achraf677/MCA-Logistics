@@ -244,6 +244,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   documents · Facturation).
 
 ## 12. En cours / à décider (mettre à jour à chaque session)
+- **Inbox : suppression multiple (29/10/2026)** : cases cochables sur tout fichier, barre du bas « Supprimer la sélection (n) » avec confirmation (`InboxDocuments`) ; « Trier la sélection » ne prend que les lisibles.
 - **Plein manuel : deux personnes (29/10/2026)** : `pleins_carburant.mis_par` (→ `team_members`, migration `20261029140000` appliquée) = « Qui a mis le plein », case distincte de « Qui a fait le plein » (`fait_par`), toutes deux obligatoires ; « mis par … » affiché dans la ligne.
 - **Plein manuel : qui + carte + note (29/10/2026)** : `pleins_carburant.fait_par` (→ `team_members`, migration `20261029130000` appliquée) ; formulaire « Ajouter un plein » : « Qui a fait le plein » (liste avec recherche, obligatoire), « Carte bancaire » (liste avec recherche : Edenred + les 5 cartes société, obligatoire), note obligatoire ; le nom du membre remplace « Saisie manuelle » dans la liste.
 - **Plein manuel = litres × prix (29/10/2026)** : `pleins_carburant.litres` + `prix_litre` (migration `20261029120000` appliquée) ; le TTC n'est plus saisi, il se calcule (`carburantJustifs.logic#montantPleinCts`, entiers) et reste stocké dans `montant_ttc_cts` ; litres du mois dans la tuile « Pleins ». Les tickets des salariés ne portent pas de litres (non demandé).

@@ -51,15 +51,19 @@ export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrir
   const [echecs, setEchecs] = useState<Record<string, string>>({})
   const [aSupprimer, setASupprimer] = useState<DocumentRow | null>(null)
   const [purgerDrive, setPurgerDrive] = useState(false)
+  const [supprimerSelection, setSupprimerSelection] = useState(false)
+  const [suppression, setSuppression] = useState(false)
   const annule = useRef(false)
   const fichierRef = useRef<HTMLInputElement>(null)
 
   const visibles = useMemo(() => docs.filter(d => correspondRecherche(d, q)), [docs, q])
   const lisibles = visibles.filter(lisibleParIA)
   const anciensDrive = docs.filter(estAncienDrive)
+  /** Tout ce qui est coché (lisible ou non) : sert à la suppression. */
+  const selectionnes = visibles.filter(d => selection.has(d.id))
   const choisis = lisibles.filter(d => selection.has(d.id))
   /** Sans sélection, « Trier » prend tout ce que l'IA sait lire. */
-  const aTrier = choisis.length > 0 ? choisis : lisibles
+  const aTrier = selectionnes.length > 0 ? choisis : lisibles
   const nomsPris = useMemo(() => new Set(classes.map(c => c.file_name.toLowerCase())), [classes])
   /** Ce que l'utilisateur a déjà rangé (du plus récent au plus ancien) : dossier et type habituels d'un tiers. */
   const histo = useMemo<ClasseHistorique[]>(() => classes.map(c => ({ type_document: c.type_document, tiers: c.tiers, drive_chemin: c.drive_chemin })), [classes])
@@ -125,6 +129,23 @@ export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrir
     await onChange()
   }
 
+  const supprimerLaSelection = async () => {
+    const cibles = selectionnes
+    setSupprimerSelection(false)
+    setSuppression(true)
+    let n = 0
+    let erreur: string | null = null
+    for (const d of cibles) {
+      const { error } = await deleteDocument(d)
+      if (error) erreur = error.message; else n++
+    }
+    setSuppression(false)
+    setSelection(new Set())
+    if (n > 0) toast(`${n} document${n > 1 ? 's' : ''} supprimé${n > 1 ? 's' : ''}`)
+    if (erreur) toast(`${cibles.length - n} échec${cibles.length - n > 1 ? 's' : ''} : ${erreur}`, 'error')
+    await onChange()
+  }
+
   const purger = async () => {
     let n = 0
     for (const d of anciensDrive) { const { error } = await deleteDocument(d); if (!error) n++ }
@@ -179,7 +200,7 @@ export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrir
               const coche = selection.has(d.id)
               return (
                 <li key={d.id} className={`flex flex-wrap items-center gap-3 px-3 py-2.5 transition-colors ${coche ? 'bg-[var(--brand)]/6' : 'hover:bg-[var(--bg-card-hover)]'}`}>
-                  <button type="button" disabled={!lisible || !!tri} onClick={() => basculer(d.id)} aria-label={coche ? 'Désélectionner' : 'Sélectionner'} aria-pressed={coche}
+                  <button type="button" disabled={!!tri || suppression} onClick={() => basculer(d.id)} aria-label={coche ? 'Désélectionner' : 'Sélectionner'} aria-pressed={coche}
                     className="shrink-0 text-[var(--text-muted)] disabled:opacity-30 hover:text-[var(--brand)]">
                     {coche ? <CheckSquare size={20} className="text-[var(--brand)]" /> : <Square size={20} />}
                   </button>
@@ -226,7 +247,7 @@ export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrir
       )}
 
       {/* Barre d'action collée en bas : le tri */}
-      {peutEcrire && docs.length > 0 && (
+      {(peutEcrire || peutSupprimer) && docs.length > 0 && (
         <div className="sticky bottom-3 z-10 rounded-[var(--r-xl)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] shadow-2xl px-4 py-3 flex flex-wrap items-center gap-3">
           {tri ? (
             <>
@@ -239,12 +260,19 @@ export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrir
           ) : (
             <>
               <p className="text-sm text-[var(--text-muted)] flex-1 min-w-[10rem]">
-                {choisis.length > 0 ? <><strong className="text-[var(--text)]">{choisis.length}</strong> sélectionné{choisis.length > 1 ? 's' : ''}.</> : 'Tout ce qui est lisible sera trié.'}
-                {choisis.length > 0 && <button type="button" onClick={() => setSelection(new Set())} className="ml-2 underline underline-offset-2 hover:text-[var(--text)]">Tout désélectionner</button>}
+                {selectionnes.length > 0 ? <><strong className="text-[var(--text)]">{selectionnes.length}</strong> sélectionné{selectionnes.length > 1 ? 's' : ''}.</> : 'Tout ce qui est lisible sera trié.'}
+                {selectionnes.length > 0 && <button type="button" onClick={() => setSelection(new Set())} className="ml-2 underline underline-offset-2 hover:text-[var(--text)]">Tout désélectionner</button>}
               </p>
-              <Button variant="primary" className="min-h-11" onClick={() => void lancer()} disabled={aTrier.length === 0}>
-                <Sparkles size={15} /> {choisis.length > 0 ? 'Trier la sélection' : 'Trier'} ({aTrier.length})
-              </Button>
+              {peutSupprimer && selectionnes.length > 0 && (
+                <Button variant="secondary" className="min-h-11 text-[var(--danger)]" disabled={suppression} onClick={() => setSupprimerSelection(true)}>
+                  <Trash2 size={15} /> {suppression ? 'Suppression…' : `Supprimer la sélection (${selectionnes.length})`}
+                </Button>
+              )}
+              {peutEcrire && (
+                <Button variant="primary" className="min-h-11" onClick={() => void lancer()} disabled={aTrier.length === 0 || suppression}>
+                  <Sparkles size={15} /> {selectionnes.length > 0 ? 'Trier la sélection' : 'Trier'} ({aTrier.length})
+                </Button>
+              )}
             </>
           )}
         </div>
@@ -252,6 +280,9 @@ export function InboxDocuments({ docs, classes, miniatures, companyId, peutEcrir
 
       <ConfirmDialog open={!!aSupprimer} title="Supprimer ce document ?" message={`« ${aSupprimer?.file_name ?? ''} » sera effacé du site, avec son fichier. Action définitive.`}
         confirmLabel="Supprimer" onConfirm={() => { if (aSupprimer) void supprimer(aSupprimer) }} onCancel={() => setASupprimer(null)} />
+      <ConfirmDialog open={supprimerSelection} title={`Supprimer ${selectionnes.length} document${selectionnes.length > 1 ? 's' : ''} ?`}
+        message={`Les ${selectionnes.length} documents sélectionnés seront effacés du site, avec leurs fichiers. Action définitive.`}
+        confirmLabel="Supprimer" onConfirm={() => void supprimerLaSelection()} onCancel={() => setSupprimerSelection(false)} />
       <ConfirmDialog open={purgerDrive} title="Retirer les anciens liens Drive ?" message={`${anciensDrive.length} documents n'ont plus de fichier chez nous (le Drive n'est plus branché) : seule leur ligne existe encore. Ils seront retirés de la liste. Les fichiers restent dans ton Drive.`}
         confirmLabel="Retirer" onConfirm={() => void purger()} onCancel={() => setPurgerDrive(false)} />
     </div>

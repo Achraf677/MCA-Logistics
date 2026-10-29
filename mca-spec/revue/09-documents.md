@@ -31,7 +31,7 @@
 
 ## 3 L'écran
 - Tuiles cliquables : Inbox · À confirmer · Rangés (→ Historique) · Google Drive (→ Bibliothèque). Pastilles : Inbox · À confirmer · Historique · Bibliothèque.
-- **Inbox** : dépôt multi-fichiers, recherche, filtre d'origine, « Trier avec l'IA (n) » (lots de 5, Arrêter), suppression, « Retirer les anciens liens Drive ».
+- **Inbox** : dépôt multi-fichiers, recherche, filtre d'origine, « Trier avec l'IA (n) » (lots de 5, Arrêter), suppression (une par une, ou « Supprimer la sélection (n) » après cases cochées : tous les fichiers sont cochables, même non lisibles par l’IA ; confirmation), « Retirer les anciens liens Drive ».
 - **À confirmer** : carte par document : nom proposé (modifiable), type, date, tiers, montant, référence, champs douteux (< 0,7) surlignés ; « Où le ranger dans le Drive » = liste déroulante avec recherche (dossiers existants + choix de l'IA + « Sinon : … »), « nouveau dossier » signalé, bouton « Créer un sous-dossier ici » ; Confirmer / Rejeter / « Tout confirmer ».
 - **Historique** : 60 derniers documents rangés, groupés par jour, avec dossier du Drive, type, montant, « il y a n min », ouverture dans l'appli, lien Drive.
 - **Bibliothèque** : Mon Drive, dossiers, fil d'Ariane, recherche par nom dans tout le Drive, aperçu dans l'appli (Docs / Sheets exportés en PDF ; .docx / .xlsx = lien Drive), renommer, « Ranger ici les nouveaux documents ».
