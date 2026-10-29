@@ -228,3 +228,16 @@ export function detailBrut(raw: unknown): Array<{ libelle: string; valeur: strin
   }
   return out
 }
+
+/** Montants des phrases de résumé : « +x € » / « −x € », mais « 0,00 € » (jamais « −0,00 € ») quand c'est zéro. */
+export function formatEntrees(cts: number): string {
+  return cts === 0 ? formatMoney(0) : `+${formatMoney(cts)}`
+}
+export function formatSorties(cts: number): string {
+  return cts === 0 ? formatMoney(0) : `−${formatMoney(cts)}`
+}
+
+/** Le détail « sans justificatif » n'a pas de sens pour une entrée ni pour un virement entre ses propres comptes. */
+export function manqueUnJustificatif(t: Pick<QontoTx, 'charge_id' | 'justif_type' | 'side' | 'id'>, internes: Set<string>): boolean {
+  return t.side === 'debit' && !aUnJustificatif(t) && !internes.has(t.id)
+}

@@ -7,7 +7,7 @@
 
 ## 2. Fait (F1)
 - Encaissement et Relances retirés (le suivi des factures se lit dans Livraisons › « À encaisser »).
-- Trésorerie lecture seule : 3 vues (Qonto · Swan · Fusion des deux relevés, pastille par ligne), soldes par compte, filtres (recherche y compris montant, sens, période, montant min/max, type, justificatif oui/non), tri, totaux de la sélection (virements Qonto↔Swan exclus en fusion), export CSV, synchro + date, détail d'une ligne (tiroir). Reste : page qui défile en entier (règle « un écran »), rattacher un justificatif depuis ici (non : se fait dans Charges).
+- Trésorerie lecture seule : 3 vues (Qonto · Swan · Fusion des deux relevés, pastille par ligne), soldes par compte, filtres (recherche y compris montant, sens, période, montant min/max, type, justificatif oui/non), tri, totaux de la sélection (virements Qonto↔Swan exclus en fusion), export CSV, synchro + date, détail d'une ligne (tiroir). Tient sur un écran PC (tuiles + filtres fixes, seule la liste défile) ; filtres avancés repliés (« Filtres (n) »), pastille de compte réduite à l'initiale sur mobile, point rouge « sans justificatif » sur mobile (jamais sur un virement interne). Audit visuel du 29/10 fait (PC 1920 / 1366 + mobile 390). Reste : tuile Sorties coupée au-delà de 6 chiffres (mobile) ; rôle non-président et format des dates Du/Au non vérifiés ; rattacher un justificatif se fait dans Charges.
 - Charges : mois par mois (mois courant ouvert, un filtre ouvre tout), total HT du mois, tout en HT (colonne TTC et graphique « Dépenses par catégorie » retirés), 2 tuiles (Charges, Total HT).
 - Briques partagées : `shared/lib/mois.ts` (+ test), `shared/ui/GroupeMois.tsx`.
 

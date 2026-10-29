@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  estLiquide, filtrerProduit, kpiSummary, produitsUtilises, htDuPlein, prixLitreHtMilli, consommation, consommationFlotte,
+  estLiquide, filtrerProduit, kpiSummary, produitsUtilises, htDuPlein, prixLitreHtMilli, montantPlein, prixLitreMilli,
 } from './carburant.logic'
 import type { FuelLogRow, FuelType } from './carburant.types'
 
@@ -57,25 +57,20 @@ describe('HT', () => {
   })
 })
 
-describe('Consommation', () => {
-  it('plein à plein : litres des pleins suivants / km parcourus', () => {
-    const c = consommation([plein('a', 50, 1000), plein('a', 40, 1500), plein('a', 30, 1800)])!
-    expect(c.km).toBe(800)
-    expect(c.litres).toBe(70)
-    expect(c.l100).toBeCloseTo(8.75, 5)
+describe('HT / TTC', () => {
+  const r = { total_ht_cts: 8333, total_cts: 10000, tva_cts: 1667, liters: 50 }
+  it('montant et prix au litre selon le mode', () => {
+    expect(montantPlein(r, 'ht')).toBe(8333)
+    expect(montantPlein(r, 'ttc')).toBe(10000)
+    expect(prixLitreMilli(r, 'ht')).toBe(1667)
+    expect(prixLitreMilli(r, 'ttc')).toBe(2000)
+    expect(prixLitreMilli({ ...r, liters: 0 }, 'ttc')).toBe(0)
   })
-  it('inconnue sous 2 relevés ou sans km parcourus ; ignore liquides et pleins sans km', () => {
-    expect(consommation([plein('a', 50, 1000)])).toBeNull()
-    expect(consommation([plein('a', 50, 1000), plein('a', 40, 1000)])).toBeNull()
-    expect(consommation([plein('a', 50, 1000), plein('a', 10, 1200, 'adblue'), plein('a', 40, null)])).toBeNull()
-  })
-  it('flotte : somme des véhicules mesurables', () => {
-    const f = consommationFlotte([
-      plein('a', 50, 1000), plein('a', 40, 1500), // 40 L / 500 km
-      plein('b', 30, 100), plein('b', 60, 700),   // 60 L / 600 km
-      plein('c', 30, 100),                         // pas mesurable
-    ])!
-    expect(f.vehicules).toBe(2)
-    expect(f.l100).toBeCloseTo((100 / 1100) * 100, 5)
+  it('les tuiles donnent HT et TTC', () => {
+    const k = kpiSummary([{ ...plein('a', 50, null), ...r, fuel_type: 'diesel' } as unknown as FuelLogRow])
+    expect(k.totalHtCts).toBe(8333)
+    expect(k.totalTtcCts).toBe(10000)
+    expect(k.avgPricePerLiter).toBeCloseTo(1666.6, 0)
+    expect(k.avgPricePerLiterTtc).toBe(2000)
   })
 })

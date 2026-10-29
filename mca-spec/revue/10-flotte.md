@@ -34,7 +34,8 @@
 ## 8. Écran Carburant (lot 2, 30/10/2026)
 - Base : `fuel_logs` (pleins Pennylane). Colonne `total_ht_cts` (nullable ; repli `htDuPlein` = TTC − TVA). Le TTC (`total_cts`, `price_per_liter_milli`) reste stocké pour Pennylane / trésorerie.
 - Reprise des 70 pleins : plein seul sur sa facture = `charges.montant_ht_cts` ; plein partagé = TTC − TVA du plein ; pas de TVA = TTC. 2 pleins avec un TTC saisi différent de la facture (à vérifier par le président).
-- 5 tuiles cliquables : Achats (à rapprocher) · Total HT · Litres · Prix moy./L HT · Conso L/100 (plein à plein : litres des pleins suivants / km entre premier et dernier relevé ; `consommation`, `consommationFlotte`).
+- 4 tuiles cliquables : Achats (à rapprocher) · Total · Litres · Prix moy./L. Liste déroulante **HT / TTC** à gauche de « Nouveau » (`shared/ui/AffichageMontant`, choix mémorisé sur l'appareil, `Shell.actionsGauche`) : tuiles, tableau et mobile suivent. Le TTC est le montant payé (`total_cts`).
+- **Km retirés (demande du 30/10/2026)** : plus de colonne km, plus de saisie du kilométrage (fiche plein, import de relevé) ; plus de conso L/100 (tuile et code supprimés). Les km déjà saisis restent en base (lus par la carte Véhicules).
 - Barre de recherche (véhicule, plaque, chauffeur, station), listes déroulantes véhicule / produit, pastille « À rapprocher », « Tout réinitialiser ». Tableau et mobile en HT. Export CSV : HT + colonne TTC en dernier.
 - Écritures : `DrawerCarburant` et `DrawerReleve` posent `total_ht_cts`. Lecteur adapté : outil assistant `get_carburant_mois` (`total_ht_eur`).
 - Hors périmètre : tickets carte carburant et pleins manuels (Finance › Justificatifs › Carburant, TTC, aucun HT en base).

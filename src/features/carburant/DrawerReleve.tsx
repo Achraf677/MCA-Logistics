@@ -119,7 +119,7 @@ export function DrawerReleve({ open, onClose, charge, onSaved, produits = [] }: 
           total_ht_cts: m.ht_cts,
           tva_cts: m.tva_cts > 0 ? m.tva_cts : null,
           fuel_type: l.produit,
-          mileage_km: l.kilometrage ? parseInt(l.kilometrage) : null,
+          mileage_km: null,
           station: l.station || charge.suppliers?.name || null,
           tva_rate: tvaRate,
           tva_deductible_pct: 100,
@@ -179,7 +179,7 @@ export function DrawerReleve({ open, onClose, charge, onSaved, produits = [] }: 
                 <table className="w-full text-[var(--fs-xs)]">
                   <thead>
                     <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                      {['', 'Date', 'Station', 'Produit', 'Véhicule', 'Chauffeur', 'Litres', '€/L', 'TTC €', 'km'].map(h => (
+                      {['', 'Date', 'Station', 'Produit', 'Véhicule', 'Chauffeur', 'Litres', '€/L', 'TTC €'].map(h => (
                         <th key={h} className="px-2 py-2 font-medium uppercase tracking-wide">{h}</th>
                       ))}
                     </tr>
@@ -216,9 +216,8 @@ export function DrawerReleve({ open, onClose, charge, onSaved, produits = [] }: 
                           </td>
                           <td className="px-2 py-1"><input type="number" value={l.litres} onChange={e => maj(l.cle, { litres: e.target.value })} className={`${cellCls} w-20`} /></td>
                           <td className="px-2 py-1"><input type="number" value={l.prixLitre} onChange={e => maj(l.cle, { prixLitre: e.target.value })} className={`${cellCls} w-20`} /></td>
-                          <td className="px-2 py-1"><input type="number" value={l.montantTtc} onChange={e => maj(l.cle, { montantTtc: e.target.value })} className={`${cellCls} w-24`} /></td>
                           <td className="px-2 py-1">
-                            <input type="number" value={l.kilometrage} onChange={e => maj(l.cle, { kilometrage: e.target.value })} className={`${cellCls} w-24`} />
+                            <input type="number" value={l.montantTtc} onChange={e => maj(l.cle, { montantTtc: e.target.value })} className={`${cellCls} w-24`} />
                             {err && <p className="text-[var(--danger)] mt-0.5">{err}</p>}
                           </td>
                         </tr>
