@@ -228,7 +228,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 ## 11. État actuel & à décider (29/10/2026)
 > Le détail (lots faits, versions d'Edge, chiffres, bancs de test) est dans `mca-spec/HISTORIQUE.md` : ne le lire QUE si on touche la zone concernée (grep). Ici : le strict utile.
 - 8 sections (`src/app/sections/`) : Pilotage · Livraisons (Livraisons, Devis) · Finance (Trésorerie, Charges, Justificatifs) · Flotte · Planning (Tournées, Planning) · Tiers · Équipe · Système (Paramètres, Documents, Cartes bancaires, Admins). Hors menu : Mes courses (salarié), Alertes. Les specs `mca-spec/tabs/` sont partielles : vérifier le code.
-- Trésorerie : solde Qonto + solde compte pro Pennylane (Edge `pennylane-solde`, déployée le 29/10 ; à vérifier sur les vrais comptes : unité de `balance`).
+- Trésorerie : relevés séparés Qonto / Swan + vue Fusion. Swan = compte « Compte Pro Pennylane » lu via l'API Pennylane (Edge `pennylane-solde` : solde + opérations dans `qonto_transactions.source='swan'`). Piège : Pennylane liste aussi Qonto (« Compte principal »), sans IBAN → ne jamais importer ce compte-là. Montants Pennylane = euros décimaux en chaîne.
 - Activité actuelle : messagerie Colissimo (tournées de colis scannées, relevé mensuel). Express retiré de Mes courses.
 - Fiches de revue : `mca-spec/revue/NN-*.md` (une par onglet).
 - **À faire par l'utilisateur** : activer le hook « Password verification attempt » (Supabase → Auth → Hooks) ; reconnecter Google dans Paramètres (cocher Drive) puis tester Documents sur de vrais fichiers ; tester l'interface salarié sur un vrai compte.

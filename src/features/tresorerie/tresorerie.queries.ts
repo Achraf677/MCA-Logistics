@@ -27,7 +27,7 @@ export async function getSnapshotsPennylane() {
 export async function getTransactions() {
   return supabase
     .from('qonto_transactions')
-    .select('id, qonto_id, label, amount_cts, side, operation_type, settled_at, charge_id, justif_type')
+    .select('id, qonto_id, label, amount_cts, side, operation_type, settled_at, charge_id, justif_type, source')
     .order('settled_at', { ascending: false, nullsFirst: false })
     .returns<QontoTx[]>()
 }
@@ -44,4 +44,9 @@ export async function syncPennylaneSolde() {
 
 export async function checkPayments() {
   return supabase.functions.invoke('pennylane-payment-check', { body: {} })
+}
+
+/** Fiche brute d'une opération (chargée à l'ouverture du détail, pas dans la liste). */
+export async function getDonneesBrutes(id: string) {
+  return supabase.from('qonto_transactions').select('raw_data').eq('id', id).maybeSingle<{ raw_data: unknown }>()
 }

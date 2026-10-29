@@ -23,7 +23,8 @@ import { getSuppliers, createSupplier } from '../fournisseurs/fournisseurs.queri
 import { getCategoryLabel } from '../fournisseurs/fournisseurs.logic'
 import type { SupplierInsert } from '../fournisseurs/fournisseurs.types'
 
-import { getLatestSnapshot, getTransactions } from '../tresorerie/tresorerie.queries'
+import { getLatestSnapshot, getSnapshotsPennylane, getTransactions } from '../tresorerie/tresorerie.queries'
+import { soldePennylane } from '../tresorerie/tresorerie.logic'
 
 import { getCharges, createCharge } from '../charges/charges.queries'
 import { kpiSummary as chargesKpiSummary } from '../charges/charges.logic'
@@ -214,15 +215,21 @@ export async function getImpayes() {
 // Réutilise getLatestSnapshot() + getTransactions() (onglet Trésorerie).
 
 export async function getTresorerie() {
-  const [{ data: snap }, { data: txs }] = await Promise.all([
+  const [{ data: snap }, { data: swan }, { data: txs }] = await Promise.all([
     getLatestSnapshot(),
+    getSnapshotsPennylane(),
     getTransactions(),
   ])
+  const soldeSwan = soldePennylane(swan ?? [])
   return {
-    solde_eur: snap ? centimesToEuros(snap.balance_cts) : 0,
+    // Deux comptes distincts : Qonto et Swan (compte pro Pennylane). Ne jamais présenter l'un comme le total.
+    solde_qonto_eur: snap ? centimesToEuros(snap.balance_cts) : 0,
+    solde_swan_eur: soldeSwan !== null ? centimesToEuros(soldeSwan) : null,
+    solde_total_eur: centimesToEuros((snap?.balance_cts ?? 0) + (soldeSwan ?? 0)),
     date_solde: snap?.fetched_at ?? null,
     dernieres_operations: (txs ?? []).slice(0, 15).map(t => ({
       date: t.settled_at ? t.settled_at.slice(0, 10) : null,
+      compte: t.source,
       libelle: t.label ?? '—',
       sens: t.side,
       montant_eur: centimesToEuros(Math.abs(t.amount_cts)),

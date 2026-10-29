@@ -6,6 +6,8 @@ export interface TreasurySnapshot {
   fetched_at: string
 }
 
+export type CompteBanque = 'qonto' | 'swan'
+
 export type TxSide = 'credit' | 'debit'
 
 export interface QontoTx {
@@ -19,4 +21,6 @@ export interface QontoTx {
   settled_at: string | null
   charge_id: string | null
   justif_type: string | null
+  /** Banque d'origine : 'qonto' ou 'swan' (compte pro Pennylane). */
+  source: CompteBanque
 }

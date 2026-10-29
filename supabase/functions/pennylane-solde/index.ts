@@ -1,5 +1,6 @@
 // Edge Function `pennylane-solde` — solde du compte pro Pennylane, EN LECTURE SEULE.
 // GET /bank_accounts (Pennylane V2) → 1 ligne par compte dans treasury_snapshots (source = 'pennylane').
+// Les opérations du compte Swan sont aussi importées dans qonto_transactions (source = 'swan', qonto_id préfixé 'swan:').
 // Seul le compte Swan (compte pro intégré à Pennylane) est gardé : Pennylane liste aussi le compte Qonto.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
@@ -13,6 +14,43 @@ interface CompteBancaire {
   iban?: string | null;
   balance?: string | number | null;
   [k: string]: unknown;
+}
+
+interface TransactionPennylane {
+  id?: number | string;
+  label?: string | null;
+  date?: string | null;
+  amount?: string | number | null;
+  bank_account?: { id?: number | string } | null;
+  [k: string]: unknown;
+}
+
+const MAX_PAGES = 30;
+
+/** Opérations d'un compte : filtre côté Pennylane, sinon repli en filtrant ici. */
+async function lireTransactions(token: string, compteId: number | string): Promise<TransactionPennylane[]> {
+  const lire = async (filter: string | null) => {
+    const out: TransactionPennylane[] = [];
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const q = new URLSearchParams({ limit: '100' });
+      if (filter) q.set('filter', filter);
+      if (cursor) q.set('cursor', cursor);
+      const rep: { items?: TransactionPennylane[]; has_more?: boolean; next_cursor?: string | null } =
+        await fetchJson(`${PENNYLANE_BASE}/transactions?${q}`, { headers: pennylaneHeaders(token), timeoutMs: 20_000 });
+      out.push(...(rep.items ?? []));
+      if (!rep.has_more || !rep.next_cursor) break;
+      cursor = rep.next_cursor;
+    }
+    return out;
+  };
+  try {
+    return await lire(JSON.stringify([{ field: 'bank_account_id', operator: 'eq', value: String(compteId) }]));
+  } catch (err) {
+    if (!(err instanceof ExternalApiError) || (err.status !== 400 && err.status !== 422)) throw err;
+    const toutes = await lire(null);
+    return toutes.filter((t) => String(t.bank_account?.id ?? '') === String(compteId));
+  }
 }
 
 /** Pennylane renvoie des montants décimaux en euros ("1234.56") → centimes. */
@@ -44,8 +82,40 @@ Deno.serve(async (req) => {
     const estSwan = (c: CompteBancaire) => (c.name ?? '').toLowerCase().includes('compte pro pennylane');
     let snapshots = 0;
     let balanceCts = 0;
+    let transactionsUpserted = 0;
+    let transactionsError: string | null = null;
     for (const c of comptes) {
       if (!estSwan(c)) continue;
+      // Opérations du compte : une panne ici ne doit pas empêcher d'afficher le solde.
+      try {
+        const txs = await lireTransactions(token, c.id as number | string);
+        const rows = txs.flatMap((t) => {
+          const montant = eurosVersCentimes(t.amount);
+          if (t.id === undefined || montant === null) return [];
+          return [{
+            company_id: companyId,
+            qonto_id: `swan:${t.id}`,
+            label: t.label ?? null,
+            amount_cts: Math.abs(montant),
+            side: montant < 0 ? 'debit' : 'credit',
+            operation_type: null,
+            settled_at: t.date ? `${t.date}T12:00:00Z` : null,
+            raw_data: t,
+            source: 'swan',
+          }];
+        });
+        for (let i = 0; i < rows.length; i += 500) {
+          const { error: tErr } = await supabase.from('qonto_transactions')
+            .upsert(rows.slice(i, i + 500), { onConflict: 'qonto_id', ignoreDuplicates: true });
+          if (tErr) throw new Error(tErr.message);
+        }
+        transactionsUpserted += rows.length;
+      } catch (err) {
+        transactionsError = err instanceof ExternalApiError
+          ? `Pennylane ${err.status ?? ''} ${JSON.stringify(err.responseBody ?? '').slice(0, 300)}`
+          : (err as Error).message;
+        console.log('pennylane transactions error', transactionsError);
+      }
       const cts = eurosVersCentimes(c.balance);
       if (cts === null) continue;
       const { error } = await supabase.from('treasury_snapshots').insert({
@@ -61,7 +131,7 @@ Deno.serve(async (req) => {
     }
     return jsonResponse({
       ok: true,
-      data: { snapshots, balance_cts: balanceCts, comptes_vus: comptes.length },
+      data: { snapshots, balance_cts: balanceCts, comptes_vus: comptes.length, transactions_upserted: transactionsUpserted, transactions_error: transactionsError },
     });
   } catch (err) {
     if (err instanceof ExternalApiError) {

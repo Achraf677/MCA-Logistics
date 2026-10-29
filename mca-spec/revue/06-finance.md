@@ -7,7 +7,7 @@
 
 ## 2. Fait (F1)
 - Encaissement et Relances retirés (le suivi des factures se lit dans Livraisons › « À encaisser »).
-- Trésorerie lecture seule : 4 tuiles, 5 si le solde Pennylane est lu (solde Qonto, solde Pennylane, autorisé, entrées / sorties du mois), recherche, Tous / Entrées / Sorties, mois par mois (mois courant ouvert).
+- Trésorerie lecture seule : 3 vues (Qonto · Swan · Fusion des deux relevés, pastille par ligne), soldes par compte, filtres (recherche y compris montant, sens, période, montant min/max, type, justificatif oui/non), tri, totaux de la sélection (virements Qonto↔Swan exclus en fusion), export CSV, synchro + date, détail d'une ligne (tiroir). Reste : page qui défile en entier (règle « un écran »), rattacher un justificatif depuis ici (non : se fait dans Charges).
 - Charges : mois par mois (mois courant ouvert, un filtre ouvre tout), total HT du mois, tout en HT (colonne TTC et graphique « Dépenses par catégorie » retirés), 2 tuiles (Charges, Total HT).
 - Briques partagées : `shared/lib/mois.ts` (+ test), `shared/ui/GroupeMois.tsx`.
 

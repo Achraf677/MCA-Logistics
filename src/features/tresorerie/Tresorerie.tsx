@@ -1,95 +1,206 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowDownLeft, ArrowUpRight, Wallet } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Download, RefreshCw, Wallet, X } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
+import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { Button } from '../../shared/ui/Button'
+import { Drawer } from '../../shared/ui/Drawer'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { GroupeMois } from '../../shared/ui/GroupeMois'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
+import { downloadCSV } from '../../shared/lib/download'
 import { formatMoney } from '../../shared/lib/money'
 import { grouperParMois, moisOuvertParDefaut } from '../../shared/lib/mois'
 import { useSync } from '../../app/SyncProvider'
-import { getLatestSnapshot, getSnapshotsPennylane, getTransactions } from './tresorerie.queries'
+import { getDonneesBrutes, getLatestSnapshot, getSnapshotsPennylane, getTransactions } from './tresorerie.queries'
 import {
-  amountColorClass, filtrerMouvements, formatSignedAmount, formatTxDate, operationTypeLabel, soldePennylane, totauxMouvements,
-  type FiltreSens,
+  amountColorClass, aUnJustificatif, detailBrut, FILTRES_VIDES, filtrerReleve, formatSignedAmount, formatTxDate,
+  jourLocal, LIBELLE_COMPTE, nbFiltresActifs, operationTypeLabel, releveEnCsv, soldePennylane, totauxSelection,
+  trierReleve, typesPresents, virementsInternes,
+  type FiltresReleve, type TriReleve, type VueCompte,
 } from './tresorerie.logic'
 import type { TreasurySnapshot, QontoTx } from './tresorerie.types'
 
-const SENS: Array<{ cle: FiltreSens; libelle: string }> = [
+const VUES: Array<{ cle: VueCompte; libelle: string }> = [
+  { cle: 'qonto', libelle: 'Qonto' },
+  { cle: 'swan', libelle: 'Swan' },
+  { cle: 'fusion', libelle: 'Fusion des deux relevés' },
+]
+const SENS: Array<{ cle: FiltresReleve['sens']; libelle: string }> = [
   { cle: 'tous', libelle: 'Tous' },
   { cle: 'entrees', libelle: 'Entrées' },
   { cle: 'sorties', libelle: 'Sorties' },
 ]
+const TRIS: Array<{ valeur: TriReleve; libelle: string }> = [
+  { valeur: 'date_desc', libelle: 'Plus récentes' },
+  { valeur: 'date_asc', libelle: 'Plus anciennes' },
+  { valeur: 'montant_desc', libelle: 'Montant décroissant' },
+  { valeur: 'montant_asc', libelle: 'Montant croissant' },
+]
+const JUSTIFS: Array<{ valeur: FiltresReleve['justif']; libelle: string }> = [
+  { valeur: 'tous', libelle: 'Justificatif : tous' },
+  { valeur: 'sans', libelle: 'Sans justificatif' },
+  { valeur: 'avec', libelle: 'Avec justificatif' },
+]
+
+const IconeSynchroEnCours = ({ size }: { size?: number }) => <RefreshCw size={size} className="animate-spin" />
+
+/** Contrôle à segments : le choix actif a le contour rouge de la marque (convention du site). */
+function Segments<T extends string>({ valeur, options, onChange, ariaLabel }: {
+  valeur: T; options: Array<{ cle: T; libelle: string }>; onChange: (v: T) => void; ariaLabel: string
+}) {
+  return (
+    <div role="group" aria-label={ariaLabel} className="inline-flex flex-wrap rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] p-0.5 gap-0.5">
+      {options.map(o => (
+        <button key={o.cle} type="button" aria-pressed={valeur === o.cle} onClick={() => onChange(o.cle)}
+          className={`h-9 px-3.5 rounded-[var(--r-sm)] border text-sm font-semibold whitespace-nowrap ${valeur === o.cle
+            ? 'border-[var(--brand)] text-[var(--text)] bg-[var(--brand)]/10'
+            : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+          {o.libelle}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function PastilleCompte({ source }: { source: QontoTx['source'] }) {
+  return <Badge color={source === 'swan' ? 'purple' : 'info'}>{LIBELLE_COMPTE[source]}</Badge>
+}
 
 /**
- * Trésorerie : le solde Qonto et le relevé, mois par mois (lecture seule). Plus de rapprochement par ligne
- * (décision du 22/10/2026) : les justificatifs se gèrent dans Charges.
+ * Trésorerie : un relevé par compte (Qonto, Swan) ou les deux fusionnés avec une pastille par ligne. Lecture seule.
+ * Les justificatifs se gèrent dans Charges (décision du 22/10/2026) : ici on voit seulement s'il y en a un.
  */
 export function Tresorerie() {
   const [snapshot, setSnapshot] = useState<TreasurySnapshot | null>(null)
-  const [soldePl, setSoldePl] = useState<number | null>(null)
+  const [soldeSwan, setSoldeSwan] = useState<number | null>(null)
   const [txs, setTxs] = useState<QontoTx[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [sens, setSens] = useState<FiltreSens>('tous')
-  const [q, setQ] = useState('')
+  const [f, setF] = useState<FiltresReleve>(FILTRES_VIDES)
+  const [tri, setTri] = useState<TriReleve>('date_desc')
+  const [detail, setDetail] = useState<QontoTx | null>(null)
+  const [brutDe, setBrutDe] = useState<{ id: string; raw: unknown } | null>(null)
+  const maj = (p: Partial<FiltresReleve>) => setF(prev => ({ ...prev, ...p }))
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     const [snapRes, plRes, txRes] = await Promise.all([getLatestSnapshot(), getSnapshotsPennylane(), getTransactions()])
     if (snapRes.error) setError(snapRes.error.message)
     else setSnapshot(snapRes.data ?? null)
-    setSoldePl(plRes.error ? null : soldePennylane(plRes.data ?? []))
+    setSoldeSwan(plRes.error ? null : soldePennylane(plRes.data ?? []))
     if (txRes.error) setError(txRes.error.message)
     else setTxs(txRes.data ?? [])
     setLoading(false)
   }, [])
 
-  const { syncState, syncIfStale } = useSync()
+  const { syncState, syncIfStale, forceSync } = useSync()
   useEffect(() => { syncIfStale('qonto'); syncIfStale('paiements') }, [syncIfStale])
   useEffect(() => { void load() }, [load, syncState.qonto.lastSyncAt, syncState.paiements.lastSyncAt])
 
-  const visibles = useMemo(() => filtrerMouvements(txs, sens, q), [txs, sens, q])
+  useEffect(() => {
+    if (!detail) return
+    let annule = false
+    void getDonneesBrutes(detail.id).then(r => { if (!annule) setBrutDe({ id: detail.id, raw: r.data?.raw_data ?? null }) })
+    return () => { annule = true }
+  }, [detail])
+  const brut = detail && brutDe?.id === detail.id ? brutDe.raw : null
+
+  const internes = useMemo(() => virementsInternes(txs), [txs])
+  const dansLaVue = useMemo(() => txs.filter(t => f.vue === 'fusion' || t.source === f.vue), [txs, f.vue])
+  const types = useMemo(() => typesPresents(dansLaVue), [dansLaVue])
+  const visibles = useMemo(() => trierReleve(filtrerReleve(txs, f), tri), [txs, f, tri])
+  // Les virements entre les deux comptes ne comptent dans les totaux que si on regarde UN seul compte.
+  const exclus = useMemo(() => (f.vue === 'fusion' ? internes : new Set<string>()), [f.vue, internes])
+  const totaux = useMemo(() => totauxSelection(visibles, exclus), [visibles, exclus])
   const groupes = useMemo(() => grouperParMois(visibles, t => t.settled_at), [visibles])
   const ouvert = useMemo(() => moisOuvertParDefaut(groupes.map(g => g.cle), new Date()), [groupes])
-  const moisCourant = groupes.find(g => g.cle === ouvert)
-  const totauxMois = useMemo(() => totauxMouvements(moisCourant?.rows ?? []), [moisCourant])
-  const recherche = q.trim() !== '' || sens !== 'tous'
+  const nbFiltres = nbFiltresActifs(f)
+  const filtre = nbFiltres > 0
+  const syncing = syncState.qonto.syncing
+  const derniere = syncState.qonto.lastSyncAt
+
+  const soldeQonto = snapshot?.balance_cts ?? null
+  const soldeTotal = soldeQonto !== null || soldeSwan !== null ? (soldeQonto ?? 0) + (soldeSwan ?? 0) : null
+  const euro = (v: number | null) => (v === null ? '—' : formatMoney(v))
+
+  const exporter = () => {
+    const nom = f.vue === 'fusion' ? 'releve-qonto-swan' : `releve-${f.vue}`
+    downloadCSV(releveEnCsv(visibles, internes), `${nom}.csv`)
+  }
 
   return (
     <Shell pageTitle="Trésorerie">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <Segments valeur={f.vue} options={VUES} onChange={vue => setF({ ...FILTRES_VIDES, vue })} ariaLabel="Compte affiché" />
+        <div className="ml-auto flex items-center gap-2 text-xs text-[var(--text-muted)]">
+          <span>{syncing ? 'Synchro en cours…' : derniere ? `Mis à jour ${new Date(derniere).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : 'Pas encore synchronisé'}</span>
+          <BoutonIcone icone={syncing ? IconeSynchroEnCours : RefreshCw} libelle="Synchroniser Qonto et Swan" onClick={() => forceSync('qonto')} disabled={syncing} />
+          <BoutonIcone icone={Download} libelle="Exporter le relevé affiché (CSV)" onClick={exporter} disabled={visibles.length === 0} />
+        </div>
+      </div>
+
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
           {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className={`grid grid-cols-2 ${soldePl !== null ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-5 mb-6 stagger [&>*]:min-w-0`}>
-          <KpiCard label="Solde Qonto" value={snapshot ? formatMoney(snapshot.balance_cts) : '—'} accent />
-          {soldePl !== null && <KpiCard label="Solde Pennylane" value={formatMoney(soldePl)} />}
-          <KpiCard label="Solde autorisé" value={snapshot ? formatMoney(snapshot.authorized_balance_cts) : '—'} />
-          <KpiCard label={`Entrées${moisCourant ? ` · ${moisCourant.libelle.split(' ')[0].toLowerCase()}` : ''}`}
-            value={formatMoney(totauxMois.entreesCts)} tone="success" icon={<ArrowDownLeft size={18} />} />
-          <KpiCard label={`Sorties${moisCourant ? ` · ${moisCourant.libelle.split(' ')[0].toLowerCase()}` : ''}`}
-            value={formatMoney(totauxMois.sortiesCts)} tone="danger" icon={<ArrowUpRight size={18} />} />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
+          {f.vue === 'qonto' && <>
+            <KpiCard label="Solde Qonto" value={euro(soldeQonto)} />
+            <KpiCard label="Solde autorisé" value={snapshot ? formatMoney(snapshot.authorized_balance_cts) : '—'} />
+          </>}
+          {f.vue === 'swan' && <KpiCard label="Solde Swan" value={euro(soldeSwan)} />}
+          {f.vue === 'fusion' && <>
+            <KpiCard label="Solde total" value={euro(soldeTotal)} />
+            <KpiCard label="Dont Qonto · Swan" value={`${euro(soldeQonto)} · ${euro(soldeSwan)}`} />
+          </>}
+          <KpiCard label={`Entrées${filtre ? ' · sélection' : ''}`} value={formatMoney(totaux.entreesCts)} tone="success" icon={<ArrowDownLeft size={18} />} />
+          <KpiCard label={`Sorties${filtre ? ' · sélection' : ''}`} value={formatMoney(totaux.sortiesCts)} tone="danger" icon={<ArrowUpRight size={18} />} />
         </div>
       )}
 
-      {!loading && txs.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 mb-4">
-          <BarreRecherche value={q} onChange={setQ} placeholder="Chercher un mouvement : libellé, type d'opération…" ariaLabel="Rechercher un mouvement"
-            raccourci className="flex-1 min-w-[12rem] max-w-xl" compteur={`${visibles.length} sur ${txs.length}`} />
-          <div role="group" aria-label="Sens" className="inline-flex rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] p-0.5">
-            {SENS.map(s => (
-              <button key={s.cle} type="button" aria-pressed={sens === s.cle} onClick={() => setSens(s.cle)}
-                className={`px-3 py-1.5 rounded-[var(--r-sm)] text-xs font-semibold ${sens === s.cle ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
-                {s.libelle}
-              </button>
-            ))}
+      {!loading && dansLaVue.length > 0 && (
+        <div className="flex flex-col gap-3 mb-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <BarreRecherche value={f.q} onChange={q => maj({ q })} placeholder="Chercher : libellé, montant, type, compte…" ariaLabel="Rechercher un mouvement"
+              raccourci className="flex-1 min-w-[12rem] max-w-xl" compteur={`${visibles.length} sur ${dansLaVue.length}`} />
+            <Segments valeur={f.sens} options={SENS} onChange={sens => maj({ sens })} ariaLabel="Sens" />
           </div>
-          {recherche && <span className="text-xs text-[var(--text-muted)]">{visibles.length} sur {txs.length} mouvements</span>}
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Du
+              <input type="date" className="field h-9" value={f.du} max={f.au || undefined} onChange={e => maj({ du: e.target.value })} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Au
+              <input type="date" className="field h-9" value={f.au} min={f.du || undefined} onChange={e => maj({ au: e.target.value })} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Montant min (€)
+              <input inputMode="decimal" className="field h-9 w-28" value={f.min} onChange={e => maj({ min: e.target.value })} />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Montant max (€)
+              <input inputMode="decimal" className="field h-9 w-28" value={f.max} onChange={e => maj({ max: e.target.value })} />
+            </label>
+            {types.length > 0 && (
+              <div className="w-48"><ListeDeroulante ariaLabel="Type d'opération" valeur={f.type} onChange={type => maj({ type })}
+                options={[{ valeur: '', libelle: 'Tous les types' }, ...types.map(t => ({ valeur: t, libelle: operationTypeLabel(t) }))]} /></div>
+            )}
+            <div className="w-52"><ListeDeroulante ariaLabel="Justificatif" valeur={f.justif} onChange={v => maj({ justif: v as FiltresReleve['justif'] })}
+              options={JUSTIFS} recherche={false} /></div>
+            <div className="w-52"><ListeDeroulante ariaLabel="Tri" valeur={tri} onChange={v => setTri(v as TriReleve)} options={TRIS} recherche={false} /></div>
+            {nbFiltres > 0 && (
+              <Button variant="secondary" onClick={() => setF({ ...FILTRES_VIDES, vue: f.vue })}><X size={14} /> Effacer {nbFiltres > 1 ? `les ${nbFiltres} filtres` : 'le filtre'}</Button>
+            )}
+          </div>
+          <p className="text-sm text-[var(--text-muted)]">
+            {visibles.length} mouvement{visibles.length > 1 ? 's' : ''} ·{' '}
+            <span className="text-[var(--success)]">+{formatMoney(totaux.entreesCts)}</span> ·{' '}
+            <span className="text-[var(--danger)]">−{formatMoney(totaux.sortiesCts)}</span> · net{' '}
+            <strong className={totaux.netCts >= 0 ? 'text-[var(--success)]' : 'text-[var(--danger)]'}>{totaux.netCts >= 0 ? '+' : '−'}{formatMoney(Math.abs(totaux.netCts))}</strong>
+            {exclus.size > 0 && visibles.some(t => exclus.has(t.id)) && <> · virements entre Qonto et Swan non comptés</>}
+          </p>
         </div>
       )}
 
@@ -100,16 +211,17 @@ export function Tresorerie() {
           <p className="text-[var(--danger)] text-sm">{error}</p>
           <Button variant="secondary" onClick={() => void load()}>Réessayer</Button>
         </div>
-      ) : txs.length === 0 ? (
-        <EmptyState icon={<Wallet size={48} />} title="Aucune donnée" description="Aucune donnée — clique sur Synchroniser Qonto." />
+      ) : dansLaVue.length === 0 ? (
+        <EmptyState icon={<Wallet size={48} />} title="Aucun mouvement"
+          description={f.vue === 'swan' ? 'Aucune opération Swan pour l’instant — clique sur le bouton de synchronisation en haut à droite.' : 'Aucune donnée — clique sur le bouton de synchronisation en haut à droite.'} />
       ) : visibles.length === 0 ? (
         <EmptyState icon={<Wallet size={48} />} title="Aucun mouvement" description="Aucun mouvement ne correspond à ces filtres." />
       ) : (
         <div className="flex flex-col gap-3">
           {groupes.map(g => {
-            const t = totauxMouvements(g.rows)
+            const t = totauxSelection(g.rows, exclus)
             return (
-              <GroupeMois key={`${g.cle}-${recherche}`} titre={g.libelle} ouvertDefaut={recherche || g.cle === ouvert}
+              <GroupeMois key={`${g.cle}-${filtre}-${f.vue}`} titre={g.libelle} ouvertDefaut={filtre || g.cle === ouvert}
                 resume={<>
                   <span>{g.rows.length} mouvement{g.rows.length > 1 ? 's' : ''}</span>
                   <span className="text-[var(--success)]">+{formatMoney(t.entreesCts)}</span>
@@ -117,11 +229,17 @@ export function Tresorerie() {
                 </>}>
                 <ul className="divide-y divide-[var(--border)]">
                   {g.rows.map(tx => (
-                    <li key={tx.qonto_id} className="flex items-center gap-3 px-4 py-2.5">
-                      <span className="w-16 shrink-0 font-mono text-xs text-[var(--text-muted)]">{formatTxDate(tx.settled_at).slice(0, 5)}</span>
-                      <span className="flex-1 min-w-0 truncate font-medium text-[var(--text)]" title={tx.label ?? ''}>{tx.label ?? '—'}</span>
-                      <span className="hidden sm:block shrink-0"><Badge color="muted">{operationTypeLabel(tx.operation_type)}</Badge></span>
-                      <span className={`shrink-0 font-mono font-semibold tabular-nums ${amountColorClass(tx.side)}`}>{formatSignedAmount(tx)}</span>
+                    <li key={tx.id}>
+                      <button type="button" onClick={() => setDetail(tx)}
+                        className="w-full text-left flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--bg-hover,transparent)]">
+                        <span className="w-16 shrink-0 font-mono text-xs text-[var(--text-muted)]">{formatTxDate(tx.settled_at).slice(0, 5)}</span>
+                        {f.vue === 'fusion' && <span className="shrink-0"><PastilleCompte source={tx.source} /></span>}
+                        <span className="flex-1 min-w-0 truncate font-medium text-[var(--text)]" title={tx.label ?? ''}>{tx.label ?? '—'}</span>
+                        {internes.has(tx.id) && <span className="hidden sm:block shrink-0"><Badge color="warning">Interne</Badge></span>}
+                        {!aUnJustificatif(tx) && tx.side === 'debit' && <span className="hidden sm:block shrink-0"><Badge color="danger">Sans justificatif</Badge></span>}
+                        {tx.operation_type && <span className="hidden md:block shrink-0"><Badge color="muted">{operationTypeLabel(tx.operation_type)}</Badge></span>}
+                        <span className={`shrink-0 font-mono font-semibold tabular-nums ${amountColorClass(tx.side)}`}>{formatSignedAmount(tx)}</span>
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -130,6 +248,32 @@ export function Tresorerie() {
           })}
         </div>
       )}
+
+      <Drawer open={detail !== null} onClose={() => setDetail(null)} title="Détail du mouvement">
+        {detail && (
+          <dl className="flex flex-col gap-3 p-5 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <PastilleCompte source={detail.source} />
+              <span className={`font-mono text-lg font-semibold tabular-nums ${amountColorClass(detail.side)}`}>{formatSignedAmount(detail)}</span>
+            </div>
+            <Ligne titre="Libellé" valeur={detail.label ?? '—'} />
+            <Ligne titre="Date" valeur={jourLocal(detail.settled_at) ? formatTxDate(detail.settled_at) : '—'} />
+            <Ligne titre="Type" valeur={operationTypeLabel(detail.operation_type)} />
+            <Ligne titre="Justificatif" valeur={aUnJustificatif(detail) ? 'Oui (rattaché ou classé)' : 'Aucun — à rattacher dans Charges'} />
+            {internes.has(detail.id) && <Ligne titre="Virement" valeur="Entre Qonto et Swan (non compté dans les totaux de la fusion)" />}
+            {detailBrut(brut).map(l => <Ligne key={l.libelle} titre={l.libelle} valeur={l.valeur} />)}
+          </dl>
+        )}
+      </Drawer>
     </Shell>
+  )
+}
+
+function Ligne({ titre, valeur }: { titre: string; valeur: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 border-t border-[var(--border)] pt-3">
+      <dt className="text-xs text-[var(--text-muted)]">{titre}</dt>
+      <dd className="text-[var(--text)] break-words">{valeur}</dd>
+    </div>
   )
 }
