@@ -7,6 +7,7 @@ import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { PastilleFiltre } from '../../shared/ui/PastilleFiltre'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { useToast } from '../../shared/ui/useToast'
+import { useAffichageMontant, SelecteurHtTtc } from '../../shared/ui/AffichageMontant'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
@@ -18,7 +19,7 @@ import { RecapEntretiens } from './RecapEntretiens'
 import { supabase } from '../../app/providers'
 import { getMaintenances, validerHt } from './entretiens.queries'
 import { listAllocationsForCharges, type AllocationRow } from '../../shared/lib/allocations.queries'
-import { formatCents, formatMileage, kpiSummary, htEntretien, enHt, aujourdhuiLocal } from './entretiens.logic'
+import { formatCents, formatMileage, kpiSummary, montantEntretien, enHt, aujourdhuiLocal } from './entretiens.logic'
 import type { MaintenanceRow, MaintenanceFilters } from './entretiens.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 import type { ChargePick } from '../../shared/types/charges'
@@ -28,6 +29,8 @@ type VehicleLookup = { id: string; label: string; plate?: string | null }
 
 export function Entretiens() {
   const { toast } = useToast()
+  const [mode, setMode] = useAffichageMontant()
+  const suffixe = mode === 'ttc' ? 'TTC' : 'HT'
   const [rows, setRows]         = useState<MaintenanceRow[]>([])
   const [vehicles, setVehicles] = useState<VehicleLookup[]>([])
   const [loading, setLoading]   = useState(true)
@@ -121,7 +124,8 @@ export function Entretiens() {
   )
 
   return (
-    <Shell pageTitle="Entretiens" actions={['nouveau']} onAction={handleAction}>
+    <Shell pageTitle="Entretiens" actions={['nouveau']} onAction={handleAction}
+      actionsGauche={<SelecteurHtTtc mode={mode} onChange={setMode} />}>
       <FileAttenteEntretiens vehicles={vehicles} onValider={handleValiderDepuisFile} refreshToken={queueRefresh} />
 
       {/* Tuiles cliquables (HT) : chaque geste filtre la liste */}
@@ -135,7 +139,7 @@ export function Entretiens() {
           <ChiffreCarte libelle="Interventions" icone={<Wrench size={13} />} valeur={String(kpis.nb)}
             detail={nbARapprocher > 0 ? `${nbARapprocher} sans facture` : 'toutes rapprochées'}
             titre="Tout afficher" actif={false} onClick={resetFilters} />
-          <ChiffreCarte libelle="Total HT" icone={<Euro size={13} />} valeur={formatCents(kpis.totalHtCts)} detail="entretien + fournitures"
+          <ChiffreCarte libelle={`Total ${suffixe}`} icone={<Euro size={13} />} valeur={formatCents(mode === 'ttc' ? kpis.totalTtcCts : kpis.totalHtCts)} detail="entretien + fournitures"
             titre="Tout afficher" actif={false} onClick={resetFilters} />
           <ChiffreCarte libelle="Échéances" icone={<Calendar size={13} />} valeur={String(kpis.withNextDue)}
             detail={kpis.overdue > 0 ? `${kpis.overdue} dépassée${kpis.overdue > 1 ? 's' : ''}` : 'à venir'}
@@ -173,7 +177,7 @@ export function Entretiens() {
           le filtre « à rapprocher » : c'est une répartition financière, pas une
           file d'action. */}
       {!loading && !error && (
-        <RecapEntretiens rows={rows} ventilationParCharge={ventilationByCharge} />
+        <RecapEntretiens rows={rows} ventilationParCharge={ventilationByCharge} mode={mode} />
       )}
 
       {/* Contenu */}
@@ -200,7 +204,7 @@ export function Entretiens() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['Date', 'Véhicule', 'Description', 'Coût HT', 'km', 'Prochaine éch.', 'Facture', ''].map(h => (
+                  {['Date', 'Véhicule', 'Description', `Coût ${suffixe}`, 'km', 'Prochaine éch.', 'Facture', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-xs">{h}</th>
                   ))}
                 </tr>
@@ -238,12 +242,12 @@ export function Entretiens() {
                                 <span className="text-[var(--text-muted)] truncate max-w-[100px]">
                                   {l.charge_categories?.name ?? l.note ?? 'Sans catégorie'}
                                 </span>
-                                <span className="text-[var(--text)]">{formatCents(enHt(row, l.amount_cts))}</span>
+                                <span className="text-[var(--text)]">{formatCents(mode === 'ttc' ? l.amount_cts : enHt(row, l.amount_cts))}</span>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          htEntretien(row) != null ? formatCents(htEntretien(row)!) : '—'
+                          montantEntretien(row, mode) != null ? formatCents(montantEntretien(row, mode)!) : '—'
                         )}
                         {row.ht_verifie_le == null && <span title="HT à vérifier" className="ml-2 inline-block w-1.5 h-1.5 rounded-full bg-amber-300 align-middle" />}
                       </td>
@@ -319,12 +323,12 @@ export function Entretiens() {
                       {ventilation && ventilation.length > 0 ? (
                         ventilation.map(l => (
                           <span key={l.id} className="text-xs text-[var(--text)]">
-                            {l.charge_categories?.name ?? l.note ?? 'Sans catégorie'} · {formatCents(enHt(row, l.amount_cts))}
+                            {l.charge_categories?.name ?? l.note ?? 'Sans catégorie'} · {formatCents(mode === 'ttc' ? l.amount_cts : enHt(row, l.amount_cts))}
                           </span>
                         ))
                       ) : (
                         <span className="font-mono font-semibold text-[var(--text)]">
-                          {htEntretien(row) != null ? formatCents(htEntretien(row)!) : '—'}
+                          {montantEntretien(row, mode) != null ? formatCents(montantEntretien(row, mode)!) : '—'}
                         </span>
                       )}
                       <FacturePdfLink

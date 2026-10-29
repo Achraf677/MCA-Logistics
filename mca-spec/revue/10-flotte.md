@@ -43,7 +43,7 @@
 ## 9. Écran Entretiens (lot 3, 30/10/2026)
 - Colonnes `vehicle_maintenances.cost_ht_cts`, `tva_cts`, `ht_verifie_le` (migration `20261030100000` appliquée). `cost_cts` = TTC reste écrit à chaque enregistrement. Avant : `cost_cts` était TTC si une facture était liée et HT sinon (mélange corrigé : tout passe par le HT).
 - Reprise des 17 entretiens : HT et TVA de la facture Pennylane liée (17 / 17, une opération = une facture). Aucune n'est vérifiée : le président valide ticket par ticket (✔ dans la ligne, ou « Valider » dans la fiche ; optimiste). Pas d'IA pour le HT : Pennylane le donne exactement. L'IA ne lit que le km (`lire-facture`, à la demande, inchangé).
-- 4 tuiles cliquables : À vérifier · Interventions · Total HT · Échéances (dépassées en rouge). Recherche, listes déroulantes, pastilles « À vérifier » et « À rapprocher », « Tout réinitialiser ».
+- 4 tuiles cliquables : À vérifier · Interventions · Total (HT ou TTC) · Échéances (dépassées en rouge). Liste déroulante **HT / TTC** à gauche de « Nouveau » (même choix que Carburant, mémorisé) : tuile, tableau, récap suivent. Recherche, listes déroulantes, pastilles « À vérifier » et « À rapprocher », « Tout réinitialiser ».
 - Fiche : HT saisi ou repris de la facture, TVA auto 20 % modifiable, TTC « pour info » ; véhicule et prestataire en `ListeDeroulante`.
 - Récap « Où part l'argent » en HT : les ventilations de factures (TTC) sont ramenées au HT au même taux (`enHt`). Ticket mixte : ventilation par le président, inchangée.
 - Lecteurs de `cost_cts` hors onglet : aucun (vérifié par grep).

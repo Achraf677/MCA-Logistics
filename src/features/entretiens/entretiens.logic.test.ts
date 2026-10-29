@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { recapParCategorie, recapParVehicule, kpiSummary, htEntretien, enHt, type VentilationEntretien } from './entretiens.logic'
+import { recapParCategorie, recapParVehicule, kpiSummary, htEntretien, enHt, ttcEntretien, montantEntretien, type VentilationEntretien } from './entretiens.logic'
 import type { MaintenanceRow } from './entretiens.types'
 
 function mk(p: Partial<MaintenanceRow>): MaintenanceRow {
@@ -142,10 +142,24 @@ describe('HT des entretiens', () => {
       mk({ id: 'a', cost_cts: 1000, cost_ht_cts: 833, ht_verifie_le: '2026-10-30T10:00:00Z' }),
       mk({ id: 'b', cost_cts: 1200, cost_ht_cts: 1000, next_due_date: '2026-10-01' }),
     ], '2026-10-30')
-    expect(k).toEqual({ nb: 2, totalHtCts: 1833, withNextDue: 1, overdue: 1, aVerifier: 1 })
+    expect(k).toEqual({ nb: 2, totalHtCts: 1833, totalTtcCts: 2200, withNextDue: 1, overdue: 1, aVerifier: 1 })
   })
   it('le récap par véhicule compte le HT', () => {
     const l = recapParVehicule([mk({ cost_cts: 1200, cost_ht_cts: 1000 })])
     expect(l[0].total_cts).toBe(1000)
+  })
+})
+
+describe('HT / TTC des entretiens', () => {
+  it('montant selon le mode', () => {
+    const r = { cost_ht_cts: 833, cost_cts: 1000, tva_cts: 167 }
+    expect(montantEntretien(r, 'ht')).toBe(833)
+    expect(montantEntretien(r, 'ttc')).toBe(1000)
+    expect(ttcEntretien({ cost_ht_cts: 833, cost_cts: null, tva_cts: 167 })).toBe(1000)
+  })
+  it('le récap suit le mode (ventilation TTC telle quelle, ligne simple en TTC)', () => {
+    const r = mk({ cost_cts: 1200, cost_ht_cts: 1000, tva_cts: 200 })
+    expect(recapParVehicule([r], 'ttc')[0].total_cts).toBe(1200)
+    expect(recapParVehicule([r], 'ht')[0].total_cts).toBe(1000)
   })
 })
