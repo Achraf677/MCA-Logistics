@@ -20,11 +20,12 @@ const jourCourt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
  * Vue « Carburant » des Justificatifs : les tickets payés avec la carte carburant, mois par mois et véhicule par véhicule.
  * Informatif : rien n'est envoyé à Pennylane (la facture de la carte arrive en fin de mois). Remplace le bloc-notes.
  */
-export function SuiviCarburant({ tickets, manuels, vehicules, noms, companyId, peutEcrire, peutSupprimer, onOuvrir, onManuelsChange }: {
+export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, companyId, peutEcrire, peutSupprimer, onOuvrir, onManuelsChange }: {
   tickets: TicketInbox[]
   /** Pleins saisis à la main, sans justificatif. */
   manuels: PleinManuel[]
   vehicules: Array<{ id: string; label: string; plate: string | null }>
+  membres: Array<{ id: string; full_name: string }>
   noms: Record<string, string>
   companyId: string
   peutEcrire: boolean
@@ -36,8 +37,10 @@ export function SuiviCarburant({ tickets, manuels, vehicules, noms, companyId, p
   const [mois, setMois] = useState(() => moisDe(new Date()))
   const moisCourant = moisDe(new Date())
   const nomVehicule = (id: string) => vehicules.find(v => v.id === id)?.label ?? 'Véhicule supprimé'
-  const nomDeclarant = (t: { uploaded_by?: string | null; manuel?: true }) =>
-    t.manuel ? 'Saisie manuelle' : (t.uploaded_by ? (noms[t.uploaded_by] ?? 'Inconnu') : 'Inconnu')
+  const nomDeclarant = (t: { uploaded_by?: string | null; manuel?: true; fait_par?: string | null }) =>
+    t.manuel
+      ? (membres.find(m => m.id === t.fait_par)?.full_name ?? 'Saisie manuelle')
+      : (t.uploaded_by ? (noms[t.uploaded_by] ?? 'Inconnu') : 'Inconnu')
 
   const pleins = useMemo(
     () => pleinsDuMois<Plein>([...tickets, ...manuels.map(pleinManuelEnLigne)], mois),
@@ -122,6 +125,7 @@ export function SuiviCarburant({ tickets, manuels, vehicules, noms, companyId, p
                         <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] truncate">
                           <AvatarInitiales nom={nomDeclarant(p)} taille="sm" /> {nomDeclarant(p)}{p.carte ? ` · ${libelleCarte(p.carte)}` : ''}
                           {p.manuel && p.litres != null && p.prix_litre != null && ` · ${p.litres.toLocaleString('fr-FR')} L × ${p.prix_litre.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} €`}
+                          {p.manuel && p.note && ` · ${p.note}`}
                         </span>
                       </span>
                       {p.manuel && <Badge color="muted">Sans justificatif</Badge>}
@@ -138,7 +142,7 @@ export function SuiviCarburant({ tickets, manuels, vehicules, noms, companyId, p
         </div>
       )}
       {saisie && (
-        <PleinManuelDrawer key={saisie.plein?.id ?? 'nouveau'} plein={saisie.plein} companyId={companyId} vehicules={vehicules} peutSupprimer={peutSupprimer}
+        <PleinManuelDrawer key={saisie.plein?.id ?? 'nouveau'} plein={saisie.plein} companyId={companyId} vehicules={vehicules} membres={membres} peutSupprimer={peutSupprimer}
           onClose={() => setSaisie(null)} onEnregistre={async () => { setSaisie(null); await onManuelsChange() }} />
       )}
     </div>

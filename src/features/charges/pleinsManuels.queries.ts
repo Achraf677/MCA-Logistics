@@ -12,6 +12,8 @@ export interface PleinManuel {
   /** Litres × prix au litre = montant TTC (colonnes `litres`, `prix_litre`, migration 20261029120000). */
   litres: number | null
   prix_litre: number | null
+  /** Qui a fait le plein (fiche Équipe), migration 20261029130000. */
+  fait_par: string | null
   created_at: string
 }
 
@@ -23,6 +25,13 @@ export interface SaisiePlein {
   note: string | null
   litres: number
   prix_litre: number
+  fait_par: string
+}
+
+/** Membres actifs de l'équipe : « qui a fait le plein ». */
+export async function membresPourPlein() {
+  const { data } = await supabase.from('team_members').select('id, full_name').eq('active', true).order('full_name')
+  return (data ?? []) as Array<{ id: string; full_name: string }>
 }
 
 export async function listerPleinsManuels(limite = 1000) {

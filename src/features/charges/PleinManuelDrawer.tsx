@@ -5,7 +5,7 @@ import { Champ } from '../../shared/ui/FicheSaisie'
 import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
 import { useToast } from '../../shared/ui/useToast'
-import { CARTES_CARBURANT } from '../../shared/lib/depenses'
+import { CARTES_CARBURANT, CARTES_SOCIETE } from '../../shared/lib/depenses'
 import { formatMoney } from '../../shared/lib/money'
 import { decimalSaisi, montantPleinCts } from './carburantJustifs.logic'
 import { toLocalISO } from '../../shared/lib/dates'
@@ -14,10 +14,11 @@ import {
 } from './pleinsManuels.queries'
 
 /** Saisie d'un plein sans justificatif (suivi perso du bureau). `plein` = modification d'un plein déjà saisi. */
-export function PleinManuelDrawer({ plein, companyId, vehicules, peutSupprimer, onClose, onEnregistre }: {
+export function PleinManuelDrawer({ plein, companyId, vehicules, membres, peutSupprimer, onClose, onEnregistre }: {
   plein: PleinManuel | null
   companyId: string
   vehicules: Array<{ id: string; label: string; plate: string | null }>
+  membres: Array<{ id: string; full_name: string }>
   peutSupprimer: boolean
   onClose: () => void
   onEnregistre: () => Promise<void>
@@ -29,6 +30,7 @@ export function PleinManuelDrawer({ plein, companyId, vehicules, peutSupprimer, 
   const [litres, setLitres] = useState(plein?.litres != null ? String(plein.litres).replace('.', ',') : '')
   const [prix, setPrix] = useState(plein?.prix_litre != null ? String(plein.prix_litre).replace('.', ',') : '')
   const [carte, setCarte] = useState(plein?.carte ?? CARTES_CARBURANT[0].valeur)
+  const [faitPar, setFaitPar] = useState(plein?.fait_par ?? '')
   const [note, setNote] = useState(plein?.note ?? '')
   const [busy, setBusy] = useState(false)
   const [suppression, setSuppression] = useState(false)
@@ -44,12 +46,15 @@ export function PleinManuelDrawer({ plein, companyId, vehicules, peutSupprimer, 
     !vehicule ? 'Véhicule' : null,
     !litresValides ? 'Litres' : null,
     !prixValide ? 'Prix au litre' : null,
+    !faitPar ? 'Qui a fait le plein' : null,
+    !carte ? 'Carte' : null,
+    !note.trim() ? 'Note' : null,
   ].filter(Boolean) as string[]
 
   const enregistrer = async () => {
     if (manques.length > 0 || busy || cts == null || l == null || pl == null) return
     setBusy(true)
-    const saisie = { vehicle_id: vehicule, date_plein: date, montant_ttc_cts: cts, litres: l, prix_litre: pl, carte: carte || null, note: note.trim() || null }
+    const saisie = { vehicle_id: vehicule, date_plein: date, montant_ttc_cts: cts, litres: l, prix_litre: pl, fait_par: faitPar, carte: carte || null, note: note.trim() }
     const { error } = plein ? await modifierPleinManuel(plein.id, saisie) : await creerPleinManuel(companyId, saisie)
     setBusy(false)
     if (error) { toast(error.message, 'error'); return }
@@ -91,10 +96,15 @@ export function PleinManuelDrawer({ plein, companyId, vehicules, peutSupprimer, 
           <span className="text-sm text-[var(--text-muted)]">Montant TTC (litres × prix)</span>
           <span className="font-mono font-semibold text-xl tabular-nums text-[var(--text)]">{cts != null ? formatMoney(cts) : '—'}</span>
         </div>
-        <Champ label="Carte">
-          <ListeDeroulante valeur={carte} onChange={setCarte} placeholder="Choisir la carte" ariaLabel="Carte" options={CARTES_CARBURANT} />
+        <Champ label="Qui a fait le plein" requis>
+          <ListeDeroulante valeur={faitPar} onChange={setFaitPar} recherche placeholder="Chercher un membre de l’équipe" ariaLabel="Qui a fait le plein"
+            invalide={!faitPar} options={membres.map(m => ({ valeur: m.id, libelle: m.full_name }))} />
         </Champ>
-        <Champ label="Note">
+        <Champ label="Carte bancaire" requis>
+          <ListeDeroulante valeur={carte} onChange={setCarte} recherche placeholder="Chercher une carte" ariaLabel="Carte bancaire"
+            invalide={!carte} options={[...CARTES_CARBURANT, ...CARTES_SOCIETE]} />
+        </Champ>
+        <Champ label="Note" requis>
           <input className="field" value={note} placeholder="Ex. : plein du lundi" onChange={e => setNote(e.target.value)} />
         </Champ>
         {manques.length > 0 && <p className="text-xs text-[var(--text-muted)]">Il manque : {manques.join(' · ').toLowerCase()}.</p>}
