@@ -227,4 +227,4 @@
 ## Flotte (29-30/10/2026)
 - Lot 1 Véhicules mergé (PR #111) : tuiles cliquables, recherche, filtres, dernier km connu (`kmConnus`), export CSV réparé, alertes ambre / rouge clair, prix / date d'achat retirés de la fiche. Tables vides `incidents` / `vehicle_inspections` supprimées à la main via MCP (le CI interdit DROP dans les migrations).
 - Lot 2 Carburant HT : `fuel_logs.total_ht_cts` (migration `20261030090000` appliquée ; reprise des 70 pleins : plein seul sur sa facture = HT Pennylane, plein partagé = TTC − TVA ; 2 pleins au TTC différent de la facture : `b83d6d76…` 3605 / 3505, `d9c1d7fe…` 2497 / 2500). L'onglet Flotte › Carburant = pleins Pennylane seulement (tickets carte carburant et pleins manuels de Finance n'ont aucun HT).
-
+- Lot 3 Entretiens HT : `vehicle_maintenances.cost_ht_cts` / `tva_cts` / `ht_verifie_le` (migration `20261030100000` appliquée ; 17 / 17 repris depuis les factures Pennylane, tous « à vérifier »). `cost_cts` (TTC) toujours écrit.

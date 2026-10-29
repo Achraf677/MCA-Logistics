@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { recapParCategorie, recapParVehicule, kpiSummary, type VentilationEntretien } from './entretiens.logic'
+import { recapParCategorie, recapParVehicule, kpiSummary, htEntretien, enHt, type VentilationEntretien } from './entretiens.logic'
 import type { MaintenanceRow } from './entretiens.types'
 
 function mk(p: Partial<MaintenanceRow>): MaintenanceRow {
@@ -8,6 +8,7 @@ function mk(p: Partial<MaintenanceRow>): MaintenanceRow {
     type: 'vidange', description: null, mileage_km: null, cost_cts: 1000,
     supplier_id: null, next_due_date: null, next_due_km: null,
     receipt_url: null, notes: null, charge_id: null,
+    cost_ht_cts: null, tva_cts: null, ht_verifie_le: null,
     created_at: '', updated_at: '',
     vehicles: { label: 'Camion 1', plate: 'AA-123-BB' },
     suppliers: null, charges: null,
@@ -121,6 +122,30 @@ describe('kpiSummary', () => {
       mk({ id: 'b', cost_cts: null }),
     ])
     expect(k.nb).toBe(2)
-    expect(k.totalCostCts).toBe(1000)
+    expect(k.totalHtCts).toBe(1000)
+  })
+})
+
+describe('HT des entretiens', () => {
+  it('prend le HT enregistré, sinon le coût', () => {
+    expect(htEntretien({ cost_ht_cts: 833, cost_cts: 1000 })).toBe(833)
+    expect(htEntretien({ cost_ht_cts: null, cost_cts: 1000 })).toBe(1000)
+    expect(htEntretien({ cost_ht_cts: null, cost_cts: null })).toBeNull()
+  })
+  it('ramène une ventilation TTC en HT (même taux)', () => {
+    expect(enHt({ cost_ht_cts: 833, cost_cts: 1000 }, 600)).toBe(500)
+    expect(enHt({ cost_ht_cts: null, cost_cts: 1000 }, 600)).toBe(600)
+    expect(enHt({ cost_ht_cts: -1608, cost_cts: -1929 }, -1929)).toBe(-1608)
+  })
+  it('tuiles : total HT, à vérifier, échéances dépassées', () => {
+    const k = kpiSummary([
+      mk({ id: 'a', cost_cts: 1000, cost_ht_cts: 833, ht_verifie_le: '2026-10-30T10:00:00Z' }),
+      mk({ id: 'b', cost_cts: 1200, cost_ht_cts: 1000, next_due_date: '2026-10-01' }),
+    ], '2026-10-30')
+    expect(k).toEqual({ nb: 2, totalHtCts: 1833, withNextDue: 1, overdue: 1, aVerifier: 1 })
+  })
+  it('le récap par véhicule compte le HT', () => {
+    const l = recapParVehicule([mk({ cost_cts: 1200, cost_ht_cts: 1000 })])
+    expect(l[0].total_cts).toBe(1000)
   })
 })

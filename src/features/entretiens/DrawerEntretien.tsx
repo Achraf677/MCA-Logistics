@@ -19,6 +19,7 @@ import type { MaintenanceRow, MaintenanceInsert, MaintenanceType } from './entre
 import type { ChargePick } from '../../shared/types/charges'
 import { DeleteButton } from '../../shared/ui/DeleteButton'
 import { Field } from '../../shared/ui/Field'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 
 interface Props {
   open: boolean
@@ -43,7 +44,8 @@ const EMPTY_FORM = {
   type: '',
   description: '',
   mileage_km: '',
-  cost_cts_str: '',
+  cost_ht_str: '',
+  tva_str: '',
   supplier_id: '',
   next_due_date: '',
   next_due_km: '',
@@ -82,7 +84,8 @@ export function DrawerEntretien({
         type: maintenance.type ?? '',
         description: maintenance.description ?? '',
         mileage_km: maintenance.mileage_km != null ? String(maintenance.mileage_km) : '',
-        cost_cts_str: maintenance.cost_cts != null ? (maintenance.cost_cts / 100).toFixed(2) : '',
+        cost_ht_str: (maintenance.cost_ht_cts ?? maintenance.cost_cts) != null ? ((maintenance.cost_ht_cts ?? maintenance.cost_cts)! / 100).toFixed(2) : '',
+        tva_str: maintenance.tva_cts != null ? (maintenance.tva_cts / 100).toFixed(2) : '',
         supplier_id: maintenance.supplier_id ?? '',
         next_due_date: maintenance.next_due_date ?? '',
         next_due_km: maintenance.next_due_km != null ? String(maintenance.next_due_km) : '',
@@ -94,9 +97,9 @@ export function DrawerEntretien({
           id: maintenance.charges.id,
           date: maintenance.date,
           label: maintenance.charges.label,
-          montant_ht_cts: 0,
+          montant_ht_cts: maintenance.cost_ht_cts ?? 0,
           montant_ttc_cts: maintenance.charges.montant_ttc_cts,
-          tva_cts: null,
+          tva_cts: maintenance.tva_cts,
           tva_rate: 0,
           receipt_url: maintenance.charges.receipt_url,
           pennylane_id: maintenance.charges.pennylane_id,
@@ -186,7 +189,11 @@ export function DrawerEntretien({
     set('chargeId', '')
   }
 
-  const costCts = form.cost_cts_str ? Math.round(parseFloat(form.cost_cts_str) * 100) : null
+  // Tout en HT : le HT est saisi (ou repris de la facture Pennylane), la TVA se déduit (20 % par défaut,
+  // modifiable), le TTC n'est qu'un total pour Pennylane et la trésorerie.
+  const htCts = form.cost_ht_str ? Math.round(parseFloat(form.cost_ht_str) * 100) : null
+  const tvaCts = htCts == null ? null : form.tva_str !== '' ? Math.round(parseFloat(form.tva_str) * 100) : Math.round(htCts * 0.2)
+  const costCts = htCts == null ? null : htCts + (tvaCts ?? 0)
 
   const handleSave = async () => {
     if (!form.vehicle_id) { toast('Le véhicule est requis', 'error'); return }
@@ -201,6 +208,10 @@ export function DrawerEntretien({
         description: form.description || null,
         mileage_km: form.mileage_km ? parseInt(form.mileage_km) : null,
         cost_cts: costCts,
+        cost_ht_cts: htCts,
+        tva_cts: tvaCts,
+        // Le président a regardé cette fiche : le HT est vérifié.
+        ht_verifie_le: new Date().toISOString(),
         supplier_id: form.supplier_id || null,
         next_due_date: form.next_due_date || null,
         next_due_km: form.next_due_km ? parseInt(form.next_due_km) : null,
@@ -247,7 +258,7 @@ export function DrawerEntretien({
           {isEdit && maintenance && (
             <div className="flex items-center gap-2 mb-1">
               {maintenance.charges && <Badge color="success">Facturé</Badge>}
-              <span className="ml-auto font-mono text-[var(--fs-xs)] text-[var(--text-muted)]">
+              <span className="ml-auto font-mono text-xs text-[var(--text-muted)]">
                 {new Date(maintenance.date).toLocaleDateString('fr-FR')}
               </span>
             </div>
@@ -262,7 +273,7 @@ export function DrawerEntretien({
                 onClick={lireLeJustificatif}
                 disabled={lectureEnCours}
                 className="flex items-center gap-2 px-4 min-h-[44px] rounded-[var(--r-md)]
-                  border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text)]
+                  border border-[var(--border)] text-sm text-[var(--text)]
                   hover:border-[var(--brand)] transition-colors disabled:opacity-50"
               >
                 <ScanLine size={15} />
@@ -273,7 +284,7 @@ export function DrawerEntretien({
             <button
               type="button"
               onClick={() => setSelectorOpen(true)}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-[var(--r-md)] border border-dashed border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--brand)] hover:text-[var(--brand)] transition-colors text-[var(--fs-sm)]"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-[var(--r-md)] border border-dashed border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--brand)] hover:text-[var(--brand)] transition-colors text-sm"
             >
               <Link2 size={14} />
               Rapprocher une facture
@@ -283,7 +294,7 @@ export function DrawerEntretien({
           {/* ── Ventilation de la facture (décompose LA charge liée en sous-lignes) */}
           {linkedCharge && linkedCharge.montant_ttc_cts != null && linkedCharge.montant_ttc_cts > 0 && (
             <div className="rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3">
-              <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+              <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">
                 Ventilation de la facture
               </span>
               <VentilationFacture
@@ -298,7 +309,7 @@ export function DrawerEntretien({
           {/* ── Ventilation partielle (édition uniquement — cible = cet entretien) */}
           {isEdit && maintenance && costCts != null && costCts > 0 && (
             <div className="rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3">
-              <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+              <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">
                 Ventilation (allocations partielles)
               </span>
               <PanneauVentilation
@@ -322,10 +333,8 @@ export function DrawerEntretien({
           </Field>
 
           <Field label="Véhicule *">
-            <select value={form.vehicle_id} onChange={e => set('vehicle_id', e.target.value)} className={inputCls}>
-              <option value="">— Sélectionner un véhicule —</option>
-              {vehicles.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
-            </select>
+            <ListeDeroulante valeur={form.vehicle_id} ariaLabel="Véhicule" placeholder="— Sélectionner un véhicule —" recherche={false}
+              onChange={v => set('vehicle_id', v)} options={vehicles.map(v => ({ valeur: v.id, libelle: v.label, detail: v.plate ?? undefined }))} />
           </Field>
 
           <Field label="Description">
@@ -334,8 +343,8 @@ export function DrawerEntretien({
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label={linkedCharge ? 'Coût TTC (€) — depuis la facture' : 'Coût (€ HT)'}>
-              <Input type="number" value={form.cost_cts_str} onChange={v => set('cost_cts_str', v)}
+            <Field label={linkedCharge ? 'Coût HT (€) — depuis la facture' : 'Coût HT (€)'}>
+              <Input type="number" value={form.cost_ht_str} onChange={v => set('cost_ht_str', v)}
                 placeholder="0.00" />
             </Field>
             <Field label="Kilométrage">
@@ -344,25 +353,27 @@ export function DrawerEntretien({
             </Field>
           </div>
 
-          {costCts != null && costCts > 0 && (
-            <div className="flex items-center justify-between px-4 py-2.5 rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
-              <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">
-                {linkedCharge ? 'Coût TTC' : 'Coût HT'}
-              </span>
-              <span className="font-mono font-semibold text-[var(--text)]">{formatCents(costCts)}</span>
+          {htCts != null && htCts !== 0 && (
+            <div className="grid grid-cols-2 gap-3 items-end">
+              <Field label={`TVA (€)${form.tva_str === '' ? ' — auto 20 %' : ''}`}>
+                <Input type="number" value={form.tva_str} onChange={v => set('tva_str', v)}
+                  placeholder={((tvaCts ?? 0) / 100).toFixed(2)} />
+              </Field>
+              <div className="flex items-center justify-between px-4 min-h-[44px] rounded-[var(--r-md)] bg-[var(--bg-elevated)] border border-[var(--border)]">
+                <span className="text-sm text-[var(--text-muted)]">TTC (pour info)</span>
+                <span className="font-mono font-semibold text-[var(--text)]">{formatCents(costCts ?? 0)}</span>
+              </div>
             </div>
           )}
 
           <Field label="Prestataire / Garage">
-            <select value={form.supplier_id} onChange={e => set('supplier_id', e.target.value)} className={inputCls}>
-              <option value="">— Aucun —</option>
-              {suppliers.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-            </select>
+            <ListeDeroulante valeur={form.supplier_id} ariaLabel="Prestataire" placeholder="— Aucun —"
+              onChange={v => set('supplier_id', v)} options={[{ valeur: '', libelle: '— Aucun —' }, ...suppliers.map(s => ({ valeur: s.id, libelle: s.label }))]} />
           </Field>
 
           {/* Prochaine échéance */}
           <div className="rounded-[var(--r-lg)] border border-[var(--border)] p-4 flex flex-col gap-3">
-            <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
+            <span className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wide">
               Prochaine échéance
             </span>
             <div className="grid grid-cols-2 gap-3">
@@ -388,7 +399,7 @@ export function DrawerEntretien({
 
           <div className="flex items-center gap-2 pt-3 border-t border-[var(--border)]">
             <Button variant="primary" onClick={handleSave} disabled={saving}>
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
+              {saving ? 'Enregistrement…' : isEdit && maintenance?.ht_verifie_le == null ? 'Valider' : 'Enregistrer'}
             </Button>
             <Button variant="secondary" onClick={onClose}>Annuler</Button>
             {isEdit && (
@@ -433,9 +444,10 @@ function prefillDepuisCharge(
     supplier_id: charge.supplier_id ?? prev.supplier_id,
     vehicle_id: prev.vehicle_id || (vehiculeId ?? ''),
     description: prev.description || descriptionDepuisLibelle(charge.label, charge.suppliers?.name),
-    cost_cts_str: charge.montant_ttc_cts != null
-      ? (charge.montant_ttc_cts / 100).toFixed(2)
-      : prev.cost_cts_str,
+    cost_ht_str: charge.montant_ht_cts != null
+      ? (charge.montant_ht_cts / 100).toFixed(2)
+      : prev.cost_ht_str,
+    tva_str: charge.tva_cts != null ? (charge.tva_cts / 100).toFixed(2) : prev.tva_str,
   }
 }
 

@@ -28,11 +28,30 @@ export function formatMileage(km: number): string {
   return km.toLocaleString('fr-FR') + ' km'
 }
 
-export function kpiSummary(rows: MaintenanceRow[]) {
-  const totalCostCts = rows.reduce((s, r) => s + (r.cost_cts ?? 0), 0)
+/** Jour local au format AAAA-MM-JJ (jamais toISOString : la veille avant 2 h). */
+export function aujourdhuiLocal(d = new Date()): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const j = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${j}`
+}
+
+/** HT d'une opération : la valeur enregistrée, sinon le coût (lignes pas encore reprises). */
+export function htEntretien(r: Pick<MaintenanceRow, 'cost_ht_cts' | 'cost_cts'>): number | null {
+  return r.cost_ht_cts ?? r.cost_cts ?? null
+}
+
+/** Part HT d'un montant TTC de cette opération (les ventilations de factures sont en TTC). */
+export function enHt(r: Pick<MaintenanceRow, 'cost_ht_cts' | 'cost_cts'>, montantTtcCts: number): number {
+  return r.cost_ht_cts != null && r.cost_cts ? Math.round(montantTtcCts * r.cost_ht_cts / r.cost_cts) : montantTtcCts
+}
+
+/** Tuiles de la liste, en HT. `aVerifier` = opérations dont le HT n'a pas encore été validé. */
+export function kpiSummary(rows: MaintenanceRow[], today = aujourdhuiLocal()) {
+  const totalHtCts = rows.reduce((s, r) => s + (htEntretien(r) ?? 0), 0)
   const withNextDue = rows.filter(r => r.next_due_date != null)
-  const overdue = withNextDue.filter(r => r.next_due_date! < new Date().toISOString().slice(0, 10))
-  return { nb: rows.length, totalCostCts, withNextDue: withNextDue.length, overdue: overdue.length }
+  const overdue = withNextDue.filter(r => r.next_due_date! < today)
+  const aVerifier = rows.filter(r => r.ht_verifie_le == null).length
+  return { nb: rows.length, totalHtCts, withNextDue: withNextDue.length, overdue: overdue.length, aVerifier }
 }
 
 // ── Récap par poste ───────────────────────────────────────────────────────────
@@ -73,9 +92,9 @@ function regrouper(
   for (const r of rows) {
     const { cle, libelle } = cleDe(r)
     const ligne = par.get(cle) ?? { cle, libelle, total_cts: 0, nb: 0, nbSansCout: 0, part: 0 }
-    ligne.total_cts += r.cost_cts ?? 0
+    ligne.total_cts += htEntretien(r) ?? 0
     ligne.nb += 1
-    if (r.cost_cts == null) ligne.nbSansCout += 1
+    if (htEntretien(r) == null) ligne.nbSansCout += 1
     par.set(cle, ligne)
   }
 
@@ -142,12 +161,12 @@ export function recapParCategorie(
       // tout l'intérêt de la ventilation, et la raison d'être de ce récap.
       for (const l of lignes) {
         const nom = l.charge_categories?.name ?? l.note ?? 'Sans catégorie'
-        ajouter(nom.toLowerCase(), nom, l.amount_cts, false)
+        ajouter(nom.toLowerCase(), nom, enHt(r, l.amount_cts), false)
       }
       continue
     }
 
-    ajouter('__sans_categorie__', 'Sans catégorie', r.cost_cts ?? 0, r.cost_cts == null)
+    ajouter('__sans_categorie__', 'Sans catégorie', htEntretien(r) ?? 0, htEntretien(r) == null)
   }
 
   const general = [...par.values()].reduce((s, l) => s + l.total_cts, 0)
