@@ -21,12 +21,14 @@ export interface CompanyData {
   rc_pro_expiry: string | null
   /** Numéro de licence DREAL — mention de transport (licence communautaire). */
   licence_transport: string | null
+  /** Adresse où partent les justificatifs vers Pennylane : lue par l'Edge pennylane-justificatif. */
+  pennylane_depot_email: string | null
 }
 
 export async function getCompany(companyId: string) {
   return supabase
     .from('companies')
-    .select('id, name, siren, siret, tva_intra, address, depot_lat, depot_lng, depart_colis_adresse, depart_colis_lat, depart_colis_lng, capital_cts, iban, bic, transport_license_expiry, rc_pro_expiry, licence_transport')
+    .select('id, name, siren, siret, tva_intra, address, depot_lat, depot_lng, depart_colis_adresse, depart_colis_lat, depart_colis_lng, capital_cts, iban, bic, transport_license_expiry, rc_pro_expiry, licence_transport, pennylane_depot_email')
     .eq('id', companyId)
     .single()
 }

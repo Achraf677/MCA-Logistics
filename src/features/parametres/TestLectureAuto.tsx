@@ -31,25 +31,25 @@ const MESSAGES: Record<Acces, { titre: string; suite: string; ton: string }> = {
     ton: 'var(--success)',
   },
   refuse: {
-    titre: "Ce modèle n'est pas inclus dans l'abonnement",
-    suite: "Réessayer n'y changera rien. Il faut soit un forfait Mistral payant, soit renoncer "
-         + "à la lecture d'image — coller le texte du message continue de marcher, lui.",
+    titre: "La lecture des photos n'est pas incluse dans l'abonnement du service",
+    suite: "Réessayer n'y changera rien : il faut passer à un abonnement payant du service de lecture. "
+         + "Coller le texte d'un message continue de marcher.",
     ton: 'var(--danger)',
   },
   quota: {
     titre: 'Plafond de débit atteint',
-    suite: 'Le modèle nous est ouvert, mais le compte a trop sollicité l’API à l’instant. '
-         + 'Réessaie dans quelques minutes : là, réessayer a du sens.',
+    suite: 'La lecture est autorisée, mais le service a été trop sollicité à l’instant. '
+         + 'Réessaie dans quelques minutes.',
     ton: 'var(--warning)',
   },
   cle_invalide: {
-    titre: 'La clé Mistral est refusée',
-    suite: 'Le secret `MISTRAL_API_KEY` du projet Supabase est absent, expiré ou erroné.',
+    titre: 'La clé du service de lecture est refusée',
+    suite: 'Elle est absente, expirée ou erronée côté serveur : elle est à renouveler (à demander à ton développeur).',
     ton: 'var(--danger)',
   },
   indetermine: {
     titre: 'Réponse inattendue',
-    suite: "Ni acceptation ni refus clair — le détail technique ci-dessous est ce qu'a répondu Mistral.",
+    suite: "Ni acceptation ni refus clair. Le détail technique ci-dessous est ce qu'a répondu le service.",
     ton: 'var(--text-muted)',
   },
 }
@@ -73,25 +73,25 @@ export function TestLectureAuto() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-[var(--fs-sm)] text-[var(--text-muted)]">
-        Envoie une image minuscule à Mistral et rapporte sa réponse telle quelle. Ne consomme
-        pratiquement rien et n'enregistre rien.
+      <p className="text-sm text-[var(--text-muted)]">
+        Vérifie que le site sait lire une photo (tickets, feuilles de route). Envoie une image minuscule :
+        ça ne coûte presque rien et rien n'est enregistré.
       </p>
 
       <div>
         <Button variant="secondary" onClick={tester} disabled={enCours}>
           <ScanLine size={14} />
-          {enCours ? 'Test en cours…' : 'Tester la lecture automatique'}
+          {enCours ? 'Test en cours…' : 'Vérifier la lecture des photos'}
         </Button>
       </div>
 
-      {erreur && <p className="text-[var(--fs-sm)] text-[var(--danger)]">{erreur}</p>}
+      {erreur && <p className="text-sm text-[var(--danger)]">{erreur}</p>}
 
       {msg && (
         <div className="rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-deep)] p-3 flex flex-col gap-1">
-          <span className="text-[var(--fs-sm)] font-medium" style={{ color: msg.ton }}>{msg.titre}</span>
-          <span className="text-[var(--fs-sm)] text-[var(--text-muted)]">{msg.suite}</span>
-          <span className="text-[var(--fs-xs)] text-[var(--text-disabled)] font-mono">
+          <span className="text-sm font-medium" style={{ color: msg.ton }}>{msg.titre}</span>
+          <span className="text-sm text-[var(--text-muted)]">{msg.suite}</span>
+          <span className="text-xs text-[var(--text-disabled)] font-mono">
             {res?.modele}{res?.statut ? ` · HTTP ${res.statut}` : ''}
           </span>
         </div>

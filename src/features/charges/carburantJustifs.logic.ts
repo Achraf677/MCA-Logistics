@@ -78,6 +78,15 @@ export function moisDecale(mois: string, delta: number): string {
 
 export const moisDe = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 
+/** Litres et prix moyen au litre des pleins qui portent des litres (pleins saisis à la main) ; null s'il n'y en a aucun. */
+export function litresEtPrixMoyen(pleins: object[]): { litres: number; prixMoyen: number } | null {
+  const avec = (pleins as Array<{ litres?: number | null; prix_litre?: number | null }>).filter(p => (p.litres ?? 0) > 0 && (p.prix_litre ?? 0) > 0)
+  const litres = avec.reduce((s, p) => s + (p.litres as number), 0)
+  if (litres <= 0) return null
+  const depense = avec.reduce((s, p) => s + (p.litres as number) * (p.prix_litre as number), 0)
+  return { litres, prixMoyen: depense / litres }
+}
+
 /** Litres des pleins qui en ont (les tickets n'en portent pas). */
 export const totalLitres = (pleins: object[]): number => pleins.reduce<number>((s, p) => s + ((p as { litres?: number | null }).litres ?? 0), 0)
 

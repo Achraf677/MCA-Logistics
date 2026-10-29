@@ -3,6 +3,7 @@ import { CheckCircle2, Mail } from 'lucide-react'
 import { supabase } from '../../app/providers'
 import { Button } from '../../shared/ui/Button'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
+import { Bloc } from '../../shared/ui/FicheSaisie'
 
 /**
  * Connexion Gmail : le site envoie par mail depuis ce compte Google (justificatifs vers Pennylane, factures aux
@@ -36,7 +37,7 @@ export function GmailConnect() {
     const p = new URLSearchParams(window.location.search)
     const drive = p.get('drive')
     if (drive) {
-      window.history.replaceState({}, '', '/systeme?tab=parametres')
+      window.history.replaceState({}, '', '/systeme?tab=parametres&volet=documents')
       if (drive === 'error') {
         setErreur(`Connexion Google échouée (${p.get('reason') ?? 'raison inconnue'})`)
       }
@@ -70,23 +71,17 @@ export function GmailConnect() {
   }
 
   return (
-    <div className="glass rounded-[var(--r-xl)] overflow-hidden">
-      <div className="px-4 py-2.5 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
-        <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">
-          Compte Google (Gmail + Drive)
-        </span>
-      </div>
-
-      <div className="p-4 flex flex-col gap-3">
+    <Bloc titre="Compte Google (Gmail + Drive)" icone={<Mail size={15} />}>
+      <div className="flex flex-col gap-3">
         {chargement ? (
-          <p className="text-[var(--fs-sm)] text-[var(--text-muted)]">Vérification…</p>
+          <p className="text-sm text-[var(--text-muted)]">Vérification…</p>
         ) : connecte ? (
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
-              <CheckCircle2 size={18} className="text-[var(--success,#16a34a)] shrink-0" />
+              <CheckCircle2 size={18} className="text-[var(--success)] shrink-0" />
               <div className="min-w-0">
-                <p className="text-[var(--fs-sm)] font-medium text-[var(--text)]">Google connecté</p>
-                <p className="text-[var(--fs-xs)] text-[var(--text-muted)] truncate">
+                <p className="text-sm font-medium text-[var(--text)]">Google connecté</p>
+                <p className="text-xs text-[var(--text-muted)] truncate">
                   {email ?? 'compte inconnu — reconnectez-vous pour l’afficher'}
                 </p>
               </div>
@@ -109,7 +104,7 @@ export function GmailConnect() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <Mail size={18} className="text-[var(--text-muted)] shrink-0" />
-              <p className="text-[var(--fs-sm)] text-[var(--text-muted)]">
+              <p className="text-sm text-[var(--text-muted)]">
                 Aucun compte Google connecté.
               </p>
             </div>
@@ -119,16 +114,16 @@ export function GmailConnect() {
           </div>
         )}
 
-        <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+        <p className="text-xs text-[var(--text-muted)]">
           Un seul accès pour tout le site, à connecter avec contact@mcalogistics.fr. Gmail : justificatifs vers Pennylane et factures aux clients. Drive : la Bibliothèque de l’onglet Documents.
         </p>
         {connecte && !driveAccorde && (
-          <p className="text-[var(--fs-xs)] text-[var(--warning,#d97706)]">
+          <p className="text-xs text-[var(--warning)]">
             Le Drive n’est pas autorisé : clique sur « Changer de compte » et coche bien l’accès à Google Drive.
           </p>
         )}
 
-        {erreur && <p className="text-[var(--fs-xs)] text-[var(--danger,#dc2626)]">{erreur}</p>}
+        {erreur && <p className="text-xs text-[var(--danger)]">{erreur}</p>}
       </div>
 
       <ConfirmDialog
@@ -140,6 +135,6 @@ export function GmailConnect() {
         onCancel={() => setConfirmation(false)}
         loading={deconnexion}
       />
-    </div>
+    </Bloc>
   )
 }

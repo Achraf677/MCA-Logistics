@@ -65,8 +65,12 @@ export function CartesBancaires() {
   }
 
   const groupes = useMemo(() => (['societe', 'carburant'] as TypeCarte[]).map(type => ({
-    type, cartes: cartes.filter(c => c.type === type),
-  })), [cartes])
+    type,
+    cartes: cartes.filter(c => c.type === type).sort((a, b) => {
+      const rang = (c: CarteBancaire) => ({ active: 0, programmee: 1, inactive: 2 })[statutCarte(c, aujourdhui)]
+      return rang(a) - rang(b) || libelleCarteBancaire(a).localeCompare(libelleCarteBancaire(b))
+    }),
+  })), [cartes, aujourdhui])
 
   const basculer = async (c: CarteBancaire) => {
     // Inactive aujourd'hui → on la réactive ; sinon on la désactive à partir d'aujourd'hui.
@@ -99,7 +103,7 @@ export function CartesBancaires() {
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-sm text-[var(--text-muted)] flex-1 min-w-[16rem]">
-            Les cartes proposées dans les dépenses et les justificatifs. Désactive une carte à partir d’une date : les anciennes dépenses la gardent.
+            Les cartes proposées dans les dépenses et les justificatifs. Désactive une carte à partir d’une date : les anciennes dépenses la gardent. Une carte déjà utilisée ne se supprime pas, elle se désactive.
           </p>
           {peutEcrire && <Button variant="primary" onClick={() => setFiche({ carte: null })}><Plus size={15} /> Ajouter une carte</Button>}
         </div>
@@ -127,14 +131,14 @@ export function CartesBancaires() {
                     const supprimable = carteSupprimable(u)
                     const inactive = statutCarte(c, aujourdhui) === 'inactive'
                     return (
-                      <li key={c.id} className="px-4 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-                        <span className="font-mono font-semibold text-[var(--text)] min-w-[11rem]">{libelleCarteBancaire(c)}</span>
-                        <EtatCarte c={c} aujourdhui={aujourdhui} />
-                        <span className="text-xs text-[var(--text-muted)]">
+                      <li key={c.id} className="px-4 py-3 grid grid-cols-[1fr_auto] sm:grid-cols-[13rem_auto_1fr_auto] items-center gap-x-4 gap-y-1.5">
+                        <span className={`font-mono font-semibold min-w-0 truncate ${inactive ? 'text-[var(--text-muted)]' : 'text-[var(--text)]'}`}>{libelleCarteBancaire(c)}</span>
+                        <span className="row-start-2 sm:row-start-auto col-start-1 sm:col-start-auto justify-self-start"><EtatCarte c={c} aujourdhui={aujourdhui} /></span>
+                        <span className="row-start-2 sm:row-start-auto col-start-2 sm:col-start-auto justify-self-end sm:justify-self-start text-xs text-[var(--text-muted)] whitespace-nowrap">
                           {u ? `${u.justificatifs} justificatif${u.justificatifs > 1 ? 's' : ''} · ${u.pleins} plein${u.pleins > 1 ? 's' : ''}` : 'Jamais utilisée'}
                         </span>
                         {peutEcrire && (
-                          <span className="ml-auto flex items-center gap-1">
+                          <span className="row-start-1 sm:row-start-auto col-start-2 sm:col-start-auto justify-self-end flex items-center gap-1">
                             <BoutonIcone icone={Pencil} libelle="Modifier" taille="sm" onClick={() => setFiche({ carte: c })} disabled={busy} />
                             <BoutonIcone icone={Power} libelle={inactive ? 'Réactiver' : 'Désactiver à partir d’aujourd’hui'} taille="sm" onClick={() => void basculer(c)} disabled={busy} />
                             <BoutonIcone icone={Trash2} taille="sm" disabled={busy || !supprimable} onClick={() => setASupprimer(c)}
@@ -201,6 +205,11 @@ function FicheCarte({ carte, cartes, usage, companyId, aujourdhui, onClose, onEn
   return (
     <Drawer open onClose={onClose} title={carte ? 'Modifier la carte' : 'Ajouter une carte'} width="max-w-md">
       <div className="flex flex-col gap-4">
+        {carte && (
+          <p className="text-sm text-[var(--text-muted)]">
+            {usage ? `Utilisée par ${usage.justificatifs} justificatif${usage.justificatifs > 1 ? 's' : ''} et ${usage.pleins} plein${usage.pleins > 1 ? 's' : ''}.` : 'Jamais utilisée : tu peux la supprimer depuis la liste.'}
+          </p>
+        )}
         <Champ label="Famille" requis>
           <ListeDeroulante valeur={type} onChange={v => setType(v as TypeCarte)} ariaLabel="Famille" disabled={!!carte && utilisee}
             options={[{ valeur: 'societe', libelle: LIBELLE_TYPE_CARTE.societe }, { valeur: 'carburant', libelle: LIBELLE_TYPE_CARTE.carburant }]} />
