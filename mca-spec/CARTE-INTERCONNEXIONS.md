@@ -237,4 +237,5 @@
 - **`_shared/ign.ts`** (28/10/2026) : URL + ressource de l'itinéraire IGN (`bdtopo-valhalla`), lue par les Edge `optimiser-tournee-colis` (tracé des tournées) et `route-calc` (trajet de la fiche livraison). Ressource IGN changée = changer ce seul fichier puis redéployer les deux Edge.
 - **zones_rues / referentiel_rues (carte)** (28/10/2026) : lues par le front (`tourneesColis.queries#chargerZonesBrumath` → `shared/ui/CarteTournee`) pour dessiner les limites des zones (lecture société, RLS existante).
 
+- **Système › Paramètres (29/10/2026)** : `parametres/Parametres` écrit `companies` (dont `pennylane_depot_email`, lu par l'Edge `pennylane-justificatif`) ; `transport_license_expiry` / `rc_pro_expiry` lus aussi par `alertes.queries` ; `depart_colis_*` lu par `optimiser-tournee-colis`. Règles de saisie : `parametres/parametres.logic.ts`.
 - **Flotte › Véhicules (29/10/2026)** : `vehicles` lue par l'onglet (tuiles, filtres côté client), + `fuel_logs.mileage_km` et `vehicle_maintenances.mileage_km` lus pour le dernier km connu (`vehicules.queries#getKmReleves`, lecture seule). `shared/lib/download#downloadCSV` : lien rattaché à la page (tous les exports).

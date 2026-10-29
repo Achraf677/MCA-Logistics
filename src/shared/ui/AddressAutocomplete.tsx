@@ -138,7 +138,7 @@ export function AddressAutocomplete({
   return (
     <div className="flex flex-col gap-1" ref={boxRef}>
       {label && (
-        <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">
+        <label className="text-xs font-medium text-[var(--text-muted)]">
           {label}
         </label>
       )}
