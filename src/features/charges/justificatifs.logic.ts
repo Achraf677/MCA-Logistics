@@ -39,7 +39,7 @@ export const jourJustif = (t: Pick<JustifLigne, 'date_depense' | 'created_at'>):
 export type TypeJustif = 'note_de_frais' | 'cb' | 'carburant' | 'autre'
 
 export const LIBELLE_TYPE: Record<TypeJustif, string> = {
-  note_de_frais: 'Notes de frais', cb: 'CB classique', carburant: 'CB carburant', autre: 'À préciser',
+  note_de_frais: 'Notes de frais', cb: 'CB classique', carburant: 'CB carburant', autre: 'Non classés',
 }
 export const ORDRE_TYPES: TypeJustif[] = ['note_de_frais', 'cb', 'carburant', 'autre']
 
@@ -70,10 +70,7 @@ type JustifFiltrable = JustifLigne & { uploaded_by?: string | null; carte?: stri
 
 /** Il manque une information avant de pouvoir valider : EXACTEMENT les mêmes règles que le bouton « Valider » (`manquesValidation`). */
 export function estIncomplet(t: JustifFiltrable): boolean {
-  return manquesValidation({
-    montant_ttc_cts: t.montant_ttc_cts, date_depense: t.date_depense, categorie: t.categorie,
-    moyen_paiement: t.moyen_paiement, carte: t.carte, supplier_id: t.supplier_id, vehicle_id: t.vehicle_id,
-  }).length > 0
+  return manquePourValider(t).length > 0
 }
 
 /** Filtre rapide + recherche (note, catégorie, nom du déclarant) + filtres interactifs ; l'ordre d'entrée est gardé. */
@@ -108,16 +105,40 @@ export function moisPresents(tickets: Array<Pick<JustifLigne, 'date_depense' | '
   return [...new Set(tickets.map(t => jourJustif(t).slice(0, 7)))].sort((a, b) => b.localeCompare(a))
 }
 
+export interface GroupeJustif<T> { cle: string; libelle: string; rows: T[]; totalCts: number; sansMontant: number }
+
 export interface SectionJustif<T> {
   cle: TypeJustif
   libelle: string
   rows: T[]
   totalCts: number
+  /** Justificatifs dont le montant n'est pas encore saisi (le total ne les compte pas : on le dit au lieu d'afficher « 0,00 € »). */
+  sansMontant: number
   /** Notes de frais seulement : un sous-groupe par salarié (le plus dû d'abord). */
-  parSalarie?: Array<{ cle: string; libelle: string; rows: T[]; totalCts: number }>
+  parSalarie?: Array<GroupeJustif<T>>
 }
 
 const somme = (rows: Array<Pick<JustifLigne, 'montant_ttc_cts'>>) => rows.reduce((s, t) => s + (t.montant_ttc_cts ?? 0), 0)
+const sansMontant = (rows: Array<Pick<JustifLigne, 'montant_ttc_cts'>>) => rows.filter(t => t.montant_ttc_cts == null).length
+
+/** Montant total (centimes) des justificatifs de chaque statut, pour les tuiles. */
+export function montantsParStatut(tickets: Array<Pick<JustifLigne, 'statut' | 'montant_ttc_cts'>>): Record<'a_traiter' | 'valides' | 'refuses', number> {
+  const m = { a_traiter: 0, valides: 0, refuses: 0 }
+  for (const t of tickets) {
+    if (t.statut === 'a_traiter') m.a_traiter += t.montant_ttc_cts ?? 0
+    else if (t.statut === 'traite') m.valides += t.montant_ttc_cts ?? 0
+    else if (t.statut === 'ignore') m.refuses += t.montant_ttc_cts ?? 0
+  }
+  return m
+}
+
+/** Ce qui empêche de valider ce justificatif (vide = prêt). Mêmes règles que le bouton « Valider ». */
+export function manquePourValider(t: JustifFiltrable): string[] {
+  return manquesValidation({
+    montant_ttc_cts: t.montant_ttc_cts, date_depense: t.date_depense, categorie: t.categorie,
+    moyen_paiement: t.moyen_paiement, carte: t.carte, supplier_id: t.supplier_id, vehicle_id: t.vehicle_id,
+  })
+}
 
 /** « À traiter » en sous-sections : notes de frais (par salarié), CB classique, CB carburant, puis les anciens sans moyen. Sections vides omises. */
 export function sectionsATraiter<T extends JustifFiltrable>(rows: T[], nomDe: (t: T) => string): Array<SectionJustif<T>> {
@@ -125,7 +146,7 @@ export function sectionsATraiter<T extends JustifFiltrable>(rows: T[], nomDe: (t
   for (const cle of ORDRE_TYPES) {
     const r = rows.filter(t => typeJustif(t) === cle)
     if (r.length === 0) continue
-    const section: SectionJustif<T> = { cle, libelle: LIBELLE_TYPE[cle], rows: r, totalCts: somme(r) }
+    const section: SectionJustif<T> = { cle, libelle: LIBELLE_TYPE[cle], rows: r, totalCts: somme(r), sansMontant: sansMontant(r) }
     if (cle === 'note_de_frais') {
       const map = new Map<string, T[]>()
       for (const t of r) {
@@ -134,7 +155,7 @@ export function sectionsATraiter<T extends JustifFiltrable>(rows: T[], nomDe: (t
         if (l) l.push(t); else map.set(k, [t])
       }
       section.parSalarie = [...map.entries()]
-        .map(([k, l]) => ({ cle: k, libelle: nomDe(l[0]), rows: l, totalCts: somme(l) }))
+        .map(([k, l]) => ({ cle: k, libelle: nomDe(l[0]), rows: l, totalCts: somme(l), sansMontant: sansMontant(l) }))
         .sort((a, b) => b.totalCts - a.totalCts || a.libelle.localeCompare(b.libelle))
     }
     out.push(section)

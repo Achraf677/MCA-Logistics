@@ -29,13 +29,11 @@
 - **Règle des fichiers .md (demandée le 19/10/2026)** : aucun blabla explicatif. Que du fait utile (règle,
   piège, décision, état). Une info = une phrase ou un tiret. Quand on touche un .md, on retire le texte
   qui n'apprend rien (historique de débogage, justification longue, redite).
-- **Règle de réponse (demandée le 18/10/2026, pour TOUTES les conversations)** : simple, que des
-  tirets, zéro phrase d'introduction ou de conclusion, mots de tous les jours (pas de jargon
-  technique sans l'expliquer). L'utilisateur ne lit pas les longs messages.
-- **Style des rapports (26/10/2026, TOUJOURS)** : pas de blabla ; rapports UNIQUEMENT en tirets, courts, mots simples ; pas de paragraphes ni de phrases d'introduction / conclusion.
-- **Réponses (rappel du 22/10/2026, toute la conversation)** : que des tirets, aucun blabla, aller vite.
-  Rapports d'agents présentés par tiret, simples mais détaillés ; l'utilisateur valide les plans par onglet
-  AVANT le code ; ensuite preview → « quoi tester » en tirets → validation → merge → onglet suivant.
+- **Règle de réponse (18/10, rappelée 22/10 et 26/10/2026 ; TOUTES les conversations, TOUJOURS)** :
+  courte, que des tirets, zéro introduction / conclusion / paragraphe, mots de tous les jours.
+  L'utilisateur ne connaît pas l'informatique : jamais de jargon, jamais de détail technique.
+  Les rapports d'agents suivent la même règle.
+- **Déroulé par onglet** : l'utilisateur valide le plan AVANT le code ; ensuite preview → « quoi tester » → validation → merge → onglet suivant.
 
 ## 2. Métier (à garder en tête sur CHAQUE écran)
 - **Express** : course unitaire retrait → livraison, souvent dans la journée, parfois urgente
@@ -85,8 +83,8 @@
 - Front : **anon key uniquement** (`src/app/providers.tsx`). **Service role : JAMAIS côté front**,
   uniquement dans les Edge (`Deno.env`).
 - **Hébergement : Cloudflare Pages fait foi** (CNAME → `mca-logistics-app.pages.dev`). Netlify
-  (« MCA LOGISTICS APP ») = mort pour le domaine, sert parfois des previews.
-- **Liens de preview (règle du 26/10/2026)** : donner à l'utilisateur UNIQUEMENT le lien « deploy » de la PR, du type `https://deploy-preview-<n°PR>--gleaming-marzipan-9f0a30.netlify.app` (commentaire du bot Netlify, ex. PR 92 → `deploy-preview-92--…`). Jamais les liens `*.pages.dev` de Cloudflare.
+  = mort, ignoré.
+- **Liens de preview (règle du 29/10/2026, remplace celle du 26/10)** : donner à l'utilisateur UNIQUEMENT le lien de preview **Cloudflare** de la PR (`*.pages.dev`, commentaire du bot Cloudflare sur la PR). **JAMAIS un lien Netlify.**
   Connexion Google sur une preview : son URL doit être dans Supabase → Auth → Redirect URLs, sinon retour vers la prod (tester par e-mail).
 - ⚠️ La preview tape la **base de PROD** : une colonne nouvelle n'existe pour elle qu'une fois la
   migration appliquée (additive = sans risque, on demande avant).
@@ -216,10 +214,13 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 4. Vérifier que ce qui est noté « fait » est **mergé ET déployé** (migrations, Edge).
 5. Proposer à l'utilisateur la mise à jour du skill `mca-site` si l'architecture a bougé.
 6. Commit dédié « Mémoire : … » poussé avec le reste.
-7. **Rapport de fin de session à l'utilisateur : le plus court et le plus simple possible.**
-   Que des tirets, mots de tous les jours, 3 rubriques maximum : ce qui est fait · ce que
-   l'utilisateur doit faire (s'il y a quelque chose) · ce qu'il doit décider. Pas de liste de
-   fichiers, pas de SQL, pas de détails techniques, pas de rappel de ce qui n'a pas changé.
+7. **Rapport de fin de session (CHAQUE session, toujours court, jamais détaillé).** Que des tirets,
+   mots de tous les jours, dans CET ordre et rien d'autre :
+   - **Fait** : 2 à 5 tirets, ce qui change pour lui.
+   - **À tester** : tirets, ce qu'il doit cliquer / vérifier.
+   - **À décider** : seulement s'il y a une vraie question.
+   - **Lien de preview TOUT À LA FIN**, seul sur sa ligne (règle § 3).
+   Interdit : liste de fichiers, SQL, noms de code, explications, rappel de ce qui n'a pas changé.
    Le détail technique va dans la PR et dans ce fichier, pas dans le message.
 
 ## 11. État actuel (24/10/2026)
@@ -245,6 +246,8 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 
 ## 12. En cours / à décider (mettre à jour à chaque session)
 - **Système refondu (lot S1 Paramètres, PR en cours, 29/10/2026)** : fiche `mca-spec/revue/11-systeme.md`. Paramètres = 3 tuiles (fiche société, licence, RC pro) + 5 volets (Société · Finance · Flotte · Documents & IA · Mon espace = ex Apparence + Compte), blocs `Bloc` 3 colonnes, barre d'actions fixe, contrôles IBAN / TVA / SIREN… (`parametres.logic.ts`), e-mail de dépôt Pennylane modifiable, mobile sans défilement horizontal. Sans migration ni Edge. **Lot S2 Administrateurs (PR en cours, empilée sur S1)** : salariés dans un bloc replié en lecture seule, recherche / filtres, profils de droits (pré-cochent la grille), tiroirs, actions optimistes, mot de passe généré. Décisions : bloc salariés replié en lecture seule ; ni « dernière connexion » (Edge) ni forme juridique / RCS (valeurs à fournir). Banc de captures : Playwright global (`NODE_PATH=$(npm root -g)`), base simulée par `page.route`, `.env.local` factice.
+- **Flotte : arrêtée après le lot 1 (29/10/2026, décision de l'utilisateur ; fiche `mca-spec/revue/10-flotte.md`)** : Véhicules refait (PR #111 : tuiles cliquables, recherche, filtres, dernier km connu, export réparé, prix / date d'achat retirés de la fiche, alertes en ambre / rouge clair) ; tables vides `incidents` / `vehicle_inspections` supprimées à la main via MCP (le CI interdit DROP dans `supabase/migrations/`). **Non faits** : Carburant en HT + conso L/100, Entretiens en HT + reprise ticket par ticket, coût HT 12 mois sur la carte véhicule. ⚠ Le carburant existe aussi dans Finance › Justificatifs › Carburant (arbitrage à faire si on reprend).
+- **Refonte visuelle Justificatifs (29/10/2026, d'après captures PC 1920 / 1366 + mobile 390 sur site simulé)** : une barre au lieu de cinq bandeaux (`BarreFiltresJustificatifs` : recherche, pastilles de famille neutres avec compteurs, « À compléter », bouton « Filtres » → déclarant / carte / mois, filtres actifs en pastilles retirables) ; tuiles compactes (`TuilesJustificatifs`, montant en détail) ; À TRAITER : un seul tableau par section, colonnes adaptées (`ListeJustificatifs`, modes ndf / cb / carburant / mixte), titre par salarié DANS le tableau, colonne « Pour valider » (ce qui manque ou « Prêt à valider ») à la place du statut ; Validés : repère « Pennylane · jj/mm » ; mobile : filtres repliés, pastilles défilantes, résumés courts ; rouge de marque réservé au danger (sélection = neutre) ; bouton « Valider » désactivé neutre ; vocabulaire « CB classique / CB carburant » côté bureau. Vue Carburant : tuiles Total / Litres / Prix moyen au litre (plus de nombre de pleins), « Par véhicule » cliquable (filtre la liste), ligne lisible (litres × prix à droite). Onglet Cartes bancaires : tri actives → programmées → inactives, mobile en deux lignes.
 - **Audit Justificatifs (29/10/2026)** : changements d'état (valider / refuser / remettre à traiter) vérifient qu'une ligne a bougé (`receiptsInbox.queries#majStatut`, avant : faux succès sans droit) ; rechargements silencieux après action + rafraîchissement auto 60 s ; bouton « Renvoyer à Pennylane » + état « Envoi échoué » (validé avec `pennylane_erreur`, jamais pour la carte carburant) ; « À compléter » = exactement les règles de « Valider » (`manquesValidation`) ; recherche étendue (carte, véhicule, montant) ; carte inactive à la date de la dépense = validation bloquée ; carte carburant → catégorie `carburant` forcée ; bandeau si 500 justificatifs (limite d'affichage).
 - **Cartes bancaires dans Système (29/10/2026)** : table `cartes_bancaires` (migration `20261029150000` appliquée ; `code` stable, `nom`, `fin`, `type` societe / carburant, `actif_a_partir_du`, `inactif_a_partir_du` ; RLS : lecture toute la société, écriture président ou droit `systeme.parametres`) ; `receipts_inbox.carte` et `pleins_carburant.carte` → FK `cartes_bancaires(code)` (on delete restrict : une carte déjà utilisée ne se supprime pas, on la désactive). Onglet Système › **Cartes bancaires** (`features/cartes/CartesBancaires.tsx`) : ajouter, modifier, désactiver / réactiver à partir d'une date, supprimer seulement si aucun montant saisi. Règles pures `shared/lib/cartesBancaires.ts` (testées), requêtes `cartesBancaires.queries.ts`, hook `useCartesBancaires` ; les listes des écrans (Mes dépenses, fiche justificatif, plein manuel, filtres) viennent de cette table : seules les cartes ACTIVES le jour de la dépense sont proposées. Les listes en dur de `depenses.ts` sont supprimées.
 - **Carburant = validés seulement (29/10/2026)** : un justificatif carte carburant encore « À traiter » (ou refusé) ne compte PAS dans la vue Carburant ; il y entre à la validation (`carburantJustifs.logic#ticketsCarburant`).

@@ -32,3 +32,12 @@ export async function getNextMaintenance(vehicleId: string) {
     .limit(1)
     .single()
 }
+
+/** Km relevés sur les pleins et les entretiens : pour le dernier km connu de chaque véhicule. */
+export async function getKmReleves() {
+  const [pleins, entretiens] = await Promise.all([
+    supabase.from('fuel_logs').select('vehicle_id, mileage_km').not('mileage_km', 'is', null),
+    supabase.from('vehicle_maintenances').select('vehicle_id, mileage_km').not('mileage_km', 'is', null),
+  ])
+  return [...(pleins.data ?? []), ...(entretiens.data ?? [])] as Array<{ vehicle_id: string; mileage_km: number | null }>
+}
