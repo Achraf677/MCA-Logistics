@@ -31,7 +31,6 @@ export function PleinManuelDrawer({ plein, companyId, vehicules, membres, peutSu
   const [prix, setPrix] = useState(plein?.prix_litre != null ? String(plein.prix_litre).replace('.', ',') : '')
   const [carte, setCarte] = useState(plein?.carte ?? CARTES_CARBURANT[0].valeur)
   const [faitPar, setFaitPar] = useState(plein?.fait_par ?? '')
-  const [misPar, setMisPar] = useState(plein?.mis_par ?? '')
   const [note, setNote] = useState(plein?.note ?? '')
   const [busy, setBusy] = useState(false)
   const [suppression, setSuppression] = useState(false)
@@ -48,7 +47,6 @@ export function PleinManuelDrawer({ plein, companyId, vehicules, membres, peutSu
     !litresValides ? 'Litres' : null,
     !prixValide ? 'Prix au litre' : null,
     !faitPar ? 'Qui a fait le plein' : null,
-    !misPar ? 'Qui a mis le plein' : null,
     !carte ? 'Carte' : null,
     !note.trim() ? 'Note' : null,
   ].filter(Boolean) as string[]
@@ -56,7 +54,7 @@ export function PleinManuelDrawer({ plein, companyId, vehicules, membres, peutSu
   const enregistrer = async () => {
     if (manques.length > 0 || busy || cts == null || l == null || pl == null) return
     setBusy(true)
-    const saisie = { vehicle_id: vehicule, date_plein: date, montant_ttc_cts: cts, litres: l, prix_litre: pl, fait_par: faitPar, mis_par: misPar, carte: carte || null, note: note.trim() }
+    const saisie = { vehicle_id: vehicule, date_plein: date, montant_ttc_cts: cts, litres: l, prix_litre: pl, fait_par: faitPar, carte: carte || null, note: note.trim() }
     const { error } = plein ? await modifierPleinManuel(plein.id, saisie) : await creerPleinManuel(companyId, saisie)
     setBusy(false)
     if (error) { toast(error.message, 'error'); return }
@@ -101,10 +99,6 @@ export function PleinManuelDrawer({ plein, companyId, vehicules, membres, peutSu
         <Champ label="Qui a fait le plein" requis>
           <ListeDeroulante valeur={faitPar} onChange={setFaitPar} recherche placeholder="Chercher un membre de l’équipe" ariaLabel="Qui a fait le plein"
             invalide={!faitPar} options={membres.map(m => ({ valeur: m.id, libelle: m.full_name }))} />
-        </Champ>
-        <Champ label="Qui a mis le plein" requis>
-          <ListeDeroulante valeur={misPar} onChange={setMisPar} recherche placeholder="Chercher un membre de l’équipe" ariaLabel="Qui a mis le plein"
-            invalide={!misPar} options={membres.map(m => ({ valeur: m.id, libelle: m.full_name }))} />
         </Champ>
         <Champ label="Carte bancaire" requis>
           <ListeDeroulante valeur={carte} onChange={setCarte} recherche placeholder="Chercher une carte" ariaLabel="Carte bancaire"

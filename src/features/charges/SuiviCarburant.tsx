@@ -125,7 +125,6 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
                         <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] truncate">
                           <AvatarInitiales nom={nomDeclarant(p)} taille="sm" /> {nomDeclarant(p)}{p.carte ? ` · ${libelleCarte(p.carte)}` : ''}
                           {p.manuel && p.litres != null && p.prix_litre != null && ` · ${p.litres.toLocaleString('fr-FR')} L × ${p.prix_litre.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} €`}
-                          {p.manuel && p.mis_par && ` · mis par ${membres.find(m => m.id === p.mis_par)?.full_name ?? '?'}`}
                           {p.manuel && p.note && ` · ${p.note}`}
                         </span>
                       </span>
