@@ -23,9 +23,9 @@ import type { Vehicle } from './vehicules.types'
 import type { ActionKey } from '../../shared/actions/ActionBar'
 
 const COULEUR_RESUME: Record<string, string> = {
-  overdue: 'text-[var(--danger)]',
-  soon: 'text-[var(--warning)]',
-  manque: 'text-[var(--warning)]',
+  overdue: 'text-red-400',
+  soon: 'text-amber-300',
+  manque: 'text-amber-300',
   ok: 'text-[var(--success)]',
   none: 'text-[var(--text-muted)]',
 }
