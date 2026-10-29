@@ -114,3 +114,20 @@ describe('envoi Pennylane échoué', () => {
     expect(etatJustificatif({ ...t, moyen_paiement: 'carte_carburant' }).libelle).toBe('Validé')
   })
 })
+
+describe('totaux et « ce qui manque »', () => {
+  it('montants par statut', async () => {
+    const { montantsParStatut } = await import('./justificatifs.logic')
+    expect(montantsParStatut([
+      { statut: 'a_traiter', montant_ttc_cts: 1000 }, { statut: 'a_traiter', montant_ttc_cts: null },
+      { statut: 'traite', montant_ttc_cts: 500 }, { statut: 'ignore', montant_ttc_cts: 200 },
+    ])).toEqual({ a_traiter: 1000, valides: 500, refuses: 200 })
+  })
+  it('sections : les sans-montant sont comptés à part', () => {
+    const base = { statut: 'a_traiter', created_at: '2026-10-05T08:00:00Z', date_depense: '2026-10-05', moyen_paiement: 'personnel', uploaded_by: 'u1' }
+    const s = sectionsATraiter([{ ...base, id: 'a', montant_ttc_cts: 1000 }, { ...base, id: 'b', montant_ttc_cts: null }], () => 'Lucas')
+    expect(s[0].sansMontant).toBe(1)
+    expect(s[0].totalCts).toBe(1000)
+    expect(s[0].parSalarie?.[0].sansMontant).toBe(1)
+  })
+})

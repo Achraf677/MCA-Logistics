@@ -62,3 +62,11 @@ describe('litres × prix', () => {
     expect(totalLitres([{ litres: 40 }, { litres: null }, {}])).toBe(40)
   })
 })
+
+describe('litres et prix moyen', () => {
+  it('moyenne pondérée sur les pleins qui ont des litres', async () => {
+    const { litresEtPrixMoyen } = await import('./carburantJustifs.logic')
+    expect(litresEtPrixMoyen([{ litres: 40, prix_litre: 1.8 }, { litres: 60, prix_litre: 1.7 }, { litres: null }, {}])).toEqual({ litres: 100, prixMoyen: 1.74 })
+    expect(litresEtPrixMoyen([{}, { litres: null }])).toBeNull()
+  })
+})

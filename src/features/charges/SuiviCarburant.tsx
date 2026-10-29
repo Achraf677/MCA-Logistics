@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Download, Fuel, Gauge, Plus, Truck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, Droplets, Euro, Fuel, Plus } from 'lucide-react'
 import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
@@ -10,7 +10,7 @@ import { useCartes } from '../../shared/lib/useCartesBancaires'
 import { libelleMois } from '../../shared/lib/mois'
 import type { TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import {
-  csvCarburant, moisDe, moisDecale, pleinManuelEnLigne, pleinsDuMois, totalLitres, totalPleins, totauxParVehicule,
+  SANS_VEHICULE, csvCarburant, litresEtPrixMoyen, moisDe, moisDecale, pleinManuelEnLigne, pleinsDuMois, totalPleins, totauxParVehicule,
 } from './carburantJustifs.logic'
 import { PleinManuelDrawer } from './PleinManuelDrawer'
 import type { PleinManuel } from './pleinsManuels.queries'
@@ -37,6 +37,8 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
   const cartesBancaires = useCartes()
   const [saisie, setSaisie] = useState<{ plein: PleinManuel | null } | null>(null)
   const [mois, setMois] = useState(() => moisDe(new Date()))
+  // Véhicule sélectionné dans « Par véhicule » : filtre la liste du jour par jour (null = tous).
+  const [vehiculeFiltre, setVehiculeFiltre] = useState<string | null>(null)
   const moisCourant = moisDe(new Date())
   const nomVehicule = (id: string) => vehicules.find(v => v.id === id)?.label ?? 'Véhicule supprimé'
   const nomDeclarant = (t: { uploaded_by?: string | null; manuel?: true; fait_par?: string | null }) =>
@@ -48,13 +50,16 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
     () => pleinsDuMois<Plein>([...tickets, ...manuels.map(pleinManuelEnLigne)], mois),
     [tickets, manuels, mois])
   const total = totalPleins(pleins)
-  const litres = totalLitres(pleins)
+  const lp = useMemo(() => litresEtPrixMoyen(pleins), [pleins])
   const parVehicule = useMemo(() => totauxParVehicule(pleins, nomVehicule), [pleins, vehicules]) // eslint-disable-line react-hooks/exhaustive-deps
-  const sansMontant = pleins.filter(p => p.montant_ttc_cts == null).length
+  // Le filtre véhicule disparaît tout seul si ce véhicule n'a aucun plein dans le mois affiché.
+  const filtreActif = vehiculeFiltre && parVehicule.some(v => v.cle === vehiculeFiltre) ? vehiculeFiltre : null
+  const affiches = filtreActif ? pleins.filter(p => (p.vehicle_id || SANS_VEHICULE) === filtreActif) : pleins
+  const totalAffiche = totalPleins(affiches)
 
   const exporter = () => {
-    const csv = csvCarburant(pleins, nomVehicule, c => libelleCarte(c, cartesBancaires), nomDeclarant)
-    const url = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }))
+    const csv = csvCarburant(affiches, nomVehicule, c => libelleCarte(c, cartesBancaires), nomDeclarant)
+    const url = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }))
     const a = document.createElement('a')
     a.href = url
     a.download = `carburant-${mois}.csv`
@@ -63,8 +68,8 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <div className="inline-flex items-center rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)]">
           <button type="button" aria-label="Mois précédent" onClick={() => setMois(m => moisDecale(m, -1))}
             className="h-9 w-9 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)]"><ChevronLeft size={16} /></button>
@@ -75,46 +80,59 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
         {mois !== moisCourant && <Button variant="secondary" size="compact" onClick={() => setMois(moisCourant)}>Mois en cours</Button>}
         <span className="ml-auto flex items-center gap-2">
           {peutEcrire && <Button variant="primary" size="compact" onClick={() => setSaisie({ plein: null })}><Plus size={14} /> Ajouter un plein</Button>}
-          <Button variant="secondary" size="compact" onClick={exporter} disabled={pleins.length === 0}><Download size={14} /> Exporter (CSV)</Button>
+          <Button variant="secondary" size="compact" onClick={exporter} disabled={affiches.length === 0}><Download size={14} /> Exporter (CSV)</Button>
         </span>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-        <Tuile icone={<Fuel size={13} />} libelle="Total du mois" valeur={formatMoney(total)} detail="carte carburant, TTC" />
-        <Tuile icone={<Gauge size={13} />} libelle="Pleins" valeur={String(pleins.length)}
-          detail={pleins.length === 0 ? 'aucun ce mois-ci' : litres > 0 ? `${litres.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} L · ${formatMoney(Math.round(total / pleins.length))} en moyenne` : `${formatMoney(Math.round(total / pleins.length))} en moyenne`} />
-        <Tuile icone={<Truck size={13} />} libelle="Véhicules" valeur={String(parVehicule.filter(v => v.cle !== 'sans-vehicule').length)}
-          detail={sansMontant > 0 ? `${sansMontant} sans montant` : 'ayant fait le plein'} className="col-span-2 lg:col-span-1" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+        <Tuile className="col-span-2 sm:col-span-1" icone={<Euro size={12} />} libelle="Total du mois" valeur={formatMoney(total)} detail="carte carburant, TTC" />
+        <Tuile icone={<Droplets size={12} />} libelle="Litres" valeur={lp ? `${lp.litres.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} L` : '—'}
+          detail={lp ? 'pleins saisis à la main' : 'non saisis sur les tickets'} />
+        <Tuile icone={<Fuel size={12} />} libelle="Prix moyen / litre" valeur={lp ? `${lp.prixMoyen.toLocaleString('fr-FR', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} €` : '—'}
+          detail={lp ? 'pondéré par les litres' : 'litres non saisis'} />
       </div>
 
       {pleins.length === 0 ? (
         <EmptyState icon={<Fuel size={40} />} title="Aucun plein ce mois-ci"
-          description="Les tickets déposés avec « Carte carburant » et les pleins que tu ajoutes à la main apparaissent ici." />
+          description="Les tickets « CB carburant » une fois validés, et les pleins ajoutés à la main, apparaissent ici." />
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start">
-          <section className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] p-4 flex flex-col gap-3">
-            <h3 className="font-display font-semibold text-[var(--text)]">Par véhicule</h3>
-            <ul className="flex flex-col gap-3">
-              {parVehicule.map(v => (
-                <li key={v.cle} className="flex flex-col gap-1">
-                  <div className="flex items-baseline gap-2 text-sm">
-                    <span className="flex-1 min-w-0 truncate font-medium text-[var(--text)]">{v.libelle}</span>
-                    <span className="text-xs text-[var(--text-muted)]">{v.nb} plein{v.nb > 1 ? 's' : ''}</span>
+        <>
+          <section aria-label="Par véhicule" className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+            {parVehicule.map(v => {
+              const actif = filtreActif === v.cle
+              return (
+                <button key={v.cle} type="button" aria-pressed={actif} onClick={() => setVehiculeFiltre(actif ? null : v.cle)}
+                  className={`rounded-[var(--r-lg)] border px-3 py-2.5 text-left flex flex-col gap-1.5 transition-colors ${
+                    actif ? 'border-[var(--text-muted)] bg-[var(--bg-elevated)]' : 'border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--border-strong)]'}`}>
+                  <span className="flex items-baseline gap-2">
+                    <span className={`flex-1 min-w-0 truncate text-sm font-medium ${v.cle === SANS_VEHICULE ? 'text-[var(--warning)]' : 'text-[var(--text)]'}`}>{v.libelle}</span>
+                    <span className="text-xs text-[var(--text-muted)] tabular-nums">{v.partPct} %</span>
                     <span className="font-mono font-semibold tabular-nums text-[var(--text)]">{formatMoney(v.totalCts)}</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-[var(--bg-deep)] overflow-hidden" aria-label={`${v.partPct} % du mois`}>
-                    <div className="h-full rounded-full" style={{ width: `${v.partPct}%`, background: v.cle === 'sans-vehicule' ? 'var(--warning)' : 'var(--brand)' }} />
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </span>
+                  <span className="h-1.5 rounded-full bg-[var(--bg-deep)] overflow-hidden" aria-hidden="true">
+                    <span className="block h-full rounded-full" style={{ width: `${v.partPct}%`, background: v.cle === SANS_VEHICULE ? 'var(--warning)' : 'var(--text-muted)' }} />
+                  </span>
+                </button>
+              )
+            })}
           </section>
 
           <section className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-            <h3 className="font-display font-semibold text-[var(--text)] px-4 py-3 border-b border-[var(--border)]">Jour par jour</h3>
+            <h3 className="flex items-center gap-2 font-display font-semibold text-[var(--text)] px-4 py-3 border-b border-[var(--border)]">
+              Jour par jour
+              {filtreActif && (
+                <button type="button" onClick={() => setVehiculeFiltre(null)}
+                  className="inline-flex h-6 items-center gap-1 rounded-full border border-[var(--border-strong)] bg-[var(--bg-elevated)] px-2 text-xs font-normal text-[var(--text)]">
+                  {parVehicule.find(v => v.cle === filtreActif)?.libelle} <span aria-hidden="true">×</span><span className="sr-only">Retirer le filtre</span>
+                </button>
+              )}
+              <span className="ml-auto font-mono text-sm font-semibold tabular-nums">{formatMoney(totalAffiche)}</span>
+            </h3>
             <ul className="divide-y divide-[var(--border)]">
-              {pleins.map(p => {
+              {affiches.map(p => {
                 const jour = p.date_depense ?? p.created_at.slice(0, 10)
+                const detailLitres = p.manuel && p.litres != null && p.prix_litre != null
+                  ? `${p.litres.toLocaleString('fr-FR')} L · ${p.prix_litre.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} €/L` : null
                 return (
                   <li key={p.id}>
                     <button type="button" onClick={() => (p.manuel ? setSaisie({ plein: manuels.find(m => m.id === p.id) ?? null }) : onOuvrir(p.id))}
@@ -124,24 +142,28 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
                         <span className="block truncate text-sm font-medium text-[var(--text)]">
                           {p.vehicle_id ? nomVehicule(p.vehicle_id) : <span className="text-[var(--warning)]">Véhicule non précisé</span>}
                         </span>
-                        <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] truncate">
-                          <AvatarInitiales nom={nomDeclarant(p)} taille="sm" /> {nomDeclarant(p)}{p.carte ? ` · ${libelleCarte(p.carte, cartesBancaires)}` : ''}
-                          {p.manuel && p.litres != null && p.prix_litre != null && ` · ${p.litres.toLocaleString('fr-FR')} L × ${p.prix_litre.toLocaleString('fr-FR', { minimumFractionDigits: 3 })} €`}
-                          {p.manuel && p.note && ` · ${p.note}`}
+                        <span className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] min-w-0">
+                          <AvatarInitiales nom={nomDeclarant(p)} taille="sm" />
+                          <span className="truncate">{nomDeclarant(p)}{p.carte ? ` · ${libelleCarte(p.carte, cartesBancaires)}` : ''}{p.manuel && p.note ? ` · ${p.note}` : ''}</span>
                         </span>
                       </span>
-                      {p.manuel && <Badge color="muted">Sans justificatif</Badge>}
-                      <span className="font-mono font-semibold tabular-nums text-[var(--text)] shrink-0">
-                        {p.montant_ttc_cts != null ? formatMoney(p.montant_ttc_cts) : <span className="font-sans text-[var(--danger)]">À saisir</span>}
+                      <span className="shrink-0 flex flex-col items-end">
+                        <span className="font-mono font-semibold tabular-nums text-[var(--text)]">
+                          {p.montant_ttc_cts != null ? formatMoney(p.montant_ttc_cts) : <span className="font-sans text-[var(--danger)]">À saisir</span>}
+                        </span>
+                        {detailLitres && <span className="text-[0.6875rem] text-[var(--text-muted)] tabular-nums">{detailLitres}</span>}
+                        {p.manuel && !detailLitres && null}
                       </span>
+                      {p.manuel && <span className="hidden sm:block shrink-0"><Badge color="muted">Sans justificatif</Badge></span>}
                     </button>
                   </li>
                 )
               })}
             </ul>
           </section>
-        </div>
+        </>
       )}
+
       {saisie && (
         <PleinManuelDrawer key={saisie.plein?.id ?? 'nouveau'} plein={saisie.plein} companyId={companyId} vehicules={vehicules} membres={membres} peutSupprimer={peutSupprimer}
           onClose={() => setSaisie(null)} onEnregistre={async () => { setSaisie(null); await onManuelsChange() }} />
@@ -154,10 +176,10 @@ type Plein = (TicketInbox & { manuel?: undefined }) | ReturnType<typeof pleinMan
 
 function Tuile({ icone, libelle, valeur, detail, className = '' }: { icone: React.ReactNode; libelle: string; valeur: string; detail: string; className?: string }) {
   return (
-    <div className={`rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] p-3 flex flex-col min-w-0 ${className}`}>
-      <span className="inline-flex items-center gap-1.5 mb-2 text-[0.6875rem] sm:text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">{icone} {libelle}</span>
-      <span className="font-mono font-semibold text-base sm:text-2xl leading-tight truncate text-[var(--text)]">{valeur}</span>
-      <span className="pt-1 text-[0.6875rem] sm:text-xs text-[var(--text-muted)] truncate">{detail}</span>
+    <div className={`rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 flex flex-col min-w-0 ${className}`}>
+      <span className="inline-flex items-center gap-1.5 text-[0.6875rem] font-semibold uppercase tracking-wide text-[var(--text-muted)] truncate">{icone} {libelle}</span>
+      <span className="font-mono font-semibold text-lg sm:text-xl leading-tight truncate text-[var(--text)]">{valeur}</span>
+      <span className="text-[0.6875rem] text-[var(--text-muted)] truncate">{detail}</span>
     </div>
   )
 }
