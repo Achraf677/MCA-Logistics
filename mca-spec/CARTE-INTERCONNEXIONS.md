@@ -102,6 +102,8 @@
     pennylane-invoice, qui ÉCRIT `quotes.statut = facture` + `pennylane_invoice_id` (devis
     `accepte` seulement). `envoi_verrou` et `sync_error` : écrits par pennylane-quote (envoi),
     `sync_error` lu par le tiroir devis. L'action `convert` de pennylane-quote est refusée.
+- **treasury_snapshots** : écrit par Edge qonto-sync (`source='qonto'`) et pennylane-solde (`source='pennylane'`, GET /bank_accounts, seul le compte Swan gardé (nom « Compte Pro Pennylane » ; l’autre « Compte principal » = Qonto ; pas d’IBAN)) ; lu par tresorerie.
+- **qonto_transactions.source** (`qonto` défaut | `swan`, migration 20261029180000) : Swan écrit par Edge pennylane-solde (`qonto_id` = `swan:<id Pennylane>`) ; lue par tresorerie (vues Qonto / Swan / Fusion) et assistant (`getTresorerie`, champ `compte`).
 - **qonto_transactions** : tresorerie (lecture seule, depuis le 22/10/2026 : plus de rapprochement par ligne, `charge_id` / `justif_type` plus écrits par le site) ; Edge qonto-sync. Colonnes gardées en base.
 - **fuel_logs** : carburant, vehicules, `shared/produitsVehicule.queries`.
 - **vehicle_maintenances** : entretiens, vehicules, alertes, planning (vue Mois, `next_due_date` du dernier
@@ -137,7 +139,7 @@
   route-calc : **livraisons**
 - geocode : livraisons, parametres, tournees · 
 - pennylane-quote : devis · pennylane-clients-sync : clients · pennylane-sync,
-  suggest-categorie-ia : charges · pennylane-payment-check, qonto-sync : tresorerie
+  suggest-categorie-ia : charges · pennylane-payment-check, qonto-sync, pennylane-solde : tresorerie
 - lire-facture : carburant, entretiens · lire-releve : carburant
 - lire-feuille-route (TC1, **v7 déployée le 22/10/2026**) : `shared/lib/tourneesColis.queries#lirePageFeuille`, appelée par
   `shared/ui/ScanFeuilleRoute` (Mes courses › Ma tournée, Tournées). N'écrit rien ; importe
