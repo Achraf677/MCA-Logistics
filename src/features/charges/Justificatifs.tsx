@@ -7,6 +7,8 @@ import { Badge } from '../../shared/ui/Badge'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Button } from '../../shared/ui/Button'
 import { ChiffreCarte } from '../../shared/ui/ChiffreCarte'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
+import { PastilleFiltre } from '../../shared/ui/PastilleFiltre'
 import { Drawer } from '../../shared/ui/Drawer'
 import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 import { EmptyState } from '../../shared/ui/EmptyState'
@@ -15,8 +17,8 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney } from '../../shared/lib/money'
-import { estCarburant, libelleCategorie, manquesValidation, totalARembourser } from '../../shared/lib/depenses'
-import { grouperParMois } from '../../shared/lib/mois'
+import { CARTES_CARBURANT, CARTES_SOCIETE, estCarburant, libelleCategorie, manquesValidation, totalARembourser } from '../../shared/lib/depenses'
+import { grouperParMois, libelleMois } from '../../shared/lib/mois'
 import {
   classerTicket, corrigerTicket, envoyerVersPennylane, lireTicketIa, listerTickets, remettreATraiter, supprimerDepense,
   marquerRembourse, refuserDepense, urlTicket, urlsTickets, vehiculesPourPlein, type TicketInbox,
@@ -26,7 +28,8 @@ import { nomsDeclarants } from './charges.queries'
 import { SuiviCarburant } from './SuiviCarburant'
 import { listerPleinsManuels, membresPourPlein, type PleinManuel } from './pleinsManuels.queries'
 import {
-  compteursJustificatifs, etatJustificatif, filtrerJustificatifs, jourJustif, type FiltreJustif,
+  CRITERES_VIDES, LIBELLE_TYPE, ORDRE_TYPES, compterParType, compteursJustificatifs, etatJustificatif, filtrerJustificatifs, jourJustif,
+  moisPresents, nbCriteresActifs, sectionsATraiter, type CriteresJustif, type FiltreJustif,
 } from './justificatifs.logic'
 
 const jourCourt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
@@ -64,6 +67,7 @@ export function Justificatifs() {
   const [vue, setVue] = useState<'justificatifs' | 'carburant'>('justificatifs')
   const [vehicules, setVehicules] = useState<Array<{ id: string; label: string; plate: string | null }>>([])
   const [filtre, setFiltre] = useState<FiltreJustif>('a_traiter')
+  const [criteres, setCriteres] = useState<CriteresJustif>(CRITERES_VIDES)
   const [q, setQ] = useState('')
   const [ouvertId, setOuvertId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -95,13 +99,26 @@ export function Justificatifs() {
       .then(({ data }) => setFournisseurs((data ?? []) as Array<{ id: string; name: string }>))
   }, [])
 
-  // Les justificatifs carte carburant ont leur propre vue (suivi mensuel par véhicule) : ni à traiter, ni envoyés à Pennylane.
-  const classiques = useMemo(() => tickets.filter(t => !estCarburant(t.moyen_paiement)), [tickets])
-  const compteurs = useMemo(() => compteursJustificatifs(classiques), [classiques])
-  const dus = useMemo(() => totalARembourser(classiques.map(t => ({
+  const compteurs = useMemo(() => compteursJustificatifs(tickets), [tickets])
+  const dus = useMemo(() => totalARembourser(tickets.map(t => ({
     moyen_paiement: t.moyen_paiement ?? null, montant_ttc_cts: t.montant_ttc_cts ?? null, statut: t.statut, rembourse_le: t.rembourse_le,
-  }))), [classiques])
-  const visibles = useMemo(() => filtrerJustificatifs(classiques, filtre, q, noms), [classiques, filtre, q, noms])
+  }))), [tickets])
+  const visibles = useMemo(() => filtrerJustificatifs(tickets, filtre, q, noms, criteres), [tickets, filtre, q, noms, criteres])
+  // Pastilles de famille : comptées avec tous les AUTRES filtres appliqués (donc le chiffre annonce ce qu'on obtiendrait en cliquant).
+  const parType = useMemo(
+    () => compterParType(filtrerJustificatifs(tickets, filtre, q, noms, { ...criteres, type: 'tous' })),
+    [tickets, filtre, q, noms, criteres])
+  const optionsDeclarants = useMemo(() => {
+    const ids = [...new Set(tickets.map(t => t.uploaded_by).filter((x): x is string => !!x))]
+    return ids.map(id => ({ valeur: id, libelle: noms[id] ?? 'Déclarant inconnu' })).sort((a, b) => a.libelle.localeCompare(b.libelle))
+  }, [tickets, noms])
+  const optionsCartes = useMemo(() => {
+    const presentes = new Set(tickets.map(t => t.carte).filter((x): x is string => !!x))
+    return [...CARTES_SOCIETE, ...CARTES_CARBURANT].filter(c => presentes.has(c.valeur))
+  }, [tickets])
+  const optionsMois = useMemo(() => moisPresents(tickets).map(m => ({ valeur: m, libelle: libelleMois(m) })), [tickets])
+  const nbCriteres = nbCriteresActifs(criteres)
+  const majCriteres = (c: Partial<CriteresJustif>) => setCriteres(prev => ({ ...prev, ...c }))
   // Miniatures : liens signés des photos affichées, demandés une seule fois par chemin (100 au plus par lot).
   useEffect(() => {
     const manquants = visibles.filter(t => t.mime_type?.startsWith('image/') && !miniatures[t.storage_path]).slice(0, 100).map(t => t.storage_path)
@@ -112,7 +129,8 @@ export function Justificatifs() {
   }, [visibles, miniatures])
 
   const parMois = useMemo(() => grouperParMois(visibles, t => jourJustif(t)), [visibles])
-  const nomDe = (t: TicketInbox) => (t.uploaded_by ? (noms[t.uploaded_by] ?? 'Déclarant inconnu') : 'Déclarant inconnu')
+  const nomDe = useCallback((t: TicketInbox) => (t.uploaded_by ? (noms[t.uploaded_by] ?? 'Déclarant inconnu') : 'Déclarant inconnu'), [noms])
+  const sections = useMemo(() => (filtre === 'a_traiter' ? sectionsATraiter(visibles, nomDe) : []), [filtre, visibles, nomDe])
   const ouvert = tickets.find(t => t.id === ouvertId) ?? null
 
   // La lecture du ticket par l'IA part dès le dépôt (une seule fois). Rattrapage silencieux, sans recharger l'écran, des
@@ -283,7 +301,7 @@ export function Justificatifs() {
                 ton={dus > 0 ? 'warning' : undefined} detail={`${compteurs.a_rembourser} note${compteurs.a_rembourser > 1 ? 's' : ''} de frais`}
                 titre="Notes de frais à rembourser" actif={filtre === 'a_rembourser'} onClick={() => setFiltre('a_rembourser')} />
               <ChiffreCarte libelle="Validés" icone={<Send size={13} />} valeur={String(compteurs.valides)}
-                detail="envoyés à Pennylane" titre="Justificatifs validés" actif={filtre === 'valides'} onClick={() => setFiltre('valides')} />
+                detail="validés par le bureau" titre="Justificatifs validés" actif={filtre === 'valides'} onClick={() => setFiltre('valides')} />
               <ChiffreCarte libelle="Refusés" icone={<ThumbsDown size={13} />} valeur={String(compteurs.refuses)}
                 ton={compteurs.refuses > 0 ? 'danger' : undefined} detail="motif lu par le déclarant"
                 titre="Justificatifs refusés" actif={filtre === 'refuses'} onClick={() => setFiltre('refuses')} />
@@ -292,11 +310,58 @@ export function Justificatifs() {
             <BarreRecherche value={q} onChange={setQ} placeholder="Chercher un justificatif : note, catégorie, déclarant…" ariaLabel="Rechercher un justificatif"
               raccourci className="max-w-xl" compteur={`${visibles.length} résultat${visibles.length > 1 ? 's' : ''}`} />
 
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtres">
+              <PastilleFiltre actif={criteres.type === 'tous'} onClick={() => majCriteres({ type: 'tous' })}>
+                Tous <span className="font-mono text-xs opacity-70">{parType.note_de_frais + parType.cb + parType.carburant + parType.autre}</span>
+              </PastilleFiltre>
+              {ORDRE_TYPES.filter(t => t !== 'autre' || parType.autre > 0).map(t => (
+                <PastilleFiltre key={t} actif={criteres.type === t} onClick={() => majCriteres({ type: criteres.type === t ? 'tous' : t })}>
+                  {LIBELLE_TYPE[t]} <span className="font-mono text-xs opacity-70">{parType[t]}</span>
+                </PastilleFiltre>
+              ))}
+              <PastilleFiltre actif={criteres.incomplets} onClick={() => majCriteres({ incomplets: !criteres.incomplets })}>À compléter</PastilleFiltre>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="w-56"><ListeDeroulante valeur={criteres.declarant} onChange={v => majCriteres({ declarant: v })} recherche ariaLabel="Déclarant"
+                placeholder="Tous les déclarants" options={[{ valeur: '', libelle: 'Tous les déclarants' }, ...optionsDeclarants]} /></div>
+              {optionsCartes.length > 0 && (
+                <div className="w-56"><ListeDeroulante valeur={criteres.carte} onChange={v => majCriteres({ carte: v })} recherche ariaLabel="Carte"
+                  placeholder="Toutes les cartes" options={[{ valeur: '', libelle: 'Toutes les cartes' }, ...optionsCartes]} /></div>
+              )}
+              <div className="w-48"><ListeDeroulante valeur={criteres.mois} onChange={v => majCriteres({ mois: v })} ariaLabel="Mois"
+                placeholder="Tous les mois" options={[{ valeur: '', libelle: 'Tous les mois' }, ...optionsMois]} /></div>
+              {nbCriteres > 0 && (
+                <Button variant="secondary" size="compact" onClick={() => setCriteres(CRITERES_VIDES)}>Réinitialiser ({nbCriteres})</Button>
+              )}
+            </div>
+
             {visibles.length === 0 ? (
               <EmptyState icon={<Inbox size={40} />} title="Rien ici"
-                description={tickets.length === 0 ? 'Aucun justificatif reçu pour le moment.' : 'Aucun justificatif dans ce filtre.'} />
+                description={tickets.length === 0 ? 'Aucun justificatif reçu pour le moment.' : nbCriteres > 0 ? 'Aucun justificatif avec ces filtres.' : 'Aucun justificatif dans ce filtre.'} />
             ) : filtre === 'a_traiter' ? (
-              <div className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">{tableau(visibles)}</div>
+              <div className="flex flex-col gap-3">
+                {sections.map(s => (
+                  <GroupeMois key={`${s.cle}-${JSON.stringify(criteres)}-${q !== ''}`} titre={s.libelle} ouvertDefaut
+                    resume={<>
+                      <span>{s.rows.length} justificatif{s.rows.length > 1 ? 's' : ''}</span>
+                      <span className="font-mono font-semibold text-[var(--text)]">{formatMoney(s.totalCts)}</span>
+                    </>}>
+                    {s.parSalarie ? (
+                      <div className="flex flex-col gap-2 p-2">
+                        {s.parSalarie.map(g => (
+                          <GroupeMois key={`${g.cle}-${JSON.stringify(criteres)}`} titre={g.libelle} ouvertDefaut
+                            resume={<>
+                              <span>{g.rows.length} note{g.rows.length > 1 ? 's' : ''}</span>
+                              <span className="font-mono font-semibold text-[var(--text)]">{formatMoney(g.totalCts)}</span>
+                            </>}>
+                            {tableau(g.rows)}
+                          </GroupeMois>
+                        ))}
+                      </div>
+                    ) : tableau(s.rows)}
+                  </GroupeMois>
+                ))}
+              </div>
             ) : (
               <div className="flex flex-col gap-3">
                 {parMois.map((g, i) => (
