@@ -83,8 +83,8 @@
 - Front : **anon key uniquement** (`src/app/providers.tsx`). **Service role : JAMAIS côté front**,
   uniquement dans les Edge (`Deno.env`).
 - **Hébergement : Cloudflare Pages fait foi** (CNAME → `mca-logistics-app.pages.dev`). Netlify
-  (« MCA LOGISTICS APP ») = mort pour le domaine, sert parfois des previews.
-- **Liens de preview (règle du 26/10/2026)** : donner à l'utilisateur UNIQUEMENT le lien « deploy » de la PR, du type `https://deploy-preview-<n°PR>--gleaming-marzipan-9f0a30.netlify.app` (commentaire du bot Netlify, ex. PR 92 → `deploy-preview-92--…`). Jamais les liens `*.pages.dev` de Cloudflare.
+  = mort, ignoré.
+- **Liens de preview (règle du 29/10/2026, remplace celle du 26/10)** : donner à l'utilisateur UNIQUEMENT le lien de preview **Cloudflare** de la PR (`*.pages.dev`, commentaire du bot Cloudflare sur la PR). **JAMAIS un lien Netlify.**
   Connexion Google sur une preview : son URL doit être dans Supabase → Auth → Redirect URLs, sinon retour vers la prod (tester par e-mail).
 - ⚠️ La preview tape la **base de PROD** : une colonne nouvelle n'existe pour elle qu'une fois la
   migration appliquée (additive = sans risque, on demande avant).
