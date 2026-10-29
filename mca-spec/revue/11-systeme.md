@@ -31,9 +31,17 @@
 ## 7 Reste / à décider
 - Forme juridique, RCS, ville du greffe (mentions légales, lot U6) : absents de `companies`, valeurs à fournir par l'utilisateur.
 - `GestionCategories` / `GestionProduits` : tailles de texte `var(--fs-*)` non corrigées (GestionProduits = zone Flotte).
-- Admins : lot S2 (salariés séparés, filtres, droits par profil).
 
 ## 9 À tester
 - Société : modifier un champ → barre « 1 modification » → Annuler restaure ; IBAN faux → bouton grisé ; enregistrer l'e-mail de dépôt.
 - Compte sans `systeme.parametres` en modification : champs grisés.
 - Mobile : aucun défilement horizontal.
+
+## 10 Administrateurs (refonte du 29/10/2026, lot S2)
+- Tuiles cliquables : comptes du bureau · actifs · coupés · salariés (ouvre le bloc). `BarreRecherche` (nom, e-mail, rôle), `ListeDeroulante` (rôle), `PastilleFiltre` « Actifs uniquement », « Tout réinitialiser ».
+- Liste = comptes du BUREAU seulement (`separerComptes`). Les comptes salariés (`role = chauffeur`) sont dans un bloc replié « Comptes salariés (n) », lecture seule, avec lien vers Équipe › fiche › Accès (rôle, mot de passe, suppression d'un salarié ne se font plus ici).
+- Tiroir d'un compte : Droits (grille 14 ressources × 4, « Appliquer un profil » = Comptable / Directeur général / Lecture seule : pré-coche seulement, rien n'est enregistré avant « Enregistrer les droits » ; aucun profil ne touche Système ni ne donne « Supprimer ») · Compte (rôle, actif, mot de passe défini / lien) · Supprimer. Barre d'actions fixe.
+- Optimiste : rôle, accès coupé et suppression se voient tout de suite dans la liste, retour en arrière + message si le serveur refuse ; rechargement silencieux (plus de squelette).
+- Ajout en tiroir : bascule Mot de passe / Invitation, bouton « Générer » (12 caractères lisibles, `genererMotDePasse`). `ModalAddAdmin` supprimé.
+- Sans migration, sans Edge. Règles pures testées : `admins.logic.ts`.
+- Reste : « dernière connexion » (demande un champ de plus dans `admin-permissions`, non fait) ; `profiles.drive_access` mort (anciens Edge `drive-upload` / `drive-create-folder`), laissé tel quel.
