@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronRight, FileText, Fuel, Hourglass, Inbox, Send, ThumbsDown, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
-import { supabase } from '../../app/providers'
+import { supabase, useProfile } from '../../app/providers'
 import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
 import { Badge } from '../../shared/ui/Badge'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
@@ -24,6 +24,7 @@ import {
 import { FicheJustificatif, Paiement, type MajJustificatif } from './FicheJustificatif'
 import { nomsDeclarants } from './charges.queries'
 import { SuiviCarburant } from './SuiviCarburant'
+import { listerPleinsManuels, type PleinManuel } from './pleinsManuels.queries'
 import {
   compteursJustificatifs, etatJustificatif, filtrerJustificatifs, jourJustif, type FiltreJustif,
 } from './justificatifs.logic'
@@ -51,12 +52,14 @@ export function Justificatifs() {
   const { toast } = useToast()
   const { can } = usePermissions()
   const peutEcrire = can('finance.charges', 'update')
+  const { companyId } = useProfile()
 
   const [tickets, setTickets] = useState<TicketInbox[]>([])
   const [noms, setNoms] = useState<Record<string, string>>({})
   const [fournisseurs, setFournisseurs] = useState<Array<{ id: string; name: string }>>([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
+  const [manuels, setManuels] = useState<PleinManuel[]>([])
   const [vue, setVue] = useState<'justificatifs' | 'carburant'>('justificatifs')
   const [vehicules, setVehicules] = useState<Array<{ id: string; label: string; plate: string | null }>>([])
   const [filtre, setFiltre] = useState<FiltreJustif>('a_traiter')
@@ -80,6 +83,11 @@ export function Justificatifs() {
 
   useEffect(() => { void charger() }, [charger])
   useEffect(() => { void vehiculesPourPlein().then(setVehicules) }, [])
+  const chargerManuels = useCallback(async () => {
+    const { data } = await listerPleinsManuels()
+    setManuels(data ?? [])
+  }, [])
+  useEffect(() => { void chargerManuels() }, [chargerManuels])
   useEffect(() => {
     supabase.from('suppliers').select('id, name').eq('active', true).order('name')
       .then(({ data }) => setFournisseurs((data ?? []) as Array<{ id: string; name: string }>))
@@ -261,7 +269,8 @@ export function Justificatifs() {
             <Button variant="secondary" onClick={() => void charger()}>Réessayer</Button>
           </div>
         ) : vue === 'carburant' ? (
-          <SuiviCarburant tickets={tickets} vehicules={vehicules} noms={noms} onOuvrir={setOuvertId} />
+          <SuiviCarburant tickets={tickets} manuels={manuels} vehicules={vehicules} noms={noms} companyId={companyId ?? ''}
+            peutEcrire={peutEcrire && !!companyId} peutSupprimer={can('finance.charges', 'delete')} onOuvrir={setOuvertId} onManuelsChange={chargerManuels} />
         ) : (
           <>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
