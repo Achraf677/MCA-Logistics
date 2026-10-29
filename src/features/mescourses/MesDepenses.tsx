@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { Plus, Receipt, Pencil, Trash2, FileText, RotateCcw, X, Send, Wallet, CreditCard, Camera } from 'lucide-react'
 import { Badge } from '../../shared/ui/Badge'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
@@ -10,7 +11,7 @@ import { useProfile } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  LIBELLE_MOYEN, LIBELLE_STATUT_DEPENSE, totalARembourser,
+  LIBELLE_MOYEN, LIBELLE_STATUT_DEPENSE, totalARembourser, cartesDuMoyen, libelleCarte,
   type MoyenPaiement, type StatutDepense,
 } from '../../shared/lib/depenses'
 import {
@@ -159,7 +160,9 @@ function LigneDepense({ t, onOuvrir, onModifier, onRetirer }: {
           {t.note ? `${t.note} · ` : ''}<span className="first-letter:uppercase">{libelleDateCourte(date)}</span>
         </span>
         {t.moyen_paiement && (
-          <span className="text-xs text-[var(--text-muted)]">{LIBELLE_MOYEN[t.moyen_paiement as MoyenPaiement] ?? t.moyen_paiement}</span>
+          <span className="text-xs text-[var(--text-muted)]">
+            {LIBELLE_MOYEN[t.moyen_paiement as MoyenPaiement] ?? t.moyen_paiement}{t.carte ? ` · ${libelleCarte(t.carte)}` : ''}
+          </span>
         )}
         {t.moyen_paiement === 'personnel' && statut === 'traite' && (
           <span className={`text-xs font-semibold ${t.rembourse_le ? 'text-[var(--success)]' : 'text-[var(--warning)]'}`}>
@@ -216,6 +219,7 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
   const [urlExistante, setUrlExistante] = useState<string | null>(null)
   const [enGrand, setEnGrand] = useState(false)
   const [envoi, setEnvoi] = useState(false)
+  const [aConfirmer, setAConfirmer] = useState(false)
 
   // Correction : la photo déjà envoyée, en lecture (on corrige les infos, pas le fichier).
   useEffect(() => {
@@ -235,7 +239,18 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
   const aUnFichier = !!depense || !!fichier
   const manques = manquesDepenseSalarie(form, aUnFichier, auj)
 
+  const cartes = cartesDuMoyen(form.moyen)
+  const carteChoisie = cartes.find(c => c.valeur === form.carte)?.libelle ?? ''
+
+  // Carte choisie : on demande confirmation avant d'envoyer (une mauvaise carte fausse le rapprochement bancaire).
+  const demanderEnvoi = () => {
+    if (manques.length > 0 || envoi) return
+    if (cartes.length > 0) setAConfirmer(true)
+    else void envoyer()
+  }
+
   const envoyer = async () => {
+    setAConfirmer(false)
     if (manques.length > 0 || envoi) return
     if (!companyId) { toast('Session expirée : reconnecte-toi.', 'error'); return }
     setEnvoi(true)
@@ -299,12 +314,12 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
           {/* 2. Payé avec quoi : deux gros choix. */}
           <div className="flex flex-col gap-2">
             <span className="text-sm font-medium text-[var(--text)]">Payé avec <span className="text-[var(--danger)]">*</span></span>
-            <div className="grid grid-cols-2 gap-2">
-              {(['carte_societe', 'personnel'] as const).map(m => {
+            <div className="grid grid-cols-3 gap-2">
+              {(['carte_societe', 'carte_carburant', 'personnel'] as const).map(m => {
                 const on = form.moyen === m
                 const Icone = m === 'carte_societe' ? CreditCard : Wallet
                 return (
-                  <button key={m} type="button" onClick={() => setForm(f => ({ ...f, moyen: m }))} aria-pressed={on}
+                  <button key={m} type="button" onClick={() => setForm(f => ({ ...f, moyen: m, carte: m === f.moyen ? f.carte : '' }))} aria-pressed={on}
                     className={`min-h-16 px-3 flex flex-col items-center justify-center gap-1 rounded-[var(--r-md)] border text-sm font-medium text-center ${
                       on ? 'border-[var(--brand)] bg-[var(--brand)]/10 text-[var(--brand)]' : 'border-[var(--border)] text-[var(--text)]'}`}>
                     <Icone size={20} /> {LIBELLE_MOYEN[m]}
@@ -312,6 +327,13 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
                 )
               })}
             </div>
+            {cartes.length > 0 && (
+              <div className="flex flex-col gap-1 pt-1">
+                <span className="text-sm font-medium text-[var(--text)]">Quelle carte ? <span className="text-[var(--danger)]">*</span></span>
+                <ListeDeroulante valeur={form.carte} onChange={v => setForm(f => ({ ...f, carte: v }))}
+                  placeholder="Choisis la carte" ariaLabel="Quelle carte" invalide={!form.carte} options={cartes} />
+              </div>
+            )}
           </div>
 
           {/* 3. Montant + date. */}
@@ -339,12 +361,15 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
           {manques.length > 0 && (
             <p className="text-xs text-[var(--text-muted)]">Il manque : {manques.join(' · ')}</p>
           )}
-          <button className={`${boutonPrimaireCls} w-full`} disabled={manques.length > 0 || envoi} onClick={envoyer}>
+          <button className={`${boutonPrimaireCls} w-full`} disabled={manques.length > 0 || envoi} onClick={demanderEnvoi}>
             <Send size={18} /> {envoi ? 'Envoi…' : depense ? 'Enregistrer la correction' : 'Envoyer au bureau'}
           </button>
         </div>
 
         {reprise.input}
+        <ConfirmDialog open={aConfirmer} title="Vérifie la carte"
+          message={`Es-tu sûr qu'il s'agit de la carte ${carteChoisie} ?`}
+          confirmLabel="Oui, c'est cette carte" onConfirm={() => void envoyer()} onCancel={() => setAConfirmer(false)} />
         {enGrand && apercuUrl && (
           <VisionneusePhoto src={apercuUrl} titre="Vérifie ton justificatif" onFermer={() => setEnGrand(false)}
             actions={depense ? [] : [

@@ -190,7 +190,7 @@ export function Justificatifs() {
                     {nom}
                   </span>
                 </td>
-                <td className="px-2 py-2.5 whitespace-nowrap"><Paiement moyen={t.moyen_paiement} /></td>
+                <td className="px-2 py-2.5 whitespace-nowrap"><Paiement moyen={t.moyen_paiement} carte={t.carte} /></td>
                 <td className="px-2 py-2.5 font-mono text-xs text-[var(--text-muted)]">{jourCourt(jourJustif(t))}</td>
                 <td className="px-2 py-2.5 text-right font-mono font-semibold tabular-nums whitespace-nowrap">
                   {t.montant_ttc_cts != null ? formatMoney(t.montant_ttc_cts) : <span className="font-sans font-medium text-[var(--danger)]">À saisir</span>}
