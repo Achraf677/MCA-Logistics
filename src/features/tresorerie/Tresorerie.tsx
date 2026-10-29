@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ArrowDownLeft, ArrowUpRight, Download, RefreshCw, Wallet, X } from 'lucide-react'
+import { ArrowDownLeft, ArrowUpRight, Download, RefreshCw, SlidersHorizontal, Wallet, X } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { KpiCard } from '../../shared/ui/KpiCard'
 import { Badge } from '../../shared/ui/Badge'
@@ -17,9 +17,9 @@ import { grouperParMois, moisOuvertParDefaut } from '../../shared/lib/mois'
 import { useSync } from '../../app/SyncProvider'
 import { getDonneesBrutes, getLatestSnapshot, getSnapshotsPennylane, getTransactions } from './tresorerie.queries'
 import {
-  amountColorClass, aUnJustificatif, detailBrut, FILTRES_VIDES, filtrerReleve, formatSignedAmount, formatTxDate,
-  jourLocal, LIBELLE_COMPTE, nbFiltresActifs, operationTypeLabel, releveEnCsv, soldePennylane, totauxSelection,
-  trierReleve, typesPresents, virementsInternes,
+  amountColorClass, aUnJustificatif, detailBrut, FILTRES_VIDES, filtrerReleve, formatEntrees, formatSignedAmount, formatSorties,
+  formatTxDate, jourLocal, LIBELLE_COMPTE, manqueUnJustificatif, nbFiltresActifs, operationTypeLabel, releveEnCsv, soldePennylane,
+  totauxSelection, trierReleve, typesPresents, virementsInternes,
   type FiltresReleve, type TriReleve, type VueCompte,
 } from './tresorerie.logic'
 import type { TreasurySnapshot, QontoTx } from './tresorerie.types'
@@ -46,6 +46,9 @@ const JUSTIFS: Array<{ valeur: FiltresReleve['justif']; libelle: string }> = [
   { valeur: 'avec', libelle: 'Avec justificatif' },
 ]
 
+// Classes littérales (le scanner Tailwind ne voit pas les classes construites).
+const COLONNES_TUILES: Record<VueCompte, string> = { qonto: 'lg:grid-cols-4', swan: 'lg:grid-cols-3', fusion: 'lg:grid-cols-5' }
+
 const IconeSynchroEnCours = ({ size }: { size?: number }) => <RefreshCw size={size} className="animate-spin" />
 
 /** Contrôle à segments : le choix actif a le contour rouge de la marque (convention du site). */
@@ -56,7 +59,7 @@ function Segments<T extends string>({ valeur, options, onChange, ariaLabel }: {
     <div role="group" aria-label={ariaLabel} className="inline-flex flex-wrap rounded-[var(--r-md)] border border-[var(--border)] bg-[var(--bg-card)] p-0.5 gap-0.5">
       {options.map(o => (
         <button key={o.cle} type="button" aria-pressed={valeur === o.cle} onClick={() => onChange(o.cle)}
-          className={`h-9 px-3.5 rounded-[var(--r-sm)] border text-sm font-semibold whitespace-nowrap ${valeur === o.cle
+          className={`h-11 sm:h-9 px-3.5 rounded-[var(--r-sm)] border text-sm font-semibold whitespace-nowrap ${valeur === o.cle
             ? 'border-[var(--brand)] text-[var(--text)] bg-[var(--brand)]/10'
             : 'border-transparent text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
           {o.libelle}
@@ -66,8 +69,15 @@ function Segments<T extends string>({ valeur, options, onChange, ariaLabel }: {
   )
 }
 
+/** Pastille du compte : nom complet dès sm, initiale seule sur mobile (laisse la place au libellé). */
 function PastilleCompte({ source }: { source: QontoTx['source'] }) {
-  return <Badge color={source === 'swan' ? 'purple' : 'info'}>{LIBELLE_COMPTE[source]}</Badge>
+  const couleur = source === 'swan' ? 'purple' : 'info'
+  return (
+    <>
+      <span className="sm:hidden" title={LIBELLE_COMPTE[source]}><Badge color={couleur}>{LIBELLE_COMPTE[source][0]}</Badge></span>
+      <span className="hidden sm:inline"><Badge color={couleur}>{LIBELLE_COMPTE[source]}</Badge></span>
+    </>
+  )
 }
 
 /**
@@ -83,6 +93,7 @@ export function Tresorerie() {
   const [f, setF] = useState<FiltresReleve>(FILTRES_VIDES)
   const [tri, setTri] = useState<TriReleve>('date_desc')
   const [detail, setDetail] = useState<QontoTx | null>(null)
+  const [filtresOuverts, setFiltresOuverts] = useState(false)
   const [brutDe, setBrutDe] = useState<{ id: string; raw: unknown } | null>(null)
   const maj = (p: Partial<FiltresReleve>) => setF(prev => ({ ...prev, ...p }))
 
@@ -119,9 +130,10 @@ export function Tresorerie() {
   const groupes = useMemo(() => grouperParMois(visibles, t => t.settled_at), [visibles])
   const ouvert = useMemo(() => moisOuvertParDefaut(groupes.map(g => g.cle), new Date()), [groupes])
   const nbFiltres = nbFiltresActifs(f)
+  const nbAvances = nbFiltres - (f.sens !== 'tous' ? 1 : 0) - (f.q.trim() !== '' ? 1 : 0)
   const filtre = nbFiltres > 0
+  const effacerTout = () => { setF({ ...FILTRES_VIDES, vue: f.vue }); setTri('date_desc') }
   const syncing = syncState.qonto.syncing
-  const derniere = syncState.qonto.lastSyncAt
 
   const soldeQonto = snapshot?.balance_cts ?? null
   const soldeTotal = soldeQonto !== null || soldeSwan !== null ? (soldeQonto ?? 0) + (soldeSwan ?? 0) : null
@@ -134,76 +146,85 @@ export function Tresorerie() {
 
   return (
     <Shell pageTitle="Trésorerie">
+     <div className="flex flex-col min-w-0 lg:h-[min(calc(100dvh-var(--topbar-h)-2.75rem),64rem)]">
       <div className="flex flex-wrap items-center gap-3 mb-4">
         <Segments valeur={f.vue} options={VUES} onChange={vue => setF({ ...FILTRES_VIDES, vue })} ariaLabel="Compte affiché" />
-        <div className="ml-auto flex items-center gap-2 text-xs text-[var(--text-muted)]">
-          <span>{syncing ? 'Synchro en cours…' : derniere ? `Mis à jour ${new Date(derniere).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : 'Pas encore synchronisé'}</span>
+        <div className="ml-auto flex items-center gap-2">
           <BoutonIcone icone={syncing ? IconeSynchroEnCours : RefreshCw} libelle="Synchroniser Qonto et Swan" onClick={() => forceSync('qonto')} disabled={syncing} />
           <BoutonIcone icone={Download} libelle="Exporter le relevé affiché (CSV)" onClick={exporter} disabled={visibles.length === 0} />
         </div>
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6 [&>*]:min-w-0">
-          {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
+        <div className="shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-5 mb-4 [&>*]:min-w-0">
+          {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-[5.5rem]" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
+        <div className={`shrink-0 grid grid-cols-2 ${COLONNES_TUILES[f.vue]} gap-5 mb-4 stagger [&>*]:min-w-0`}>
           {f.vue === 'qonto' && <>
             <KpiCard label="Solde Qonto" value={euro(soldeQonto)} />
             <KpiCard label="Solde autorisé" value={snapshot ? formatMoney(snapshot.authorized_balance_cts) : '—'} />
           </>}
-          {f.vue === 'swan' && <KpiCard label="Solde Swan" value={euro(soldeSwan)} />}
+          {f.vue === 'swan' && <div className="col-span-2 lg:col-span-1"><KpiCard label="Solde Swan" value={euro(soldeSwan)} /></div>}
           {f.vue === 'fusion' && <>
-            <KpiCard label="Solde total" value={euro(soldeTotal)} />
-            <KpiCard label="Dont Qonto · Swan" value={`${euro(soldeQonto)} · ${euro(soldeSwan)}`} />
+            <div className="col-span-2 lg:col-span-1"><KpiCard label="Solde total" value={euro(soldeTotal)} /></div>
+            <KpiCard label="Solde Qonto" value={euro(soldeQonto)} />
+            <KpiCard label="Solde Swan" value={euro(soldeSwan)} />
           </>}
           <KpiCard label={`Entrées${filtre ? ' · sélection' : ''}`} value={formatMoney(totaux.entreesCts)} tone="success" icon={<ArrowDownLeft size={18} />} />
           <KpiCard label={`Sorties${filtre ? ' · sélection' : ''}`} value={formatMoney(totaux.sortiesCts)} tone="danger" icon={<ArrowUpRight size={18} />} />
         </div>
       )}
 
+      {loading && <Skeleton className="shrink-0 h-10 w-full max-w-xl mb-4" />}
       {!loading && dansLaVue.length > 0 && (
-        <div className="flex flex-col gap-3 mb-4">
+        <div className="shrink-0 flex flex-col gap-3 mb-3">
           <div className="flex flex-wrap items-center gap-3">
             <BarreRecherche value={f.q} onChange={q => maj({ q })} placeholder="Chercher : libellé, montant, type, compte…" ariaLabel="Rechercher un mouvement"
               raccourci className="flex-1 min-w-[12rem] max-w-xl" compteur={`${visibles.length} sur ${dansLaVue.length}`} />
             <Segments valeur={f.sens} options={SENS} onChange={sens => maj({ sens })} ariaLabel="Sens" />
-          </div>
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Du
-              <input type="date" className="field h-9" value={f.du} max={f.au || undefined} onChange={e => maj({ du: e.target.value })} />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Au
-              <input type="date" className="field h-9" value={f.au} min={f.du || undefined} onChange={e => maj({ au: e.target.value })} />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Montant min (€)
-              <input inputMode="decimal" className="field h-9 w-28" value={f.min} onChange={e => maj({ min: e.target.value })} />
-            </label>
-            <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Montant max (€)
-              <input inputMode="decimal" className="field h-9 w-28" value={f.max} onChange={e => maj({ max: e.target.value })} />
-            </label>
-            {types.length > 0 && (
-              <div className="w-48"><ListeDeroulante ariaLabel="Type d'opération" valeur={f.type} onChange={type => maj({ type })}
-                options={[{ valeur: '', libelle: 'Tous les types' }, ...types.map(t => ({ valeur: t, libelle: operationTypeLabel(t) }))]} /></div>
-            )}
-            <div className="w-52"><ListeDeroulante ariaLabel="Justificatif" valeur={f.justif} onChange={v => maj({ justif: v as FiltresReleve['justif'] })}
-              options={JUSTIFS} recherche={false} /></div>
             <div className="w-52"><ListeDeroulante ariaLabel="Tri" valeur={tri} onChange={v => setTri(v as TriReleve)} options={TRIS} recherche={false} /></div>
-            {nbFiltres > 0 && (
-              <Button variant="secondary" onClick={() => setF({ ...FILTRES_VIDES, vue: f.vue })}><X size={14} /> Effacer {nbFiltres > 1 ? `les ${nbFiltres} filtres` : 'le filtre'}</Button>
+            <Button variant="secondary" onClick={() => setFiltresOuverts(o => !o)}>
+              <SlidersHorizontal size={14} /> Filtres{nbAvances > 0 ? ` (${nbAvances})` : ''}
+            </Button>
+            {(nbFiltres > 0 || tri !== 'date_desc') && (
+              <Button variant="secondary" onClick={effacerTout}><X size={14} /> Tout effacer</Button>
             )}
           </div>
+          {filtresOuverts && (
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Du
+                <input type="date" className="field h-11 sm:h-9" value={f.du} max={f.au || undefined} onChange={e => maj({ du: e.target.value })} />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Au
+                <input type="date" className="field h-11 sm:h-9" value={f.au} min={f.du || undefined} onChange={e => maj({ au: e.target.value })} />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Montant min (€)
+                <input inputMode="decimal" className="field h-11 sm:h-9 w-28" value={f.min} onChange={e => maj({ min: e.target.value })} />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-[var(--text-muted)]">Montant max (€)
+                <input inputMode="decimal" className="field h-11 sm:h-9 w-28" value={f.max} onChange={e => maj({ max: e.target.value })} />
+              </label>
+              {types.length > 0 && (
+                <div className="w-48"><ListeDeroulante ariaLabel="Type d'opération" valeur={f.type} onChange={type => maj({ type })}
+                  options={[{ valeur: '', libelle: 'Tous les types' }, ...types.map(t => ({ valeur: t, libelle: operationTypeLabel(t) }))]} /></div>
+              )}
+              <div className="w-52"><ListeDeroulante ariaLabel="Justificatif" valeur={f.justif} onChange={v => maj({ justif: v as FiltresReleve['justif'] })}
+                options={JUSTIFS} recherche={false} /></div>
+            </div>
+          )}
           <p className="text-sm text-[var(--text-muted)]">
             {visibles.length} mouvement{visibles.length > 1 ? 's' : ''} ·{' '}
-            <span className="text-[var(--success)]">+{formatMoney(totaux.entreesCts)}</span> ·{' '}
-            <span className="text-[var(--danger)]">−{formatMoney(totaux.sortiesCts)}</span> · net{' '}
+            <span className="text-[var(--success)]">{formatEntrees(totaux.entreesCts)}</span> ·{' '}
+            <span className="text-[var(--danger)]">{formatSorties(totaux.sortiesCts)}</span> · net{' '}
             <strong className={totaux.netCts >= 0 ? 'text-[var(--success)]' : 'text-[var(--danger)]'}>{totaux.netCts >= 0 ? '+' : '−'}{formatMoney(Math.abs(totaux.netCts))}</strong>
             {exclus.size > 0 && visibles.some(t => exclus.has(t.id)) && <> · virements entre Qonto et Swan non comptés</>}
           </p>
         </div>
       )}
 
+      {/* Seule la liste défile (PC) ; marge basse pour que la bulle de l'assistant ne cache pas la dernière ligne. */}
+      <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto pb-24 lg:pr-1">
       {loading ? (
         <SkeletonTable rows={6} />
       ) : error ? (
@@ -224,30 +245,38 @@ export function Tresorerie() {
               <GroupeMois key={`${g.cle}-${filtre}-${f.vue}`} titre={g.libelle} ouvertDefaut={filtre || g.cle === ouvert}
                 resume={<>
                   <span>{g.rows.length} mouvement{g.rows.length > 1 ? 's' : ''}</span>
-                  <span className="text-[var(--success)]">+{formatMoney(t.entreesCts)}</span>
-                  <span className="text-[var(--danger)]">−{formatMoney(t.sortiesCts)}</span>
+                  <span className="text-[var(--success)]">{formatEntrees(t.entreesCts)}</span>
+                  <span className="text-[var(--danger)]">{formatSorties(t.sortiesCts)}</span>
                 </>}>
                 <ul className="divide-y divide-[var(--border)]">
-                  {g.rows.map(tx => (
-                    <li key={tx.id}>
-                      <button type="button" onClick={() => setDetail(tx)}
-                        className="w-full text-left flex items-center gap-3 px-4 py-2.5 hover:bg-[var(--bg-hover,transparent)]">
-                        <span className="w-16 shrink-0 font-mono text-xs text-[var(--text-muted)]">{formatTxDate(tx.settled_at).slice(0, 5)}</span>
-                        {f.vue === 'fusion' && <span className="shrink-0"><PastilleCompte source={tx.source} /></span>}
-                        <span className="flex-1 min-w-0 truncate font-medium text-[var(--text)]" title={tx.label ?? ''}>{tx.label ?? '—'}</span>
-                        {internes.has(tx.id) && <span className="hidden sm:block shrink-0"><Badge color="warning">Interne</Badge></span>}
-                        {!aUnJustificatif(tx) && tx.side === 'debit' && <span className="hidden sm:block shrink-0"><Badge color="danger">Sans justificatif</Badge></span>}
-                        {tx.operation_type && <span className="hidden md:block shrink-0"><Badge color="muted">{operationTypeLabel(tx.operation_type)}</Badge></span>}
-                        <span className={`shrink-0 font-mono font-semibold tabular-nums ${amountColorClass(tx.side)}`}>{formatSignedAmount(tx)}</span>
-                      </button>
-                    </li>
-                  ))}
+                  {g.rows.map(tx => {
+                    const manque = manqueUnJustificatif(tx, internes)
+                    return (
+                      <li key={tx.id}>
+                        <button type="button" onClick={() => setDetail(tx)}
+                          className="w-full text-left flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 sm:py-2.5 hover:bg-[var(--bg-hover,transparent)]">
+                          <span className="w-12 sm:w-16 shrink-0 font-mono text-xs text-[var(--text-muted)]">{formatTxDate(tx.settled_at).slice(0, 5)}</span>
+                          {f.vue === 'fusion' && <span className="shrink-0"><PastilleCompte source={tx.source} /></span>}
+                          <span className="flex-1 min-w-0 truncate font-medium text-[var(--text)]" title={tx.label ?? ''}>{tx.label ?? '—'}</span>
+                          {internes.has(tx.id) && <Badge color="warning">Interne</Badge>}
+                          {manque && <>
+                            <span className="sm:hidden h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--danger)]" role="img" aria-label="Sans justificatif" title="Sans justificatif" />
+                            <span className="hidden sm:block shrink-0"><Badge color="danger">Sans justificatif</Badge></span>
+                          </>}
+                          {tx.operation_type && <span className="hidden md:block shrink-0"><Badge color="muted">{operationTypeLabel(tx.operation_type)}</Badge></span>}
+                          <span className={`shrink-0 font-mono font-semibold tabular-nums ${amountColorClass(tx.side)}`}>{formatSignedAmount(tx)}</span>
+                        </button>
+                      </li>
+                    )
+                  })}
                 </ul>
               </GroupeMois>
             )
           })}
         </div>
       )}
+      </div>
+     </div>
 
       <Drawer open={detail !== null} onClose={() => setDetail(null)} title="Détail du mouvement">
         {detail && (
