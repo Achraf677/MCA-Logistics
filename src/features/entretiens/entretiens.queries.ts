@@ -34,3 +34,8 @@ export async function updateMaintenance(id: string, data: MaintenanceUpdate) {
 export async function deleteMaintenance(id: string) {
   return supabase.from('vehicle_maintenances').delete().eq('id', id)
 }
+
+/** « J'ai vérifié le HT » : sort l'opération de la file « à vérifier ». */
+export async function validerHt(id: string) {
+  return supabase.from('vehicle_maintenances').update({ ht_verifie_le: new Date().toISOString() }).eq('id', id)
+}

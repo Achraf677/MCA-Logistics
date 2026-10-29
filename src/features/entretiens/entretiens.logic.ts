@@ -28,11 +28,41 @@ export function formatMileage(km: number): string {
   return km.toLocaleString('fr-FR') + ' km'
 }
 
-export function kpiSummary(rows: MaintenanceRow[]) {
-  const totalCostCts = rows.reduce((s, r) => s + (r.cost_cts ?? 0), 0)
+/** Jour local au format AAAA-MM-JJ (jamais toISOString : la veille avant 2 h). */
+export function aujourdhuiLocal(d = new Date()): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const j = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${j}`
+}
+
+/** HT d'une opération : la valeur enregistrée, sinon le coût (lignes pas encore reprises). */
+export function htEntretien(r: Pick<MaintenanceRow, 'cost_ht_cts' | 'cost_cts'>): number | null {
+  return r.cost_ht_cts ?? r.cost_cts ?? null
+}
+
+/** TTC payé : le coût enregistré, sinon HT + TVA. */
+export function ttcEntretien(r: Pick<MaintenanceRow, 'cost_ht_cts' | 'cost_cts' | 'tva_cts'>): number | null {
+  return r.cost_cts ?? (r.cost_ht_cts != null ? r.cost_ht_cts + (r.tva_cts ?? 0) : null)
+}
+
+/** Montant d'une opération dans le mode choisi (HT ou TTC). */
+export function montantEntretien(r: Pick<MaintenanceRow, 'cost_ht_cts' | 'cost_cts' | 'tva_cts'>, mode: 'ht' | 'ttc'): number | null {
+  return mode === 'ttc' ? ttcEntretien(r) : htEntretien(r)
+}
+
+/** Part HT d'un montant TTC de cette opération (les ventilations de factures sont en TTC). */
+export function enHt(r: Pick<MaintenanceRow, 'cost_ht_cts' | 'cost_cts'>, montantTtcCts: number): number {
+  return r.cost_ht_cts != null && r.cost_cts ? Math.round(montantTtcCts * r.cost_ht_cts / r.cost_cts) : montantTtcCts
+}
+
+/** Tuiles de la liste, en HT. `aVerifier` = opérations dont le HT n'a pas encore été validé. */
+export function kpiSummary(rows: MaintenanceRow[], today = aujourdhuiLocal()) {
+  const totalHtCts = rows.reduce((s, r) => s + (htEntretien(r) ?? 0), 0)
+  const totalTtcCts = rows.reduce((s, r) => s + (ttcEntretien(r) ?? 0), 0)
   const withNextDue = rows.filter(r => r.next_due_date != null)
-  const overdue = withNextDue.filter(r => r.next_due_date! < new Date().toISOString().slice(0, 10))
-  return { nb: rows.length, totalCostCts, withNextDue: withNextDue.length, overdue: overdue.length }
+  const overdue = withNextDue.filter(r => r.next_due_date! < today)
+  const aVerifier = rows.filter(r => r.ht_verifie_le == null).length
+  return { nb: rows.length, totalHtCts, totalTtcCts, withNextDue: withNextDue.length, overdue: overdue.length, aVerifier }
 }
 
 // ── Récap par poste ───────────────────────────────────────────────────────────
@@ -68,14 +98,15 @@ export interface LigneRecap {
 function regrouper(
   rows: MaintenanceRow[],
   cleDe: (r: MaintenanceRow) => { cle: string; libelle: string },
+  mode: 'ht' | 'ttc' = 'ht',
 ): LigneRecap[] {
   const par = new Map<string, LigneRecap>()
   for (const r of rows) {
     const { cle, libelle } = cleDe(r)
     const ligne = par.get(cle) ?? { cle, libelle, total_cts: 0, nb: 0, nbSansCout: 0, part: 0 }
-    ligne.total_cts += r.cost_cts ?? 0
+    ligne.total_cts += montantEntretien(r, mode) ?? 0
     ligne.nb += 1
-    if (r.cost_cts == null) ligne.nbSansCout += 1
+    if (montantEntretien(r, mode) == null) ligne.nbSansCout += 1
     par.set(cle, ligne)
   }
 
@@ -123,6 +154,7 @@ export interface VentilationEntretien {
 export function recapParCategorie(
   rows: MaintenanceRow[],
   ventilationParCharge: Map<string, VentilationEntretien[]>,
+  mode: 'ht' | 'ttc' = 'ht',
 ): LigneRecap[] {
   const par = new Map<string, LigneRecap>()
 
@@ -142,12 +174,12 @@ export function recapParCategorie(
       // tout l'intérêt de la ventilation, et la raison d'être de ce récap.
       for (const l of lignes) {
         const nom = l.charge_categories?.name ?? l.note ?? 'Sans catégorie'
-        ajouter(nom.toLowerCase(), nom, l.amount_cts, false)
+        ajouter(nom.toLowerCase(), nom, mode === 'ttc' ? l.amount_cts : enHt(r, l.amount_cts), false)
       }
       continue
     }
 
-    ajouter('__sans_categorie__', 'Sans catégorie', r.cost_cts ?? 0, r.cost_cts == null)
+    ajouter('__sans_categorie__', 'Sans catégorie', montantEntretien(r, mode) ?? 0, montantEntretien(r, mode) == null)
   }
 
   const general = [...par.values()].reduce((s, l) => s + l.total_cts, 0)
@@ -166,9 +198,9 @@ export function recapParCategorie(
  * Même remarque pour un véhicule supprimé ou non joint : « Véhicule inconnu »
  * plutôt qu'une ligne muette.
  */
-export function recapParVehicule(rows: MaintenanceRow[]): LigneRecap[] {
+export function recapParVehicule(rows: MaintenanceRow[], mode: 'ht' | 'ttc' = 'ht'): LigneRecap[] {
   return regrouper(rows, r => ({
     cle: r.vehicle_id ?? '__sans_vehicule__',
     libelle: r.vehicles?.label ?? 'Véhicule inconnu',
-  }))
+  }), mode)
 }
