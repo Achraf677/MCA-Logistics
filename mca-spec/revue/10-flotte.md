@@ -10,7 +10,7 @@
 - Fiche véhicule : date et prix d'achat retirés de l'écran (colonnes gardées en base).
 
 ## 3. Plan
-- Lot 1 Véhicules (FAIT, PR #111) · Lot 2 Carburant HT (fait, PR en cours) · Lot 3 Entretiens HT (fait, PR en cours). Ancien texte : Lot 2 Carburant en HT (`fuel_logs.total_ht_cts`, conso L/100) · Lot 3 Entretiens en HT + reprise ticket par ticket.
+- Lot 1 Véhicules (FAIT, PR #111) · Lot 2 Carburant HT (FAIT, PR #120) · Lot 3 Entretiens HT (fait, PR #121). Ancien texte : Lot 2 Carburant en HT (`fuel_logs.total_ht_cts`, conso L/100) · Lot 3 Entretiens en HT + reprise ticket par ticket.
 - Coût HT 12 mois sur la carte véhicule : à brancher aux lots 2 / 3 (le HT n'existe pas encore en base).
 - ⚠ Le carburant vit aussi dans Finance › Justificatifs › Carburant (tickets carte carburant + `pleins_carburant`, PR #100-#106) : décider au lot 2 ce que compte l'onglet Flotte.
 
