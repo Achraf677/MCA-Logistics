@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, Download, Fuel, Gauge, Truck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, Fuel, Gauge, Plus, Truck } from 'lucide-react'
 import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
@@ -9,8 +9,10 @@ import { libelleCarte } from '../../shared/lib/depenses'
 import { libelleMois } from '../../shared/lib/mois'
 import type { TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import {
-  csvCarburant, moisDe, moisDecale, pleinsDuMois, totalPleins, totauxParVehicule,
+  csvCarburant, moisDe, moisDecale, pleinManuelEnLigne, pleinsDuMois, totalPleins, totauxParVehicule,
 } from './carburantJustifs.logic'
+import { PleinManuelDrawer } from './PleinManuelDrawer'
+import type { PleinManuel } from './pleinsManuels.queries'
 
 const jourCourt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
@@ -18,18 +20,28 @@ const jourCourt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
  * Vue « Carburant » des Justificatifs : les tickets payés avec la carte carburant, mois par mois et véhicule par véhicule.
  * Informatif : rien n'est envoyé à Pennylane (la facture de la carte arrive en fin de mois). Remplace le bloc-notes.
  */
-export function SuiviCarburant({ tickets, vehicules, noms, onOuvrir }: {
+export function SuiviCarburant({ tickets, manuels, vehicules, noms, companyId, peutEcrire, peutSupprimer, onOuvrir, onManuelsChange }: {
   tickets: TicketInbox[]
+  /** Pleins saisis à la main, sans justificatif. */
+  manuels: PleinManuel[]
   vehicules: Array<{ id: string; label: string; plate: string | null }>
   noms: Record<string, string>
+  companyId: string
+  peutEcrire: boolean
+  peutSupprimer: boolean
   onOuvrir: (id: string) => void
+  onManuelsChange: () => Promise<void>
 }) {
+  const [saisie, setSaisie] = useState<{ plein: PleinManuel | null } | null>(null)
   const [mois, setMois] = useState(() => moisDe(new Date()))
   const moisCourant = moisDe(new Date())
   const nomVehicule = (id: string) => vehicules.find(v => v.id === id)?.label ?? 'Véhicule supprimé'
-  const nomDeclarant = (t: TicketInbox) => (t.uploaded_by ? (noms[t.uploaded_by] ?? 'Inconnu') : 'Inconnu')
+  const nomDeclarant = (t: { uploaded_by?: string | null; manuel?: true }) =>
+    t.manuel ? 'Saisie manuelle' : (t.uploaded_by ? (noms[t.uploaded_by] ?? 'Inconnu') : 'Inconnu')
 
-  const pleins = useMemo(() => pleinsDuMois(tickets, mois), [tickets, mois])
+  const pleins = useMemo(
+    () => pleinsDuMois<Plein>([...tickets, ...manuels.map(pleinManuelEnLigne)], mois),
+    [tickets, manuels, mois])
   const total = totalPleins(pleins)
   const parVehicule = useMemo(() => totauxParVehicule(pleins, nomVehicule), [pleins, vehicules]) // eslint-disable-line react-hooks/exhaustive-deps
   const sansMontant = pleins.filter(p => p.montant_ttc_cts == null).length
@@ -55,7 +67,10 @@ export function SuiviCarburant({ tickets, vehicules, noms, onOuvrir }: {
             className="h-9 w-9 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-30"><ChevronRight size={16} /></button>
         </div>
         {mois !== moisCourant && <Button variant="secondary" size="compact" onClick={() => setMois(moisCourant)}>Mois en cours</Button>}
-        <Button variant="secondary" size="compact" className="ml-auto" onClick={exporter} disabled={pleins.length === 0}><Download size={14} /> Exporter (CSV)</Button>
+        <span className="ml-auto flex items-center gap-2">
+          {peutEcrire && <Button variant="primary" size="compact" onClick={() => setSaisie({ plein: null })}><Plus size={14} /> Ajouter un plein</Button>}
+          <Button variant="secondary" size="compact" onClick={exporter} disabled={pleins.length === 0}><Download size={14} /> Exporter (CSV)</Button>
+        </span>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
@@ -68,7 +83,7 @@ export function SuiviCarburant({ tickets, vehicules, noms, onOuvrir }: {
 
       {pleins.length === 0 ? (
         <EmptyState icon={<Fuel size={40} />} title="Aucun plein ce mois-ci"
-          description="Les tickets déposés avec « Carte carburant » apparaissent ici, sans rien à valider." />
+          description="Les tickets déposés avec « Carte carburant » et les pleins que tu ajoutes à la main apparaissent ici." />
       ) : (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start">
           <section className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] p-4 flex flex-col gap-3">
@@ -96,7 +111,7 @@ export function SuiviCarburant({ tickets, vehicules, noms, onOuvrir }: {
                 const jour = p.date_depense ?? p.created_at.slice(0, 10)
                 return (
                   <li key={p.id}>
-                    <button type="button" onClick={() => onOuvrir(p.id)}
+                    <button type="button" onClick={() => (p.manuel ? setSaisie({ plein: manuels.find(m => m.id === p.id) ?? null }) : onOuvrir(p.id))}
                       className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-[var(--bg-card-hover)]">
                       <span className="w-11 shrink-0 font-mono text-xs text-[var(--text-muted)]">{jourCourt(jour)}</span>
                       <span className="flex-1 min-w-0">
@@ -107,7 +122,8 @@ export function SuiviCarburant({ tickets, vehicules, noms, onOuvrir }: {
                           <AvatarInitiales nom={nomDeclarant(p)} taille="sm" /> {nomDeclarant(p)}{p.carte ? ` · ${libelleCarte(p.carte)}` : ''}
                         </span>
                       </span>
-                      {p.statut === 'a_traiter' && p.vehicle_id == null && <Badge color="warning">À compléter</Badge>}
+                      {p.manuel && <Badge color="muted">Sans justificatif</Badge>}
+                      {!p.manuel && p.statut === 'a_traiter' && p.vehicle_id == null && <Badge color="warning">À compléter</Badge>}
                       <span className="font-mono font-semibold tabular-nums text-[var(--text)] shrink-0">
                         {p.montant_ttc_cts != null ? formatMoney(p.montant_ttc_cts) : <span className="font-sans text-[var(--danger)]">À saisir</span>}
                       </span>
@@ -119,9 +135,15 @@ export function SuiviCarburant({ tickets, vehicules, noms, onOuvrir }: {
           </section>
         </div>
       )}
+      {saisie && (
+        <PleinManuelDrawer key={saisie.plein?.id ?? 'nouveau'} plein={saisie.plein} companyId={companyId} vehicules={vehicules} peutSupprimer={peutSupprimer}
+          onClose={() => setSaisie(null)} onEnregistre={async () => { setSaisie(null); await onManuelsChange() }} />
+      )}
     </div>
   )
 }
+
+type Plein = (TicketInbox & { manuel?: undefined }) | ReturnType<typeof pleinManuelEnLigne>
 
 function Tuile({ icone, libelle, valeur, detail, className = '' }: { icone: React.ReactNode; libelle: string; valeur: string; detail: string; className?: string }) {
   return (

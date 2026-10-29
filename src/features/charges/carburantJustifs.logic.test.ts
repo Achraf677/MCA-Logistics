@@ -35,3 +35,14 @@ describe('carburant justificatifs', () => {
     expect(csv.split('\n')[1]).toBe('2026-10-05;V-v1;EDENRED : *9156;Lucas;50,00')
   })
 })
+
+describe('pleins saisis à la main', () => {
+  it('comptent dans le mois et par véhicule comme un ticket', async () => {
+    const { pleinManuelEnLigne } = await import('./carburantJustifs.logic')
+    const m = pleinManuelEnLigne({ id: 'm1', vehicle_id: 'v1', date_plein: '2026-10-10', montant_ttc_cts: 6000, carte: null, note: null, created_at: '2026-10-10T07:00:00Z' })
+    const p = pleinsDuMois([t({}), m], '2026-10')
+    expect(p).toHaveLength(2)
+    expect(totalPleins(p)).toBe(11000)
+    expect(totauxParVehicule(p, id => id)[0]).toMatchObject({ cle: 'v1', nb: 2, totalCts: 11000 })
+  })
+})

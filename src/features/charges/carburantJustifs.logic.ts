@@ -10,6 +10,14 @@ export interface LigneCarburant {
   created_at: string
 }
 
+/** Un plein saisi à la main (pas de justificatif) vu comme une ligne de suivi : même mois, mêmes totaux. */
+export function pleinManuelEnLigne<T extends { id: string; vehicle_id: string; date_plein: string; montant_ttc_cts: number; carte: string | null; note: string | null; created_at: string }>(p: T) {
+  return {
+    id: p.id, statut: 'traite', moyen_paiement: 'carte_carburant', montant_ttc_cts: p.montant_ttc_cts, date_depense: p.date_plein,
+    vehicle_id: p.vehicle_id, created_at: p.created_at, carte: p.carte, note: p.note, manuel: true as const,
+  }
+}
+
 export const SANS_VEHICULE = 'sans-vehicule'
 
 const jourDe = (t: Pick<LigneCarburant, 'date_depense' | 'created_at'>) => t.date_depense ?? t.created_at.slice(0, 10)
