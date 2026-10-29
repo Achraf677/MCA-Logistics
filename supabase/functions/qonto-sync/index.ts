@@ -9,6 +9,7 @@ import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
 import { ExternalApiError } from '../_shared/http.ts';
 import { getOrganization, listTransactions } from '../_shared/qonto.ts';
+import { libelleComptable } from '../_shared/libelleBancaire.ts';
 Deno.serve(async (req)=>{
   if (req.method === 'OPTIONS') return optionsResponse();
   // ── Secrets Qonto (jamais loggués) ──────────────────────────────────────────
@@ -52,7 +53,8 @@ Deno.serve(async (req)=>{
         const rows = transactions.map((t)=>({
             company_id: companyId,
             qonto_id: t.id,
-            label: t.label,
+            // Libellé comptable (contrepartie + référence), comme pour Swan ; l'original reste dans raw_data.label.
+            label: libelleComptable(t.label, t.reference),
             amount_cts: t.amount_cents,
             side: t.side,
             operation_type: t.operation_type,
