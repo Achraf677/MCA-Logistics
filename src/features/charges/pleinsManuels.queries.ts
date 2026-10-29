@@ -14,6 +14,8 @@ export interface PleinManuel {
   prix_litre: number | null
   /** Qui a fait le plein (fiche Équipe), migration 20261029130000. */
   fait_par: string | null
+  /** Qui a mis le plein (fiche Équipe), migration 20261029140000. */
+  mis_par: string | null
   created_at: string
 }
 
@@ -26,6 +28,7 @@ export interface SaisiePlein {
   litres: number
   prix_litre: number
   fait_par: string
+  mis_par: string
 }
 
 /** Membres actifs de l'équipe : « qui a fait le plein ». */
