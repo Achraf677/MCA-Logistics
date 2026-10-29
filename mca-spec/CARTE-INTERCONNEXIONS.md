@@ -31,7 +31,7 @@
     pennylane-clients-sync (reg_no) ; la synchro suit `_shared/clientPennylane#ligneClientSync`
     (le site gagne : nom, SIRET, TVA, coordonnées ; archivé reste archivé). Libs partagées :
     `shared/lib/pays.ts` (UE, autoliquidation), `shared/lib/supplements.ts`.
-- **vehicles / team_members** : flotte (vehicules, carburant, entretiens, inspections, incidents),
+- **vehicles / team_members** : flotte (vehicules, carburant, entretiens ; tables inspections / incidents supprimées le 29/10/2026),
   livraisons, tournees, planning (échéances permis / visite médicale / CT / assurance à
   l'affectation), mescourses, equipe, heures, alertes, devis ; planning (lecture
   des échéances : `ct_expiry`, `insurance_expiry`, `next_revision_date`, `licence_b_expiry`,
@@ -195,8 +195,7 @@
   `team_members` reliée au compte) : utilisées par des policies RESTRICTIVES de lecture.
 - Le salarié ne lit que : ses courses / tournées, les clients de ses courses, sa fiche, ses
   heures, ses documents (déposés par lui ou rattachés à ses courses) et leurs fichiers, ses
-  tickets ; plus véhicules et société. Rien en finance, flotte (pleins, entretiens,
-  inspections, incidents), fournisseurs, coûts.
+  tickets ; plus véhicules et société. Rien en finance, flotte (pleins, entretiens), fournisseurs, coûts.
 - `team_members.profile_id` : écrit par l'Edge `admin-users` (create / invite avec
   `team_member_id`, `link_member`), depuis Équipe › fiche › « Accès au site ». Lu par les
   policies `deliveries_select_own` / `tours_select_own` et par Mes courses.
@@ -237,3 +236,5 @@
 - **Historique Documents (24/10/2026)** : `documents.drive_chemin` écrit par `features/documents` (après `drive-ranger`), lu par `HistoriqueDocuments` ; `drive-browse` `arbre: true` lu par `Documents` (choix du dossier).
 - **`_shared/ign.ts`** (28/10/2026) : URL + ressource de l'itinéraire IGN (`bdtopo-valhalla`), lue par les Edge `optimiser-tournee-colis` (tracé des tournées) et `route-calc` (trajet de la fiche livraison). Ressource IGN changée = changer ce seul fichier puis redéployer les deux Edge.
 - **zones_rues / referentiel_rues (carte)** (28/10/2026) : lues par le front (`tourneesColis.queries#chargerZonesBrumath` → `shared/ui/CarteTournee`) pour dessiner les limites des zones (lecture société, RLS existante).
+
+- **Flotte › Véhicules (29/10/2026)** : `vehicles` lue par l'onglet (tuiles, filtres côté client), + `fuel_logs.mileage_km` et `vehicle_maintenances.mileage_km` lus pour le dernier km connu (`vehicules.queries#getKmReleves`, lecture seule). `shared/lib/download#downloadCSV` : lien rattaché à la page (tous les exports).
