@@ -1,13 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { Building2, LogOut, Palette, Wallet, Truck, ScanLine, UserRound } from 'lucide-react'
+import { Building2, ClipboardCheck, LogOut, ShieldCheck, Truck, ScanLine, UserRound, Wallet, FileCheck2 } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { AddressAutocomplete } from '../../shared/ui/AddressAutocomplete'
+import { ChiffreCarte } from '../../shared/ui/ChiffreCarte'
+import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
+import { Bloc, Champ } from '../../shared/ui/FicheSaisie'
 import { useProfile, supabase } from '../../app/providers'
+import { usePermissions } from '../../shared/permissions/usePermissions'
+import { libelleRole } from '../../shared/permissions/roles'
 import { getCompany, updateCompany } from './parametres.queries'
 import type { CompanyData } from './parametres.queries'
 import { ThemeSelector } from '../../shared/theme/ThemeSelector'
@@ -15,34 +20,85 @@ import { GestionCategories } from './GestionCategories'
 import { GestionProduits } from './GestionProduits'
 import { GmailConnect } from './GmailConnect'
 import { TestLectureAuto } from './TestLectureAuto'
-import { Field } from '../../shared/ui/Field'
+import {
+  erreursSociete, avertissementsSociete, completudeSociete, echeanceSociete, libelleEcheance, champsModifies,
+} from './parametres.logic'
 
-type Volet = 'societe' | 'apparence' | 'finance' | 'flotte' | 'documents' | 'compte'
+type Volet = 'societe' | 'finance' | 'flotte' | 'documents' | 'espace'
+const VOLETS_VALIDES: Volet[] = ['societe', 'finance', 'flotte', 'documents', 'espace']
+// Anciens liens (?volet=apparence / compte) : ces deux volets n'en font plus qu'un.
+const ANCIENS_VOLETS: Record<string, Volet> = { apparence: 'espace', compte: 'espace' }
 
-const EMPTY: Omit<CompanyData, 'id'> = {
+type Form = Omit<CompanyData, 'id'>
+
+const VIDE: Form = {
   name: '', siren: '', siret: '', tva_intra: '',
   address: '', depot_lat: null, depot_lng: null,
   depart_colis_adresse: '', depart_colis_lat: null, depart_colis_lng: null,
   capital_cts: null, iban: '', bic: '',
   transport_license_expiry: null, rc_pro_expiry: null,
-  licence_transport: '',
+  licence_transport: '', pennylane_depot_email: '',
 }
+
+const depuisBase = (d: CompanyData): Form => ({
+  name: d.name ?? '', siren: d.siren ?? '', siret: d.siret ?? '', tva_intra: d.tva_intra ?? '',
+  address: d.address ?? '', depot_lat: d.depot_lat, depot_lng: d.depot_lng,
+  depart_colis_adresse: d.depart_colis_adresse ?? '', depart_colis_lat: d.depart_colis_lat, depart_colis_lng: d.depart_colis_lng,
+  capital_cts: d.capital_cts, iban: d.iban ?? '', bic: d.bic ?? '',
+  transport_license_expiry: d.transport_license_expiry, rc_pro_expiry: d.rc_pro_expiry,
+  licence_transport: d.licence_transport ?? '', pennylane_depot_email: d.pennylane_depot_email ?? '',
+})
+
+const TON: Record<string, 'warning' | 'danger' | undefined> = { soon: 'warning', overdue: 'danger', ok: undefined, none: 'warning' }
 
 export function Parametres() {
   const { companyId, loading: profileLoading, profile } = useProfile()
+  const { can } = usePermissions()
   const { toast } = useToast()
-  const [form, setForm]           = useState(EMPTY)
-  const [loading, setLoading]     = useState(true)
-  const [saving, setSaving]       = useState(false)
-  const [dirty, setDirty]         = useState(false)
+  const peutModifier = can('systeme.parametres', 'update')
+  const [initial, setInitial] = useState<Form>(VIDE)
+  const [form, setForm] = useState<Form>(VIDE)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [logoutLoading, setLogoutLoading] = useState(false)
   const [params, setParams] = useSearchParams()
-  const volet = (params.get('volet') ?? 'societe') as Volet
-  const choisirVolet = (v: Volet) => {
+  const brut = params.get('volet') ?? 'societe'
+  const volet: Volet = VOLETS_VALIDES.includes(brut as Volet) ? (brut as Volet) : (ANCIENS_VOLETS[brut] ?? 'societe')
+  const choisirVolet = (v: Volet, ancre?: string) => {
     const next = new URLSearchParams(params)
     next.set('volet', v)
     setParams(next, { replace: true })
+    if (ancre) setTimeout(() => document.getElementById(ancre)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
   }
+
+  useEffect(() => {
+    if (profileLoading) return
+    if (!companyId) { setLoading(false); return }
+    getCompany(companyId).then(({ data }) => {
+      if (data) { const f = depuisBase(data as CompanyData); setInitial(f); setForm(f) }
+      setLoading(false)
+    })
+  }, [companyId, profileLoading])
+
+  const modifies = useMemo(() => champsModifies(initial, form), [initial, form])
+  const dirty = modifies.length > 0
+  const erreursBrutes = useMemo(() => erreursSociete(form), [form])
+  // Une valeur déjà enregistrée n'est jamais bloquante : seules les saisies modifiées sont contrôlées.
+  const erreurs = useMemo(() => Object.fromEntries(
+    Object.entries(erreursBrutes).filter(([k]) => modifies.includes(k as keyof Form)),
+  ), [erreursBrutes, modifies])
+  const avertissements = useMemo(() => avertissementsSociete(form), [form])
+  const completude = useMemo(() => completudeSociete(form), [form])
+
+  // Changements non enregistrés : le navigateur prévient avant de fermer / recharger l'onglet.
+  useEffect(() => {
+    if (!dirty) return
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', h)
+    return () => window.removeEventListener('beforeunload', h)
+  }, [dirty])
+
+  const set = <K extends keyof Form>(k: K, v: Form[K]) => setForm(p => ({ ...p, [k]: v }))
 
   const handleLogout = async () => {
     setLogoutLoading(true)
@@ -51,52 +107,12 @@ export function Parametres() {
     // Succès : onAuthStateChange → user=null → LoginPage
   }
 
-  useEffect(() => {
-    // Attendre que le profil soit chargé
-    if (profileLoading) return
-    // Pas de companyId une fois le profil chargé : on arrête le spinner
-    if (!companyId) { setLoading(false); return }
-
-    getCompany(companyId).then(({ data }) => {
-      if (data) {
-        setForm({
-          name:        data.name ?? '',
-          siren:       data.siren ?? '',
-          siret:       data.siret ?? '',
-          tva_intra:   data.tva_intra ?? '',
-          address:     data.address ?? '',
-          depot_lat:   data.depot_lat,
-          depot_lng:   data.depot_lng,
-          depart_colis_adresse: data.depart_colis_adresse ?? '',
-          depart_colis_lat:     data.depart_colis_lat,
-          depart_colis_lng:     data.depart_colis_lng,
-          capital_cts: data.capital_cts,
-          iban:        data.iban ?? '',
-          bic:         data.bic ?? '',
-          transport_license_expiry: data.transport_license_expiry,
-          rc_pro_expiry:            data.rc_pro_expiry,
-          licence_transport:        data.licence_transport ?? '',
-        })
-      }
-      setLoading(false)
-    })
-  }, [companyId, profileLoading])
-
-  const set = (k: keyof typeof form, v: string) => {
-    setForm(p => ({ ...p, [k]: v }))
-    setDirty(true)
-  }
-
   const handleSave = async () => {
-    if (!companyId) return
+    if (!companyId || !peutModifier || Object.keys(erreurs).length > 0) return
     setSaving(true)
 
-    // Filet de sécurité côté serveur : si une adresse est saisie sans coords
-    // (autocomplétion Photon a échoué, saisie manuelle…), on géocode via l'Edge
-    // Function `geocode` (BAN api-adresse.data.gouv.fr) avant d'enregistrer.
-    // Un échec n'empêche pas la sauvegarde : simple toast d'avertissement.
-    let depot_lat = form.depot_lat
-    let depot_lng = form.depot_lng
+    // Filet de sécurité : adresse saisie sans coordonnées → géocodage (Edge `geocode`, BAN). Un échec n'empêche pas l'enregistrement.
+    let { depot_lat, depot_lng } = form
     const address = form.address?.trim() ?? ''
     if (address && (depot_lat == null || depot_lng == null)) {
       const { data } = await supabase.functions.invoke('geocode', { body: { address } })
@@ -108,9 +124,7 @@ export function Parametres() {
       }
     }
 
-    // Même filet pour le départ des tournées de colis.
-    let depart_colis_lat = form.depart_colis_lat
-    let depart_colis_lng = form.depart_colis_lng
+    let { depart_colis_lat, depart_colis_lng } = form
     const departColis = form.depart_colis_adresse?.trim() ?? ''
     if (!departColis) { depart_colis_lat = null; depart_colis_lng = null }
     else if (depart_colis_lat == null || depart_colis_lng == null) {
@@ -124,10 +138,10 @@ export function Parametres() {
     }
 
     const { error } = await updateCompany(companyId, {
-      name:      form.name || undefined,
-      siren:     form.siren || null,
-      siret:     form.siret || null,
-      tva_intra: form.tva_intra || null,
+      name:      form.name.trim() || undefined,
+      siren:     form.siren?.replace(/\s/g, '') || null,
+      siret:     form.siret?.replace(/\s/g, '') || null,
+      tva_intra: form.tva_intra?.replace(/\s/g, '').toUpperCase() || null,
       address:   form.address || null,
       depot_lat,
       depot_lng,
@@ -135,21 +149,19 @@ export function Parametres() {
       depart_colis_lat,
       depart_colis_lng,
       capital_cts: form.capital_cts,
-      iban:      form.iban || null,
-      bic:       form.bic || null,
+      iban:      form.iban?.replace(/\s/g, '').toUpperCase() || null,
+      bic:       form.bic?.replace(/\s/g, '').toUpperCase() || null,
       transport_license_expiry: form.transport_license_expiry || null,
       rc_pro_expiry:            form.rc_pro_expiry || null,
-      licence_transport:        (form.licence_transport ?? '') || null,
+      licence_transport:        form.licence_transport?.trim() || null,
+      pennylane_depot_email:    form.pennylane_depot_email?.trim() || null,
     })
     if (error) toast((error as Error).message, 'error')
     else {
       toast('Paramètres enregistrés')
-      setDirty(false)
-      // Reflète les coords géocodées dans le formulaire local (badge 📍).
-      if (depot_lat !== form.depot_lat || depot_lng !== form.depot_lng
-        || depart_colis_lat !== form.depart_colis_lat || depart_colis_lng !== form.depart_colis_lng) {
-        setForm(p => ({ ...p, depot_lat, depot_lng, depart_colis_lat, depart_colis_lng }))
-      }
+      const apres = { ...form, depot_lat, depot_lng, depart_colis_lat, depart_colis_lng }
+      setForm(apres)
+      setInitial(apres)
     }
     setSaving(false)
   }
@@ -157,54 +169,54 @@ export function Parametres() {
   if (loading) {
     return (
       <Shell pageTitle="Paramètres">
-        <div className="max-w-2xl space-y-4">
-          {[0,1,2,3,4].map(i => <Skeleton key={i} className="h-14" />)}
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">{[0, 1, 2].map(i => <Skeleton key={i} className="h-24" />)}</div>
+          {[0, 1, 2].map(i => <Skeleton key={i} className="h-14" />)}
         </div>
       </Shell>
     )
   }
 
-  // Volets : un menu latéral, un volet affiché à la fois (?volet=… dans l'URL,
-  // pour pouvoir y renvoyer depuis ailleurs : ex. ?tab=parametres&volet=flotte).
-  const volets: Array<{ key: Volet; label: string; icone: ReactNode; description: string }> = [
-    { key: 'societe',   label: 'Société',        icone: <Building2 size={16} />,  description: 'Identité légale, coordonnées, banque et conformité.' },
-    { key: 'apparence', label: 'Apparence',      icone: <Palette size={16} />,    description: "L'ambiance visuelle de ton espace." },
-    { key: 'finance',   label: 'Finance',        icone: <Wallet size={16} />,     description: 'Catégories de charges : renommer, masquer, supprimer si vides.' },
-    { key: 'flotte',    label: 'Flotte',         icone: <Truck size={16} />,      description: 'Articles & familles des dépenses véhicule : unité, stock, périodicité.' },
-    { key: 'documents', label: 'Documents & IA', icone: <ScanLine size={16} />,   description: 'Lecture automatique des justificatifs.' },
-    { key: 'compte',    label: 'Compte',         icone: <UserRound size={16} />,  description: 'Ta session sur le site.' },
+  const volets: Array<{ key: Volet; label: string; icone: ReactNode }> = [
+    { key: 'societe',   label: 'Société',        icone: <Building2 size={16} /> },
+    { key: 'finance',   label: 'Finance',        icone: <Wallet size={16} /> },
+    { key: 'flotte',    label: 'Flotte',         icone: <Truck size={16} /> },
+    { key: 'documents', label: 'Documents & IA', icone: <ScanLine size={16} /> },
+    { key: 'espace',    label: 'Mon espace',     icone: <UserRound size={16} /> },
   ]
-  const actif = volets.find(v => v.key === volet) ?? volets[0]
+  const eLicence = echeanceSociete(form.transport_license_expiry)
+  const eRc = echeanceSociete(form.rc_pro_expiry)
+  const nbErreurs = Object.keys(erreurs).length
 
   return (
     <Shell pageTitle="Paramètres">
-      <div className="max-w-6xl mx-auto flex flex-col gap-6">
+      <div className="flex flex-col gap-5 w-full min-w-0">
 
-        {/* En-tête société */}
-        <div className="flex items-center gap-3 p-4 rounded-[var(--r-lg)] bg-[var(--brand-soft)] border border-[var(--brand)]/20">
-          <Building2 size={20} className="text-[var(--brand)] shrink-0" />
-          <div>
-            <p className="font-semibold text-[var(--text)]">{form.name || 'Société'}</p>
-            {form.siren && <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">SIREN : {form.siren}</p>}
-          </div>
+        {/* Tuiles : un clic mène au bloc concerné */}
+        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+          <ChiffreCarte libelle="Fiche société" icone={<ClipboardCheck size={13} />}
+            valeur={`${completude.remplis} / ${completude.total}`}
+            ton={completude.manquants.length ? 'warning' : undefined}
+            detail={completude.manquants.length ? `Manque : ${completude.manquants.slice(0, 2).join(', ')}${completude.manquants.length > 2 ? '…' : ''}` : 'Fiche complète'}
+            titre="Voir la fiche société" actif={false} onClick={() => choisirVolet('societe')} />
+          <ChiffreCarte libelle="Licence" icone={<ShieldCheck size={13} />}
+            valeur={libelleEcheance(eLicence)} ton={TON[eLicence.status]} detail="Licence de transport"
+            titre="Aller à la conformité" actif={false} onClick={() => choisirVolet('societe', 'bloc-conformite')} />
+          <ChiffreCarte libelle="RC pro" icone={<FileCheck2 size={13} />}
+            valeur={libelleEcheance(eRc)} ton={TON[eRc.status]} detail="Assurance transport"
+            titre="Aller à la conformité" actif={false} onClick={() => choisirVolet('societe', 'bloc-conformite')} />
         </div>
 
-        <div className="flex flex-col md:flex-row gap-6 items-start">
-          {/* Menu des volets : colonne à gauche (ordinateur), rangée défilante (mobile) */}
-          <nav className="md:w-56 shrink-0 w-full flex md:flex-col gap-1 overflow-x-auto md:sticky md:top-4
+        <div className="flex flex-col md:flex-row gap-5 items-stretch md:items-start">
+          {/* Volets : colonne à gauche (PC), rangée défilante (mobile) */}
+          <nav className="md:w-52 shrink-0 min-w-0 flex md:flex-col gap-1 overflow-x-auto md:sticky md:top-4
             [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {volets.map(v => {
-              const estActif = v.key === actif.key
+              const estActif = v.key === volet
               return (
-                <button
-                  key={v.key}
-                  onClick={() => choisirVolet(v.key)}
-                  className={`flex items-center gap-2.5 px-3 py-2 rounded-[var(--r-md)] text-left whitespace-nowrap
-                    text-[var(--fs-sm)] transition-colors
-                    ${estActif
-                      ? 'bg-[var(--brand-soft)] text-[var(--text)] font-medium'
-                      : 'text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]'}`}
-                >
+                <button key={v.key} type="button" onClick={() => choisirVolet(v.key)} aria-current={estActif ? 'page' : undefined}
+                  className={`flex items-center gap-2.5 px-3 py-2 rounded-[var(--r-md)] text-left whitespace-nowrap text-sm transition-colors
+                    ${estActif ? 'bg-[var(--brand-soft)] text-[var(--text)] font-medium' : 'text-[var(--text-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text)]'}`}>
                   <span className={estActif ? 'text-[var(--brand)]' : ''}>{v.icone}</span>
                   {v.label}
                 </button>
@@ -212,240 +224,179 @@ export function Parametres() {
             })}
           </nav>
 
-          {/* Volet actif */}
-          <div className="flex-1 min-w-0 flex flex-col gap-6">
-            <div>
-              <h2 className="text-[var(--fs-h2)] font-semibold text-[var(--text)] flex items-center gap-2">
-                <span className="text-[var(--brand)]">{actif.icone}</span>{actif.label}
-              </h2>
-              <p className="text-[var(--fs-sm)] text-[var(--text-muted)] mt-0.5">{actif.description}</p>
-            </div>
-
-            {actif.key === 'societe' && (
+          <div className="flex-1 min-w-0 flex flex-col gap-4">
+            {volet === 'societe' && (
               <>
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
-                  <div className="flex flex-col gap-6">
-{/* Section Identité */}
-            <Section title="Identité légale">
-              <Field label="Raison sociale *">
-                <Input value={form.name} onChange={v => set('name', v)} placeholder="MCA Logistics" />
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="SIREN">
-                  <Input value={form.siren ?? ''} onChange={v => set('siren', v)} placeholder="123456789" />
-                </Field>
-                <Field label="SIRET">
-                  <Input value={form.siret ?? ''} onChange={v => set('siret', v)} placeholder="12345678900001" />
-                </Field>
-              </div>
-              <Field label="N° TVA intracommunautaire">
-                <Input value={form.tva_intra ?? ''} onChange={v => set('tva_intra', v)} placeholder="FR12345678901" />
-              </Field>
-              <Field label="Capital social (€)">
-                <input
-                  type="number"
-                  value={form.capital_cts != null ? form.capital_cts / 100 : ''}
-                  onChange={e => {
-                    const v = e.target.value
-                    setForm(p => ({ ...p, capital_cts: v ? Math.round(parseFloat(v) * 100) : null }))
-                    setDirty(true)
-                  }}
-                  placeholder="7200"
-                  className={inputCls}
-                />
-              </Field>
-            </Section>
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 items-start">
+                  <div className="flex flex-col gap-4 min-w-0">
+                    <Bloc titre="Identité légale">
+                      <Champ label="Raison sociale" requis error={erreurs.name}>
+                        <input className="field" value={form.name} onChange={e => set('name', e.target.value)} placeholder="MCA Logistics" disabled={!peutModifier} />
+                      </Champ>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Champ label="SIREN" error={erreurs.siren}>
+                          <input className="field" inputMode="numeric" value={form.siren ?? ''} onChange={e => set('siren', e.target.value)} placeholder="123456789" disabled={!peutModifier} />
+                        </Champ>
+                        <Champ label="SIRET" error={erreurs.siret}>
+                          <input className="field" inputMode="numeric" value={form.siret ?? ''} onChange={e => set('siret', e.target.value)} placeholder="12345678900001" disabled={!peutModifier} />
+                        </Champ>
+                      </div>
+                      <Champ label="N° TVA intracommunautaire" error={erreurs.tva_intra}>
+                        <input className="field" value={form.tva_intra ?? ''} onChange={e => set('tva_intra', e.target.value)} placeholder="FR12345678901" disabled={!peutModifier} />
+                      </Champ>
+                      <Champ label="Capital social (€)">
+                        <input type="number" className="field" disabled={!peutModifier}
+                          value={form.capital_cts != null ? form.capital_cts / 100 : ''}
+                          onChange={e => set('capital_cts', e.target.value ? Math.round(parseFloat(e.target.value) * 100) : null)}
+                          placeholder="7200" />
+                      </Champ>
+                      {avertissements.map(a => <p key={a} className="text-xs text-[var(--warning)]">{a}</p>)}
+                    </Bloc>
 
-                              </div>
-                  <div className="flex flex-col gap-6">
-{/* Section Coordonnées */}
-            <Section title="Coordonnées">
-              <AddressAutocomplete
-                label="Adresse du dépôt"
-                value={form.address ?? ''}
-                placeholder="17 rue de la Chapelle, 67540 Ostwald"
-                onChange={v => {
-                  setForm(p => ({ ...p, address: v, depot_lat: null, depot_lng: null }))
-                  setDirty(true)
-                }}
-                onSelect={s => {
-                  setForm(p => ({ ...p, address: s.address, depot_lat: s.lat, depot_lng: s.lng }))
-                  setDirty(true)
-                }}
-              />
-              {form.depot_lat != null && form.depot_lng != null && (
-                <p className="text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
-                  📍 {form.depot_lat.toFixed(5)}, {form.depot_lng.toFixed(5)}
-                </p>
-              )}
-            </Section>
+                    <Bloc titre="Pennylane">
+                      <Champ label="E-mail de dépôt des justificatifs" error={erreurs.pennylane_depot_email}>
+                        <input type="email" className="field" value={form.pennylane_depot_email ?? ''} onChange={e => set('pennylane_depot_email', e.target.value)}
+                          placeholder="depot@exemple.pennylane.tech" disabled={!peutModifier} />
+                      </Champ>
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Adresse de Pennylane qui reçoit les tickets et factures validés dans Finance › Justificatifs.
+                      </p>
+                    </Bloc>
+                  </div>
 
-            <Section title="Tournées de colis">
-              <AddressAutocomplete
-                label="Départ des tournées (centre de tri)"
-                value={form.depart_colis_adresse ?? ''}
-                placeholder="La Poste, allée de l'Écoparc Rhénan, 67550 Vendenheim"
-                onChange={v => {
-                  setForm(p => ({ ...p, depart_colis_adresse: v, depart_colis_lat: null, depart_colis_lng: null }))
-                  setDirty(true)
-                }}
-                onSelect={s => {
-                  setForm(p => ({ ...p, depart_colis_adresse: s.address, depart_colis_lat: s.lat, depart_colis_lng: s.lng }))
-                  setDirty(true)
-                }}
-              />
-              <p className="text-xs text-[var(--text-muted)]">
-                Point de départ et de retour de l'itinéraire calculé dans Ma tournée. Vide : le dépôt.
-              </p>
-            </Section>
+                  <div className="flex flex-col gap-4 min-w-0">
+                    <Bloc titre="Dépôt">
+                      <AddressAutocomplete
+                        label="Adresse du dépôt"
+                        value={form.address ?? ''}
+                        placeholder="17 rue de la Chapelle, 67540 Ostwald"
+                        onChange={v => setForm(p => ({ ...p, address: v, depot_lat: null, depot_lng: null }))}
+                        onSelect={s => setForm(p => ({ ...p, address: s.address, depot_lat: s.lat, depot_lng: s.lng }))}
+                      />
+                      {form.depot_lat != null && form.depot_lng != null && (
+                        <p className="text-xs text-[var(--text-muted)] font-mono">Position : {form.depot_lat.toFixed(5)}, {form.depot_lng.toFixed(5)}</p>
+                      )}
+                    </Bloc>
 
-            {/* Section Bancaire */}
-            <Section title="Informations bancaires">
-              <Field label="IBAN">
-                <Input value={form.iban ?? ''} onChange={v => set('iban', v.replace(/\s/g, ''))}
-                  placeholder="FR7616958000019515253956892" />
-              </Field>
-              <Field label="BIC / SWIFT">
-                <Input value={form.bic ?? ''} onChange={v => set('bic', v)} placeholder="QNTOFRP1XXX" />
-              </Field>
-              {form.iban && (
-                <p className="text-[var(--fs-xs)] text-[var(--text-muted)] font-mono">
-                  {form.iban.replace(/(.{4})/g, '$1 ').trim()}
-                </p>
-              )}
-            </Section>
+                    <Bloc titre="Tournées de colis">
+                      <AddressAutocomplete
+                        label="Départ des tournées (centre de tri)"
+                        value={form.depart_colis_adresse ?? ''}
+                        placeholder="La Poste, allée de l'Écoparc Rhénan, 67550 Vendenheim"
+                        onChange={v => setForm(p => ({ ...p, depart_colis_adresse: v, depart_colis_lat: null, depart_colis_lng: null }))}
+                        onSelect={s => setForm(p => ({ ...p, depart_colis_adresse: s.address, depart_colis_lat: s.lat, depart_colis_lng: s.lng }))}
+                      />
+                      <p className="text-xs text-[var(--text-muted)]">
+                        Point de départ et de retour de l'itinéraire calculé dans Ma tournée. Vide : le dépôt.
+                      </p>
+                    </Bloc>
+                  </div>
 
-            {/* Section Conformité */}
-            <Section title="Conformité / Documents société">
-              <Field label="N° licence de transport (DREAL)">
-                <Input value={form.licence_transport ?? ''} onChange={v => set('licence_transport', v)}
-                  placeholder="Ex. 2020/68/0000123" />
-              </Field>
-              <Field label="Licence de transport — date d'expiration">
-                <input
-                  type="date"
-                  value={form.transport_license_expiry ?? ''}
-                  onChange={e => {
-                    setForm(p => ({ ...p, transport_license_expiry: e.target.value || null }))
-                    setDirty(true)
-                  }}
-                  className={inputCls}
-                />
-              </Field>
-              <Field label="Assurance RC pro + marchandises">
-                <input
-                  type="date"
-                  value={form.rc_pro_expiry ?? ''}
-                  onChange={e => {
-                    setForm(p => ({ ...p, rc_pro_expiry: e.target.value || null }))
-                    setDirty(true)
-                  }}
-                  className={inputCls}
-                />
-              </Field>
-            </Section>
+                  <div className="flex flex-col gap-4 min-w-0">
+                    <Bloc titre="Informations bancaires">
+                      <Champ label="IBAN" error={erreurs.iban}>
+                        <input className="field" value={form.iban ?? ''} onChange={e => set('iban', e.target.value.replace(/\s/g, ''))}
+                          placeholder="FR7616958000019515253956892" disabled={!peutModifier} />
+                      </Champ>
+                      <Champ label="BIC / SWIFT" error={erreurs.bic}>
+                        <input className="field" value={form.bic ?? ''} onChange={e => set('bic', e.target.value)} placeholder="QNTOFRP1XXX" disabled={!peutModifier} />
+                      </Champ>
+                      {form.iban && !erreurs.iban && (
+                        <p className="text-xs text-[var(--text-muted)] font-mono break-all">{form.iban.replace(/(.{4})/g, '$1 ').trim()}</p>
+                      )}
+                    </Bloc>
 
-                              </div>
+                    <div id="bloc-conformite">
+                      <Bloc titre="Conformité transport">
+                        <Champ label="N° de licence de transport (DREAL)">
+                          <input className="field" value={form.licence_transport ?? ''} onChange={e => set('licence_transport', e.target.value)}
+                            placeholder="Ex. 2020/68/0000123" disabled={!peutModifier} />
+                        </Champ>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-3">
+                          <Champ label="Licence : échéance">
+                            <input type="date" className="field" value={form.transport_license_expiry ?? ''} disabled={!peutModifier}
+                              onChange={e => set('transport_license_expiry', e.target.value || null)} />
+                          </Champ>
+                          <Champ label="Assurance RC pro : échéance">
+                            <input type="date" className="field" value={form.rc_pro_expiry ?? ''} disabled={!peutModifier}
+                              onChange={e => set('rc_pro_expiry', e.target.value || null)} />
+                          </Champ>
+                        </div>
+                      </Bloc>
+                    </div>
+                  </div>
                 </div>
-{/* Actions */}
-            <div className="flex items-center gap-3 pt-2">
-              <Button variant="primary" onClick={handleSave} disabled={saving || !dirty}>
-                {saving ? 'Enregistrement…' : 'Enregistrer les modifications'}
-              </Button>
-              {!dirty && !saving && (
-                <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">Aucune modification</span>
-              )}
-            </div>
+
+                {/* Barre d'actions fixe */}
+                <div className="sticky bottom-0 z-10 -mx-1 px-1 pb-1 pt-2 bg-gradient-to-t from-[var(--bg)] via-[var(--bg)] to-transparent">
+                  <div className="flex flex-wrap items-center gap-3 rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-elevated)] py-2.5 pl-4 pr-16 md:pr-4">
+                    <span className="text-xs text-[var(--text-muted)] flex-1 min-w-[10rem]">
+                      {!peutModifier ? "Lecture seule : tu n'as pas le droit de modifier les paramètres."
+                        : nbErreurs > 0 ? `${nbErreurs} champ${nbErreurs > 1 ? 's' : ''} à corriger avant d'enregistrer.`
+                        : dirty ? `${modifies.length} modification${modifies.length > 1 ? 's' : ''} non enregistrée${modifies.length > 1 ? 's' : ''}.`
+                        : 'Aucune modification.'}
+                    </span>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <Button variant="secondary" onClick={() => setForm(initial)} disabled={!dirty || saving}>Annuler</Button>
+                      <Button variant="primary" onClick={handleSave} disabled={saving || !dirty || nbErreurs > 0 || !peutModifier}>
+                        {saving ? 'Enregistrement…' : 'Enregistrer'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </>
             )}
 
-            {actif.key === 'apparence' && (
-              <Section title="Thème">
-                <ThemeSelector />
-              </Section>
+            {volet === 'finance' && (
+              <Bloc titre="Catégories de charges" icone={<Wallet size={15} />}>
+                <p className="text-xs text-[var(--text-muted)] -mt-1">Renommer, masquer, supprimer si vides.</p>
+                <GestionCategories />
+              </Bloc>
             )}
 
-            {actif.key === 'finance' && (
-              <>
-{/* Section Catégories de charges */}
-            <Section title="Catégories de charges">
-              <GestionCategories />
-            </Section>
-
-                          </>
+            {volet === 'flotte' && (
+              <Bloc titre="Articles et familles des dépenses véhicule" icone={<Truck size={15} />}>
+                <p className="text-xs text-[var(--text-muted)] -mt-1">Unité, stock, périodicité.</p>
+                <GestionProduits />
+              </Bloc>
             )}
 
-            {actif.key === 'flotte' && (
-              <>
-{/* Section Produits Carburant & consommables */}
-            <Section title="Articles & familles — dépenses véhicule">
-              <GestionProduits />
-            </Section>
-
-                          </>
-            )}
-
-            {actif.key === 'documents' && (
-              <>
-<Section title="Lecture automatique des documents">
-              <TestLectureAuto />
-            </Section>
-
-            <GmailConnect />
-
-                          </>
-            )}
-
-            {actif.key === 'compte' && (
-              <>
-{/* Section Compte */}
-            <Section title="Compte">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-[var(--fs-body)] text-[var(--text)]">{profile?.full_name ?? '—'}</p>
-                  {profile?.email && (
-                    <p className="text-[var(--fs-xs)] text-[var(--text-muted)]">{profile.email}</p>
-                  )}
-                </div>
-                <button
-                  onClick={handleLogout}
-                  disabled={logoutLoading}
-                  className="flex items-center gap-2 px-3 py-1.5 rounded-[var(--r-md)] border border-[var(--border)] text-[var(--fs-sm)] text-[var(--text-muted)] hover:text-[var(--danger)] hover:border-[var(--danger)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <LogOut size={14} />
-                  {logoutLoading ? 'Déconnexion…' : 'Se déconnecter'}
-                </button>
+            {volet === 'documents' && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+                <GmailConnect />
+                <Bloc titre="Lecture automatique des photos" icone={<ScanLine size={15} />}>
+                  <TestLectureAuto />
+                </Bloc>
               </div>
-            </Section>
-              </>
+            )}
+
+            {volet === 'espace' && (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+                <Bloc titre="Apparence">
+                  <p className="text-xs text-[var(--text-muted)] -mt-1">Le thème s'applique tout de suite, sur cet appareil.</p>
+                  <ThemeSelector />
+                </Bloc>
+                <Bloc titre="Mon compte" icone={<UserRound size={15} />}>
+                  <div className="flex items-center gap-3">
+                    <AvatarInitiales nom={profile?.full_name ?? '?'} taille="lg" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-[var(--text)] truncate">{profile?.full_name ?? '—'}</p>
+                      <p className="text-xs text-[var(--text-muted)] truncate">{profile?.email ?? ''}</p>
+                      <p className="text-xs text-[var(--text-muted)]">{libelleRole(profile?.role)}</p>
+                    </div>
+                  </div>
+                  <div>
+                    <Button variant="secondary" onClick={handleLogout} disabled={logoutLoading}>
+                      <LogOut size={14} />
+                      {logoutLoading ? 'Déconnexion…' : 'Se déconnecter'}
+                    </Button>
+                  </div>
+                </Bloc>
+              </div>
             )}
           </div>
         </div>
       </div>
     </Shell>
-  )
-}
-
-// ── Sous-composants ──────────────────────────────────────────────────────────
-
-const inputCls = 'field'
-function Input({ type = 'text', value, onChange, placeholder }: {
-  type?: string; value: string; onChange: (v: string) => void; placeholder?: string
-}) {
-  return (
-    <input type={type} value={value} placeholder={placeholder}
-      onChange={e => onChange(e.target.value)} className={inputCls} />
-  )
-}
-
-
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="glass rounded-[var(--r-xl)] overflow-hidden">
-      <div className="px-4 py-2.5 bg-[var(--bg-elevated)] border-b border-[var(--border)]">
-        <span className="text-[var(--fs-xs)] font-semibold text-[var(--text-muted)] uppercase tracking-wide">{title}</span>
-      </div>
-      <div className="p-4 flex flex-col gap-4">{children}</div>
-    </div>
   )
 }
