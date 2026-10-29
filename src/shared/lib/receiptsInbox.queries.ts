@@ -24,6 +24,8 @@ export interface TicketInbox {
   montant_ttc_cts?: number | null
   categorie?: string | null
   moyen_paiement?: string | null
+  /** Quelle carte de la société (migration 20261029090000), si moyen = carte_societe ou carte_carburant. */
+  carte?: string | null
   date_depense?: string | null
   motif_refus?: string | null
   /** Note de frais remboursée le (migration 20261022130000). */
@@ -51,6 +53,7 @@ export interface DetailsDepense {
   montant_ttc_cts: number | null
   categorie: string | null
   moyen_paiement: string | null
+  carte: string | null
   date_depense: string | null
 }
 

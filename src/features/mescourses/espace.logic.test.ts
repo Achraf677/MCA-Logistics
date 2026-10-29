@@ -126,17 +126,18 @@ describe('dépenses', () => {
   })
   it('formulaire depuis une dépense', () => {
     expect(formulaireDepenseDepuis({ montant_ttc_cts: 500, categorie: 'peage', moyen_paiement: 'personnel', date_depense: null, note: 'A35', created_at: '2026-10-11T08:00:00Z' }, '2026-10-12'))
-      .toEqual({ montant: '5,00', categorie: 'peage', moyen: 'personnel', date: '2026-10-11', note: 'A35' })
+      .toEqual({ montant: '5,00', categorie: 'peage', moyen: 'personnel', carte: '', date: '2026-10-11', note: 'A35' })
   })
   it('manques : date future refusée', () => {
-    const f = { montant: '12', categorie: '' as const, moyen: 'carte_societe' as const, date: '2026-10-13', note: 'Repas midi' }
+    const f = { montant: '12', categorie: '' as const, moyen: 'carte_societe' as const, carte: 'qonto_4103', date: '2026-10-13', note: 'Repas midi' }
     expect(manquesDepenseSalarie(f, true, '2026-10-12')).toEqual(['La date ne peut pas être dans le futur'])
     expect(manquesDepenseSalarie({ ...f, date: '2026-10-12' }, false, '2026-10-12')).toEqual(['Photo du justificatif'])
   })
   it('détails à écrire', () => {
-    expect(detailsDepense({ montant: '12,5', categorie: 'repas', moyen: 'personnel', date: '2026-10-12', note: '' }))
-      .toEqual({ montant_ttc_cts: 1250, categorie: 'repas', moyen_paiement: 'personnel', date_depense: '2026-10-12' })
-    expect(detailsDepense({ montant: '', categorie: '', moyen: '', date: '', note: '' }).montant_ttc_cts).toBeNull()
+    expect(detailsDepense({ montant: '12,5', categorie: 'repas', moyen: 'personnel', carte: '', date: '2026-10-12', note: '' }))
+      .toEqual({ montant_ttc_cts: 1250, categorie: 'repas', moyen_paiement: 'personnel', carte: null, date_depense: '2026-10-12' })
+    expect(detailsDepense({ montant: '40', categorie: '', moyen: 'carte_carburant', carte: 'edenred_9156', date: '2026-10-12', note: '' }).carte).toBe('edenred_9156')
+    expect(detailsDepense({ montant: '', categorie: '', moyen: '', carte: '', date: '', note: '' }).montant_ttc_cts).toBeNull()
   })
   it('estImage', () => {
     expect(estImage('image/jpeg')).toBe(true)

@@ -10,7 +10,7 @@ import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, manquesValidation, montantSaisiEnCts, type CategorieDepense,
+  CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, cartesDuMoyen, libelleCarte, manquesValidation, montantSaisiEnCts, type CategorieDepense,
 } from '../../shared/lib/depenses'
 import { urlTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import { jourFr } from './charges.logic'
@@ -25,13 +25,14 @@ const dateHeure = (iso: string) => new Date(iso).toLocaleString('fr-FR', { day: 
 
 export interface MajJustificatif {
   montant_ttc_cts: number | null; date_depense: string | null; categorie: string | null
-  moyen_paiement: string | null; supplier_id: string | null
+  moyen_paiement: string | null; carte: string | null; supplier_id: string | null
 }
 
 /** Moyen de paiement : pictogramme + libellé. */
-export function Paiement({ moyen }: { moyen: string | null | undefined }) {
+export function Paiement({ moyen, carte }: { moyen: string | null | undefined; carte?: string | null }) {
   if (moyen === 'personnel') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><Wallet size={13} className="text-[var(--text-muted)]" /> Note de frais</span>
-  if (moyen === 'carte_societe') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> Carte société</span>
+  if (moyen === 'carte_carburant') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> Carte carburant{carte ? ` · ${libelleCarte(carte)}` : ''}</span>
+  if (moyen === 'carte_societe') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> Carte société{carte ? ` · ${libelleCarte(carte)}` : ''}</span>
   return <span className="text-[var(--text-disabled)]">Non précisé</span>
 }
 
@@ -118,6 +119,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   const [date, setDate] = useState(t.date_depense ?? t.created_at.slice(0, 10))
   const [categorie, setCategorie] = useState<CategorieDepense | ''>((t.categorie as CategorieDepense | null) ?? '')
   const [moyen, setMoyen] = useState(t.moyen_paiement ?? '')
+  const [carte, setCarte] = useState(t.carte ?? '')
   const [fournisseur, setFournisseur] = useState(t.supplier_id ?? '')
   const [refus, setRefus] = useState(false)
   const [suppression, setSuppression] = useState(false)
@@ -135,12 +137,13 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   const modifie = !invalide && (
     cts !== (t.montant_ttc_cts ?? null) || date !== (t.date_depense ?? t.created_at.slice(0, 10)) || (t.date_depense == null && !!date)
     || (categorie || null) !== (t.categorie ?? null) || (moyen || null) !== (t.moyen_paiement ?? null)
+    || (cartesDuMoyen(moyen).length > 0 ? carte || null : null) !== (t.carte ?? null)
     || (fournisseur || null) !== (t.supplier_id ?? null))
   const etat = etatJustificatif(t)
   const noteDeFrais = t.moyen_paiement === 'personnel'
   const montantAffiche = !invalide && cts != null ? formatMoney(cts) : null
   const a_traiter = t.statut === 'a_traiter'
-  const maj: MajJustificatif = { montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null, supplier_id: fournisseur || null }
+  const maj: MajJustificatif = { montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null, carte: cartesDuMoyen(moyen).length > 0 ? (carte || null) : null, supplier_id: fournisseur || null }
   // Ce qui manque, d'après ce qui est à l'écran (pas seulement ce qui est enregistré).
   const manques = invalide ? ['Montant'] : manquesValidation(maj)
 
@@ -182,9 +185,15 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
                   options={CATEGORIES_DEPENSE.map(c => ({ valeur: c.valeur, libelle: c.libelle }))} />
               </Champ>
               <Champ label="Payé avec" requis>
-                <ListeDeroulante valeur={moyen} onChange={setMoyen} disabled={!peutEcrire} placeholder="Choisir" ariaLabel="Payé avec" invalide={a_traiter && !moyen}
-                  options={[{ valeur: 'carte_societe', libelle: 'Carte de la société' }, { valeur: 'personnel', libelle: 'De sa poche (note de frais)' }]} />
+                <ListeDeroulante valeur={moyen} onChange={v => { setMoyen(v); setCarte('') }} disabled={!peutEcrire} placeholder="Choisir" ariaLabel="Payé avec" invalide={a_traiter && !moyen}
+                  options={[{ valeur: 'carte_societe', libelle: 'Carte de la société' }, { valeur: 'carte_carburant', libelle: 'Carte carburant' }, { valeur: 'personnel', libelle: 'De sa poche (note de frais)' }]} />
               </Champ>
+              {cartesDuMoyen(moyen).length > 0 && (
+                <Champ label="Quelle carte" requis>
+                  <ListeDeroulante valeur={carte} onChange={setCarte} disabled={!peutEcrire} placeholder="Choisir la carte" ariaLabel="Carte"
+                    invalide={a_traiter && !carte} options={cartesDuMoyen(moyen)} />
+                </Champ>
+              )}
               <div className="sm:col-span-2">
                 <Champ label="Fournisseur" requis>
                   <ListeDeroulante valeur={fournisseur} onChange={setFournisseur} disabled={!peutEcrire} placeholder="Choisir un fournisseur" ariaLabel="Fournisseur"
@@ -208,7 +217,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
               <p className="text-sm text-[var(--danger)] rounded-[var(--r-md)] bg-[var(--danger)]/10 px-3 py-2">Motif du refus : {t.motif_refus}</p>
             )}
             {t.rembourse_le && <p className="text-sm text-[var(--text-muted)]">Remboursé le {jourFr(t.rembourse_le)}.</p>}
-            <p className="text-xs text-[var(--text-muted)]"><Paiement moyen={t.moyen_paiement} /></p>
+            <p className="text-xs text-[var(--text-muted)]"><Paiement moyen={t.moyen_paiement} carte={t.carte} /></p>
           </Bloc>
         </div>
       </div>
