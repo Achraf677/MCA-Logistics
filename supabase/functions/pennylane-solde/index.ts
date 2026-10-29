@@ -122,7 +122,8 @@ Deno.serve(async (req) => {
         company_id: companyId,
         balance_cts: cts,
         authorized_balance_cts: null,
-        iban: null,
+        // Pennylane ne donne pas d'IBAN : on garde l'id du compte pour ne compter qu'une ligne par compte (dernière synchro).
+        iban: `pennylane:${c.id}`,
         source: 'pennylane',
       });
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);

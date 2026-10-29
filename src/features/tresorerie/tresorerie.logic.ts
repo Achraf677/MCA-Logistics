@@ -65,13 +65,18 @@ export function filtrerMouvements(txs: QontoTx[], sens: FiltreSens, q: string): 
   })
 }
 
-/** Solde Pennylane = somme des comptes de la synchro la plus récente (lignes écrites à moins de 5 min de la dernière). */
-export function soldePennylane(rows: Array<{ balance_cts: number; fetched_at: string }>): number | null {
+/** Solde Pennylane = somme des comptes, en ne gardant que la DERNIÈRE ligne de chaque compte (une synchro = une ligne ;
+ *  `iban` porte « pennylane:<id du compte> », vide pour les anciennes lignes = un seul compte). */
+export function soldePennylane(rows: Array<{ balance_cts: number; fetched_at: string; iban?: string | null }>): number | null {
   if (rows.length === 0) return null
-  const dernier = Math.max(...rows.map(r => new Date(r.fetched_at).getTime()))
-  return rows
-    .filter(r => dernier - new Date(r.fetched_at).getTime() < 5 * 60_000)
-    .reduce((s, r) => s + r.balance_cts, 0)
+  const dernier = new Map<string, { balance_cts: number; t: number }>()
+  for (const r of rows) {
+    const cle = r.iban ?? ''
+    const t = new Date(r.fetched_at).getTime()
+    const prev = dernier.get(cle)
+    if (!prev || t > prev.t) dernier.set(cle, { balance_cts: r.balance_cts, t })
+  }
+  return [...dernier.values()].reduce((s, r) => s + r.balance_cts, 0)
 }
 
 // ── Relevé : vues, filtres, tri, export ───────────────────────────────────────

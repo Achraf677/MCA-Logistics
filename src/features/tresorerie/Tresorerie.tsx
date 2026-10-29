@@ -18,7 +18,7 @@ import { useSync } from '../../app/SyncProvider'
 import { getDonneesBrutes, getLatestSnapshot, getSnapshotsPennylane, getTransactions } from './tresorerie.queries'
 import {
   amountColorClass, aUnJustificatif, detailBrut, FILTRES_VIDES, filtrerReleve, formatEntrees, formatSignedAmount, formatSorties,
-  formatTxDate, jourLocal, LIBELLE_COMPTE, manqueUnJustificatif, nbFiltresActifs, operationTypeLabel, releveEnCsv, soldePennylane,
+  formatTxDate, jourLocal, LIBELLE_COMPTE, nbFiltresActifs, operationTypeLabel, releveEnCsv, soldePennylane,
   totauxSelection, trierReleve, typesPresents, virementsInternes,
   type FiltresReleve, type TriReleve, type VueCompte,
 } from './tresorerie.logic'
@@ -249,26 +249,17 @@ export function Tresorerie() {
                   <span className="text-[var(--danger)]">{formatSorties(t.sortiesCts)}</span>
                 </>}>
                 <ul className="divide-y divide-[var(--border)]">
-                  {g.rows.map(tx => {
-                    const manque = manqueUnJustificatif(tx, internes)
-                    return (
-                      <li key={tx.id}>
-                        <button type="button" onClick={() => setDetail(tx)}
-                          className="w-full text-left flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 sm:py-2.5 hover:bg-[var(--bg-hover,transparent)]">
-                          <span className="w-12 sm:w-16 shrink-0 font-mono text-xs text-[var(--text-muted)]">{formatTxDate(tx.settled_at).slice(0, 5)}</span>
-                          {f.vue === 'fusion' && <span className="shrink-0"><PastilleCompte source={tx.source} /></span>}
-                          <span className="flex-1 min-w-0 truncate font-medium text-[var(--text)]" title={tx.label ?? ''}>{tx.label ?? '—'}</span>
-                          {internes.has(tx.id) && <Badge color="warning">Interne</Badge>}
-                          {manque && <>
-                            <span className="sm:hidden h-2.5 w-2.5 shrink-0 rounded-full bg-[var(--danger)]" role="img" aria-label="Sans justificatif" title="Sans justificatif" />
-                            <span className="hidden sm:block shrink-0"><Badge color="danger">Sans justificatif</Badge></span>
-                          </>}
-                          {tx.operation_type && <span className="hidden md:block shrink-0"><Badge color="muted">{operationTypeLabel(tx.operation_type)}</Badge></span>}
-                          <span className={`shrink-0 font-mono font-semibold tabular-nums ${amountColorClass(tx.side)}`}>{formatSignedAmount(tx)}</span>
-                        </button>
-                      </li>
-                    )
-                  })}
+                  {g.rows.map(tx => (
+                    <li key={tx.id}>
+                      <button type="button" onClick={() => setDetail(tx)}
+                        className="w-full text-left flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3 sm:py-2.5 hover:bg-[var(--bg-hover,transparent)]">
+                        <span className="w-12 sm:w-16 shrink-0 font-mono text-xs text-[var(--text-muted)]">{formatTxDate(tx.settled_at).slice(0, 5)}</span>
+                        {f.vue === 'fusion' && <span className="shrink-0"><PastilleCompte source={tx.source} /></span>}
+                        <span className="flex-1 min-w-0 truncate font-medium text-[var(--text)]" title={tx.label ?? ''}>{tx.label ?? '—'}</span>
+                        <span className={`shrink-0 font-mono font-semibold tabular-nums ${amountColorClass(tx.side)}`}>{formatSignedAmount(tx)}</span>
+                      </button>
+                    </li>
+                  ))}
                 </ul>
               </GroupeMois>
             )
