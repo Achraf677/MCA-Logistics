@@ -1,6 +1,6 @@
 // Edge Function `pennylane-solde` — solde du compte pro Pennylane, EN LECTURE SEULE.
 // GET /bank_accounts (Pennylane V2) → 1 ligne par compte dans treasury_snapshots (source = 'pennylane').
-// Les comptes déjà suivis par Qonto (même IBAN) sont ignorés pour ne pas les compter deux fois.
+// Seul le compte Swan (compte pro intégré à Pennylane) est gardé : Pennylane liste aussi le compte Qonto.
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts';
 import { getServiceClient } from '../_shared/supabase.ts';
 import { exigerPermission } from '../_shared/auth.ts';
@@ -14,8 +14,6 @@ interface CompteBancaire {
   balance?: string | number | null;
   [k: string]: unknown;
 }
-
-const normaliserIban = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, '').toUpperCase();
 
 /** Pennylane renvoie des montants décimaux en euros ("1234.56") → centimes. */
 function eurosVersCentimes(v: unknown): number | null {
@@ -42,22 +40,20 @@ Deno.serve(async (req) => {
       cursor = rep.next_cursor;
     }
 
-    const { data: qonto } = await supabase.from('treasury_snapshots').select('iban')
-      .eq('company_id', companyId).eq('source', 'qonto');
-    const ibanQonto = new Set((qonto ?? []).map((r: { iban: string | null }) => normaliserIban(r.iban)).filter(Boolean));
-
+    // Pennylane ne renvoie pas d'IBAN : on reconnaît le compte Swan à son nom / sa banque.
+    const texte = (c: CompteBancaire) => JSON.stringify(c).toLowerCase();
+    console.log('pennylane bank_accounts', JSON.stringify(comptes.map((c) => ({ ...c, iban: undefined }))));
     let snapshots = 0;
     let balanceCts = 0;
     for (const c of comptes) {
-      const iban = normaliserIban(c.iban);
-      if (iban && ibanQonto.has(iban)) continue;
+      if (!texte(c).includes('swan')) continue;
       const cts = eurosVersCentimes(c.balance);
-      if (cts === null) continue; // pas de solde exposé pour ce compte
+      if (cts === null) continue;
       const { error } = await supabase.from('treasury_snapshots').insert({
         company_id: companyId,
         balance_cts: cts,
         authorized_balance_cts: null,
-        iban: iban || null,
+        iban: null,
         source: 'pennylane',
       });
       if (error) return jsonResponse({ ok: false, error: error.message }, 500);
