@@ -2,7 +2,8 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **29/10/2026** (refonte par onglet : Livraisons, Planning / Tournées, Finance, Tiers, Équipe, Documents mergés ; page de connexion refaite ; zones de Brumath reprises du fichier de l'utilisateur ; reste Système et Flotte).
+> Dernière mise à jour : **29/10/2026** (allégé : détail déplacé dans `mca-spec/HISTORIQUE.md`).
+
 
 ---
 
@@ -202,12 +203,12 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   vérifications sont vertes (tests, relecture, migration testée). Il le signale en une ligne
   dans son rapport. Il demande seulement avant une action destructive (suppression de table,
   de colonne ou de données) ou un changement de droits d'accès existants.
-- **Mise à jour du CLAUDE.md à CHAQUE PR (26/10/2026, automatique, sans qu'on le demande)** : avant de pousser la PR, mettre à jour ce fichier (§ 11-12, date en tête) + la fiche de revue + la carte des interconnexions si concernées, dans la MÊME PR. Après un merge, si l'état a changé, PR « Mémoire : … » de suite.
+- **Mise à jour du CLAUDE.md à CHAQUE PR (26/10/2026, automatique, sans qu'on le demande)** : avant de pousser la PR, mettre à jour ce fichier (§ 11, date en tête ; le détail va dans `mca-spec/HISTORIQUE.md`) + la fiche de revue + la carte des interconnexions si concernées, dans la MÊME PR. Après un merge, si l'état a changé, PR « Mémoire : … » de suite.
 - Jamais d'identifiant de modèle IA dans un commit / une PR. Confirmer les hash après merge.
 
 ## 10. Rituel de fin de grosse session (OBLIGATOIRE)
 À la fin d'une session qui a changé du code, une règle ou une décision :
-1. **Ce fichier** : mettre à jour § 2 (métier), § 5-6 (pièges, statuts), § 11 (état), § 12
+1. **Ce fichier** : mettre à jour § 2 (métier), § 5-6 (pièges, statuts), § 11 (état)
    (en cours / à décider), la date en tête. Supprimer ce qui est devenu faux.
 2. **Fiche de revue** de l'onglet (`mca-spec/revue/NN-*.md`) : écran, gestes, données, lots faits.
 3. **`mca-spec/CARTE-INTERCONNEXIONS.md`** : nouvelles tables / colonnes / lecteurs / Edge.
@@ -223,223 +224,15 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
    Interdit : liste de fichiers, SQL, noms de code, explications, rappel de ce qui n'a pas changé.
    Le détail technique va dans la PR et dans ce fichier, pas dans le message.
 
-## 11. État actuel (24/10/2026)
-- 8 sections (`src/app/sections/`) : **Pilotage** (Dashboard) · **Livraisons** (Livraisons, Devis) · **Finance** (Trésorerie, Charges ; Encaissement / Relances retirés le 22/10/2026) ·
-  **Flotte** (Véhicules, Carburant, Entretiens) · **Planning** (Tournées, Planning : vues Jour / Semaine / Mois, refonte du 19/10/2026 ; l'ancien Calendrier y est fondu) · **Tiers**
-  (Clients, Fournisseurs) · **Équipe** (Membres) · **Système** (Paramètres, **Documents**, Admins). Hors menu : **Mes courses** (chauffeur) et la cloche **Alertes**. ~30 `features/`.
-  Les specs `mca-spec/tabs/` n'en couvrent qu'une partie : vérifier le code.
-- Revue onglet par onglet (méthode § 13) : 01 Mes courses ✔ · 02 Dashboard ✔ · 03 Livraisons ✔
-  (liste, facturation, sécurité) · 03b Fiche livraison ✔ (lot A + messagerie)
-  · 04 Planning ✔ (refonte 19/10/2026 : Jour / Semaine / Mois, charge par chauffeur, tournées de colis du jour, menu d'actions ; `mca-spec/revue/04-planning.md`).
-- **Tournées (bureau, refonte du 22/10/2026)** : l'onglet ne gère que les tournées de colis (tuiles cliquables, filtres, carte du jour, export CSV, tiroir Arrêts / Feuille de route / Synthèse ; `mca-spec/revue/04a-tournees.md`). Composeur express RETIRÉ : `tournees/{TourCard,…}` supprimés, Edge `optimize-tours` = 410 (v23), `_shared/{routesOrs,planifExpress,vroom}` supprimés ; `tours` / `tour_stops` gardés en base sans lecteur. Plus d'express dans Mes courses (Aujourd'hui = récap colis seulement). **Feuilles de route conservées** : à la création de la tournée chaque page scannée devient un `documents` (`tournee_colis`, `notes = 'feuille'`), plus effacée.
-- **Clôture avec photos (20/10/2026)** : « Terminer ma tournée » ouvre une feuille avec les photos de la synthèse de fin de tournée (appareil ou galerie, plusieurs, envoyées tout de suite ; `documents` `entity_type = 'tournee_colis'`, migration `20261020100000_documents_synthese_tournee` appliquée) ; photos visibles côté bureau dans « Tournées de colis du jour » (liens Synthèse n) ; « Supprimer ce scan » dans l'aperçu du scan.
-- **Pause d'un arrêt (21/10/2026)** : « Pause » sur chaque ligne, dans la barre du prochain arrêt et dans la fiche ; l'arrêt va dans un bloc « En pause (n) » en haut de Ma tournée (bouton Reprendre), le prochain arrêt passe au suivant ; `tournees_colis_arrets.en_pause_le` (migration `20261021090000_arrets_en_pause` appliquée) = affichage seulement (l'arrêt garde sa place dans l'ordre et le trajet, `inclureEnPause`) ; un résultat (livré, avisé…) sort de la pause ; compté non traité à la clôture ; le bureau voit « n en pause ».
-- **Zones de Brumath + recherche d'adresse (22/10/2026)** : `tournees_colis_arrets.zone` (« ZONE 1 » à « ZONE 7 », tirée du secteur de la feuille par `zoneDeSecteur`, migration `20261022090000_arrets_zone` appliquée) = un « village » pour l'ordre (Edge `optimiser-tournee-colis` : commune + zone, un bloc par zone ; « Recalculer » (ex-« Réinitialiser ») refait l'ordre). Barre fine en haut de Ma tournée (`RechercheAdresse.tsx`) : cherche dans les arrêts, ouvre la fiche, corrige une adresse, ajoute un arrêt ; villages = ceux de `referentiel_rues` (21), CP et zone repris de la tournée, jamais devinés ; position relue par `geocode`. Crayon « Modifier l'adresse » sur chaque ligne et dans la fiche (`AdresseContexte`) ; zone choisie dans cette fiche. **Zones apprises** : `referentiel_rues.zone` + RPC `appliquer_zones_tournee` (apprend la zone de chaque rue lue, remplit les arrêts sans zone ; appelée à la création, avant chaque recalcul, après une correction) — migration `20261022100000_referentiel_zone` appliquée ; une tournée créée avant n'a pas de zone tant que ses rues ne sont pas apprises (re-scanner la feuille). **Zones du fichier Excel (22/10/2026)** : `Tournée Brumath et villages 23.xlsx` chargé dans `referentiel_rues` (`zone` / `zones`, 161 rues ; 23 rues coupées entre plusieurs zones gardent la zone lue sur la feuille) ; le calcul range les zones de Brumath dans l'ordre 1 → 7 (`ordonnerZones`, Edge `optimiser-tournee-colis` **v15 déployée le 22/10/2026** ; ordre à l'intérieur d'une zone = le plus court). **Bureau** : dans « Tournées de colis du jour », l'icône liste de chaque tournée ouvre ses arrêts (À faire / En attente / En retour / Tous, recherche, crayon pour corriger, + Ajouter, bouton Recalculer ensuite) ; `shared/ui/FeuilleAdresse` + `shared/lib/adresseTournee.logic` servent le livreur et le bureau. **Couleurs** village / zone : `infosGroupes` (liste : bandeau coloré par groupe ; carte : marqueurs, contour élargi de 70 m, route colorée par groupe, légende, bouton calques) ; les frontières postales exactes ne sont pas publiées : le contour vient des arrêts.
-- **Colis par arrêt (20/10/2026)** : pastille « N colis » bien visible (liste, barre du prochain arrêt, fiche) ; « Livré » sur un arrêt à plusieurs colis ouvre une feuille avec une case par colis (toutes cochées, on décoche les non remis → `colis_remis`, le reste compte en attente) ; > 10 colis = compteur. Aucun changement de base : les arrêts déjà validés ne bougent pas.
-- Mes courses (salarié) : **4 onglets depuis le 19/10/2026** (« Ma journée » supprimé : plus de journée de colis ; le relevé du mois compte les colis DIRECTEMENT depuis les tournées TERMINÉES du client — `tourneesColis.queries#colisDesTourneesClient`, `livraisons/ColisDesJournees` ; l'onglet « Courses » est devenu **Aujourd'hui** = récap du jour (colis livrés / en attente / retours, arrêts, km) ; l'express n'y est plus affiché depuis le 22/10/2026) — Aujourd'hui · **Ma tournée** (feuille de route scannée,
-  ordre par la route, carte, Y aller, partage de position, photo de preuve, Terminer) · Dépenses · Moi. Tournées (bureau) : bloc « Tournées de colis du jour » (Carte du
-  jour avec positions, calcul, rouvrir) + « Scanner pour un salarié ».
-- Fiche livraison : prestation, client avec recherche, référence client (reprise sur la facture),
-  urgent, arrêts complets (contact, téléphone, créneaux), trajet auto (IGN), marchandise
-  (colis, poids, volume), consignes / note interne, Dupliquer, 3 onglets (Course · Preuves &
-  documents · Facturation).
-
-## 12. En cours / à décider (mettre à jour à chaque session)
-- **Système refondu (lot S1 Paramètres, PR en cours, 29/10/2026)** : fiche `mca-spec/revue/11-systeme.md`. Paramètres = 3 tuiles (fiche société, licence, RC pro) + 5 volets (Société · Finance · Flotte · Documents & IA · Mon espace = ex Apparence + Compte), blocs `Bloc` 3 colonnes, barre d'actions fixe, contrôles IBAN / TVA / SIREN… (`parametres.logic.ts`), e-mail de dépôt Pennylane modifiable, mobile sans défilement horizontal. Sans migration ni Edge. **Lot S2 Administrateurs (PR en cours, empilée sur S1)** : salariés dans un bloc replié en lecture seule, recherche / filtres, profils de droits (pré-cochent la grille), tiroirs, actions optimistes, mot de passe généré. Décisions : bloc salariés replié en lecture seule ; ni « dernière connexion » (Edge) ni forme juridique / RCS (valeurs à fournir). Banc de captures : Playwright global (`NODE_PATH=$(npm root -g)`), base simulée par `page.route`, `.env.local` factice.
-- **Flotte : arrêtée après le lot 1 (29/10/2026, décision de l'utilisateur ; fiche `mca-spec/revue/10-flotte.md`)** : Véhicules refait (PR #111 : tuiles cliquables, recherche, filtres, dernier km connu, export réparé, prix / date d'achat retirés de la fiche, alertes en ambre / rouge clair) ; tables vides `incidents` / `vehicle_inspections` supprimées à la main via MCP (le CI interdit DROP dans `supabase/migrations/`). **Non faits** : Carburant en HT + conso L/100, Entretiens en HT + reprise ticket par ticket, coût HT 12 mois sur la carte véhicule. ⚠ Le carburant existe aussi dans Finance › Justificatifs › Carburant (arbitrage à faire si on reprend).
-- **Refonte visuelle Justificatifs (29/10/2026, d'après captures PC 1920 / 1366 + mobile 390 sur site simulé)** : une barre au lieu de cinq bandeaux (`BarreFiltresJustificatifs` : recherche, pastilles de famille neutres avec compteurs, « À compléter », bouton « Filtres » → déclarant / carte / mois, filtres actifs en pastilles retirables) ; tuiles compactes (`TuilesJustificatifs`, montant en détail) ; À TRAITER : un seul tableau par section, colonnes adaptées (`ListeJustificatifs`, modes ndf / cb / carburant / mixte), titre par salarié DANS le tableau, colonne « Pour valider » (ce qui manque ou « Prêt à valider ») à la place du statut ; Validés : repère « Pennylane · jj/mm » ; mobile : filtres repliés, pastilles défilantes, résumés courts ; rouge de marque réservé au danger (sélection = neutre) ; bouton « Valider » désactivé neutre ; vocabulaire « CB classique / CB carburant » côté bureau. Vue Carburant : tuiles Total / Litres / Prix moyen au litre (plus de nombre de pleins), « Par véhicule » cliquable (filtre la liste), ligne lisible (litres × prix à droite). Onglet Cartes bancaires : tri actives → programmées → inactives, mobile en deux lignes.
-- **Audit Justificatifs (29/10/2026)** : changements d'état (valider / refuser / remettre à traiter) vérifient qu'une ligne a bougé (`receiptsInbox.queries#majStatut`, avant : faux succès sans droit) ; rechargements silencieux après action + rafraîchissement auto 60 s ; bouton « Renvoyer à Pennylane » + état « Envoi échoué » (validé avec `pennylane_erreur`, jamais pour la carte carburant) ; « À compléter » = exactement les règles de « Valider » (`manquesValidation`) ; recherche étendue (carte, véhicule, montant) ; carte inactive à la date de la dépense = validation bloquée ; carte carburant → catégorie `carburant` forcée ; bandeau si 500 justificatifs (limite d'affichage).
-- **Cartes bancaires dans Système (29/10/2026)** : table `cartes_bancaires` (migration `20261029150000` appliquée ; `code` stable, `nom`, `fin`, `type` societe / carburant, `actif_a_partir_du`, `inactif_a_partir_du` ; RLS : lecture toute la société, écriture président ou droit `systeme.parametres`) ; `receipts_inbox.carte` et `pleins_carburant.carte` → FK `cartes_bancaires(code)` (on delete restrict : une carte déjà utilisée ne se supprime pas, on la désactive). Onglet Système › **Cartes bancaires** (`features/cartes/CartesBancaires.tsx`) : ajouter, modifier, désactiver / réactiver à partir d'une date, supprimer seulement si aucun montant saisi. Règles pures `shared/lib/cartesBancaires.ts` (testées), requêtes `cartesBancaires.queries.ts`, hook `useCartesBancaires` ; les listes des écrans (Mes dépenses, fiche justificatif, plein manuel, filtres) viennent de cette table : seules les cartes ACTIVES le jour de la dépense sont proposées. Les listes en dur de `depenses.ts` sont supprimées.
-- **Carburant = validés seulement (29/10/2026)** : un justificatif carte carburant encore « À traiter » (ou refusé) ne compte PAS dans la vue Carburant ; il y entre à la validation (`carburantJustifs.logic#ticketsCarburant`).
-- **Justificatifs › À traiter en sous-sections + filtres (29/10/2026)** : tous les justificatifs arrivent dans « À traiter » (carte carburant comprise) ; ce filtre est découpé en **Notes de frais (un sous-groupe par salarié, le plus dû d'abord)**, **CB classique**, **CB carburant** (+ « À préciser » pour les anciens sans moyen), sections vides masquées, chacune repliable avec nombre et total. Filtres combinables sur tous les onglets (`justificatifs.logic#CriteresJustif`) : famille (pastilles avec compteurs), déclarant, carte, mois, « À compléter » (`estIncomplet`), bouton Réinitialiser. Vue « Carburant » (suivi mensuel) inchangée.
-- **« Qui a mis le plein » retiré (29/10/2026, doublon voulu par l'utilisateur)** : une seule case « Qui a fait le plein » (`fait_par`) ; la colonne `pleins_carburant.mis_par` (migration `20261029140000`) reste en base, plus écrite ni lue.
-- **Inbox : suppression multiple (29/10/2026, mergé PR #107, front seul)** : cases cochables sur tout fichier, barre du bas « Supprimer la sélection (n) » avec confirmation (`InboxDocuments`) ; « Trier la sélection » ne prend que les lisibles.
-- **Plein manuel : qui + carte + note (29/10/2026)** : `pleins_carburant.fait_par` (→ `team_members`, migration `20261029130000` appliquée) ; formulaire « Ajouter un plein » : « Qui a fait le plein » (liste avec recherche, obligatoire), « Carte bancaire » (liste avec recherche : Edenred + les 5 cartes société, obligatoire), note obligatoire ; le nom du membre remplace « Saisie manuelle » dans la liste.
-- **Plein manuel = litres × prix (29/10/2026)** : `pleins_carburant.litres` + `prix_litre` (migration `20261029120000` appliquée) ; le TTC n'est plus saisi, il se calcule (`carburantJustifs.logic#montantPleinCts`, entiers) et reste stocké dans `montant_ttc_cts` ; litres du mois dans la tuile « Pleins ». Les tickets des salariés ne portent pas de litres (non demandé).
-- **Pleins sans justificatif (29/10/2026)** : table `pleins_carburant` (migration `20261029110000` appliquée ; RLS = droits `finance.charges`, aucun accès salarié) = pleins saisis à la main par le bureau dans Justificatifs › Carburant (« Ajouter un plein », badge « Sans justificatif »), comptés avec les tickets dans les totaux / par véhicule / CSV (`carburantJustifs.logic#pleinManuelEnLigne`, `charges/PleinManuelDrawer`, `pleinsManuels.queries`). Rien vers Pennylane.
-- **Aperçu salarié (29/10/2026)** : bouton « Interface salarié » en haut à droite du bureau (`Shell.tsx`, état `shared/lib/apercuSalarie`, sessionStorage) = écran Mes courses avec le chrome salarié, « Quitter l'aperçu salarié » pour revenir. Purement visuel : droits et données = ceux du compte connecté (le cloisonnement RLS du vrai salarié n'est PAS testé ; « Ma tournée » demande une fiche Équipe liée au compte).
-- **Carte carburant = suivi, pas Pennylane (29/10/2026)** : `receipts_inbox.vehicle_id` (migration `20261029100000` appliquée), obligatoire à la saisie pour `moyen_paiement = 'carte_carburant'` (catégorie forcée à `carburant`). Ces tickets ne vont JAMAIS chez Pennylane (facture mensuelle de la carte), n'ont ni catégorie ni fournisseur à valider, et arrivent comme les autres dans « À traiter » (tuiles, cloche) ; seul « Valider » diffère (pas d'envoi). Finance › Justificatifs › vue « Carburant » (`charges/SuiviCarburant.tsx`, `carburantJustifs.logic.ts`) : mois par mois, total, pleins, par véhicule, jour par jour, export CSV. Valider = `classerTicket('traite')` sans envoi.
-- **Cartes sur les dépenses (29/10/2026)** : `receipts_inbox.moyen_paiement` ∈ `carte_societe, carte_carburant, personnel` + `receipts_inbox.carte` (migration `20261029090000` appliquée) = quelle carte (`shared/lib/depenses#CARTES_SOCIETE` : Qonto *4103, Pennylane *4393 / *5115 / *8784 / *8685 ; `CARTES_CARBURANT` : Edenred *9156). Mes courses › Dépenses : 3 choix + liste de la carte + confirmation « Es-tu sûr qu'il s'agit de la carte … ? » avant l'envoi ; bureau (`FicheJustificatif`) : même liste, carte obligatoire pour valider. Anciens justificatifs en carte société : carte à compléter à la validation.
-- **Panne IGN (28/10/2026)** : l'IGN a supprimé la ressource d'itinéraire `bdtopo-osrm` (« Parameter 'resource' is invalid ») → depuis le 27/10 (404 avant) TOUS les calculs de tournée échouaient (503) et les tournées restaient dans l'ordre de la feuille (vu par l'utilisateur comme « zones non respectées, ordre dans n'importe quel sens ») ; `route-calc` (trajet de la fiche livraison) aussi en panne. **PR #96 mergée (`800ac46`), Edge `optimiser-tournee-colis` v19 et `route-calc` v16 déployées le 28/10/2026.** Correctif : ressource `bdtopo-valhalla` dans `_shared/ign.ts` (une seule source, vérifiée sur getCapabilities) ; un tracé IGN en échec n'empêche plus d'enregistrer l'ordre (calculé sur la matrice ORS) : carte sans ligne + message. Solveur refait le même jour (`_shared/tourneeRoute#ordonnerTournee`, seule fonction appelée par l'Edge) : village par village, zones 1 → 7 imposées pendant la recherche, chaque rue d'un seul tenant (`PENALITE_RUE` = 300 m dans le coût, réglée sur le banc), numéros rangés dans une rue de 3 arrêts ou plus (croissant, décroissant ou un côté puis l'autre, si ≤ 150 m de plus), limite de 800 ms tenue ; l'Edge lit `tournees_colis_arrets.rue`. Banc routier réel (OSRM, hors prod) : tournée Brumath du 28/10 (128 arrêts) 74,8 km en ordre habituel → 58,7 km, zones 1 → 7, 2 rues coupées (10 avant) ; tournée du 27/10 62,5 → 49,5 km.
-- **Villages (28/10/2026)** : communes déléguées = un seul village pour le solveur (Mittelhausen / Hohatzenheim / Gingsheim → Wingersheim ; Keffendorf → Ohlungen ; affichage inchangé ; « OHLINGEN » (faute de lecture de la feuille, 4 arrêts du 27/10) = Ohlungen, confirmé par l'utilisateur le 28/10/2026) ; changement de village hors Brumath = pénalité douce de 2 000 m (au lieu de 1 000 km : un village peut être coupé si ça évite un vrai détour) ; tournées avec zones de Brumath = règle dure gardée (les mélanger faisait perdre la recherche, jusqu'à +8 km). Banc routier réel (OSRM) sur 10 tournées du 20 au 28/10 : 761,9 → 749,2 km (-1,7 %), 2 villages coupés au lieu de 1 ; Brumath seul inchangé (58,7 km). **PR #97 mergée (`b74b1e6`), Edge `optimiser-tournee-colis` v20 déployée le 28/10/2026** ; « Recalculer » une tournée déjà calculée pour appliquer.
-- **Limites des zones sur la carte (28/10/2026)** : `shared/lib/zonesCarte.logic.ts` dessine chaque zone numéro par numéro (3 265 adresses du référentiel, zone de leur rue d'après `zones_rues` ; rue coupée ou absente = zone du numéro voisin ; cellule de Voronoï limitée à 90 m ; un numéro isolé à plus de 110 m des siens est ignoré) → frontières noires + étiquettes Z1 à Z7 dans `CarteTournee` (remplace les contours convexes des zones ; `chargerZonesBrumath`, ~100 ko lus une fois par session, dépendance `d3-delaunay`). Limite connue de l'ordre : deux adresses collées de zones différentes (ex. Place Victor Fischer / Rampont, Gal de Gaulle / rue de la Paix, rue de Bernolsheim / rue de l'Industrie) ont des numéros de passage très écartés ; seul le fichier de zones (zones_rues) peut le changer, rue par rue.
-- **Zones de Brumath + optimisation (27/10/2026, PR #94)** : fichier de l'utilisateur `Brumath adresses par zone.xlsx` (151 rues, zones 1 sud → 7 ouest, carte de contrôle) chargé dans la table `zones_rues` (migrations `20261027100000` et `20261027110000` appliquées) = SEULE source des zones (l'ancien fichier Excel donnait une autre numérotation : 43 arrêts sur 59 de la tournée du 27/10 avaient une zone différente). `appliquer_zones_tournee` : rue du fichier → sa zone (la feuille papier ne gagne plus) ; rue coupée (Millerand, de l'Herbe) → zone de la feuille si permise, sinon zone du point voisin ; rue absente → zone voisine, jamais de bloc « Brumath » isolé ; n'apprend plus rien. Edge `optimiser-tournee-colis` : `penaliserOrdreZones` impose 1 → 7 PENDANT la recherche (avant : on cherchait puis on rangeait les blocs, ce qui perdait les meilleurs points d'entrée / sortie) ; sur la tournée Brumath du 27/10 (59 arrêts, estimation vol d'oiseau × 1,3) 42,5 → 39,4 km ; sans l'ordre imposé des zones 35,6 km (le balayage 1 → 7 coûte ~4 km, choix de l'utilisateur). **PR #94 mergée, Edge v18 déployée le 27/10/2026** ; une tournée déjà créée garde son ordre : « Recalculer » (applique aussi les nouvelles zones). Les 10 rues du référentiel absentes du fichier (Chemin de la Hardt, Gaensweid, Lieu-dit Gottliebsacker, Lotissement Bellevue, Riedweg, Route de Weitbruch, Place du Marché, Rue des Pivoines, Rue d'Ohlungen, Rue de Berstheim) : l'utilisateur dit (28/10) que ces adresses n'existent pas, à oublier (restes de l'ancienne base, gardées, aucune tournée récente n'y passe ; suppression du référentiel possible, à demander avant). Diagnostic des va-et-vient (20 → 26/10) : cause réelle = panne IGN (voir plus haut), plan villages fait (voir plus haut).
-- **Documents aligné sur la convention du Drive (PR #91, en cours, 27/10/2026)** : nom `[DATE_]TYPE_TIERS[_N°].ext` MAJUSCULES sans montant, dossier d'après le tableau de la convention (`_shared/conventionDocuments.ts`, copie exacte côté site), pièces sensibles non lues par l'IA, écrans simplifiés (carte compacte, « Tout ranger », « Trier »), case « Dis-moi ce que c'est » (phrase → nom + dossier, sans IA, souple : fautes, abréviations, verso / pages), origine du document (fiche salarié / véhicule / client, déposé par) et habitudes de rangement apprises des documents classés (dossier et type habituels d'un tiers, exemples dans le prompt IA), recherche, doublons ; Bibliothèque : renommage IA d'un fichier / d'un dossier déjà dans le Drive (Edge `drive-renommer-ia` **v1 déployée le 27/10/2026**, sans lecture IA pour les dossiers Sécurité / Direction / Social et RH) ; Edge `trier-documents` à redéployer au merge (utilise désormais `_shared/lectureDocument.ts`) ; détail `mca-spec/revue/09-documents.md` § 0.
-- **Connexion refaite — MERGÉE le 26/10/2026 (PR #92, `fc90e0f`)** : `LoginPage.tsx` = UNE carte centrée, identique PC et mobile (logo, Google, e-mail, mot de passe avec œil, alerte majuscules, message d'erreur unique). Pas de panneau latéral, pas de routes animées, pas de champ piège (un gestionnaire de mots de passe le remplissait et bloquait l'envoi en silence). Les valeurs sont lues dans le formulaire à l'envoi (autofill). Bouton Google débloqué après 8 s ou au retour arrière. Pause navigateur après 5 échecs (`login.logic.ts`, `localStorage`), contournable : la vraie barrière est le verrou serveur (table `auth_echecs` + fonction `hook_password_verification_attempt`, migration `20261026090000` appliquée ; 5 échecs = 5 min, 10 = 30 min, 15 = 2 h). **Inerte tant que le hook n'est pas activé** : Supabase → Authentication → Hooks → « Password verification attempt » (à faire par l'utilisateur ; option : Captcha Turnstile dans Auth → Attack Protection). Un e-mail inconnu n'a pas de compte à verrouiller : seule la limite par IP de Supabase joue. Logs du 26/10 : 15 refus en 10 s sur la prod (mot de passe faux ou oublié), réinitialisation demandée.
-- **Onglet Documents (Système › Documents) — MERGÉ le 24/10/2026 (PR #89, `bc657b7`)** : fiche `mca-spec/revue/09-documents.md` (écran, Edge, données, limites). Inbox → tri IA (`trier-documents` v4) → À confirmer (dossier du Drive à choisir) → rangé dans le Drive (`drive-ranger` v3, confirmation instantanée) → Historique ; Bibliothèque = Drive (`drive-browse` v14, `drive-fichier` v1). Feuilles de route / synthèses / preuves de tournée rangées d'après la tournée, sans IA. Migrations `20261024110000`, `…120000`, `…130000` appliquées ; toutes les Edge déployées. **À faire par l'utilisateur** : reconnecter Google (Paramètres, cocher Drive), choisir le dossier de rangement, tester sur de vrais fichiers. Reste : aperçu .docx / .xlsx dans l'appli, décider de la copie Storage après rangement. Suite des refontes : Système (Paramètres, Admins), Flotte, `<select>` natifs restants, code mort « journées colis » dans Mes courses.
-- **Équipe allégée (24/10/2026, demande de l'utilisateur)** : onglets À valider, Journées, Rapports et Heures SUPPRIMÉS (code, alerte « journées à valider », droits `equipe.journees` / `equipe.heures` du catalogue, outil `get_heures` de l'assistant rendu muet) ; fiche membre sans Messagerie, Notes ni Documents (colonnes `tarif_*`, `clients_messagerie`, `notes`, tables `journees_colis*` / `work_hours` gardées en base, plus lues).
-- **Tiers refondu (24/10/2026)** : Clients + Fournisseurs = tuiles cliquables (`ChiffreCarte`, comptent sur l'ensemble, pas sur la liste filtrée), barre de recherche, `ListeDeroulante`, pastilles de filtre à bascule (`PastilleFiltre`), lignes avec `AvatarInitiales`, « Tout réinitialiser » ; listes natives de la fiche client / fournisseur passées en `ListeDeroulante`. Équipe (Membres + filtres des journées) refait de même le 24/10/2026. Reste : Système, Flotte, autres `<select>` natifs.
-- **Pennylane = source des montants (24/10/2026)** : plus de « Créer la charge » côté Justificatifs ; une facture supprimée chez Pennylane disparaît du site (charge + carburant / entretiens reliés) à la synchro, avec garde-fou anti-liste tronquée (`pennylane-sync` v23).
-- **Lecture IA des tickets (23/10/2026)** : Edge `lire-ticket` v2 lit le ticket DÈS LE DÉPÔT (lancée par le salarié, une seule fois, `ocr_lu_le`) et préremplit montant / date / catégorie / fournisseur (cases vides seulement ; plus de TVA, Pennylane la lit) ; le bureau confirme, voir `mca-spec/revue/06-finance.md`. Envoi Pennylane = mail PDF (Edge `pennylane-justificatif` v12). Reste F2b (HT / TVA par ligne de ventilation).
-- **Drive rétabli pour la Bibliothèque (24/10/2026, demande de l'utilisateur)** : un seul compte Google (contact@mcalogistics.fr) connecté dans Paramètres › « Compte Google (Gmail + Drive) » (`GmailConnect`, Edge `drive-oauth-start` v17 = scopes gmail.send + drive) ; Documents › Bibliothèque = le Drive uniquement (`drive-browse` v14 (arbre des dossiers), `drive-fichier` v1, `drive-rename`) ; un document confirmé est rangé par `drive-ranger` v3 (lots, confirmation instantanée côté écran) dans `<racine>/<chemin choisi à la confirmation>` (migration `20261024120000_documents_drive` appliquée). Écrans Drive d'avant (rapatriement, accès par compte) restent supprimés ; Edge `drive-*` d'ancien usage non appelées (`drive-list`, `drive-upload`, `drive-move`, `drive-delete`, `drive-create-folder`, `drive-migrate-to-storage`). Justificatifs validés → mail à `companies.pennylane_depot_email` (Edge `pennylane-justificatif` v12). Messages d'erreur de `send-client-email` citent encore « Drive » (à reformuler au prochain déploiement). **Reconnecter Google après déploiement** (ancien jeton = Gmail seul).
-- **CHANTIER PRIORITAIRE — Uniformisation Pennylane ↔ site** (demandé le 02/10/2026) : plan
-  `mca-spec/UNIFORMISATION-PENNYLANE.md` (écarts cités fichier:ligne, lots U1 → U8). Règle :
-  une seule source par règle (`_shared/` + miroir front testé) ; tout document envoyé à
-  Pennylane (client, devis, facture, avoir, paiement, charges) suit les mêmes règles que le
-  site. Ordre : U1 droits des 5 synchros · U2 client Pennylane unique (pays, TVA, SIREN, local
-  gagne) · U3 lignes du devis = lignes de facture · U4 devis converti suivi (choix d'archi à
-  valider) · U5 dates Paris + paiements réels · U6 mentions légales (= lot E) · U7 charges ·
-  U8 ménage. Lot par lot (migrations / Edge appliquées par Claude, voir § 9).
-  - **U1 codé (PR #41)** : `exigerPermission` + société de l'appelant dans pennylane-clients-sync
-    (tiers.clients/update), pennylane-sync (finance.charges/update), pennylane-payment-check et
-    qonto-sync (finance.tresorerie/update), pennylane-file (finance.charges | flotte.carburant |
-    flotte.entretiens / view + facture rattachée à une charge de la société) ; front :
-    `autoSync#DROIT_SYNC` filtre les synchros lancées. **Mergé (PR #41) et déployé le
-    03/10/2026** (qonto-sync v17, pennylane-file v2, pennylane-payment-check v20,
-    pennylane-clients-sync v16, pennylane-sync v20). Les paquets déployés ne contiennent que
-    les parties de `_shared` réellement importées (comportement identique).
-  - **U2 fait** : `_shared/clientPennylane.ts` (pur, testé) = règle unique du client Pennylane
-    (`payloadClientPennylane` : pays + n° TVA ; `ligneClientSync` : le site gagne, SIREN dans
-    `clients.siren`, un « siret » de 9 chiffres y est rangé, archivé reste archivé) ;
-    `_shared/pennylane#assurerClientPennylane` pour pennylane-invoice ET pennylane-quote ; facture
-    autoliquidée sans n° TVA client refusée ; fiche client : champ SIREN séparé du SIRET.
-    Migration `20261003090000_clients_siren` appliquée ; **mergé (PR #42) et déployé le
-    03/10/2026** (pennylane-clients-sync v17, pennylane-quote v14, pennylane-invoice v35).
-    Données : 0 « siret » à 9 chiffres, 10 SIREN.
-  - **U3 fait** : `_shared/lignesFacture#construireLignesDevis` (même assembleur que la facture :
-    quantité × PU, suppléments, autoliquidation `exempt` + mention, réf. client) ; pennylane-quote
-    lit la fiche de prix et refuse l'autoliquidation sans n° TVA ; front : règles de base dans
-    `shared/lib/lignesPennylane.ts` (aperçu facture + devis), `montantsDevis` = TVA ligne par
-    ligne. Sans migration. **Mergé (PR #44) et déployé le 03/10/2026** (pennylane-quote v15,
-    pennylane-invoice v36).
-  - **U4 fait (option A validée)** : « Facturer directement » sur un devis accepté crée la course
-    `livree` (`devis.logic#versLivraisonFacturable`, `quote_id`, `justif_non_requis`) puis la
-    facture par `shared/lib/facturation.queries#facturerCourse` (même code que Livraisons) ;
-    pennylane-invoice passe le devis `accepte` → `facture` (seul écrivain) ; pennylane-quote
-    `convert` refusée (410), verrou d'envoi `quotes.envoi_verrou`, refus dans `quotes.sync_error`
-    (affiché sur le devis). Migration `20261003120000_quotes_envoi_verrou` appliquée ; **mergé
-    (PR #46) et déployé le 03/10/2026** (pennylane-quote v16, pennylane-invoice v37). Limite :
-    chez Pennylane le devis n'est pas relié à la facture.
-  - **U5 fait** : `_shared/dates.ts` (jour / année à Paris, testés) dans pennylane-invoice,
-    register-payment, payment-check, last-numbers ; payment-check : `paid_at` = date de la
-    transaction rapprochée chez Pennylane, avoir → `annulee` + trace `sync_error` ;
-    `_shared/totaux#totalTtcCourseCts` = miroir testé de `deliveryTotalTtcCts`. Sans migration.
-    **Mergé (PR #47) et déployé le 03/10/2026** (invoice v38, register-payment v3,
-    payment-check v21, last-numbers v3 ; paquets réduits aux parties de `_shared` importées).
-    Reste : saisir à la main la date réelle d'un paiement (le front pose « maintenant »).
-  - **Prochain lot Pennylane : U6** (mentions légales), puis U7, U8 (reprise après la revue
-    Tournées, terminée le 06/10/2026).
-- **Audit du 01/10/2026** : `mca-spec/AUDIT-2026-10-01.md` (manques et bugs par section,
-  classés bloquant / important). À relire avant de toucher Tiers, Finance, Flotte.
-- **Lots fiche livraison** (`mca-spec/revue/03b-fiche-livraison.md`) : B fait (fiche client) ·
-  C échecs & annulation
-  (relivrer, retour dépôt, avoir) · D tournées de colis (import, scan, LV de tournée) · E facture
-  conforme (indexation gazole, pays client, CMR).
-- Dashboard : compter les **colis** de messagerie (aujourd'hui un relevé = 1 livraison dans les
-  compteurs ; le CA est juste).
-- Devis : PR #41 (D1 + D2 + uniformisation avec la fiche livraison + recherche / filtres de la
-  liste). Migration `20261002090000_quotes_fiche_prix` **appliquée en prod le 02/10/2026**. D3 = lot U3 (fait, 03/10/2026) ; D4 reste :
-  expiration automatique, relance des devis envoyés > 7 j.
-- ~20 fiches clients « particuliers » jetables (anciennes courses de plateformes) : fusionner
-  ou désactiver ? (à décider)
-- 1 client au délai 60 j (non conforme) : le repasser à 30 j dans sa fiche.
-- Correctif global `text-[var(--fs-*)]` : PR dédiée à décider.
-- Chauffeur : supprimer ses propres photos dans l'heure ? (question ouverte)
-- **Dépenses véhicule** (Carburant + Entretiens) : plan `mca-spec/tabs/30-depenses-vehicule.md`
-  à lire AVANT d'y toucher ; étapes 0-1 faites, étape 2 (table unifiée) attend le « go ».
-  Pas d'immobilisation ni de prorata km dans ces écrans.
-- Planning : changer chauffeur / jour détache la course de sa tournée (choix à confirmer).
-- **Revue 04a Tournées** (`mca-spec/revue/04a-tournees.md`, 04/10/2026) : lots T1 → T5.
-  **T1 fait** (PR #49, déployé : optimize-tours v20 avec `exigerPermission(planning.tournees/
-  update)` + société de l'appelant ; optimize-tour v13 = 410) : « mon ordre » écrit
-  `driver_id` / `vehicle_id`, affectations reprises, confirmation avant écrasement. Décision :
-  temps d'arrêt **5 min par livraison** (T3). **T2 fait** (PR #50, mergé, sans migration ni
-  Edge) : retirer une course, supprimer une tournée, badge « Tournée X », documents échus.
-  **T3 + T4 + T5 faits** (PR #51, mergé et déployé le 06/10/2026 : migration
-  `20261004090000_tours_depart_demarrage` appliquée, optimize-tours v21) : départ choisi
-  (`tours.heure_depart`), 5 min / arrêt, créneaux, urgent, `tours.started_at` (trigger
-  `tours_started_at`), carburant inventé retiré, retraits en paires (géocodés à la volée par
-  optimize-tours, sans colonne), écran 2 colonnes. Revue Tournées terminée.
-  Piège MCP : `apply_migration` expire sur plusieurs instructions groupées ou un corps `$$` →
-  appliquer instruction par instruction (corps de fonction entre apostrophes).
-- **Espace salarié** (demandé le 12/10/2026, PRIORITAIRE) : plan `mca-spec/PLAN-ESPACE-SALARIE.md`
-  (heures saisies par le salarié, journée messagerie colis domicile / relais + photo,
-  validation bureau avec verrou, rapports jour / mois / salarié, relevé client déduit, ticket →
-  Pennylane). Décisions du 12/10 en § 0 du plan (heures retirées : LIC papier ; tarifs domicile
-  et relais ; litige + raison ; validation admin + double confirmation + historique). Lots S0
-  → S4. **S0 codé (PR #52)** : cloisonnement du salarié (migration
-  `20261012090000_salarie_cloisonnement` : toute la finance était lisible par tout compte) +
-  « Accès au site » dans la fiche Équipe (Edge `admin-users`). Règle : toute nouvelle table
-  reçoit sa policy salarié. **Migration S0 appliquée le 12/10/2026** (vérifié en simulant le
-  compte chauffeur de Lucas : 0 charge / 0 fiche lue ; président inchangé).
-  **S0-bis (PR #52, audit de 3 agents)** : migration `20261012100000_salarie_terrain` (écritures
-  terrain du salarié sur SES courses / SA tournée bornées par triggers, compte désactivé =
-  `current_company_id()` null, Qonto / produits véhicule fermés, profile_id unique, FK SET NULL),
-  Edge avec contrôle de droit (admin-users, drive-*, geocode, lire-facture, lire-releve,
-  suggest-categorie-ia, send-client-email, pennylane-last-numbers), Mes courses corrigé (faux
-  « enregistré », créneaux, compteurs, SMS, itinéraire), cadre chauffeur épuré, Accès au site
-  complet, Équipe / Heures corrigés. Restent : montants lisibles par le salarié sur ses courses
-  (vue dédiée à faire), Edge ai-extract-deliveries / assistant-chat / alertes-briefing /
-  brouillons-generate / route-calc / drive-status sans contrôle de droit, colonne
-  `work_hours.total_minutes` fausse sur une nuit. **Migration appliquée le 14/10/2026.**
-  **S1 (PR #52, 13/10/2026)** : migration `20261012110000_journees_colis_depenses` (tarifs domicile /
-  relais + clients de messagerie dans la fiche, `journees_colis` + historique, garde : validée =
-  verrouillée, motif obligatoire pour la toucher, photos `entity_type = 'journee_colis'`, dépenses
-  enrichies dans `receipts_inbox`) ; droit `equipe.journees`. Salarié (Mes courses, 4 onglets) :
-  Courses · Ma journée (+ Mon mois, paie estimée ; **« Ma journée » supprimée le 19/10**) · Dépenses (photo vérifiable, carte société /
-  note de frais, suivi) · Moi. Bureau : Équipe › À valider / Journées / Rapports (+ CSV), fiche
-  Messagerie, justificatifs enrichis dans Charges, cloche. Reste : téléphone de la société pour
-  « Appeler le bureau » ; « Créer la charge » ne reprend pas encore montant / note de frais ;
-  clôture du mois ; dépense → Pennylane (S3). **Migration appliquée, PR #52 mergée et Edge
-  déployées le 14/10/2026** (admin-users v10, drive-connect v10, drive-disconnect v2,
-  drive-oauth-start v13, drive-oauth-callback v11 `verify_jwt=false`, geocode v6,
-  send-client-email v5, suggest-categorie-ia v4, lire-facture v8, lire-releve v2,
-  pennylane-last-numbers v4). Note : geocode avec `address` reste ouvert sans session (simple
-  lecture IGN, aucune écriture) ; seul le `backfill` exige le droit.
-  À tester : lier Lucas à sa fiche (Accès au site), lui donner le client de messagerie + tarifs
-  domicile / relais, saisir une journée avec photo, la valider côté bureau.
-  Piège : `id = any((select f()))` est refusé par Postgres (sous-requête) → `(select f()) @> array[id]` ;
-  remplacer une policy = `alter policy` (pas de drop + create : trou d'accès et timeout MCP).
-- **Tournée de colis** : TC1 « socle » **mergé (PR #55, 18/10/2026)**, migration
-  `20261017090000_tournees_colis` + Edge `lire-feuille-route` en prod. Familles de statut
-  validées le 18/10/2026 (outil des livreurs) : livré = livre, rc_remis, col_ok · attente =
-  avise, instance · retour = refuse, npai, adresse, acces, endommage, nonpres, rc_ferme,
-  rc_sature, col_nf · neutre = col_rien.
-  **Lots 2 à 5 mergés (PR #56)**. **PR #58 mergée le 18/10/2026** (ergonomie une main : barre
-  du prochain arrêt, gros boutons, annulation 8 s, code couleur classique bleu / relais violet /
-  collecte jaune, avancement par catégorie ; relais revérifiés sur localiser.laposte.fr le
-  18/10/2026 : Mommenheim 37 rte de Brumath, Geudertheim 52 rue du Gal de Gaulle + 1 rue de
-  l'Industrie, Kriegsheim 13 Grand'Rue, Bernolsheim 4C rue de Lisbonne (+ Super U, route de
-  Brumath, sans numéro : non ajouté ; 2A rue Principale vient de l'ancien outil, non retrouvé
-  sur La Poste), Brumath 141 av. de Strasbourg + 4A rue des Carrières, Mittelschaeffolsheim 1 ter
-  rue de Mittelhausen ; aucun relais Pickup trouvé pour Berstheim, Bilwisheim, Donnenheim,
-  Hochstett, Krautwiller, Wittersheim, Waltenheim-sur-Zorn ; Wingersheim = agence communale en
-  mairie) : départ fixe (centre de tri de Vendenheim, migration
-  `20261018100000_companies_depart_colis`, optimiser-tournee-colis v3) + scan v2 (migration
-  `20261018110000_referentiel_tournees_colis` appliquée et base chargée : 700 rues, 9 985
-  numéros ; lire-feuille-route v3 déployée). Piège : `apply_migration` / `execute_sql` sur
-  un gros paquet de données = découper en blocs de ~15 Ko (coordonnées en écarts entiers).
-  Lots 2 à 5 (PR #56, squash 9a212bf, 18/10/2026) :
-  migration `20261018090000_tournees_colis_route` **appliquée le 18/10/2026** (ordre / eta /
-  trajet / clôture, `positions_livreurs`, photos `arret_colis`) ; Edge
-  `optimiser-tournee-colis` **v2** et `lire-feuille-route` v2 **déployées le 18/10/2026**.
-  Calcul : ORDRE sur les temps de route réels (matrice ORS, vérifié sur une vraie tournée de
-  106 arrêts : 106 km contre 151 km dans l'ordre de la feuille) + recherche locale itérée
-  (~0,8 s) ; TRACÉ par l'itinéraire IGN (sans clé, 15 étapes max par appel → tronçons de
-  17 points), ORS en secours, ligne droite seulement pour un tronçon qui échoue (la v1
-  traçait par ORS, qui échouait : carte en lignes droites alors que l'ordre était juste). Front :
-  `shared/lib/tourneesColisRoute.ts` (règles pures), `shared/ui/CarteTournee.tsx` (Leaflet,
-  Plan IGN), `mescourses/MaTournee.tsx` + `ArretTournee.tsx`, `tournees/TourneesColisDuJour.tsx`,
-  `livraisons/ColisDesJournees.tsx`. Départ des tournées de colis : **centre de tri La Poste de
-  Vendenheim** (EcoParc Rhénan, décidé le 18/10/2026), réglé dans Paramètres › Société
-  (`companies.depart_colis_*`, migration `20261018100000_companies_depart_colis` appliquée, Edge
-  v3) ; repli : adresse du remettant, puis dépôt. À valider : temps par arrêt (2 min,
-  `_shared/tourneeRoute#ARRET_S`),
-  partage de position (prévenir les salariés : information CNIL / affichage).
-  **Plus court par la route (19/10/2026)** : le solveur minimise la DISTANCE routière (`matriceCouts` = mètres + 0,05·secondes en départage) et non plus le temps, + polissage exact par fenêtres de 10 arrêts (`polirParFenetres`) ; sur la vraie tournée de 68 arrêts (matrice OSRM) 69,7 → 67,5 km. optimiser-tournee-colis **v4 déployée** ; il faut « Recalculer » une tournée déjà calculée. **Quota ORS (19/10/2026)** : l'ancienne adresse api.openrouteservice.org est dépréciée (quota réduit à 10 % depuis le 27/08/2026, fermeture début 11/2026) → l'Edge (v8) utilise api.heigit.org/openrouteservice/v2, même clé. L'optimisation (Vroom) n'existe PAS sur api.heigit.org (vérifié le 19/10/2026) : remplacée le 20/10/2026 pour optimize-tours (voir Tournées). Qualité du solveur validée le 19/10/2026 contre OR-Tools (60 s, routes OSRM) : 62 357 m contre 62 356 m (tournée 7832ca6d), 67 478 m contre 67 532 m. « 403 Quota exceeded » = limite du jour ; plus AUCUN secours (décision du 19/10) : ni vol d'oiseau, ni tracé ORS, ni ligne droite ; l'Edge (v9) répond une erreur claire (limite du jour, ORS ou IGN indisponible) et laisse l'ordre actuel intact. **Village par village (décision du 19/10/2026)** : chaque village en UN seul bloc (`penaliserChangementsVillage`, +1 000 km par changement de village dans le coût ; `tournees_colis_arrets.commune` lu par l'Edge v11) ; vraie tournée 7832ca6d : 63,8 km village par village contre 62,4 km sans contrainte (Geudertheim coupé en deux), OR-Tools ne fait pas mieux. Le calcul de l'ordre est lancé AUTOMATIQUEMENT à la création d'une tournée scannée (`ScanFeuilleRoute`, 19/10/2026) ; Edge v10 : message distinct « limite du jour » (403 + quota) / « accès refusé » (autre 403). Quota ORS (compte HeiGIT) : matrice 500 / jour (4 requêtes par calcul de 68 arrêts, 1 si ≤ 59 points). Les trous de la matrice ORS (point sans route) restent bouchés par le vol d'oiseau (`completerMatrices`).
-  **Horaires des relais La Poste (19/10/2026)** : Edge `horaires-relais-poste` v1 (open data La Poste, jeu `laposte-ouvertur` sur data.laposte.fr/data-fair, sans clé, quotidien) → ligne « Ouvert jusqu'à 12 h / Fermé · ouvre à 15 h » (`mescourses/HorairesRelais.tsx`, `shared/lib/relaisPoste.ts`) sur les arrêts relais / collecte dont l'adresse est un point La Poste : Geudertheim 52 rue du Gal de Gaulle (12532A), Mommenheim 37 route de Brumath (12585A), Wingersheim mairie (12692A), Brumath bureau (12494A). Les relais « Pickup » (Kriegsheim, Bernolsheim, Geudertheim rue de l'Industrie…) ne sont PAS dans cette base : aucun horaire, rien d'affiché. L'ordre du trajet ne tient pas compte des horaires (affichage seulement, décision du 19/10).
-  **Mes courses › Dépenses / Moi (19/10/2026)** : note OBLIGATOIRE, plus de catégorie côté salarié (le bureau la choisit) ; Moi sans « Mon véhicule », sans « L'appli sur ton téléphone », sans « Se déconnecter » (bouton du haut) ; « Mes documents » : envoi d'un document au bureau (`documents` entity_type `team_member` sur SA fiche, migration `20261019100000_documents_salarie_ma_fiche`, appliquée). « Y aller » : Google Maps par défaut (`prefChauffeur#APP_NAV_DEFAUT`, décision du 19/10), choix Google Maps / Waze / Plans dans Moi › Navigation (par téléphone).
-  **Ma tournée à la main + lecture en arrière-plan (19/10/2026)** : bandeau du haut collé (arrêts, km, boutons avec nom : Liste / Carte / Recalculer / Par la fin / Depuis ici / Partager). « Commencer par la fin » inverse tout ce qui reste ; flèches par village (en premier / monter / descendre) ; tout ordre changé à la main (glisser, village, inversion) relance l'Edge `optimiser-tournee-colis` en mode **`suivre`** (v12 : ordre gardé, seuls km / durée / heures / tracé refaits par ORS directions + IGN, sans matrice). « Recalculer » (ex-« Réinitialiser ») = recalcul complet (confirmation si ordre manuel) ; plus de « Ordre habituel » / « Ordre calculé ». **Scan serveur** (les photos partent UNE PAR UNE dès qu'elles sont prises, scan `brouillon` ; « Lire » = petite requête `keepalive` qui lance l'Edge puis on peut tout quitter ; avant ça, fermer la page pendant l'envoi des photos perdait le scan) : tables `scans_feuille_route` + `scans_feuille_route_pages` (migration `20261019110000`, appliquée), Edge `scanner-feuille-route` v3 (lit les pages avec `EdgeRuntime.waitUntil`, reprise si `battement` > 90 s) + `_shared/lireFeuilleCore.ts` (lecture d'une page, partagée avec `lire-feuille-route` v7) ; le front envoie les photos puis suit l'avancement ; au retour (autre onglet, site rouvert) `trouverScan` ramène le scan (carte dans Aujourd'hui, pastille sur Ma tournée). La tournée n'est créée qu'au clic « Créer la tournée » (photos effacées).
-  Piège Leaflet : `keyboard={false}` sur la carte (sinon le toucher fait sauter la page et la
-  pastille n'est plus sous le doigt) ; `isolate` sur le conteneur (sinon la carte passe sur
-  l'en-tête collant).
-  Banc de captures : Playwright + `page.route` sur une base simulée (aucun appel prod).
-- **À décider (28/10/2026)** : ordre des villages d'après l'onglet « Villages » de `Tournée Brumath et villages 23.xlsx` (non fait) ; points collés de zones différentes à Brumath (Place Victor Fischer / Rampont, Gal de Gaulle / rue de la Paix, rue de Bernolsheim / rue de l'Industrie) : changer la zone de ces rues dans `zones_rues` si l'utilisateur le demande ; fin de tournée Brumath en zone 7 = 18 km de retour (zone 7 avant la 6 gagnerait ~2,6 km / jour, non demandé, zones figées par l'utilisateur) ; Lucas rentre-t-il à Vendenheim (sinon arrivée « aucune »). Alerte « ordre manuel plus long que le calculé » (proposée, non faite). Frontières postales exactes non publiées (les limites de la carte viennent des adresses). **Lecture IA** : Mistral gratuit reste en place ; passer à Claude coûterait ~2-3 $/mois avec Haiku 5.5 (~30-40 $ avec Sonnet 5.5) pour ~780 photos/mois, estimation non mesurée → essai comparatif Mistral / Haiku / Sonnet sur la feuille de Brumath proposé, nécessite une clé API Anthropic (plafond 5 $/mois) ; rien changé.
-- U6 : décisions du 12/10/2026 = pénalités **taux BCE + 10 points**, **pas d'escompte** ;
-  pied Pennylane (pénalités / 40 €) vérifié par l'utilisateur ; manque la **part du gazole (%)**.
-- Refonte par onglet (22/10/2026) : plan et décisions dans `mca-spec/DECISIONS-2026-10-22.md`. Faits : zoom, Mes courses
-  retiré du menu bureau, Flotte allégée, Pilotage, fond / cadre, Livraisons (Modèles + LV retirés, tuiles fusionnées,
-  Preuves sur une page, Devis harmonisé). Planning / Tournées : fait le 22/10/2026 (voir § 11). Finance lot F1 (`mca-spec/revue/06-finance.md`) : Encaissement + Relances retirés, Trésorerie lecture seule, Charges par mois en HT ; F2a fait (onglet Justificatifs, moyen de paiement obligatoire, `receipts_inbox.rembourse_le`, charge « passée en OD ») ; reste F2b (HT / TVA par ligne de ventilation, IA) et le transfert Pennylane. Reste aussi : Équipe, Tiers, Système, reste de Flotte. Edge `send-client-email` (v6), `assistant-chat` (v26) et `optimize-tours` (v23) déployées le 22/10/2026.
+## 11. État actuel & à décider (29/10/2026)
+> Le détail (lots faits, versions d'Edge, chiffres, bancs de test) est dans `mca-spec/HISTORIQUE.md` : ne le lire QUE si on touche la zone concernée (grep). Ici : le strict utile.
+- 8 sections (`src/app/sections/`) : Pilotage · Livraisons (Livraisons, Devis) · Finance (Trésorerie, Charges, Justificatifs) · Flotte · Planning (Tournées, Planning) · Tiers · Équipe · Système (Paramètres, Documents, Cartes bancaires, Admins). Hors menu : Mes courses (salarié), Alertes. Les specs `mca-spec/tabs/` sont partielles : vérifier le code.
+- Activité actuelle : messagerie Colissimo (tournées de colis scannées, relevé mensuel). Express retiré de Mes courses.
+- Fiches de revue : `mca-spec/revue/NN-*.md` (une par onglet).
+- **À faire par l'utilisateur** : activer le hook « Password verification attempt » (Supabase → Auth → Hooks) ; reconnecter Google dans Paramètres (cocher Drive) puis tester Documents sur de vrais fichiers ; tester l'interface salarié sur un vrai compte.
+- **À décider** : ordre des villages (onglet « Villages » du fichier Excel) · zones collées à Brumath (changer la zone dans `zones_rues` si demandé) · Lucas rentre-t-il à Vendenheim · alerte « ordre manuel plus long que le calculé » · Mistral gratuit vs Claude Haiku pour la lecture des photos · ~20 fiches clients « particuliers » jetables (fusionner / désactiver) · 1 client à 60 j à repasser à 30 j · correctif global `text-[var(--fs-*)]` · chauffeur : supprimer ses photos dans l'heure ? · Planning : changer chauffeur / jour détache la course de sa tournée.
+- **Chantiers ouverts** : Pennylane U6 (mentions légales ; manque la part du gazole %), U7 charges, U8 ménage · Dépenses véhicule étape 2 (attend le « go ») · Dashboard : compter les colis de messagerie · Devis D4 (expiration, relance > 7 j) · Refonte par onglet : Système (Paramètres, Admins) fait ; **Flotte arrêtée après Véhicules (décision du 29/10)** — non fait : Carburant HT + conso, Entretiens HT, coût 12 mois (carburant aussi dans Finance › Justificatifs : arbitrer si reprise) ; reste les `<select>` natifs → `ListeDeroulante`.
+- Plans de référence : `mca-spec/UNIFORMISATION-PENNYLANE.md`, `PLAN-ESPACE-SALARIE.md`, `DECISIONS-2026-10-22.md`, `AUDIT-2026-10-01.md`.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)
 - Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation → PR +
@@ -460,3 +253,4 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   (`from('deliveries')`, `functions.invoke('pennylane-invoice')`) ni le SQL : pour ça,
   `CARTE-INTERCONNEXIONS.md` + grep restent la règle (§ 7). `graphify-out/` n'est pas versionné.
 - Specs onglets : `mca-spec/tabs/` · intégrations : `mca-spec/integrations/` · revue : `mca-spec/revue/`.
+- **Économie de tokens (29/10/2026)** : ce fichier reste sous ~25 Ko (relu à chaque session). Tout détail d'historique va dans `mca-spec/HISTORIQUE.md`, jamais ici. Ne lire que les fichiers de l'étape ; sous-agent seulement pour une lecture lourde isolée.
