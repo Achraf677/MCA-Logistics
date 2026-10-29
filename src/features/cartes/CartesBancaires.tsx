@@ -20,6 +20,7 @@ import {
 } from '../../shared/lib/cartesBancaires'
 import { creerCarte, listerCartes, modifierCarte, supprimerCarte, usageCartes } from '../../shared/lib/cartesBancaires.queries'
 import { rechargerCartes } from '../../shared/lib/useCartesBancaires'
+import { CompteBancaire } from './CompteBancaire'
 
 const jourFr = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 
@@ -101,6 +102,7 @@ export function CartesBancaires() {
   return (
     <Shell pageTitle="Cartes bancaires">
       <div className="flex flex-col gap-4">
+        <CompteBancaire />
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-sm text-[var(--text-muted)] flex-1 min-w-[16rem]">
             Les cartes proposées dans les dépenses et les justificatifs. Désactive une carte à partir d’une date : les anciennes dépenses la gardent. Une carte déjà utilisée ne se supprime pas, elle se désactive.

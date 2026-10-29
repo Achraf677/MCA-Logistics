@@ -50,7 +50,7 @@ export function AddressAutocomplete({
    * rouvrait toute seule sur l'adresse déjà choisie. Comparer la valeur est
    * insensible au nombre de rendus.
    */
-  const dernierChoix = useRef<string | null>(null)
+  const dernierChoix = useRef<string | null>(value.trim() || null)
   const boxRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
