@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   carteActiveLe, carteSupprimable, cartesPour, libelleCarte, manquesCarte, nouveauCodeCarte, optionsCartes, statutCarte, typeCarteDuMoyen,
   type CarteBancaire,
-} from './cartes'
+} from './cartesBancaires'
 
 const c = (o: Partial<CarteBancaire>): CarteBancaire => ({
   id: 'i', code: 'qonto_4103', nom: 'QONTO', fin: '4103', type: 'societe', actif_a_partir_du: null, inactif_a_partir_du: null, ...o,

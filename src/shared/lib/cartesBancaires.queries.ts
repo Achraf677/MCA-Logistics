@@ -1,5 +1,5 @@
 import { supabase } from '../../app/providers'
-import type { CarteBancaire, SaisieCarte, TypeCarte, UsageCarte } from './cartes'
+import type { CarteBancaire, SaisieCarte, TypeCarte, UsageCarte } from './cartesBancaires'
 
 const COLS = 'id, code, nom, fin, type, actif_a_partir_du, inactif_a_partir_du'
 

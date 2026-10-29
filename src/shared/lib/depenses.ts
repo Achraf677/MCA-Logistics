@@ -23,7 +23,7 @@ export const LIBELLE_MOYEN: Record<MoyenPaiement, string> = {
   personnel: 'De ma poche (note de frais)',
 }
 
-/** Ce moyen de paiement demande de choisir une carte (liste gérée dans Système › Cartes bancaires, `shared/lib/cartes`). */
+/** Ce moyen de paiement demande de choisir une carte (liste gérée dans Système › Cartes bancaires, `shared/lib/cartesBancaires`). */
 export const moyenAvecCarte = (moyen: string | null | undefined): boolean => moyen === 'carte_societe' || moyen === 'carte_carburant'
 
 /** Carte carburant : suivi informatif par mois et par véhicule, jamais envoyé à Pennylane (facture mensuelle de la carte). */

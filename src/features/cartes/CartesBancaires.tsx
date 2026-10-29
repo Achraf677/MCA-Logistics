@@ -17,9 +17,9 @@ import { toLocalISO } from '../../shared/lib/dates'
 import {
   LIBELLE_TYPE_CARTE, carteSupprimable, libelleCarteBancaire, manquesCarte, nouveauCodeCarte, statutCarte,
   type CarteBancaire, type SaisieCarte, type StatutCarte, type TypeCarte, type UsageCarte,
-} from '../../shared/lib/cartes'
-import { creerCarte, listerCartes, modifierCarte, supprimerCarte, usageCartes } from '../../shared/lib/cartes.queries'
-import { rechargerCartes } from '../../shared/lib/useCartes'
+} from '../../shared/lib/cartesBancaires'
+import { creerCarte, listerCartes, modifierCarte, supprimerCarte, usageCartes } from '../../shared/lib/cartesBancaires.queries'
+import { rechargerCartes } from '../../shared/lib/useCartesBancaires'
 
 const jourFr = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`
 

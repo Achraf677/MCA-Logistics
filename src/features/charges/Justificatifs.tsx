@@ -19,8 +19,8 @@ import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney } from '../../shared/lib/money'
 import { estCarburant, libelleCategorie, manquesValidation, totalARembourser } from '../../shared/lib/depenses'
 import { grouperParMois, libelleMois } from '../../shared/lib/mois'
-import { libelleCarte } from '../../shared/lib/cartes'
-import { useCartes } from '../../shared/lib/useCartes'
+import { libelleCarte } from '../../shared/lib/cartesBancaires'
+import { useCartes } from '../../shared/lib/useCartesBancaires'
 import {
   classerTicket, corrigerTicket, envoyerVersPennylane, lireTicketIa, listerTickets, remettreATraiter, supprimerDepense,
   marquerRembourse, refuserDepense, urlTicket, urlsTickets, vehiculesPourPlein, type TicketInbox,

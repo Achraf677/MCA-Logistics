@@ -12,8 +12,8 @@ import { formatMoney } from '../../shared/lib/money'
 import {
   CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, moyenAvecCarte, estCarburant, manquesValidation, montantSaisiEnCts, type CategorieDepense,
 } from '../../shared/lib/depenses'
-import { libelleCarte, optionsCartes, typeCarteDuMoyen } from '../../shared/lib/cartes'
-import { useCartes } from '../../shared/lib/useCartes'
+import { libelleCarte, optionsCartes, typeCarteDuMoyen } from '../../shared/lib/cartesBancaires'
+import { useCartes } from '../../shared/lib/useCartesBancaires'
 import { urlTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import { jourFr } from './charges.logic'
 import { etapesSuivi, etatJustificatif, type EtapeSuivi } from './justificatifs.logic'

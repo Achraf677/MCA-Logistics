@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import type { CarteBancaire } from './cartes'
-import { listerCartes } from './cartes.queries'
+import type { CarteBancaire } from './cartesBancaires'
+import { listerCartes } from './cartesBancaires.queries'
 
 // Liste des cartes lue une fois par session puis partagée par tous les écrans (salarié et bureau) ; rechargée après une modification.
 let cartes: CarteBancaire[] = []
