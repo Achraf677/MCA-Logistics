@@ -103,3 +103,20 @@ describe('detailBrut', () => {
     expect(detailBrut(null)).toEqual([])
   })
 })
+
+import { formatEntrees, formatSorties, manqueUnJustificatif } from './tresorerie.logic'
+describe('résumé et justificatif manquant', () => {
+  it('zéro sans signe', () => {
+    expect(formatSorties(0)).toBe(formatEntrees(0))
+    expect(formatSorties(0).includes('−')).toBe(false)
+    expect(formatSorties(1250).startsWith('−')).toBe(true)
+    expect(formatEntrees(1250).startsWith('+')).toBe(true)
+  })
+  it('pas de « sans justificatif » sur un virement interne ni sur une entrée', () => {
+    const d = { id: 'd', side: 'debit' as const, charge_id: null, justif_type: null }
+    expect(manqueUnJustificatif(d, new Set())).toBe(true)
+    expect(manqueUnJustificatif(d, new Set(['d']))).toBe(false)
+    expect(manqueUnJustificatif({ ...d, side: 'credit' }, new Set())).toBe(false)
+    expect(manqueUnJustificatif({ ...d, charge_id: 'c' }, new Set())).toBe(false)
+  })
+})
