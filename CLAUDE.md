@@ -2,7 +2,7 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **29/10/2026** (allégé : détail déplacé dans `mca-spec/HISTORIQUE.md`).
+> Dernière mise à jour : **30/10/2026** (allégé : détail déplacé dans `mca-spec/HISTORIQUE.md`).
 
 
 ---
@@ -231,6 +231,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - Trésorerie : relevés séparés Qonto / Swan + vue Fusion. Swan = compte « Compte Pro Pennylane » lu via l'API Pennylane (Edge `pennylane-solde` : solde + opérations dans `qonto_transactions.source='swan'`). Piège : Pennylane liste aussi Qonto (« Compte principal »), sans IBAN → ne jamais importer ce compte-là. Montants Pennylane = euros décimaux en chaîne.
 - Activité actuelle : messagerie Colissimo (tournées de colis scannées, relevé mensuel). Express retiré de Mes courses.
 - Fiches de revue : `mca-spec/revue/NN-*.md` (une par onglet).
+- **Flotte (refonte 29-30/10/2026, `mca-spec/revue/10-flotte.md`)** : Véhicules mergé (PR #111, tables `incidents` / `vehicle_inspections` supprimées) ; Carburant en HT (`fuel_logs.total_ht_cts`, conso L/100) et Entretiens en HT (`vehicle_maintenances.cost_ht_cts`, reprise ticket par ticket) en PR. Pas de DROP dans `supabase/migrations/` (le CI refuse) ; coût HT 12 mois sur la carte véhicule : à faire ensuite.
 - **À faire par l'utilisateur** : activer le hook « Password verification attempt » (Supabase → Auth → Hooks) ; reconnecter Google dans Paramètres (cocher Drive) puis tester Documents sur de vrais fichiers ; tester l'interface salarié sur un vrai compte.
 - **À décider** : ordre des villages (onglet « Villages » du fichier Excel) · zones collées à Brumath (changer la zone dans `zones_rues` si demandé) · Lucas rentre-t-il à Vendenheim · alerte « ordre manuel plus long que le calculé » · Mistral gratuit vs Claude Haiku pour la lecture des photos · ~20 fiches clients « particuliers » jetables (fusionner / désactiver) · 1 client à 60 j à repasser à 30 j · correctif global `text-[var(--fs-*)]` · chauffeur : supprimer ses photos dans l'heure ? · Planning : changer chauffeur / jour détache la course de sa tournée.
 - **Chantiers ouverts** : Pennylane U6 (mentions légales ; manque la part du gazole %), U7 charges, U8 ménage · Dépenses véhicule étape 2 (attend le « go ») · Dashboard : compter les colis de messagerie · Devis D4 (expiration, relance > 7 j) · Refonte par onglet : Système (Paramètres, Admins) fait ; **Flotte arrêtée après Véhicules (décision du 29/10)** — non fait : Carburant HT + conso, Entretiens HT, coût 12 mois (carburant aussi dans Finance › Justificatifs : arbitrer si reprise) ; reste les `<select>` natifs → `ListeDeroulante`.

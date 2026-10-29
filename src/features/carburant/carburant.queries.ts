@@ -1,4 +1,5 @@
 import { supabase } from '../../app/providers'
+import { htDuPlein, prixLitreHtMilli } from './carburant.logic'
 import type { FuelFilters, FuelLogInsert, FuelLogRow, FuelLogUpdate } from './carburant.types'
 
 const WITH_JOINS = [
@@ -49,19 +50,19 @@ export async function exportFuelCSV(filters: FuelFilters = {}) {
   const { data } = await getFuelLogs(filters)
   if (!data) return ''
   const rows = data as unknown as FuelLogRow[]
-  const headers = ['Date', 'Véhicule', 'Immat.', 'Chauffeur', 'Litres', '€/L', 'Total TTC (€)', 'Carburant', 'km', 'Station', 'Facturé']
+  const headers = ['Date', 'Véhicule', 'Immat.', 'Chauffeur', 'Litres', '€/L HT', 'Total HT (€)', 'Carburant', 'Station', 'Facturé', 'Total TTC (€)']
   const lines = rows.map(d => [
     d.date,
     d.vehicles?.label ?? '',
     d.vehicles?.plate ?? '',
     d.team_members?.full_name ?? '',
     d.liters,
-    (d.price_per_liter_milli / 1000).toFixed(3),
-    (d.total_cts / 100).toFixed(2),
+    (prixLitreHtMilli(d) / 1000).toFixed(3),
+    (htDuPlein(d) / 100).toFixed(2),
     d.fuel_type ?? '',
-    d.mileage_km ?? '',
     d.station ?? '',
     d.charges ? 'Oui' : 'Non',
+    (d.total_cts / 100).toFixed(2),
   ])
   return [headers, ...lines].map(r => r.join(';')).join('\n')
 }

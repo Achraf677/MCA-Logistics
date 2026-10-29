@@ -104,6 +104,8 @@ interface ShellProps {
   pageTitle: string
   actions?: ActionKey[]
   onAction?: (key: ActionKey) => void
+  /** Commande posée à gauche des boutons d'action (ex. bascule HT / TTC). */
+  actionsGauche?: ReactNode
 }
 
 // Permet d'IMBRIQUER un Shell dans un autre (pages à sous-onglets) : un Shell
@@ -117,7 +119,7 @@ const CADRE_FOND = 'bg-[color-mix(in_srgb,var(--bg-elevated)_70%,transparent)]'
 const FILET_BAS = "after:content-[''] after:absolute after:inset-x-0 after:-bottom-px after:h-px after:pointer-events-none after:opacity-60 after:bg-[linear-gradient(90deg,var(--brand),transparent_50%,var(--gold))]"
 const BARRE_HAUT = `relative flex items-center h-[var(--topbar-h)] px-4 gap-3 ${CADRE_FOND} border-b border-[var(--border-soft)] shrink-0 ${FILET_BAS}`
 
-export function Shell({ children, pageTitle, actions = [], onAction }: ShellProps) {
+export function Shell({ children, pageTitle, actions = [], onAction, actionsGauche }: ShellProps) {
   const nested = useContext(ShellNestContext)
   const location = useLocation()
   const navigate = useNavigate()
@@ -147,8 +149,9 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
   if (nested) {
     return (
       <div className="flex flex-col gap-4">
-        {actions.length > 0 && (
+        {(actions.length > 0 || actionsGauche) && (
           <TabActions>
+            {actionsGauche}
             <ActionBar actions={actions} onAction={onAction} />
           </TabActions>
         )}
@@ -165,6 +168,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
             {pageTitle}
           </h1>
           <div className="flex items-center gap-2 ml-auto shrink-0">
+            {actionsGauche}
             <ActionBar actions={actions} onAction={onAction} />
             {profile && (
               <div className="hidden sm:flex flex-col items-end min-w-0 leading-tight">
@@ -306,6 +310,7 @@ export function Shell({ children, pageTitle, actions = [], onAction }: ShellProp
               taille="sm" onKeyDown={e => { if (e.key === 'Enter' && q.trim()) navigate('/livraisons?q=' + encodeURIComponent(q.trim())) }} />
           </div>
           <div className="flex items-center gap-2 ml-auto shrink-0">
+            {actionsGauche}
             <ActionBar actions={actions} onAction={onAction} />
             {features.mesCourses && (
               <button

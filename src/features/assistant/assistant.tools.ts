@@ -436,7 +436,7 @@ export async function getCarburantMois(mois?: string) {
   const k = fuelKpiSummary(rows)
   return {
     mois: label,
-    total_eur: centimesToEuros(k.totalCts),
+    total_ht_eur: centimesToEuros(k.totalHtCts),
     nb_pleins: k.nb,
     total_litres: k.totalLiters,
   }

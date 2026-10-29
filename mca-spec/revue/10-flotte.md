@@ -1,6 +1,6 @@
 # 10 — Flotte (Véhicules, Carburant, Entretiens)
 
-> Un fichier = un onglet. Fait foi. Dernière mise à jour : 29/10/2026 (lot 1 Véhicules mergé ; Flotte arrêtée).
+> Un fichier = un onglet. Fait foi. Dernière mise à jour : 30/10/2026 (lot 2 Carburant HT).
 
 ## 1. Rôle
 - Véhicules : parc, échéances (CT, assurance, révision), km. Carburant : pleins Pennylane (`fuel_logs`). Entretiens : interventions (`vehicle_maintenances`).
@@ -10,7 +10,7 @@
 - Fiche véhicule : date et prix d'achat retirés de l'écran (colonnes gardées en base).
 
 ## 3. Plan
-- Lot 1 Véhicules (FAIT, PR #111) · **Flotte arrêtée après le lot 1 (décision du 29/10/2026)** ; restent non faits : Lot 2 Carburant en HT (`fuel_logs.total_ht_cts`, conso L/100) · Lot 3 Entretiens en HT + reprise ticket par ticket.
+- Lot 1 Véhicules (FAIT, PR #111) · Lot 2 Carburant HT (fait, PR en cours) · Lot 3 Entretiens HT. Ancien texte : Lot 2 Carburant en HT (`fuel_logs.total_ht_cts`, conso L/100) · Lot 3 Entretiens en HT + reprise ticket par ticket.
 - Coût HT 12 mois sur la carte véhicule : à brancher aux lots 2 / 3 (le HT n'existe pas encore en base).
 - ⚠ Le carburant vit aussi dans Finance › Justificatifs › Carburant (tickets carte carburant + `pleins_carburant`, PR #100-#106) : décider au lot 2 ce que compte l'onglet Flotte.
 
@@ -30,3 +30,12 @@
 
 ## 7. À tester
 - Tuile « À renseigner » → liste des véhicules sans CT / assurance ; « Tout réinitialiser » ; Export ouvre un CSV lisible dans Excel ; fiche : choisir carburant et Crit'Air.
+
+## 8. Écran Carburant (lot 2, 30/10/2026)
+- Base : `fuel_logs` (pleins Pennylane). Colonne `total_ht_cts` (nullable ; repli `htDuPlein` = TTC − TVA). Le TTC (`total_cts`, `price_per_liter_milli`) reste stocké pour Pennylane / trésorerie.
+- Reprise des 70 pleins : plein seul sur sa facture = `charges.montant_ht_cts` ; plein partagé = TTC − TVA du plein ; pas de TVA = TTC. 2 pleins avec un TTC saisi différent de la facture (à vérifier par le président).
+- 4 tuiles cliquables : Achats (à rapprocher) · Total · Litres · Prix moy./L. Liste déroulante **HT / TTC** à gauche de « Nouveau » (`shared/ui/AffichageMontant`, choix mémorisé sur l'appareil, `Shell.actionsGauche`) : tuiles, tableau et mobile suivent. Le TTC est le montant payé (`total_cts`).
+- **Km retirés (demande du 30/10/2026)** : plus de colonne km, plus de saisie du kilométrage (fiche plein, import de relevé) ; plus de conso L/100 (tuile et code supprimés). Les km déjà saisis restent en base (lus par la carte Véhicules).
+- Barre de recherche (véhicule, plaque, chauffeur, station), listes déroulantes véhicule / produit, pastille « À rapprocher », « Tout réinitialiser ». Tableau et mobile en HT. Export CSV : HT + colonne TTC en dernier.
+- Écritures : `DrawerCarburant` et `DrawerReleve` posent `total_ht_cts`. Lecteur adapté : outil assistant `get_carburant_mois` (`total_ht_eur`).
+- Hors périmètre : tickets carte carburant et pleins manuels (Finance › Justificatifs › Carburant, TTC, aucun HT en base).

@@ -287,9 +287,11 @@ export function DrawerCarburant({
         liters,
         price_per_liter_milli: priceMilli || (liters > 0 ? Math.round(totalCts * 10 / liters) : 0),
         total_cts: montants.ttc_cts,
+        total_ht_cts: montants.ht_cts,
         tva_cts: montants.tva_cts > 0 ? montants.tva_cts : null,
         fuel_type: (form.fuel_type || null) as FuelType | null,
-        mileage_km: form.mileage_km ? parseInt(form.mileage_km) : null,
+        // Le kilométrage n'est plus saisi ici : on garde seulement celui d'un ancien plein.
+        mileage_km: isEdit ? fuelLog?.mileage_km ?? null : null,
         station: form.station || null,
         tva_rate: parseFloat(form.tva_rate || '20'),
         tva_deductible_pct: parseFloat(form.tva_deductible_pct || '100'),
@@ -455,10 +457,6 @@ export function DrawerCarburant({
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Kilométrage">
-              <Input type="number" value={form.mileage_km}
-                onChange={v => set('mileage_km', v)} placeholder="125000" />
-            </Field>
             <Field label="Station">
               <select
                 value={form.supplier_id}
