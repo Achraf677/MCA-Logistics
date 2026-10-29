@@ -48,8 +48,9 @@ describe('cartes', () => {
   it('carte société et carte carburant : la carte est obligatoire', () => {
     const base = { montant: '', categorie: '' as const, date: '2026-10-12', note: 'Plein', aUnFichier: true }
     expect(manquesDepense({ ...base, moyen: 'carte_societe' })).toEqual(['Quelle carte ?'])
-    expect(manquesDepense({ ...base, moyen: 'carte_carburant' })).toEqual(['Quelle carte ?'])
-    expect(manquesDepense({ ...base, moyen: 'carte_carburant', carte: 'edenred_9156' })).toEqual([])
+    expect(manquesDepense({ ...base, moyen: 'carte_carburant' })).toEqual(['Quelle carte ?', 'Quel véhicule ?'])
+    expect(manquesDepense({ ...base, moyen: 'carte_carburant', carte: 'edenred_9156' })).toEqual(['Quel véhicule ?'])
+    expect(manquesDepense({ ...base, moyen: 'carte_carburant', carte: 'edenred_9156', vehicule: 'v1' })).toEqual([])
     expect(manquesDepense({ ...base, montant: '5', moyen: 'personnel' })).toEqual([])
   })
   it('libellés et listes', () => {
@@ -59,8 +60,10 @@ describe('cartes', () => {
     expect(libelleCarte('pennylane_4393')).toBe('PENNYLANE : *4393')
   })
   it('validation bureau : carte manquante signalée', () => {
-    const t = { montant_ttc_cts: 100, date_depense: '2026-10-12', categorie: 'carburant', supplier_id: 's1' }
-    expect(manquesValidation({ ...t, moyen_paiement: 'carte_carburant' })).toEqual(['Carte'])
-    expect(manquesValidation({ ...t, moyen_paiement: 'carte_carburant', carte: 'edenred_9156' })).toEqual([])
+    const t = { montant_ttc_cts: 100, date_depense: '2026-10-12' }
+    expect(manquesValidation({ ...t, moyen_paiement: 'carte_carburant' })).toEqual(['Carte', 'Véhicule'])
+    // Carte carburant : ni catégorie ni fournisseur exigés (rien ne part chez Pennylane).
+    expect(manquesValidation({ ...t, moyen_paiement: 'carte_carburant', carte: 'edenred_9156', vehicle_id: 'v1' })).toEqual([])
+    expect(manquesValidation({ ...t, moyen_paiement: 'carte_societe', carte: 'qonto_4103' })).toEqual(['Catégorie', 'Fournisseur'])
   })
 })

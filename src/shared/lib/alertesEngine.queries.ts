@@ -55,7 +55,8 @@ export async function getAlertesMetier(today: Date = new Date()): Promise<Alerte
     supabase
       .from('receipts_inbox')
       .select('id', { count: 'exact', head: true })
-      .eq('statut', 'a_traiter'),
+      .eq('statut', 'a_traiter')
+      .or('moyen_paiement.is.null,moyen_paiement.neq.carte_carburant'), // carte carburant = suivi informatif
     // Le droit de TRAITER ces tickets. Sans ce contrôle, un chauffeur voyait
     // dans sa cloche « 2 tickets chauffeur à traiter » — les siens, que la RLS
     // l'autorise à relire — avec un lien vers un écran Finance qui lui répond

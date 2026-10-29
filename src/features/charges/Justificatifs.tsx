@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronRight, FileText, Hourglass, Inbox, Send, ThumbsDown, Wallet } from 'lucide-react'
+import { ChevronRight, FileText, Fuel, Hourglass, Inbox, Send, ThumbsDown, Wallet } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { supabase } from '../../app/providers'
 import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
@@ -15,14 +15,15 @@ import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
 import { usePermissions } from '../../shared/permissions/usePermissions'
 import { formatMoney } from '../../shared/lib/money'
-import { libelleCategorie, manquesValidation, totalARembourser } from '../../shared/lib/depenses'
+import { estCarburant, libelleCategorie, manquesValidation, totalARembourser } from '../../shared/lib/depenses'
 import { grouperParMois } from '../../shared/lib/mois'
 import {
   classerTicket, corrigerTicket, envoyerVersPennylane, lireTicketIa, listerTickets, remettreATraiter, supprimerDepense,
-  marquerRembourse, refuserDepense, urlTicket, urlsTickets, type TicketInbox,
+  marquerRembourse, refuserDepense, urlTicket, urlsTickets, vehiculesPourPlein, type TicketInbox,
 } from '../../shared/lib/receiptsInbox.queries'
 import { FicheJustificatif, Paiement, type MajJustificatif } from './FicheJustificatif'
 import { nomsDeclarants } from './charges.queries'
+import { SuiviCarburant } from './SuiviCarburant'
 import {
   compteursJustificatifs, etatJustificatif, filtrerJustificatifs, jourJustif, type FiltreJustif,
 } from './justificatifs.logic'
@@ -56,6 +57,8 @@ export function Justificatifs() {
   const [fournisseurs, setFournisseurs] = useState<Array<{ id: string; name: string }>>([])
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
+  const [vue, setVue] = useState<'justificatifs' | 'carburant'>('justificatifs')
+  const [vehicules, setVehicules] = useState<Array<{ id: string; label: string; plate: string | null }>>([])
   const [filtre, setFiltre] = useState<FiltreJustif>('a_traiter')
   const [q, setQ] = useState('')
   const [ouvertId, setOuvertId] = useState<string | null>(null)
@@ -76,16 +79,19 @@ export function Justificatifs() {
   }, [])
 
   useEffect(() => { void charger() }, [charger])
+  useEffect(() => { void vehiculesPourPlein().then(setVehicules) }, [])
   useEffect(() => {
     supabase.from('suppliers').select('id, name').eq('active', true).order('name')
       .then(({ data }) => setFournisseurs((data ?? []) as Array<{ id: string; name: string }>))
   }, [])
 
-  const compteurs = useMemo(() => compteursJustificatifs(tickets), [tickets])
-  const dus = useMemo(() => totalARembourser(tickets.map(t => ({
+  // Les justificatifs carte carburant ont leur propre vue (suivi mensuel par véhicule) : ni à traiter, ni envoyés à Pennylane.
+  const classiques = useMemo(() => tickets.filter(t => !estCarburant(t.moyen_paiement)), [tickets])
+  const compteurs = useMemo(() => compteursJustificatifs(classiques), [classiques])
+  const dus = useMemo(() => totalARembourser(classiques.map(t => ({
     moyen_paiement: t.moyen_paiement ?? null, montant_ttc_cts: t.montant_ttc_cts ?? null, statut: t.statut, rembourse_le: t.rembourse_le,
-  }))), [tickets])
-  const visibles = useMemo(() => filtrerJustificatifs(tickets, filtre, q, noms), [tickets, filtre, q, noms])
+  }))), [classiques])
+  const visibles = useMemo(() => filtrerJustificatifs(classiques, filtre, q, noms), [classiques, filtre, q, noms])
   // Miniatures : liens signés des photos affichées, demandés une seule fois par chemin (100 au plus par lot).
   useEffect(() => {
     const manquants = visibles.filter(t => t.mime_type?.startsWith('image/') && !miniatures[t.storage_path]).slice(0, 100).map(t => t.storage_path)
@@ -138,6 +144,11 @@ export function Justificatifs() {
     const { error } = await corrigerTicket(t.id, maj)
     setBusy(false)
     if (error) { toast(error.message, 'error'); return }
+    if (estCarburant(maj.moyen_paiement)) {
+      // Carte carburant : validé pour le suivi, rien n'est envoyé à Pennylane (facture mensuelle de la carte).
+      await agir(() => classerTicket(t.id, 'traite'), 'Plein validé (suivi carburant)', true)
+      return
+    }
     await validerEtEnvoyer(t)
   }
 
@@ -233,6 +244,15 @@ export function Justificatifs() {
   return (
     <Shell pageTitle="Justificatifs">
       <div className="flex flex-col gap-4">
+        <div role="tablist" aria-label="Vue" className="inline-flex self-start rounded-[var(--r-lg)] border border-[var(--border)] bg-[var(--bg-card)] p-0.5">
+          {([['justificatifs', 'Justificatifs', FileText], ['carburant', 'Carburant', Fuel]] as const).map(([cle, libelle, Icone]) => (
+            <button key={cle} type="button" role="tab" aria-selected={vue === cle} onClick={() => setVue(cle)}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-[var(--r-md)] transition-colors ${
+                vue === cle ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+              <Icone size={14} /> {libelle}
+            </button>
+          ))}
+        </div>
         {loading ? (
           <Skeleton className="h-40" />
         ) : erreur ? (
@@ -240,6 +260,8 @@ export function Justificatifs() {
             <p className="text-[var(--danger)] text-sm">{erreur}</p>
             <Button variant="secondary" onClick={() => void charger()}>Réessayer</Button>
           </div>
+        ) : vue === 'carburant' ? (
+          <SuiviCarburant tickets={tickets} vehicules={vehicules} noms={noms} onOuvrir={setOuvertId} />
         ) : (
           <>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -283,7 +305,7 @@ export function Justificatifs() {
 
       <Drawer open={ouvert != null} onClose={() => setOuvertId(null)} width="max-w-[68rem]" title="Justificatif">
         {ouvert && (
-          <FicheJustificatif key={`${ouvert.id}-${ouvert.ocr_lu_le ?? ''}`} t={ouvert} lectureEnCours={lectureEnCours && !ouvert.ocr_lu_le} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy} fournisseurs={fournisseurs}
+          <FicheJustificatif key={`${ouvert.id}-${ouvert.ocr_lu_le ?? ''}`} t={ouvert} lectureEnCours={lectureEnCours && !ouvert.ocr_lu_le} nom={nomDe(ouvert)} peutEcrire={peutEcrire} busy={busy} fournisseurs={fournisseurs} vehicules={vehicules}
             onFichier={() => void ouvrirFichier(ouvert)}
             onEnregistrer={maj => void agir(() => corrigerTicket(ouvert.id, maj), 'Justificatif corrigé')}
             onValider={maj => void valider(ouvert, maj)}
