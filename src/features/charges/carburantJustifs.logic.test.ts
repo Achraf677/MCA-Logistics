@@ -46,3 +46,18 @@ describe('pleins saisis à la main', () => {
     expect(totauxParVehicule(p, id => id)[0]).toMatchObject({ cle: 'v1', nb: 2, totalCts: 11000 })
   })
 })
+
+describe('litres × prix', () => {
+  it('montant TTC en centimes sans dérive', async () => {
+    const { montantPleinCts, decimalSaisi, totalLitres } = await import('./carburantJustifs.logic')
+    expect(montantPleinCts(45.2, 1.789)).toBe(8086)
+    expect(montantPleinCts(50, 1.5)).toBe(7500)
+    expect(montantPleinCts(33.33, 1.999)).toBe(6663)
+    expect(decimalSaisi('45,2', 2)).toBe(45.2)
+    expect(decimalSaisi('1,789', 3)).toBe(1.789)
+    expect(decimalSaisi('', 2)).toBeNull()
+    expect(Number.isNaN(decimalSaisi('1,7891', 3))).toBe(true)
+    expect(Number.isNaN(decimalSaisi('abc', 2))).toBe(true)
+    expect(totalLitres([{ litres: 40 }, { litres: null }, {}])).toBe(40)
+  })
+})
