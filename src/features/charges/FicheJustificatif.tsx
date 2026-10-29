@@ -10,7 +10,7 @@ import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, cartesDuMoyen, libelleCarte, manquesValidation, montantSaisiEnCts, type CategorieDepense,
+  CATEGORIES_DEPENSE, LIBELLE_CHAMP_LU, cartesDuMoyen, estCarburant, libelleCarte, manquesValidation, montantSaisiEnCts, type CategorieDepense,
 } from '../../shared/lib/depenses'
 import { urlTicket, type TicketInbox } from '../../shared/lib/receiptsInbox.queries'
 import { jourFr } from './charges.logic'
@@ -25,7 +25,7 @@ const dateHeure = (iso: string) => new Date(iso).toLocaleString('fr-FR', { day: 
 
 export interface MajJustificatif {
   montant_ttc_cts: number | null; date_depense: string | null; categorie: string | null
-  moyen_paiement: string | null; carte: string | null; supplier_id: string | null
+  moyen_paiement: string | null; carte: string | null; vehicle_id: string | null; supplier_id: string | null
 }
 
 /** Moyen de paiement : pictogramme + libellé. */
@@ -99,13 +99,14 @@ function Apercu({ t, url, onFichier }: { t: TicketInbox; url: string | null; onF
 }
 
 /** Tiroir d'un justificatif : le ticket à gauche, ce qu'on y lit et ce qu'on décide à droite, les gestes en bas. */
-export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisseurs, onFichier, onEnregistrer, onValider, onRefuser, onRembourser, peutSupprimer, onRemettre, onSupprimer }: {
+export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fournisseurs, vehicules, onFichier, onEnregistrer, onValider, onRefuser, onRembourser, peutSupprimer, onRemettre, onSupprimer }: {
   t: TicketInbox
   lectureEnCours: boolean
   nom: string
   peutEcrire: boolean
   busy: boolean
   fournisseurs: Array<{ id: string; name: string }>
+  vehicules: Array<{ id: string; label: string; plate: string | null }>
   onFichier: () => void
   onEnregistrer: (maj: MajJustificatif) => void
   onValider: (maj: MajJustificatif) => void
@@ -120,6 +121,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
   const [categorie, setCategorie] = useState<CategorieDepense | ''>((t.categorie as CategorieDepense | null) ?? '')
   const [moyen, setMoyen] = useState(t.moyen_paiement ?? '')
   const [carte, setCarte] = useState(t.carte ?? '')
+  const [vehicule, setVehicule] = useState(t.vehicle_id ?? '')
   const [fournisseur, setFournisseur] = useState(t.supplier_id ?? '')
   const [refus, setRefus] = useState(false)
   const [suppression, setSuppression] = useState(false)
@@ -138,12 +140,14 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
     cts !== (t.montant_ttc_cts ?? null) || date !== (t.date_depense ?? t.created_at.slice(0, 10)) || (t.date_depense == null && !!date)
     || (categorie || null) !== (t.categorie ?? null) || (moyen || null) !== (t.moyen_paiement ?? null)
     || (cartesDuMoyen(moyen).length > 0 ? carte || null : null) !== (t.carte ?? null)
+    || (estCarburant(moyen) ? vehicule || null : null) !== (t.vehicle_id ?? null)
     || (fournisseur || null) !== (t.supplier_id ?? null))
   const etat = etatJustificatif(t)
   const noteDeFrais = t.moyen_paiement === 'personnel'
+  const carburant = estCarburant(moyen)
   const montantAffiche = !invalide && cts != null ? formatMoney(cts) : null
   const a_traiter = t.statut === 'a_traiter'
-  const maj: MajJustificatif = { montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null, carte: cartesDuMoyen(moyen).length > 0 ? (carte || null) : null, supplier_id: fournisseur || null }
+  const maj: MajJustificatif = { montant_ttc_cts: cts, date_depense: date || null, categorie: categorie || null, moyen_paiement: moyen || null, carte: cartesDuMoyen(moyen).length > 0 ? (carte || null) : null, vehicle_id: estCarburant(moyen) ? (vehicule || null) : null, supplier_id: fournisseur || null }
   // Ce qui manque, d'après ce qui est à l'écran (pas seulement ce qui est enregistré).
   const manques = invalide ? ['Montant'] : manquesValidation(maj)
 
@@ -179,13 +183,13 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
               <Champ label="Date de la dépense" requis>
                 <input className="field" type="date" value={date} onChange={e => setDate(e.target.value)} disabled={!peutEcrire} />
               </Champ>
-              <Champ label="Catégorie" requis>
+              {!carburant && <Champ label="Catégorie" requis>
                 <ListeDeroulante valeur={categorie} onChange={v => setCategorie(v as CategorieDepense)} disabled={!peutEcrire}
                   placeholder="Choisir une catégorie" ariaLabel="Catégorie" invalide={a_traiter && !categorie}
                   options={CATEGORIES_DEPENSE.map(c => ({ valeur: c.valeur, libelle: c.libelle }))} />
-              </Champ>
+              </Champ>}
               <Champ label="Payé avec" requis>
-                <ListeDeroulante valeur={moyen} onChange={v => { setMoyen(v); setCarte('') }} disabled={!peutEcrire} placeholder="Choisir" ariaLabel="Payé avec" invalide={a_traiter && !moyen}
+                <ListeDeroulante valeur={moyen} onChange={v => { setMoyen(v); setCarte(''); if (!estCarburant(v)) setVehicule('') }} disabled={!peutEcrire} placeholder="Choisir" ariaLabel="Payé avec" invalide={a_traiter && !moyen}
                   options={[{ valeur: 'carte_societe', libelle: 'Carte de la société' }, { valeur: 'carte_carburant', libelle: 'Carte carburant' }, { valeur: 'personnel', libelle: 'De sa poche (note de frais)' }]} />
               </Champ>
               {cartesDuMoyen(moyen).length > 0 && (
@@ -194,12 +198,18 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
                     invalide={a_traiter && !carte} options={cartesDuMoyen(moyen)} />
                 </Champ>
               )}
-              <div className="sm:col-span-2">
+              {carburant && (
+                <Champ label="Véhicule" requis>
+                  <ListeDeroulante valeur={vehicule} onChange={setVehicule} disabled={!peutEcrire} placeholder="Choisir le véhicule" ariaLabel="Véhicule"
+                    invalide={a_traiter && !vehicule} options={vehicules.map(v => ({ valeur: v.id, libelle: v.label, detail: v.plate ?? undefined }))} />
+                </Champ>
+              )}
+              {!carburant && <div className="sm:col-span-2">
                 <Champ label="Fournisseur" requis>
                   <ListeDeroulante valeur={fournisseur} onChange={setFournisseur} disabled={!peutEcrire} placeholder="Choisir un fournisseur" ariaLabel="Fournisseur"
                     invalide={a_traiter && !fournisseur} recherche options={fournisseurs.map(f => ({ valeur: f.id, libelle: f.name }))} />
                 </Champ>
-              </div>
+              </div>}
             </div>
             {peutEcrire && modifie && (
               <div className="flex items-center gap-3">
@@ -238,7 +248,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
               )}
               {t.statut === 'a_traiter' && (
                 <>
-                  <Button variant="primary" className="min-h-10" onClick={() => onValider(maj)} disabled={busy || manques.length > 0}><Check size={15} /> Valider et envoyer à Pennylane</Button>
+                  <Button variant="primary" className="min-h-10" onClick={() => onValider(maj)} disabled={busy || manques.length > 0}><Check size={15} /> {carburant ? 'Valider (suivi carburant, sans Pennylane)' : 'Valider et envoyer à Pennylane'}</Button>
                 </>
               )}
               {t.statut === 'traite' && noteDeFrais && (

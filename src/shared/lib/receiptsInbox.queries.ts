@@ -26,6 +26,8 @@ export interface TicketInbox {
   moyen_paiement?: string | null
   /** Quelle carte de la société (migration 20261029090000), si moyen = carte_societe ou carte_carburant. */
   carte?: string | null
+  /** Véhicule du plein, carte carburant (migration 20261029100000). */
+  vehicle_id?: string | null
   date_depense?: string | null
   motif_refus?: string | null
   /** Note de frais remboursée le (migration 20261022130000). */
@@ -54,7 +56,14 @@ export interface DetailsDepense {
   categorie: string | null
   moyen_paiement: string | null
   carte: string | null
+  vehicle_id: string | null
   date_depense: string | null
+}
+
+/** Véhicules actifs à proposer pour un plein (le salarié lit les véhicules de sa société). */
+export async function vehiculesPourPlein() {
+  const { data } = await supabase.from('vehicles').select('id, label, plate').eq('status', 'active').order('label')
+  return (data ?? []) as Array<{ id: string; label: string; plate: string | null }>
 }
 
 /**
@@ -138,6 +147,7 @@ export async function listerTicketsATraiter() {
     .from('receipts_inbox')
     .select('*')
     .eq('statut', 'a_traiter')
+    .or('moyen_paiement.is.null,moyen_paiement.neq.carte_carburant') // carte carburant = suivi informatif, rien à traiter
     .order('created_at', { ascending: false })
     .returns<TicketInbox[]>()
 }
@@ -174,6 +184,7 @@ export async function compterTicketsATraiter(): Promise<number> {
     .from('receipts_inbox')
     .select('id', { count: 'exact', head: true })
     .eq('statut', 'a_traiter')
+    .or('moyen_paiement.is.null,moyen_paiement.neq.carte_carburant') // carte carburant = suivi informatif, rien à traiter
   return count ?? 0
 }
 

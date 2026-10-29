@@ -1,5 +1,5 @@
 // Logique pure de l'onglet Justificatifs (Finance) : filtres, compteurs, mois. Aucune dépendance DB ni DOM.
-import { estADeduireRemboursement, libelleCategorie } from '../../shared/lib/depenses'
+import { estADeduireRemboursement, estCarburant, libelleCategorie } from '../../shared/lib/depenses'
 
 export type FiltreJustif = 'a_traiter' | 'valides' | 'refuses' | 'a_rembourser'
 
@@ -74,7 +74,9 @@ export function etapesSuivi(t: JustifLigne & {
   if (t.statut === 'ignore') return [...etapes, { cle: 'refuse', libelle: 'Refusé', date: t.traite_at ?? null, etat: 'refuse' }]
   const valide = t.statut === 'traite'
   etapes.push({ cle: 'valide', libelle: 'Validé', date: valide ? (t.traite_at ?? null) : null, etat: valide ? 'fait' : 'attente' })
-  etapes.push({ cle: 'pennylane', libelle: 'Pennylane', date: t.pennylane_envoye_le ?? null, etat: t.pennylane_envoye_le ? 'fait' : 'attente' })
+  if (!estCarburant(t.moyen_paiement)) {
+    etapes.push({ cle: 'pennylane', libelle: 'Pennylane', date: t.pennylane_envoye_le ?? null, etat: t.pennylane_envoye_le ? 'fait' : 'attente' })
+  }
   if (t.moyen_paiement === 'personnel') {
     etapes.push({ cle: 'rembourse', libelle: 'Remboursé', date: t.rembourse_le ?? null, etat: t.rembourse_le ? 'fait' : 'attente' })
   }

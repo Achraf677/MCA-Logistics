@@ -11,11 +11,11 @@ import { useProfile } from '../../app/providers'
 import { toLocalISO } from '../../shared/lib/dates'
 import { formatMoney } from '../../shared/lib/money'
 import {
-  LIBELLE_MOYEN, LIBELLE_STATUT_DEPENSE, totalARembourser, cartesDuMoyen, libelleCarte,
+  LIBELLE_MOYEN, LIBELLE_STATUT_DEPENSE, totalARembourser, cartesDuMoyen, libelleCarte, estCarburant,
   type MoyenPaiement, type StatutDepense,
 } from '../../shared/lib/depenses'
 import {
-  deposerTicket, mesDepenses, modifierDepense, supprimerDepense, urlTicket, type TicketInbox,
+  deposerTicket, mesDepenses, modifierDepense, supprimerDepense, urlTicket, vehiculesPourPlein, type TicketInbox,
 } from '../../shared/lib/receiptsInbox.queries'
 import {
   formulaireDepenseVide, formulaireDepenseDepuis, manquesDepenseSalarie, detailsDepense, estImage,
@@ -220,6 +220,9 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
   const [enGrand, setEnGrand] = useState(false)
   const [envoi, setEnvoi] = useState(false)
   const [aConfirmer, setAConfirmer] = useState(false)
+  const [vehicules, setVehicules] = useState<Array<{ id: string; label: string; plate: string | null }>>([])
+
+  useEffect(() => { void vehiculesPourPlein().then(setVehicules) }, [])
 
   // Correction : la photo déjà envoyée, en lecture (on corrige les infos, pas le fichier).
   useEffect(() => {
@@ -241,6 +244,8 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
 
   const cartes = cartesDuMoyen(form.moyen)
   const carteChoisie = cartes.find(c => c.valeur === form.carte)?.libelle ?? ''
+  const optionsVehicules = vehicules.map(v => ({ valeur: v.id, libelle: v.label, detail: v.plate ?? undefined }))
+  const vehiculeChoisi = vehicules.find(v => v.id === form.vehicule)
 
   // Carte choisie : on demande confirmation avant d'envoyer (une mauvaise carte fausse le rapprochement bancaire).
   const demanderEnvoi = () => {
@@ -319,7 +324,7 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
                 const on = form.moyen === m
                 const Icone = m === 'carte_societe' ? CreditCard : Wallet
                 return (
-                  <button key={m} type="button" onClick={() => setForm(f => ({ ...f, moyen: m, carte: m === f.moyen ? f.carte : '' }))} aria-pressed={on}
+                  <button key={m} type="button" onClick={() => setForm(f => ({ ...f, moyen: m, carte: m === f.moyen ? f.carte : '', vehicule: m === 'carte_carburant' ? f.vehicule : '' }))} aria-pressed={on}
                     className={`min-h-16 px-3 flex flex-col items-center justify-center gap-1 rounded-[var(--r-md)] border text-sm font-medium text-center ${
                       on ? 'border-[var(--brand)] bg-[var(--brand)]/10 text-[var(--brand)]' : 'border-[var(--border)] text-[var(--text)]'}`}>
                     <Icone size={20} /> {LIBELLE_MOYEN[m]}
@@ -332,6 +337,13 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
                 <span className="text-sm font-medium text-[var(--text)]">Quelle carte ? <span className="text-[var(--danger)]">*</span></span>
                 <ListeDeroulante valeur={form.carte} onChange={v => setForm(f => ({ ...f, carte: v }))}
                   placeholder="Choisis la carte" ariaLabel="Quelle carte" invalide={!form.carte} options={cartes} />
+              </div>
+            )}
+            {estCarburant(form.moyen) && (
+              <div className="flex flex-col gap-1 pt-1">
+                <span className="text-sm font-medium text-[var(--text)]">Pour quel véhicule ? <span className="text-[var(--danger)]">*</span></span>
+                <ListeDeroulante valeur={form.vehicule} onChange={v => setForm(f => ({ ...f, vehicule: v }))}
+                  placeholder="Choisis le véhicule" ariaLabel="Pour quel véhicule" invalide={!form.vehicule} options={optionsVehicules} />
               </div>
             )}
           </div>
@@ -368,7 +380,7 @@ function FicheDepense({ depense, onFermer, onEnregistree }: {
 
         {reprise.input}
         <ConfirmDialog open={aConfirmer} title="Vérifie la carte"
-          message={`Es-tu sûr qu'il s'agit de la carte ${carteChoisie} ?`}
+          message={`Es-tu sûr qu'il s'agit de la carte ${carteChoisie}${estCarburant(form.moyen) && vehiculeChoisi ? `, pour le véhicule ${vehiculeChoisi.label}` : ''} ?`}
           confirmLabel="Oui, c'est cette carte" onConfirm={() => void envoyer()} onCancel={() => setAConfirmer(false)} />
         {enGrand && apercuUrl && (
           <VisionneusePhoto src={apercuUrl} titre="Vérifie ton justificatif" onFermer={() => setEnGrand(false)}

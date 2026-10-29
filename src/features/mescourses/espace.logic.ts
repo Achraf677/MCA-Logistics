@@ -199,12 +199,14 @@ export interface FormulaireDepense {
   moyen: MoyenPaiement | ''
   /** Carte de la société choisie (si moyen = carte_societe). */
   carte: string
+  /** Véhicule du plein (carte carburant). */
+  vehicule: string
   date: string
   note: string
 }
 
 export function formulaireDepenseVide(aujourdhui: string): FormulaireDepense {
-  return { montant: '', categorie: '', moyen: '', carte: '', date: aujourdhui, note: '' }
+  return { montant: '', categorie: '', moyen: '', carte: '', vehicule: '', date: aujourdhui, note: '' }
 }
 
 /** 1250 → « 12,50 » (pour pré-remplir la saisie). */
@@ -214,7 +216,7 @@ export function montantPourSaisie(cts: number | null | undefined): string {
 }
 
 export function formulaireDepenseDepuis(
-  d: { montant_ttc_cts?: number | null; categorie?: string | null; moyen_paiement?: string | null; carte?: string | null; date_depense?: string | null; note: string | null; created_at: string },
+  d: { montant_ttc_cts?: number | null; categorie?: string | null; moyen_paiement?: string | null; carte?: string | null; vehicle_id?: string | null; date_depense?: string | null; note: string | null; created_at: string },
   aujourdhui: string,
 ): FormulaireDepense {
   return {
@@ -222,13 +224,14 @@ export function formulaireDepenseDepuis(
     categorie: (d.categorie ?? '') as CategorieDepense | '',
     moyen: (d.moyen_paiement ?? '') as MoyenPaiement | '',
     carte: d.carte ?? '',
+    vehicule: d.vehicle_id ?? '',
     date: d.date_depense ?? (d.created_at ? d.created_at.slice(0, 10) : aujourdhui),
     note: d.note ?? '',
   }
 }
 
 export function saisieDepense(f: FormulaireDepense, aUnFichier: boolean): SaisieDepense {
-  return { montant: f.montant, categorie: f.categorie, moyen: f.moyen, carte: f.carte, date: f.date, note: f.note, aUnFichier }
+  return { montant: f.montant, categorie: f.categorie, moyen: f.moyen, carte: f.carte, vehicule: f.vehicule, date: f.date, note: f.note, aUnFichier }
 }
 
 /** Manques d'une dépense, plus : pas de date dans le futur. */
@@ -243,9 +246,11 @@ export function detailsDepense(f: FormulaireDepense) {
   const cts = montantSaisiEnCts(f.montant)
   return {
     montant_ttc_cts: cts == null || Number.isNaN(cts) ? null : cts,
-    categorie: f.categorie || null,
+    // Carte carburant : la catégorie est connue d'avance, le salarié n'a rien à choisir.
+    categorie: f.moyen === 'carte_carburant' ? 'carburant' : (f.categorie || null),
     moyen_paiement: f.moyen || null,
     carte: f.moyen === 'carte_societe' || f.moyen === 'carte_carburant' ? (f.carte || null) : null,
+    vehicle_id: f.moyen === 'carte_carburant' ? (f.vehicule || null) : null,
     date_depense: f.date || null,
   }
 }

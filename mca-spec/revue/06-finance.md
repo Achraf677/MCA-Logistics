@@ -13,6 +13,10 @@
 
 - Charge « Passée en OD » (`charges.passee_en_od`, migration `20261022120000` appliquée) : un avoir saisi directement chez le comptable n'a pas de facture Pennylane → case dans la fiche charge, badge « OD » dans la liste, plus d'alerte « n'existe que dans le site » (`estChargeHorsPennylane`). Avoir E.LECLERC (retour mastic) marqué.
 
+## 2a. Carte carburant (29/10/2026)
+- Justificatifs › vue « Carburant » : tickets payés à la carte carburant (Edenred), par mois (flèches), total / pleins / moyenne, par véhicule (barres), jour par jour (clic = tiroir), export CSV. Informatif : jamais envoyé à Pennylane.
+- Salarié : véhicule obligatoire (`receipts_inbox.vehicle_id`) ; absents de la liste « À traiter ».
+
 ## 2b. Fait (F2a, 22/10/2026) — onglet Justificatifs
 - Onglet **Justificatifs** (même droit que Charges) : À traiter · Validés · À rembourser · Refusés, recherche, mois par mois (hors « À traiter »). Remplace le panneau de tickets qui était dans Charges.
 - Écran : la liste se LIT (tableau Date · Déclarant · Détail · Paiement · Montant · Statut, un seul état par ligne) ; on AGIT dans le tiroir d'un justificatif (photo, détails modifiables, suivi, barre d'actions en bas).

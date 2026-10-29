@@ -48,6 +48,9 @@ export function libelleCarte(c: string | null | undefined): string {
   return [...CARTES_SOCIETE, ...CARTES_CARBURANT].find(x => x.valeur === c)?.libelle ?? ''
 }
 
+/** Carte carburant : suivi informatif par mois et par véhicule, jamais envoyé à Pennylane (facture mensuelle de la carte). */
+export const estCarburant = (moyen: string | null | undefined): boolean => moyen === 'carte_carburant'
+
 export const LIBELLE_STATUT_DEPENSE: Record<StatutDepense, string> = {
   a_traiter: 'En attente du bureau',
   traite: 'Validée',
@@ -72,6 +75,8 @@ export interface SaisieDepense {
   moyen: MoyenPaiement | ''
   /** Obligatoire quand le moyen est une carte (société ou carburant). */
   carte?: string
+  /** Obligatoire pour la carte carburant : une seule carte pour plusieurs véhicules. */
+  vehicule?: string
   date: string
   /** Obligatoire : dit au bureau à quoi sert la dépense (la catégorie, c'est lui qui la choisit). */
   note: string
@@ -87,6 +92,7 @@ export function manquesDepense(s: SaisieDepense): string[] {
   else if (s.moyen === 'personnel' && cts == null) m.push('Montant (note de frais)')
   if (!s.moyen) m.push('Payé avec quoi ?')
   if (cartesDuMoyen(s.moyen).length > 0 && !s.carte) m.push('Quelle carte ?')
+  if (estCarburant(s.moyen) && !s.vehicule) m.push('Quel véhicule ?')
   if (!s.note.trim()) m.push('Note')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s.date)) m.push('Date de la dépense')
   return m
@@ -110,9 +116,17 @@ export function totalARembourser(depenses: DepenseRemb[]): number {
  */
 export function manquesValidation(t: {
   montant_ttc_cts?: number | null; date_depense?: string | null; categorie?: string | null
-  moyen_paiement?: string | null; carte?: string | null; supplier_id?: string | null
+  moyen_paiement?: string | null; carte?: string | null; supplier_id?: string | null; vehicle_id?: string | null
 }): string[] {
   const m: string[] = []
+  // Carte carburant : informatif, ni catégorie ni fournisseur (rien ne part chez Pennylane).
+  if (estCarburant(t.moyen_paiement)) {
+    if (t.montant_ttc_cts == null || t.montant_ttc_cts <= 0) m.push('Montant')
+    if (!t.date_depense) m.push('Date')
+    if (!t.carte) m.push('Carte')
+    if (!t.vehicle_id) m.push('Véhicule')
+    return m
+  }
   if (t.montant_ttc_cts == null || t.montant_ttc_cts <= 0) m.push('Montant')
   if (!t.date_depense) m.push('Date')
   if (!t.categorie) m.push('Catégorie')
