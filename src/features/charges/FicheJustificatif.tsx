@@ -34,8 +34,8 @@ export interface MajJustificatif {
 export function Paiement({ moyen, carte }: { moyen: string | null | undefined; carte?: string | null }) {
   const cartes = useCartes()
   if (moyen === 'personnel') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><Wallet size={13} className="text-[var(--text-muted)]" /> Note de frais</span>
-  if (moyen === 'carte_carburant') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> Carte carburant{carte ? ` · ${libelleCarte(carte, cartes)}` : ''}</span>
-  if (moyen === 'carte_societe') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> Carte société{carte ? ` · ${libelleCarte(carte, cartes)}` : ''}</span>
+  if (moyen === 'carte_carburant') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> CB carburant{carte ? ` · ${libelleCarte(carte, cartes)}` : ''}</span>
+  if (moyen === 'carte_societe') return <span className="inline-flex items-center gap-1.5 text-[var(--text)]"><CreditCard size={13} className="text-[var(--text-muted)]" /> CB classique{carte ? ` · ${libelleCarte(carte, cartes)}` : ''}</span>
   return <span className="text-[var(--text-disabled)]">Non précisé</span>
 }
 
@@ -86,11 +86,13 @@ function Frise({ etapes }: { etapes: EtapeSuivi[] }) {
 
 /** Aperçu du ticket : photo, PDF ou, à défaut, un lien. Grand, collé en haut pendant qu'on remplit à droite. */
 function Apercu({ t, url, onFichier }: { t: TicketInbox; url: string | null; onFichier: () => void }) {
-  const image = t.mime_type?.startsWith('image/')
+  // Image introuvable (lien expiré, fichier supprimé) : message clair plutôt que l'icône d'image cassée.
+  const [casse, setCasse] = useState(false)
+  const image = t.mime_type?.startsWith('image/') && !casse
   const pdf = t.mime_type === 'application/pdf'
   return (
     <div className="relative rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-deep)] overflow-hidden h-80 lg:h-[calc(100vh-var(--topbar-h)-9rem)] min-h-[18rem] flex items-center justify-center">
-      {image ? (url ? <img src={url} alt="Justificatif" className="max-h-full max-w-full object-contain" /> : <Skeleton className="w-full h-full" />)
+      {image ? (url ? <img src={url} alt="Justificatif" onError={() => setCasse(true)} className="max-h-full max-w-full object-contain" /> : <Skeleton className="w-full h-full" />)
         : pdf && url ? <iframe src={url} title="Justificatif" className="w-full h-full bg-white" />
         : <div className="flex flex-col items-center gap-2 text-[var(--text-muted)] text-sm"><FileText size={36} /> Aperçu indisponible</div>}
       <button type="button" onClick={onFichier}
@@ -199,7 +201,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
               </Champ>}
               <Champ label="Payé avec" requis>
                 <ListeDeroulante valeur={moyen} onChange={v => { setMoyen(v); setCarte(''); if (!estCarburant(v)) setVehicule('') }} disabled={!peutEcrire} placeholder="Choisir" ariaLabel="Payé avec" invalide={a_traiter && !moyen}
-                  options={[{ valeur: 'carte_societe', libelle: 'Carte de la société' }, { valeur: 'carte_carburant', libelle: 'Carte carburant' }, { valeur: 'personnel', libelle: 'De sa poche (note de frais)' }]} />
+                  options={[{ valeur: 'carte_societe', libelle: 'CB classique' }, { valeur: 'carte_carburant', libelle: 'CB carburant' }, { valeur: 'personnel', libelle: 'De sa poche (note de frais)' }]} />
               </Champ>
               {moyenAvecCarte(moyen) && (
                 <Champ label="Quelle carte" requis>
@@ -257,7 +259,7 @@ export function FicheJustificatif({ t, lectureEnCours, nom, peutEcrire, busy, fo
               )}
               {t.statut === 'a_traiter' && (
                 <>
-                  <Button variant="primary" className="min-h-10" onClick={() => onValider(maj)} disabled={busy || manques.length > 0}><Check size={15} /> {carburant ? 'Valider (suivi carburant, sans Pennylane)' : 'Valider et envoyer à Pennylane'}</Button>
+                  <Button variant="primary" className="min-h-10 disabled:!bg-none disabled:!bg-[var(--bg-card)] disabled:!text-[var(--text-muted)] disabled:!opacity-100 disabled:!border disabled:!border-[var(--border)] disabled:!shadow-none" onClick={() => onValider(maj)} disabled={busy || manques.length > 0}><Check size={15} /> {carburant ? 'Valider (suivi carburant, sans Pennylane)' : 'Valider et envoyer à Pennylane'}</Button>
                 </>
               )}
               {t.statut === 'traite' && noteDeFrais && (
