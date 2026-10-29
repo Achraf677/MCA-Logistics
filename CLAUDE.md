@@ -187,6 +187,7 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   (`text-xs`, `text-sm`, `text-[length:var(--fs-xs)]`). ~700 usages anciens : correctif global à décider.
 - `.glass` sans backdrop-filter sur ce qui défile (perf).
 - **Recherche (23/10/2026)** : toute barre de recherche = `shared/ui/BarreRecherche` (halo, effacer, Échap, compteur, raccourci « / »), jamais un `<input>` nu.
+- **Sélection = contour rouge de la marque (29/10/2026)** : tuiles, pastilles de filtre et bascules sélectionnées gardent le contour rouge sur fond noir (l'utilisateur l'aime : ne pas passer en neutre). Vue Carburant : filtre véhicule fait pour 20+ véhicules (liste avec recherche + classement compact « Voir les N véhicules »).
 - **Listes déroulantes (24/10/2026)** : `shared/ui/ListeDeroulante` (recherche, clavier) ; posée dans le tiroir Justificatifs, à étendre aux autres `<select>` natifs écran par écran.
 - **Documents (23/10/2026)** : un PDF ou une photo s'ouvre dans l'appli par `ouvrirDocument(url, { titre, type })` (`shared/ui/VisionneuseDocument`, montée à la racine), jamais `window.open`. Exception : liens « Y aller » (navigation).
 

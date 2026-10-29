@@ -216,7 +216,7 @@ export function Justificatifs() {
           {([['justificatifs', 'Justificatifs', FileText], ['carburant', 'Carburant', Fuel]] as const).map(([cle, libelle, Icone]) => (
             <button key={cle} type="button" role="tab" aria-selected={vue === cle} onClick={() => setVue(cle)}
               className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-[var(--r-md)] transition-colors ${
-                vue === cle ? 'bg-[var(--bg-elevated)] text-[var(--text)] shadow-sm ring-1 ring-[var(--border-strong)]' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
+                vue === cle ? 'bg-[var(--brand)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>
               <Icone size={14} /> {libelle}
             </button>
           ))}
