@@ -53,7 +53,7 @@ describe('justificatifs', () => {
 })
 
 describe('familles, filtres interactifs et sections', () => {
-  const base = { statut: 'a_traiter', created_at: '2026-10-05T08:00:00Z', date_depense: '2026-10-05', montant_ttc_cts: 1000 }
+  const base = { statut: 'a_traiter', created_at: '2026-10-05T08:00:00Z', date_depense: '2026-10-05', montant_ttc_cts: 1000, categorie: 'repas', supplier_id: 's1' }
   const l = [
     { id: 'n1', ...base, moyen_paiement: 'personnel', uploaded_by: 'u1' },
     { id: 'n2', ...base, moyen_paiement: 'personnel', uploaded_by: 'u2', montant_ttc_cts: 5000 },
@@ -75,10 +75,23 @@ describe('familles, filtres interactifs et sections', () => {
     expect(f({ incomplets: true })).toEqual(['c2', 'x1'])
     expect(nbCriteresActifs({ ...CRITERES_VIDES, type: 'cb', incomplets: true })).toBe(2)
   })
-  it('incomplet : carte, véhicule, montant', () => {
+  it('incomplet = mêmes règles que « Valider »', () => {
+    const ok = { ...base, categorie: 'repas', supplier_id: 's1' }
+    expect(estIncomplet({ ...ok, moyen_paiement: 'personnel' })).toBe(false)
+    expect(estIncomplet({ ...ok, moyen_paiement: 'personnel', montant_ttc_cts: null })).toBe(true)
+    expect(estIncomplet({ ...ok, moyen_paiement: 'personnel', supplier_id: null })).toBe(true)
+    expect(estIncomplet({ ...ok, moyen_paiement: 'carte_societe' })).toBe(true)
+    expect(estIncomplet({ ...ok, moyen_paiement: 'carte_societe', carte: 'qonto_4103' })).toBe(false)
+    // Carte carburant : ni catégorie ni fournisseur, mais carte + véhicule.
     expect(estIncomplet({ ...base, moyen_paiement: 'carte_carburant', carte: 'edenred_9156' })).toBe(true)
-    expect(estIncomplet({ ...base, moyen_paiement: 'personnel' })).toBe(false)
-    expect(estIncomplet({ ...base, moyen_paiement: 'personnel', montant_ttc_cts: null })).toBe(true)
+    expect(estIncomplet({ ...base, moyen_paiement: 'carte_carburant', carte: 'edenred_9156', vehicle_id: 'v1' })).toBe(false)
+    expect(estIncomplet({ ...ok, moyen_paiement: null })).toBe(true)
+  })
+  it('recherche dans le texte en plus (carte, véhicule, montant)', () => {
+    const t = { ...base, id: 'z', moyen_paiement: 'carte_societe', carte: 'qonto_4103' }
+    const sup = (x: { carte?: string | null }) => (x.carte === 'qonto_4103' ? 'QONTO : *4103' : '')
+    expect(filtrerJustificatifs([t], 'a_traiter', 'qonto', {}, CRITERES_VIDES, sup)).toHaveLength(1)
+    expect(filtrerJustificatifs([t], 'a_traiter', 'qonto')).toHaveLength(0)
   })
   it('mois présents, récents d\'abord', () => {
     expect(moisPresents(l)).toEqual(['2026-10', '2026-09'])
@@ -89,5 +102,15 @@ describe('familles, filtres interactifs et sections', () => {
     expect(s.map(x => x.cle)).toEqual(['note_de_frais', 'cb', 'carburant', 'autre'])
     expect(s[0].parSalarie?.map(g => [g.libelle, g.totalCts])).toEqual([['Ana', 5000], ['Lucas', 1000]])
     expect(sectionsATraiter(l.filter(x => x.id === 'c1'), nom).map(x => x.cle)).toEqual(['cb'])
+  })
+})
+
+describe('envoi Pennylane échoué', () => {
+  it('validé avec une erreur et sans envoi : « Envoi échoué »', () => {
+    const t = { statut: 'traite', moyen_paiement: 'carte_societe', created_at: '2026-10-05T08:00:00Z', pennylane_erreur: 'Gmail refusé', pennylane_envoye_le: null }
+    expect(etatJustificatif(t)).toEqual({ libelle: 'Envoi échoué', ton: 'danger' })
+    expect(etatJustificatif({ ...t, pennylane_envoye_le: '2026-10-06T08:00:00Z' }).libelle).toBe('Validé')
+    // Carte carburant : jamais envoyée, donc jamais « échoué ».
+    expect(etatJustificatif({ ...t, moyen_paiement: 'carte_carburant' }).libelle).toBe('Validé')
   })
 })

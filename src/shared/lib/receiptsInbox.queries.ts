@@ -214,20 +214,26 @@ export async function classerTicket(
   statut: Exclude<StatutTicket, 'a_traiter'>,
   chargeId?: string | null,
 ) {
-  return supabase
-    .from('receipts_inbox')
-    .update({ statut, charge_id: chargeId ?? null, traite_at: new Date().toISOString() })
-    .eq('id', id)
+  return majStatut(id, { statut, charge_id: chargeId ?? null, traite_at: new Date().toISOString() })
+}
+
+/**
+ * Écrit un changement d'état et VÉRIFIE qu'une ligne a bougé : sans droit, la base répond « 0 ligne, pas d'erreur »
+ * et l'écran annonçait un succès qui n'existait pas.
+ */
+async function majStatut(id: string, patch: Record<string, unknown>): Promise<{ error: Error | null }> {
+  const { data, error } = await supabase.from('receipts_inbox').update(patch).eq('id', id).select('id')
+  if (error) return { error: new Error(error.message) }
+  if (!data || data.length === 0) return { error: new Error('Action refusée : droit insuffisant ou justificatif introuvable.') }
+  return { error: null }
 }
 
 /** Remet un justificatif validé ou refusé « à traiter » (bureau) : repart de zéro, sans trace d'envoi ni de refus. */
 export async function remettreATraiter(id: string) {
-  return supabase.from('receipts_inbox')
-    .update({
-      statut: 'a_traiter', charge_id: null, traite_at: null, motif_refus: null, rembourse_le: null,
-      pennylane_envoye_le: null, pennylane_id: null, pennylane_erreur: null,
-    })
-    .eq('id', id)
+  return majStatut(id, {
+    statut: 'a_traiter', charge_id: null, traite_at: null, motif_refus: null, rembourse_le: null,
+    pennylane_envoye_le: null, pennylane_id: null, pennylane_erreur: null,
+  })
 }
 
 // ── Dépenses du déclarant (lot S1) ───────────────────────────────────────────
@@ -261,9 +267,7 @@ export async function supprimerDepense(t: TicketInbox) {
 
 /** Refuse une dépense (bureau), avec le motif lu par le déclarant. */
 export async function refuserDepense(id: string, motif: string) {
-  return supabase.from('receipts_inbox')
-    .update({ statut: 'ignore', motif_refus: motif, traite_at: new Date().toISOString() })
-    .eq('id', id)
+  return majStatut(id, { statut: 'ignore', motif_refus: motif, traite_at: new Date().toISOString() })
 }
 
 /**

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { pleinsDuMois, totauxParVehicule, moisDecale, totalPleins, ticketsCarburant, csvCarburant } from './carburantJustifs.logic'
 
 const t = (o: Partial<Parameters<typeof pleinsDuMois>[0][number]>) =>
-  ({ statut: 'a_traiter', moyen_paiement: 'carte_carburant', montant_ttc_cts: 5000, date_depense: '2026-10-05', vehicle_id: 'v1', created_at: '2026-10-05T08:00:00Z', ...o })
+  ({ statut: 'traite', moyen_paiement: 'carte_carburant', montant_ttc_cts: 5000, date_depense: '2026-10-05', vehicle_id: 'v1', created_at: '2026-10-05T08:00:00Z', ...o })
 
 describe('carburant justificatifs', () => {
   const liste = [
@@ -11,9 +11,10 @@ describe('carburant justificatifs', () => {
     t({ date_depense: '2026-10-21', vehicle_id: null, montant_ttc_cts: 1000 }),
     t({ date_depense: '2026-09-30' }),
     t({ statut: 'ignore' }),
+    t({ statut: 'a_traiter' }),
     t({ moyen_paiement: 'carte_societe' }),
   ]
-  it('ne garde que la carte carburant non refusée', () => {
+  it('ne garde que la carte carburant VALIDÉE (ni à traiter, ni refusée)', () => {
     expect(ticketsCarburant(liste)).toHaveLength(4)
   })
   it('pleins du mois, récents d\'abord', () => {

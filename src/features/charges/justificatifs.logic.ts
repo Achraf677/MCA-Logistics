@@ -1,5 +1,5 @@
 // Logique pure de l'onglet Justificatifs (Finance) : filtres, compteurs, mois. Aucune dépendance DB ni DOM.
-import { estADeduireRemboursement, estCarburant, libelleCategorie } from '../../shared/lib/depenses'
+import { estADeduireRemboursement, estCarburant, libelleCategorie, manquesValidation } from '../../shared/lib/depenses'
 
 export type FiltreJustif = 'a_traiter' | 'valides' | 'refuses' | 'a_rembourser'
 
@@ -8,6 +8,8 @@ export interface JustifLigne {
   moyen_paiement?: string | null
   montant_ttc_cts?: number | null
   rembourse_le?: string | null
+  pennylane_envoye_le?: string | null
+  pennylane_erreur?: string | null
   note?: string | null
   categorie?: string | null
   date_depense?: string | null
@@ -64,22 +66,21 @@ export const CRITERES_VIDES: CriteresJustif = { type: 'tous', declarant: '', car
 export const nbCriteresActifs = (c: CriteresJustif): number =>
   (c.type !== 'tous' ? 1 : 0) + (c.declarant ? 1 : 0) + (c.carte ? 1 : 0) + (c.mois ? 1 : 0) + (c.incomplets ? 1 : 0)
 
-type JustifFiltrable = JustifLigne & { uploaded_by?: string | null; carte?: string | null; vehicle_id?: string | null }
+type JustifFiltrable = JustifLigne & { uploaded_by?: string | null; carte?: string | null; vehicle_id?: string | null; supplier_id?: string | null }
 
-/** Il manque une information à compléter avant de valider (montant, date, carte, véhicule). */
+/** Il manque une information avant de pouvoir valider : EXACTEMENT les mêmes règles que le bouton « Valider » (`manquesValidation`). */
 export function estIncomplet(t: JustifFiltrable): boolean {
-  if (t.montant_ttc_cts == null || t.montant_ttc_cts <= 0) return true
-  if (!t.date_depense) return true
-  const type = typeJustif(t)
-  if (type === 'autre') return true
-  if ((type === 'cb' || type === 'carburant') && !t.carte) return true
-  if (type === 'carburant' && !t.vehicle_id) return true
-  return false
+  return manquesValidation({
+    montant_ttc_cts: t.montant_ttc_cts, date_depense: t.date_depense, categorie: t.categorie,
+    moyen_paiement: t.moyen_paiement, carte: t.carte, supplier_id: t.supplier_id, vehicle_id: t.vehicle_id,
+  }).length > 0
 }
 
 /** Filtre rapide + recherche (note, catégorie, nom du déclarant) + filtres interactifs ; l'ordre d'entrée est gardé. */
 export function filtrerJustificatifs<T extends JustifFiltrable>(
   tickets: T[], filtre: FiltreJustif, q: string, noms: Record<string, string> = {}, criteres: CriteresJustif = CRITERES_VIDES,
+  /** Texte en plus à chercher (libellé de carte, véhicule, montant…). */
+  texteSup?: (t: T) => string,
 ): T[] {
   const mot = q.trim().toLowerCase()
   return tickets.filter(t => {
@@ -91,7 +92,7 @@ export function filtrerJustificatifs<T extends JustifFiltrable>(
     if (criteres.incomplets && !estIncomplet(t)) return false
     if (!mot) return true
     const nom = t.uploaded_by ? (noms[t.uploaded_by] ?? '') : ''
-    return `${t.note ?? ''} ${libelleCategorie(t.categorie)} ${nom}`.toLowerCase().includes(mot)
+    return `${t.note ?? ''} ${libelleCategorie(t.categorie)} ${nom} ${texteSup ? texteSup(t) : ''}`.toLowerCase().includes(mot)
   })
 }
 
@@ -147,6 +148,8 @@ export type TonEtat = 'warning' | 'success' | 'info' | 'danger'
 export function etatJustificatif(t: JustifLigne): { libelle: string; ton: TonEtat } {
   if (t.statut === 'ignore') return { libelle: 'Refusé', ton: 'danger' }
   if (t.statut === 'a_traiter') return { libelle: 'À traiter', ton: 'warning' }
+  // Validé mais l'envoi à Pennylane a échoué : à refaire (bouton « Renvoyer » dans le tiroir).
+  if (!estCarburant(t.moyen_paiement) && t.pennylane_erreur && !t.pennylane_envoye_le) return { libelle: 'Envoi échoué', ton: 'danger' }
   if (t.moyen_paiement === 'personnel') {
     return t.rembourse_le ? { libelle: 'Remboursé', ton: 'info' } : { libelle: 'À rembourser', ton: 'warning' }
   }

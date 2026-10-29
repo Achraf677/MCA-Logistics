@@ -36,9 +36,9 @@ export const SANS_VEHICULE = 'sans-vehicule'
 
 const jourDe = (t: Pick<LigneCarburant, 'date_depense' | 'created_at'>) => t.date_depense ?? t.created_at.slice(0, 10)
 
-/** Tous les justificatifs carte carburant non refusés. */
+/** Les justificatifs carte carburant VALIDÉS : tant qu'un ticket est dans « À traiter » (ou refusé) il ne compte pas. */
 export function ticketsCarburant<T extends LigneCarburant>(tickets: T[]): T[] {
-  return tickets.filter(t => t.moyen_paiement === 'carte_carburant' && t.statut !== 'ignore')
+  return tickets.filter(t => t.moyen_paiement === 'carte_carburant' && t.statut === 'traite')
 }
 
 /** Les pleins d'un mois (« AAAA-MM »), du plus récent au plus ancien. */
