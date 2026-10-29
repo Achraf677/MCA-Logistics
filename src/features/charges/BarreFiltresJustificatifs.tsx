@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react'
+import { useState } from 'react'
 import { SlidersHorizontal, X } from 'lucide-react'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Button } from '../../shared/ui/Button'
 import { Champ } from '../../shared/ui/FicheSaisie'
+import { PastilleFiltre as Pastille } from '../../shared/ui/PastilleFiltre'
 import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import {
   CRITERES_VIDES, LIBELLE_TYPE, ORDRE_TYPES, type CriteresJustif, type TypeJustif,
@@ -10,21 +11,8 @@ import {
 
 type Option = { valeur: string; libelle: string }
 
-/** Pastille de famille : sélectionnée = neutre (le rouge de la marque est gardé pour le danger). */
-function Pastille({ actif, onClick, children }: { actif: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" aria-pressed={actif} onClick={onClick}
-      className={`shrink-0 h-8 px-3 rounded-full border text-sm font-medium inline-flex items-center gap-1.5 whitespace-nowrap transition-colors
-        ${actif
-          ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg-card)]'
-          : 'border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--border-strong)]'}`}>
-      {children}
-    </button>
-  )
-}
-
 const Compte = ({ n, actif }: { n: number; actif: boolean }) => (
-  <span className={`font-mono text-xs ${actif ? 'opacity-70' : 'text-[var(--text-disabled)]'}`}>{n}</span>
+  <span className={`font-mono text-xs ${actif ? 'opacity-80' : 'text-[var(--text-disabled)]'}`}>{n}</span>
 )
 
 /** Filtre actif affiché sous la barre, retirable d'un clic. */

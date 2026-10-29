@@ -4,6 +4,7 @@ import { AvatarInitiales } from '../../shared/ui/AvatarInitiales'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
 import { EmptyState } from '../../shared/ui/EmptyState'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { formatMoney } from '../../shared/lib/money'
 import { libelleCarte } from '../../shared/lib/cartesBancaires'
 import { useCartes } from '../../shared/lib/useCartesBancaires'
@@ -15,6 +16,8 @@ import {
 import { PleinManuelDrawer } from './PleinManuelDrawer'
 import type { PleinManuel } from './pleinsManuels.queries'
 
+/** Véhicules affichés d'office dans « Par véhicule » ; le reste derrière « Voir les N véhicules ». */
+const RANGS_VISIBLES = 6
 const jourCourt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 
 /**
@@ -39,6 +42,7 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
   const [mois, setMois] = useState(() => moisDe(new Date()))
   // Véhicule sélectionné dans « Par véhicule » : filtre la liste du jour par jour (null = tous).
   const [vehiculeFiltre, setVehiculeFiltre] = useState<string | null>(null)
+  const [voirTous, setVoirTous] = useState(false)
   const moisCourant = moisDe(new Date())
   const nomVehicule = (id: string) => vehicules.find(v => v.id === id)?.label ?? 'Véhicule supprimé'
   const nomDeclarant = (t: { uploaded_by?: string | null; manuel?: true; fait_par?: string | null }) =>
@@ -54,6 +58,8 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
   const parVehicule = useMemo(() => totauxParVehicule(pleins, nomVehicule), [pleins, vehicules]) // eslint-disable-line react-hooks/exhaustive-deps
   // Le filtre véhicule disparaît tout seul si ce véhicule n'a aucun plein dans le mois affiché.
   const filtreActif = vehiculeFiltre && parVehicule.some(v => v.cle === vehiculeFiltre) ? vehiculeFiltre : null
+  // Classement : les premiers véhicules seulement (avec 20 véhicules la liste serait interminable) ; le véhicule filtré reste toujours visible.
+  const rangsVisibles = voirTous ? parVehicule : parVehicule.filter((v, i) => i < RANGS_VISIBLES || v.cle === filtreActif)
   const affiches = filtreActif ? pleins.filter(p => (p.vehicle_id || SANS_VEHICULE) === filtreActif) : pleins
   const totalAffiche = totalPleins(affiches)
 
@@ -78,6 +84,12 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
             className="h-9 w-9 inline-flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] disabled:opacity-30"><ChevronRight size={16} /></button>
         </div>
         {mois !== moisCourant && <Button variant="secondary" size="compact" onClick={() => setMois(moisCourant)}>Mois en cours</Button>}
+        {parVehicule.length > 1 && (
+          <div className="w-full sm:w-60 order-last sm:order-none">
+            <ListeDeroulante valeur={filtreActif ?? ''} onChange={v => setVehiculeFiltre(v || null)} recherche ariaLabel="Véhicule" placeholder="Tous les véhicules"
+              options={[{ valeur: '', libelle: 'Tous les véhicules' }, ...parVehicule.map(v => ({ valeur: v.cle, libelle: v.libelle, detail: formatMoney(v.totalCts) }))]} />
+          </div>
+        )}
         <span className="ml-auto flex items-center gap-2">
           {peutEcrire && <Button variant="primary" size="compact" onClick={() => setSaisie({ plein: null })}><Plus size={14} /> Ajouter un plein</Button>}
           <Button variant="secondary" size="compact" onClick={exporter} disabled={affiches.length === 0}><Download size={14} /> Exporter (CSV)</Button>
@@ -96,25 +108,40 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
         <EmptyState icon={<Fuel size={40} />} title="Aucun plein ce mois-ci"
           description="Les tickets « CB carburant » une fois validés, et les pleins ajoutés à la main, apparaissent ici." />
       ) : (
-        <>
-          <section aria-label="Par véhicule" className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {parVehicule.map(v => {
-              const actif = filtreActif === v.cle
-              return (
-                <button key={v.cle} type="button" aria-pressed={actif} onClick={() => setVehiculeFiltre(actif ? null : v.cle)}
-                  className={`rounded-[var(--r-lg)] border px-3 py-2.5 text-left flex flex-col gap-1.5 transition-colors ${
-                    actif ? 'border-[var(--text-muted)] bg-[var(--bg-elevated)]' : 'border-[var(--border)] bg-[var(--bg-card)] hover:border-[var(--border-strong)]'}`}>
-                  <span className="flex items-baseline gap-2">
-                    <span className={`flex-1 min-w-0 truncate text-sm font-medium ${v.cle === SANS_VEHICULE ? 'text-[var(--warning)]' : 'text-[var(--text)]'}`}>{v.libelle}</span>
-                    <span className="text-xs text-[var(--text-muted)] tabular-nums">{v.partPct} %</span>
-                    <span className="font-mono font-semibold tabular-nums text-[var(--text)]">{formatMoney(v.totalCts)}</span>
-                  </span>
-                  <span className="h-1.5 rounded-full bg-[var(--bg-deep)] overflow-hidden" aria-hidden="true">
-                    <span className="block h-full rounded-full" style={{ width: `${v.partPct}%`, background: v.cle === SANS_VEHICULE ? 'var(--warning)' : 'var(--text-muted)' }} />
-                  </span>
-                </button>
-              )
-            })}
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start">
+          <section aria-label="Par véhicule" className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
+            <h3 className="flex items-center gap-2 font-display font-semibold text-[var(--text)] px-4 py-3 border-b border-[var(--border)]">
+              Par véhicule
+              <span className="text-xs font-normal text-[var(--text-muted)]">{parVehicule.length}</span>
+              {filtreActif && <button type="button" onClick={() => setVehiculeFiltre(null)} className="ml-auto text-xs font-normal text-[var(--brand)] hover:underline">Tous</button>}
+            </h3>
+            <ul className={`divide-y divide-[var(--border)] ${voirTous ? 'max-h-[26rem] overflow-y-auto' : ''}`}>
+              {rangsVisibles.map(v => {
+                const actif = filtreActif === v.cle
+                return (
+                  <li key={v.cle}>
+                    <button type="button" aria-pressed={actif} onClick={() => setVehiculeFiltre(actif ? null : v.cle)}
+                      className={`w-full text-left px-4 py-2 flex flex-col gap-1 border-l-2 transition-colors ${
+                        actif ? 'border-l-[var(--brand)] bg-[var(--brand)]/10' : 'border-l-transparent hover:bg-[var(--bg-card-hover)]'}`}>
+                      <span className="flex items-baseline gap-2">
+                        <span className={`flex-1 min-w-0 truncate text-sm ${v.cle === SANS_VEHICULE ? 'text-[var(--warning)]' : 'text-[var(--text)]'}`}>{v.libelle}</span>
+                        <span className="text-xs text-[var(--text-muted)] tabular-nums">{v.partPct} %</span>
+                        <span className="font-mono text-sm font-semibold tabular-nums text-[var(--text)] w-24 text-right">{formatMoney(v.totalCts)}</span>
+                      </span>
+                      <span className="h-1 rounded-full bg-[var(--bg-deep)] overflow-hidden" aria-hidden="true">
+                        <span className="block h-full rounded-full" style={{ width: `${v.partPct}%`, background: v.cle === SANS_VEHICULE ? 'var(--warning)' : 'var(--brand)' }} />
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            {parVehicule.length > RANGS_VISIBLES && (
+              <button type="button" onClick={() => setVoirTous(o => !o)}
+                className="w-full px-4 py-2 text-xs text-[var(--text-muted)] hover:text-[var(--text)] border-t border-[var(--border)] hover:bg-[var(--bg-card-hover)]">
+                {voirTous ? 'Réduire' : `Voir les ${parVehicule.length} véhicules`}
+              </button>
+            )}
           </section>
 
           <section className="rounded-[var(--r-xl)] border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
@@ -161,7 +188,7 @@ export function SuiviCarburant({ tickets, manuels, vehicules, membres, noms, com
               })}
             </ul>
           </section>
-        </>
+        </div>
       )}
 
       {saisie && (
