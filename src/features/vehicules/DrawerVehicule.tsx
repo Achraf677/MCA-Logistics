@@ -8,6 +8,7 @@ import type { Vehicle, VehicleInsert } from './vehicules.types'
 import { useProfile, supabase } from '../../app/providers'
 import { DocumentsPanel } from '../../shared/ui/DocumentsPanel'
 import { DeleteButton } from '../../shared/ui/DeleteButton'
+import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 
 interface DrawerVehiculeProps {
   open: boolean
@@ -20,9 +21,9 @@ const inputClass = 'field'
 function FieldGroup({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
+      <label className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">{label}</label>
       {children}
-      {error && <span className="text-[var(--danger)] text-[var(--fs-xs)]">{error}</span>}
+      {error && <span className="text-[var(--danger)] text-xs">{error}</span>}
     </div>
   )
 }
@@ -46,14 +47,14 @@ function EcheancesBloc({ vehicle }: { vehicle: Vehicle }) {
   return (
     <div className="flex flex-col gap-2 bg-[var(--bg)] rounded-[var(--r-md)] p-3">
       {echeances.map(e => (
-        <div key={e.label} className="flex items-center justify-between text-[var(--fs-sm)]">
+        <div key={e.label} className="flex items-center justify-between text-sm">
           <span className="text-[var(--text-muted)]">{e.label}</span>
           <div className="flex items-center gap-2">
-            <span className="text-[var(--text-disabled)] font-mono text-[var(--fs-xs)]">
+            <span className="text-[var(--text-disabled)] font-mono text-xs">
               {e.date ?? '—'}
             </span>
             {e.daysLeft !== null && e.status !== 'none' && (
-              <span className="text-[var(--fs-xs)] text-[var(--text-muted)]">
+              <span className="text-xs text-[var(--text-muted)]">
                 ({e.daysLeft < 0 ? `${Math.abs(e.daysLeft)} j dépassé` : `${e.daysLeft} j`})
               </span>
             )}
@@ -79,8 +80,6 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
       model: vehicle.model ?? '', year: vehicle.year ?? undefined,
       ptac_kg: vehicle.ptac_kg ?? undefined, critair: vehicle.critair,
       fuel_type: vehicle.fuel_type, mileage_km: vehicle.mileage_km,
-      purchase_price_cts: vehicle.purchase_price_cts ?? undefined,
-      purchase_date: vehicle.purchase_date ?? '',
       status: vehicle.status, notes: vehicle.notes ?? '', company_id: vehicle.company_id,
       ct_expiry: vehicle.ct_expiry ?? '',
       insurance_expiry: vehicle.insurance_expiry ?? '',
@@ -102,7 +101,6 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
     // Normalize optional date fields: empty string '' → null to avoid Postgres type error.
     const payload = {
       ...form,
-      purchase_date:     form.purchase_date     || null,
       ct_expiry:         form.ct_expiry         || null,
       insurance_expiry:  form.insurance_expiry  || null,
       next_revision_date: form.next_revision_date || null,
@@ -193,16 +191,14 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
 
         <div className="grid grid-cols-2 gap-3">
           <FieldGroup label="Carburant">
-            <select value={form.fuel_type ?? ''} onChange={e => set('fuel_type', e.target.value || null)} className={inputClass}>
-              <option value="">—</option>
-              {(Object.entries(FUEL_LABELS) as [string, string][]).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
+            <ListeDeroulante valeur={form.fuel_type ?? ''} ariaLabel="Carburant" placeholder="—" recherche={false}
+              onChange={v => set('fuel_type', v || null)}
+              options={[{ valeur: '', libelle: '—' }, ...(Object.entries(FUEL_LABELS) as [string, string][]).map(([v, l]) => ({ valeur: v, libelle: l }))]} />
           </FieldGroup>
           <FieldGroup label="Crit'Air">
-            <select value={form.critair ?? ''} onChange={e => set('critair', e.target.value || null)} className={inputClass}>
-              <option value="">—</option>
-              {['0','1','2','3','4','5','NC'].map(v => <option key={v} value={v}>{v}</option>)}
-            </select>
+            <ListeDeroulante valeur={form.critair ?? ''} ariaLabel="Crit'Air" placeholder="—" recherche={false}
+              onChange={v => set('critair', v || null)}
+              options={[{ valeur: '', libelle: '—' }, ...['0', '1', '2', '3', '4', '5', 'NC'].map(v => ({ valeur: v, libelle: v }))]} />
           </FieldGroup>
         </div>
 
@@ -215,21 +211,9 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
           </FieldGroup>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
-          <FieldGroup label="Date d'achat">
-            <input type="date" value={form.purchase_date ?? ''} onChange={e => set('purchase_date', e.target.value || null)} className={inputClass} />
-          </FieldGroup>
-          <FieldGroup label="Prix d'achat (€)">
-            <input type="number" min={0} step={0.01}
-              value={form.purchase_price_cts != null ? (form.purchase_price_cts / 100).toFixed(2) : ''}
-              onChange={e => set('purchase_price_cts', Math.round(parseFloat(e.target.value || '0') * 100))}
-              className={inputClass} />
-          </FieldGroup>
-        </div>
-
         {/* Échéances réglementaires */}
         <div className="flex flex-col gap-3 pt-3 border-t border-[var(--border-soft)]">
-          <p className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">Échéances</p>
+          <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">Échéances</p>
           <div className="grid grid-cols-3 gap-3">
             <FieldGroup label="Contrôle technique">
               <input type="date" value={form.ct_expiry ?? ''} onChange={e => set('ct_expiry', e.target.value || null)} className={inputClass} />
@@ -264,7 +248,7 @@ export function DrawerVehicule({ open, onClose, vehicle, onSaved }: DrawerVehicu
         {/* Documents rattachés — visible uniquement après sauvegarde */}
         {isEdit && (
           <div className="flex flex-col gap-3 pt-3 border-t border-[var(--border-soft)]">
-            <p className="text-[var(--fs-xs)] font-medium text-[var(--text-muted)] uppercase tracking-wide">Documents</p>
+            <p className="text-xs font-medium text-[var(--text-muted)] uppercase tracking-wide">Documents</p>
             <DocumentsPanel entityType="vehicle" entityId={vehicle!.id} />
           </div>
         )}
