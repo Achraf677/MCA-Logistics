@@ -7,9 +7,21 @@ export async function getLatestSnapshot() {
   return supabase
     .from('treasury_snapshots')
     .select('balance_cts, authorized_balance_cts, iban, source, fetched_at')
+    .eq('source', 'qonto')
     .order('fetched_at', { ascending: false })
     .limit(1)
     .maybeSingle<TreasurySnapshot>()
+}
+
+/** Derniers soldes du compte pro Pennylane (une ligne par compte et par synchro). */
+export async function getSnapshotsPennylane() {
+  return supabase
+    .from('treasury_snapshots')
+    .select('balance_cts, authorized_balance_cts, iban, source, fetched_at')
+    .eq('source', 'pennylane')
+    .order('fetched_at', { ascending: false })
+    .limit(20)
+    .returns<TreasurySnapshot[]>()
 }
 
 export async function getTransactions() {
@@ -24,6 +36,10 @@ export async function getTransactions() {
 
 export async function syncQonto() {
   return supabase.functions.invoke('qonto-sync', { body: {} })
+}
+
+export async function syncPennylaneSolde() {
+  return supabase.functions.invoke('pennylane-solde', { body: {} })
 }
 
 export async function checkPayments() {

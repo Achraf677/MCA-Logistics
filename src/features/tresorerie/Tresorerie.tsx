@@ -11,9 +11,9 @@ import { Skeleton, SkeletonTable } from '../../shared/ui/Skeleton'
 import { formatMoney } from '../../shared/lib/money'
 import { grouperParMois, moisOuvertParDefaut } from '../../shared/lib/mois'
 import { useSync } from '../../app/SyncProvider'
-import { getLatestSnapshot, getTransactions } from './tresorerie.queries'
+import { getLatestSnapshot, getSnapshotsPennylane, getTransactions } from './tresorerie.queries'
 import {
-  amountColorClass, filtrerMouvements, formatSignedAmount, formatTxDate, operationTypeLabel, totauxMouvements,
+  amountColorClass, filtrerMouvements, formatSignedAmount, formatTxDate, operationTypeLabel, soldePennylane, totauxMouvements,
   type FiltreSens,
 } from './tresorerie.logic'
 import type { TreasurySnapshot, QontoTx } from './tresorerie.types'
@@ -30,6 +30,7 @@ const SENS: Array<{ cle: FiltreSens; libelle: string }> = [
  */
 export function Tresorerie() {
   const [snapshot, setSnapshot] = useState<TreasurySnapshot | null>(null)
+  const [soldePl, setSoldePl] = useState<number | null>(null)
   const [txs, setTxs] = useState<QontoTx[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -38,9 +39,10 @@ export function Tresorerie() {
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
-    const [snapRes, txRes] = await Promise.all([getLatestSnapshot(), getTransactions()])
+    const [snapRes, plRes, txRes] = await Promise.all([getLatestSnapshot(), getSnapshotsPennylane(), getTransactions()])
     if (snapRes.error) setError(snapRes.error.message)
     else setSnapshot(snapRes.data ?? null)
+    setSoldePl(plRes.error ? null : soldePennylane(plRes.data ?? []))
     if (txRes.error) setError(txRes.error.message)
     else setTxs(txRes.data ?? [])
     setLoading(false)
@@ -64,8 +66,9 @@ export function Tresorerie() {
           {[0, 1, 2, 3].map(i => <Skeleton key={i} className="h-20" />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-6 stagger [&>*]:min-w-0">
-          <KpiCard label="Solde actuel" value={snapshot ? formatMoney(snapshot.balance_cts) : '—'} accent />
+        <div className={`grid grid-cols-2 ${soldePl !== null ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-5 mb-6 stagger [&>*]:min-w-0`}>
+          <KpiCard label="Solde Qonto" value={snapshot ? formatMoney(snapshot.balance_cts) : '—'} accent />
+          {soldePl !== null && <KpiCard label="Solde Pennylane" value={formatMoney(soldePl)} />}
           <KpiCard label="Solde autorisé" value={snapshot ? formatMoney(snapshot.authorized_balance_cts) : '—'} />
           <KpiCard label={`Entrées${moisCourant ? ` · ${moisCourant.libelle.split(' ')[0].toLowerCase()}` : ''}`}
             value={formatMoney(totauxMois.entreesCts)} tone="success" icon={<ArrowDownLeft size={18} />} />

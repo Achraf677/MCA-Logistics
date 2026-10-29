@@ -64,3 +64,12 @@ export function filtrerMouvements(txs: QontoTx[], sens: FiltreSens, q: string): 
     return `${t.label ?? ''} ${operationTypeLabel(t.operation_type)}`.toLowerCase().includes(mot)
   })
 }
+
+/** Solde Pennylane = somme des comptes de la synchro la plus récente (lignes écrites à moins de 5 min de la dernière). */
+export function soldePennylane(rows: Array<{ balance_cts: number; fetched_at: string }>): number | null {
+  if (rows.length === 0) return null
+  const dernier = Math.max(...rows.map(r => new Date(r.fetched_at).getTime()))
+  return rows
+    .filter(r => dernier - new Date(r.fetched_at).getTime() < 5 * 60_000)
+    .reduce((s, r) => s + r.balance_cts, 0)
+}

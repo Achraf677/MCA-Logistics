@@ -7,7 +7,7 @@
 
 ## 2. Fait (F1)
 - Encaissement et Relances retirés (le suivi des factures se lit dans Livraisons › « À encaisser »).
-- Trésorerie lecture seule : 4 tuiles (solde, autorisé, entrées / sorties du mois), recherche, Tous / Entrées / Sorties, mois par mois (mois courant ouvert).
+- Trésorerie lecture seule : 4 tuiles, 5 si le solde Pennylane est lu (solde Qonto, solde Pennylane, autorisé, entrées / sorties du mois), recherche, Tous / Entrées / Sorties, mois par mois (mois courant ouvert).
 - Charges : mois par mois (mois courant ouvert, un filtre ouvre tout), total HT du mois, tout en HT (colonne TTC et graphique « Dépenses par catégorie » retirés), 2 tuiles (Charges, Total HT).
 - Briques partagées : `shared/lib/mois.ts` (+ test), `shared/ui/GroupeMois.tsx`.
 

@@ -8,7 +8,7 @@ import { useAuth } from './providers'
 import { usePermissions } from '../shared/permissions/usePermissions'
 import { syncPennylaneClients } from '../features/clients/clients.queries'
 import { syncPennylane } from '../features/charges/charges.queries'
-import { syncQonto, checkPayments } from '../features/tresorerie/tresorerie.queries'
+import { syncQonto, syncPennylaneSolde, checkPayments } from '../features/tresorerie/tresorerie.queries'
 import { getDerniersNumeros } from '../features/livraisons/livraisons.queries'
 
 export interface DerniersNumeros {
@@ -55,7 +55,7 @@ function domainSyncFn(domain: SyncDomain, onDerniersNumeros: (d: DerniersNumeros
     case 'clients':          return async () => { await syncPennylaneClients() }
     case 'charges':          return async () => { await syncPennylane() }
     case 'fournisseurs':     return async () => { await syncPennylane() }
-    case 'qonto':             return async () => { await syncQonto() }
+    case 'qonto':             return async () => { await Promise.all([syncQonto(), syncPennylaneSolde()]) }
     case 'paiements':         return async () => { await checkPayments() }
     case 'derniers_numeros':  return async () => { onDerniersNumeros(await getDerniersNumeros()) }
   }
