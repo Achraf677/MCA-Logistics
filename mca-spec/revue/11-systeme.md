@@ -13,11 +13,13 @@
 
 ## 3 Écran Paramètres (refonte du 29/10/2026, lot S1 puis retouches)
 - Plus de tuiles ni de « fiche complète n / 12 » (inutile). 5 volets (`?volet=`) : Société · Connexions (ancienne clé `documents`) · Finance · Flotte · Mon espace (= ex Apparence + Compte). Anciens liens `apparence` / `compte` redirigés.
+- Disposition (29/10/2026) : blocs EMPILÉS en une colonne, valeurs en cellules sur une ligne (libellé au-dessus), tout tient sur une page PC sans défiler ; même règle dans Connexions et Mon espace.
 - Société = LECTURE par défaut (`BlocFiche`) : valeurs figées, bouton « Modifier » par bloc ; les champs n'apparaissent qu'au clic (plus de liste d'adresses qui s'ouvre toute seule). Blocs : Identité légale · Conformité transport (voyants licence / RC pro à 60 jours) · Adresse du dépôt · Départ des tournées de colis. Plus d'affichage de coordonnées GPS.
 - Barre d'actions fixe (Annuler / Enregistrer) seulement quand un bloc est ouvert ou modifié ; avertissement navigateur si on quitte avec des changements.
 - Contrôles (`parametres.logic.ts`, testés) : SIREN 9 chiffres, SIRET 14, TVA (clé FR calculée), e-mail ; bloquent seulement une valeur MODIFIÉE. Avertissements : SIRET / TVA ≠ SIREN.
-- Connexions : compte Google (`GmailConnect`) · Dépôt Pennylane (`PennylaneDepot` : adresse masquée, « Changer » = confirmation avec case à cocher puis saisie de la nouvelle adresse DEUX fois) · « Vérifier la lecture des photos ».
-- IBAN / BIC : plus dans Paramètres ; bloc « Compte bancaire de la société » en haut de Système › Cartes bancaires (`features/cartes/CompteBancaire.tsx`, lecture par défaut, « Modifier » = confirmation avec case à cocher, contrôle IBAN mod 97 / BIC, `shared/lib/coordonneesBancaires.ts`). Colonnes `companies.iban / bic` inchangées (aucun autre lecteur dans le code).
+- Mon espace : Mon compte (nom, e-mail, rôle, Se déconnecter) puis Apparence (5 thèmes). Pas de saisie ajoutée : `profiles` n'a pas de policy de mise à jour par l'utilisateur lui-même.
+- Connexions : compte Google (`GmailConnect`) · Dépôt Pennylane (`PennylaneDepot` : adresse masquée, « Changer » = confirmation avec case à cocher puis saisie de la nouvelle adresse DEUX fois) · (le test « lecture des photos » est retiré, `TestLectureAuto` supprimé).
+- Comptes bancaires : plus dans Paramètres ; bloc « Comptes bancaires de la société » en haut de Système › Cartes bancaires (`features/cartes/CompteBancaire.tsx`) : plusieurs comptes, chacun avec nom, banque, IBAN, BIC et son RIB (PDF ou image glissé, consultable, téléchargeable). Table `comptes_bancaires` (migration `20261029160000` appliquée ; RLS : lecture / écriture président ou droit Système › Paramètres, un salarié ne lit rien) ; RIB dans le bucket `documents`, dossier `<company>/ribs/` (hors table `documents`). Modifier l'IBAN d'un compte existant = confirmation avec case à cocher. Contrôle IBAN mod 97 / BIC (`shared/lib/coordonneesBancaires.ts`). `companies.iban / bic` gardés en base, plus lus ni écrits (repris dans « Compte principal »).
 - `AddressAutocomplete` : ne propose plus de liste à l'ouverture d'un champ déjà rempli (seulement si on change le texte).
 
 ## 4 Gestes et écritures

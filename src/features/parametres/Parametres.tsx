@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { Building2, LogOut, MapPin, PlugZap, ScanLine, ShieldCheck, Truck, UserRound, Wallet, PackageOpen } from 'lucide-react'
+import { Building2, LogOut, MapPin, PlugZap, ShieldCheck, Truck, UserRound, Wallet, PackageOpen } from 'lucide-react'
 import { useSearchParams } from 'react-router-dom'
 import { Shell } from '../../app/Shell'
 import { Button } from '../../shared/ui/Button'
@@ -21,7 +21,6 @@ import { ThemeSelector } from '../../shared/theme/ThemeSelector'
 import { GestionCategories } from './GestionCategories'
 import { GestionProduits } from './GestionProduits'
 import { GmailConnect } from './GmailConnect'
-import { TestLectureAuto } from './TestLectureAuto'
 import { erreursSociete, avertissementsSociete, echeanceSociete, libelleEcheance, champsModifies } from './parametres.logic'
 import type { EcheanceStatus } from '../../shared/lib/echeances'
 
@@ -217,8 +216,7 @@ export function Parametres() {
         <div className="flex-1 min-w-0 flex flex-col gap-4">
           {volet === 'societe' && (
             <>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                <div className="flex flex-col gap-4 min-w-0">
+              <div className="flex flex-col gap-3 min-w-0">
                   <BlocFiche titre="Identité légale" icone={<Building2 size={15} />} enEdition={edite('identite')} onModifier={() => ouvrir('identite')} peutModifier={peutModifier}
                     lignes={[
                       { libelle: 'Raison sociale', valeur: form.name },
@@ -227,17 +225,16 @@ export function Parametres() {
                       { libelle: 'N° de TVA', valeur: form.tva_intra },
                       { libelle: 'Capital social', valeur: capital },
                     ]}>
+                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
                     <Champ label="Raison sociale" requis error={erreurs.name}>
                       <input className="field" value={form.name} onChange={e => set('name', e.target.value)} placeholder="MCA Logistics" />
                     </Champ>
-                    <div className="grid grid-cols-2 gap-3">
                       <Champ label="SIREN" error={erreurs.siren}>
                         <input className="field" inputMode="numeric" value={form.siren ?? ''} onChange={e => set('siren', e.target.value)} placeholder="123456789" />
                       </Champ>
                       <Champ label="SIRET" error={erreurs.siret}>
                         <input className="field" inputMode="numeric" value={form.siret ?? ''} onChange={e => set('siret', e.target.value)} placeholder="12345678900001" />
                       </Champ>
-                    </div>
                     <Champ label="N° TVA intracommunautaire" error={erreurs.tva_intra}>
                       <input className="field" value={form.tva_intra ?? ''} onChange={e => set('tva_intra', e.target.value)} placeholder="FR12345678901" />
                     </Champ>
@@ -247,6 +244,7 @@ export function Parametres() {
                         onChange={e => set('capital_cts', e.target.value ? Math.round(parseFloat(e.target.value) * 100) : null)}
                         placeholder="7200" />
                     </Champ>
+                    </div>
                     {avertissements.map(a => <p key={a} className="text-xs text-[var(--warning)]">{a}</p>)}
                   </BlocFiche>
 
@@ -256,10 +254,10 @@ export function Parametres() {
                       { libelle: 'Licence : échéance', valeur: vigilance(eLicence, form.transport_license_expiry) },
                       { libelle: 'RC pro : échéance', valeur: vigilance(eRc, form.rc_pro_expiry) },
                     ]}>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <Champ label="N° de licence de transport (DREAL)">
                       <input className="field" value={form.licence_transport ?? ''} onChange={e => set('licence_transport', e.target.value)} placeholder="Ex. 2020/68/0000123" />
                     </Champ>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Champ label="Licence : échéance">
                         <input type="date" className="field" value={form.transport_license_expiry ?? ''} onChange={e => set('transport_license_expiry', e.target.value || null)} />
                       </Champ>
@@ -268,9 +266,7 @@ export function Parametres() {
                       </Champ>
                     </div>
                   </BlocFiche>
-                </div>
 
-                <div className="flex flex-col gap-4 min-w-0">
                   <BlocFiche titre="Adresse du dépôt" icone={<MapPin size={15} />} enEdition={edite('depot')} onModifier={() => ouvrir('depot')} peutModifier={peutModifier}
                     lignes={[{ libelle: 'Adresse', valeur: form.address }]}>
                     <AddressAutocomplete
@@ -293,7 +289,6 @@ export function Parametres() {
                     />
                     <p className="text-xs text-[var(--text-muted)]">Point de départ et de retour de l'itinéraire calculé dans Ma tournée. Vide : le dépôt.</p>
                   </BlocFiche>
-                </div>
               </div>
 
               {/* Barre d'actions : seulement quand un bloc est ouvert ou qu'il y a un changement */}
@@ -318,12 +313,9 @@ export function Parametres() {
           )}
 
           {volet === 'documents' && companyId && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+            <div className="flex flex-col gap-3">
               <GmailConnect />
               <PennylaneDepot companyId={companyId} valeur={depotEmail} peutModifier={peutModifier} onChange={setDepotEmail} />
-              <Bloc titre="Lecture automatique des photos" icone={<ScanLine size={15} />}>
-                <TestLectureAuto />
-              </Bloc>
             </div>
           )}
 
@@ -342,26 +334,23 @@ export function Parametres() {
           )}
 
           {volet === 'espace' && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
+            <div className="flex flex-col gap-3">
+              <Bloc titre="Mon compte" icone={<UserRound size={15} />}
+                droite={<Button variant="secondary" size="compact" onClick={handleLogout} disabled={logoutLoading}>
+                  <LogOut size={13} />{logoutLoading ? 'Déconnexion…' : 'Se déconnecter'}
+                </Button>}>
+                <div className="flex items-center gap-3">
+                  <AvatarInitiales nom={profile?.full_name ?? '?'} taille="lg" />
+                  <div className="min-w-0 flex-1 grid sm:grid-cols-3 gap-x-6 gap-y-1">
+                    <div className="min-w-0"><p className="text-xs text-[var(--text-muted)]">Nom</p><p className="text-sm text-[var(--text)] truncate">{profile?.full_name ?? '—'}</p></div>
+                    <div className="min-w-0"><p className="text-xs text-[var(--text-muted)]">E-mail</p><p className="text-sm text-[var(--text)] truncate">{profile?.email ?? '—'}</p></div>
+                    <div className="min-w-0"><p className="text-xs text-[var(--text-muted)]">Rôle</p><p className="text-sm text-[var(--text)]">{libelleRole(profile?.role)}</p></div>
+                  </div>
+                </div>
+              </Bloc>
               <Bloc titre="Apparence">
                 <p className="text-xs text-[var(--text-muted)] -mt-1">Le thème s'applique tout de suite, sur cet appareil.</p>
                 <ThemeSelector />
-              </Bloc>
-              <Bloc titre="Mon compte" icone={<UserRound size={15} />}>
-                <div className="flex items-center gap-3">
-                  <AvatarInitiales nom={profile?.full_name ?? '?'} taille="lg" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-[var(--text)] truncate">{profile?.full_name ?? '—'}</p>
-                    <p className="text-xs text-[var(--text-muted)] truncate">{profile?.email ?? ''}</p>
-                    <p className="text-xs text-[var(--text-muted)]">{libelleRole(profile?.role)}</p>
-                  </div>
-                </div>
-                <div>
-                  <Button variant="secondary" onClick={handleLogout} disabled={logoutLoading}>
-                    <LogOut size={14} />
-                    {logoutLoading ? 'Déconnexion…' : 'Se déconnecter'}
-                  </Button>
-                </div>
               </Bloc>
             </div>
           )}

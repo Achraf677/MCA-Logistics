@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ibanValide, bicValide, ibanLisible, erreursBancaires, emailMasque } from './coordonneesBancaires'
+import { ibanValide, bicValide, ibanLisible, erreursBancaires, emailMasque, cheminRib, erreurLibelleCompte } from './coordonneesBancaires'
 
 describe('coordonnées bancaires', () => {
   it('IBAN : clé mod 97', () => {
@@ -24,5 +24,12 @@ describe('coordonnées bancaires', () => {
     expect(emailMasque('depot@fictif.example')).toBe('de•••@fictif.example')
     expect(emailMasque('ab@x.fr')).toBe('ab•••@x.fr')
     expect(emailMasque('pas-un-mail')).toBe('pas-un-mail')
+  })
+  it('chemin du RIB : société d’abord, nom assaini', () => {
+    expect(cheminRib('co1', 'RIB Qonto é.pdf', 'u1')).toBe('co1/ribs/u1-RIB_Qonto_e.pdf')
+  })
+  it('nom de compte obligatoire', () => {
+    expect(erreurLibelleCompte('  ')).toBeDefined()
+    expect(erreurLibelleCompte('Qonto')).toBeUndefined()
   })
 })

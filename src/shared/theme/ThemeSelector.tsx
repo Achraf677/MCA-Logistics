@@ -4,7 +4,7 @@ import { THEMES, applyTheme, getThemeId } from './themes'
 export function ThemeSelector() {
   const [active, setActive] = useState(getThemeId())
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
       {THEMES.map(t => (
         <button key={t.id} type="button"
           onClick={() => { applyTheme(t.id); setActive(t.id) }}

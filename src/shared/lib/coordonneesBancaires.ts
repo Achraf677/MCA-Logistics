@@ -39,3 +39,17 @@ export function emailMasque(email: string): string {
   if (!domaine) return email
   return `${local.slice(0, 2)}${'•'.repeat(Math.max(3, local.length - 2))}@${domaine}`
 }
+
+/** Chemin de stockage d'un RIB : `<company_id>/ribs/<uuid>-<nom assaini>` (premier segment = société, exigé par les policies du bucket). */
+export function cheminRib(companyId: string, nomFichier: string, uuid: string): string {
+  const propre = nomFichier
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_')
+    .slice(-80)
+  return `${companyId}/ribs/${uuid}-${propre}`
+}
+
+/** Un compte doit au moins avoir un nom ; IBAN / BIC vides acceptés (compte en cours de saisie). */
+export function erreurLibelleCompte(libelle: string): string | undefined {
+  return libelle.trim() ? undefined : 'Donne un nom au compte (ex. Compte principal)'
+}
