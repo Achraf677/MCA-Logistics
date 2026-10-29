@@ -287,6 +287,7 @@ export function DrawerCarburant({
         liters,
         price_per_liter_milli: priceMilli || (liters > 0 ? Math.round(totalCts * 10 / liters) : 0),
         total_cts: montants.ttc_cts,
+        total_ht_cts: montants.ht_cts,
         tva_cts: montants.tva_cts > 0 ? montants.tva_cts : null,
         fuel_type: (form.fuel_type || null) as FuelType | null,
         mileage_km: form.mileage_km ? parseInt(form.mileage_km) : null,

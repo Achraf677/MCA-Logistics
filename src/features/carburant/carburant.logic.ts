@@ -84,6 +84,10 @@ export function formatLiters(liters: number): string {
   }) + ' L'
 }
 
+export function formatConso(l100: number): string {
+  return l100.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' L/100'
+}
+
 export function formatPricePerLiter(milli: number): string {
   return (milli / 1000).toLocaleString('fr-FR', {
     minimumFractionDigits: 3,
@@ -91,19 +95,59 @@ export function formatPricePerLiter(milli: number): string {
   }) + ' €/L'
 }
 
+/** HT d'un plein : la valeur enregistrée, sinon TTC − TVA (lignes anciennes). */
+export function htDuPlein(r: Pick<FuelLogRow, 'total_ht_cts' | 'total_cts' | 'tva_cts'>): number {
+  return r.total_ht_cts ?? r.total_cts - (r.tva_cts ?? 0)
+}
+
+/** Prix au litre HT en millièmes d'euro (même unité que `price_per_liter_milli`), 0 si pas de litres. */
+export function prixLitreHtMilli(r: Pick<FuelLogRow, 'total_ht_cts' | 'total_cts' | 'tva_cts' | 'liters'>): number {
+  return r.liters > 0 ? Math.round(htDuPlein(r) * 10 / r.liters) : 0
+}
+
 /**
- * KPIs de la liste. Le TOTAL couvre tout (carburants + liquides : c'est ce que
+ * Consommation (L / 100 km) d'un véhicule, sur ses pleins de CARBURANT avec km relevé.
+ * Méthode du plein à plein : le premier plein remplit le réservoir sans mesurer le trajet,
+ * on additionne donc les litres des pleins SUIVANTS et on divise par les km parcourus
+ * entre le premier et le dernier relevé. Sous 2 relevés, ou sans km parcourus : inconnu.
+ */
+export function consommation(rows: FuelLogRow[], produits: ProduitVehicule[] = []): { litres: number; km: number; l100: number } | null {
+  const pleins = rows
+    .filter(r => !estLiquide(r.fuel_type, produits) && r.mileage_km != null && r.liters > 0)
+    .sort((a, b) => a.mileage_km! - b.mileage_km!)
+  if (pleins.length < 2) return null
+  const km = pleins[pleins.length - 1].mileage_km! - pleins[0].mileage_km!
+  if (km <= 0) return null
+  const litres = pleins.slice(1).reduce((s, r) => s + r.liters, 0)
+  return { litres, km, l100: (litres / km) * 100 }
+}
+
+/** Consommation de la flotte : somme des litres et des km de chaque véhicule mesurable. */
+export function consommationFlotte(rows: FuelLogRow[], produits: ProduitVehicule[] = []): { l100: number; vehicules: number } | null {
+  const parVehicule = new Map<string, FuelLogRow[]>()
+  for (const r of rows) parVehicule.set(r.vehicle_id, [...(parVehicule.get(r.vehicle_id) ?? []), r])
+  let litres = 0, km = 0, vehicules = 0
+  for (const liste of parVehicule.values()) {
+    const c = consommation(liste, produits)
+    if (!c) continue
+    litres += c.litres; km += c.km; vehicules += 1
+  }
+  return km > 0 ? { l100: (litres / km) * 100, vehicules } : null
+}
+
+/**
+ * KPIs de la liste, en HT. Le TOTAL couvre tout (carburants + liquides : c'est ce que
  * coûte le véhicule). Les LITRES et le PRIX MOYEN AU LITRE, eux, ne portent que
  * sur les carburants : 10 L d'AdBlue à 1,49 €/L feraient mentir le prix moyen
  * du gazole et la consommation.
  */
 export function kpiSummary(rows: FuelLogRow[], produits: ProduitVehicule[] = []) {
-  const totalCts = rows.reduce((s, r) => s + r.total_cts, 0)
+  const totalHtCts = rows.reduce((s, r) => s + htDuPlein(r), 0)
   const carburants = rows.filter(r => !estLiquide(r.fuel_type, produits))
   const totalLiters = carburants.reduce((s, r) => s + r.liters, 0)
-  // Moyenne pondérée en millièmes → reste en millièmes pour formatPricePerLiter
+  // Moyenne pondérée HT, en millièmes d'euro → formatPricePerLiter
   const avgPricePerLiter = totalLiters > 0
-    ? carburants.reduce((s, r) => s + r.price_per_liter_milli * r.liters, 0) / totalLiters
+    ? carburants.filter(r => r.liters > 0).reduce((s, r) => s + htDuPlein(r), 0) * 10 / totalLiters
     : 0
-  return { totalCts, totalLiters, avgPricePerLiter, nb: rows.length }
+  return { totalHtCts, totalLiters, avgPricePerLiter, nb: rows.length }
 }

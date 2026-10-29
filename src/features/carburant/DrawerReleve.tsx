@@ -116,6 +116,7 @@ export function DrawerReleve({ open, onClose, charge, onSaved, produits = [] }: 
           liters: litres,
           price_per_liter_milli: prixMilli || (litres > 0 ? Math.round(ttc * 10 / litres) : 0),
           total_cts: m.ttc_cts,
+          total_ht_cts: m.ht_cts,
           tva_cts: m.tva_cts > 0 ? m.tva_cts : null,
           fuel_type: l.produit,
           mileage_km: l.kilometrage ? parseInt(l.kilometrage) : null,
