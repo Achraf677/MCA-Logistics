@@ -50,7 +50,7 @@ export async function exportFuelCSV(filters: FuelFilters = {}) {
   const { data } = await getFuelLogs(filters)
   if (!data) return ''
   const rows = data as unknown as FuelLogRow[]
-  const headers = ['Date', 'Véhicule', 'Immat.', 'Chauffeur', 'Litres', '€/L HT', 'Total HT (€)', 'Carburant', 'km', 'Station', 'Facturé', 'Total TTC (€)']
+  const headers = ['Date', 'Véhicule', 'Immat.', 'Chauffeur', 'Litres', '€/L HT', 'Total HT (€)', 'Carburant', 'Station', 'Facturé', 'Total TTC (€)']
   const lines = rows.map(d => [
     d.date,
     d.vehicles?.label ?? '',
@@ -60,7 +60,6 @@ export async function exportFuelCSV(filters: FuelFilters = {}) {
     (prixLitreHtMilli(d) / 1000).toFixed(3),
     (htDuPlein(d) / 100).toFixed(2),
     d.fuel_type ?? '',
-    d.mileage_km ?? '',
     d.station ?? '',
     d.charges ? 'Oui' : 'Non',
     (d.total_cts / 100).toFixed(2),

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Fuel, Euro, Droplet, Gauge, Route } from 'lucide-react'
+import { Fuel, Euro, Droplet, Gauge } from 'lucide-react'
 import { Shell } from '../../app/Shell'
 import { ChiffreCarte } from '../../shared/ui/ChiffreCarte'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { ListeDeroulante } from '../../shared/ui/ListeDeroulante'
 import { PastilleFiltre } from '../../shared/ui/PastilleFiltre'
+import { useAffichageMontant, SelecteurHtTtc } from '../../shared/ui/AffichageMontant'
 import { SkeletonKpis } from '../../shared/ui/Skeleton'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
@@ -20,8 +21,8 @@ import { supabase } from '../../app/providers'
 import { getFuelLogs, exportFuelCSV } from './carburant.queries'
 import {
   libelleProduit, couleurProduit,
-  formatCents, formatLiters, formatPricePerLiter, formatConso, kpiSummary, filtrerProduit, produitsUtilises,
-  htDuPlein, prixLitreHtMilli, consommationFlotte,
+  formatCents, formatLiters, formatPricePerLiter, kpiSummary, filtrerProduit, produitsUtilises,
+  montantPlein, prixLitreMilli,
 } from './carburant.logic'
 import { FacturePdfLink } from '../../shared/ui/FacturePdfLink'
 import { downloadCSV } from '../../shared/lib/download'
@@ -48,6 +49,8 @@ export function Carburant() {
   // filtre client, sur les lignes déjà chargées, comme le reste des filtres spéciaux.
   const [filtreARapprocher, setFiltreARapprocher] = useState(false)
   const [recherche, setRecherche] = useState('')
+  const [mode, setMode] = useAffichageMontant()
+  const suffixe = mode === 'ttc' ? 'TTC' : 'HT'
 
   useEffect(() => {
     // La plaque est chargée : c'est elle qui relie une facture carburant à un
@@ -99,7 +102,6 @@ export function Carburant() {
   const choisirProduit = (v: string) => setFilters(f => ({ ...f, produit: v === 'all' ? undefined : v }))
   const rowsFamille = filtrerProduit(rows, filters.produit, produits)
   const kpis = kpiSummary(rowsFamille, produits)
-  const conso = consommationFlotte(rowsFamille, produits)
   const nbARapprocher = rowsFamille.filter(r => !r.charge_id).length
   const mot = recherche.trim().toLowerCase()
   const displayRows = rowsFamille
@@ -116,24 +118,22 @@ export function Carburant() {
   const basculeCarburants = () => choisirProduit(carburantsSeuls ? 'all' : 'famille:carburant')
 
   return (
-    <Shell pageTitle="Carburant & consommables" actions={['nouveau', 'export']} onAction={handleAction}>
+    <Shell pageTitle="Carburant & consommables" actions={['nouveau', 'export']} onAction={handleAction}
+      actionsGauche={<SelecteurHtTtc mode={mode} onChange={setMode} />}>
       {/* Tuiles cliquables (HT) : chaque geste filtre la liste */}
       {loading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5"><SkeletonKpis count={5} /></div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5"><SkeletonKpis count={4} /></div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
           <ChiffreCarte libelle="Achats" icone={<Fuel size={13} />} valeur={String(kpis.nb)}
             detail={nbARapprocher > 0 ? `${nbARapprocher} à rapprocher` : 'tous rapprochés'} ton={nbARapprocher > 0 ? 'warning' : undefined}
             titre="Voir les achats sans facture liée" actif={filtreARapprocher} onClick={() => setFiltreARapprocher(v => !v)} />
-          <ChiffreCarte libelle="Total HT" icone={<Euro size={13} />} valeur={formatCents(kpis.totalHtCts)} detail="carburant + consommables"
+          <ChiffreCarte libelle={`Total ${suffixe}`} icone={<Euro size={13} />} valeur={formatCents(mode === 'ttc' ? kpis.totalTtcCts : kpis.totalHtCts)} detail="carburant + consommables"
             titre="Tout afficher" actif={false} onClick={resetFilters} />
           <ChiffreCarte libelle="Litres" icone={<Droplet size={13} />} valeur={formatLiters(kpis.totalLiters)} detail="carburant seulement"
             titre="Carburants seulement" actif={carburantsSeuls} onClick={basculeCarburants} />
-          <ChiffreCarte libelle="Prix moy. / L HT" icone={<Gauge size={13} />} valeur={formatPricePerLiter(kpis.avgPricePerLiter)} detail="moyenne pondérée"
+          <ChiffreCarte libelle={`Prix moy. / L ${suffixe}`} icone={<Gauge size={13} />} valeur={formatPricePerLiter(mode === 'ttc' ? kpis.avgPricePerLiterTtc : kpis.avgPricePerLiter)} detail="moyenne pondérée"
             titre="Carburants seulement" actif={carburantsSeuls} onClick={basculeCarburants} />
-          <div className="col-span-2 lg:col-span-1 min-w-0 flex flex-col [&>*]:flex-1"><ChiffreCarte libelle="Conso" icone={<Route size={13} />} valeur={conso ? formatConso(conso.l100) : '—'}
-            detail={conso ? `${conso.vehicules} véhicule${conso.vehicules > 1 ? 's' : ''} mesuré${conso.vehicules > 1 ? 's' : ''}` : 'km manquants'}
-            titre="Plein à plein, sur les pleins avec kilométrage" actif={carburantsSeuls} onClick={basculeCarburants} /></div>
         </div>
       )}
 
@@ -196,7 +196,7 @@ export function Carburant() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-[var(--bg-elevated)] text-[var(--text-muted)] text-left">
-                  {['Date', 'Véhicule', 'Chauffeur', 'Litres', '€/L HT', 'Total HT', 'Produit', 'km', 'Facture', ''].map(h => (
+                  {['Date', 'Véhicule', 'Chauffeur', 'Litres', `€/L ${suffixe}`, `Total ${suffixe}`, 'Produit', 'Facture', ''].map(h => (
                     <th key={h} className="px-4 py-2.5 font-medium text-xs">{h}</th>
                   ))}
                 </tr>
@@ -223,18 +223,15 @@ export function Carburant() {
                     <td className="px-4 py-3 text-[var(--text-muted)]">{row.team_members?.full_name ?? '—'}</td>
                     <td className="px-4 py-3 font-mono">{row.liters > 0 ? `${row.liters.toFixed(2)} L` : '—'}</td>
                     <td className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]">
-                      {row.liters > 0 ? formatPricePerLiter(prixLitreHtMilli(row)).replace(' €/L', ' €') : '—'}
+                      {row.liters > 0 ? formatPricePerLiter(prixLitreMilli(row, mode)).replace(' €/L', ' €') : '—'}
                     </td>
                     <td className="px-4 py-3 font-mono font-semibold text-[var(--text)]">
-                      {formatCents(htDuPlein(row))}
+                      {formatCents(montantPlein(row, mode))}
                     </td>
                     <td className="px-4 py-3">
                       {row.fuel_type
                         ? <Badge color={couleurProduit(row.fuel_type)}>{libelleProduit(row.fuel_type, produits)}</Badge>
                         : <span className="text-[var(--text-disabled)]">—</span>}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-[var(--text-muted)]">
-                      {row.mileage_km != null ? `${row.mileage_km.toLocaleString('fr-FR')} km` : '—'}
                     </td>
                     <td className="px-4 py-3">
                       {row.charges ? (
@@ -279,10 +276,10 @@ export function Carburant() {
                 <div className="flex items-end justify-between gap-2">
                   <div className="flex flex-col gap-0.5 text-xs text-[var(--text-muted)]">
                     <span>{new Date(row.date).toLocaleDateString('fr-FR')}</span>
-                    <span>{row.liters > 0 ? `${row.liters.toFixed(2)} L · ${formatPricePerLiter(prixLitreHtMilli(row))}` : '—'}</span>
+                    <span>{row.liters > 0 ? `${row.liters.toFixed(2)} L · ${formatPricePerLiter(prixLitreMilli(row, mode))}` : '—'}</span>
                     {row.station && <span>{row.station}</span>}
                   </div>
-                  <span className="font-mono font-semibold text-[var(--text)]">{formatCents(htDuPlein(row))}</span>
+                  <span className="font-mono font-semibold text-[var(--text)]">{formatCents(montantPlein(row, mode))}</span>
                 </div>
               </button>
             ))}
