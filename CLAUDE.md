@@ -2,7 +2,8 @@
 
 > Claude Code lit ce fichier au démarrage de CHAQUE session. **Il fait foi.**
 > Il est tenu à jour PAR Claude à la fin de chaque grosse session (voir « Rituel de fin »).
-> Dernière mise à jour : **29/10/2026** (refonte par onglet : Livraisons, Planning / Tournées, Finance, Tiers, Équipe, Documents mergés ; page de connexion refaite ; zones de Brumath reprises du fichier de l'utilisateur ; reste Système et Flotte).
+> Dernière mise à jour : **29/10/2026** (allégé : détail déplacé dans `mca-spec/HISTORIQUE.md`).
+
 
 ---
 
@@ -202,12 +203,12 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   vérifications sont vertes (tests, relecture, migration testée). Il le signale en une ligne
   dans son rapport. Il demande seulement avant une action destructive (suppression de table,
   de colonne ou de données) ou un changement de droits d'accès existants.
-- **Mise à jour du CLAUDE.md à CHAQUE PR (26/10/2026, automatique, sans qu'on le demande)** : avant de pousser la PR, mettre à jour ce fichier (§ 11-12, date en tête) + la fiche de revue + la carte des interconnexions si concernées, dans la MÊME PR. Après un merge, si l'état a changé, PR « Mémoire : … » de suite.
+- **Mise à jour du CLAUDE.md à CHAQUE PR (26/10/2026, automatique, sans qu'on le demande)** : avant de pousser la PR, mettre à jour ce fichier (§ 11, date en tête ; le détail va dans `mca-spec/HISTORIQUE.md`) + la fiche de revue + la carte des interconnexions si concernées, dans la MÊME PR. Après un merge, si l'état a changé, PR « Mémoire : … » de suite.
 - Jamais d'identifiant de modèle IA dans un commit / une PR. Confirmer les hash après merge.
 
 ## 10. Rituel de fin de grosse session (OBLIGATOIRE)
 À la fin d'une session qui a changé du code, une règle ou une décision :
-1. **Ce fichier** : mettre à jour § 2 (métier), § 5-6 (pièges, statuts), § 11 (état), § 12
+1. **Ce fichier** : mettre à jour § 2 (métier), § 5-6 (pièges, statuts), § 11 (état)
    (en cours / à décider), la date en tête. Supprimer ce qui est devenu faux.
 2. **Fiche de revue** de l'onglet (`mca-spec/revue/NN-*.md`) : écran, gestes, données, lots faits.
 3. **`mca-spec/CARTE-INTERCONNEXIONS.md`** : nouvelles tables / colonnes / lecteurs / Edge.
@@ -440,6 +441,15 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 - Refonte par onglet (22/10/2026) : plan et décisions dans `mca-spec/DECISIONS-2026-10-22.md`. Faits : zoom, Mes courses
   retiré du menu bureau, Flotte allégée, Pilotage, fond / cadre, Livraisons (Modèles + LV retirés, tuiles fusionnées,
   Preuves sur une page, Devis harmonisé). Planning / Tournées : fait le 22/10/2026 (voir § 11). Finance lot F1 (`mca-spec/revue/06-finance.md`) : Encaissement + Relances retirés, Trésorerie lecture seule, Charges par mois en HT ; F2a fait (onglet Justificatifs, moyen de paiement obligatoire, `receipts_inbox.rembourse_le`, charge « passée en OD ») ; reste F2b (HT / TVA par ligne de ventilation, IA) et le transfert Pennylane. Reste aussi : Équipe, Tiers, Système, reste de Flotte. Edge `send-client-email` (v6), `assistant-chat` (v26) et `optimize-tours` (v23) déployées le 22/10/2026.
+## 11. État actuel & à décider (29/10/2026)
+> Le détail (lots faits, versions d'Edge, chiffres, bancs de test) est dans `mca-spec/HISTORIQUE.md` : ne le lire QUE si on touche la zone concernée (grep). Ici : le strict utile.
+- 8 sections (`src/app/sections/`) : Pilotage · Livraisons (Livraisons, Devis) · Finance (Trésorerie, Charges, Justificatifs) · Flotte · Planning (Tournées, Planning) · Tiers · Équipe · Système (Paramètres, Documents, Cartes bancaires, Admins). Hors menu : Mes courses (salarié), Alertes. Les specs `mca-spec/tabs/` sont partielles : vérifier le code.
+- Activité actuelle : messagerie Colissimo (tournées de colis scannées, relevé mensuel). Express retiré de Mes courses.
+- Fiches de revue : `mca-spec/revue/NN-*.md` (une par onglet).
+- **À faire par l'utilisateur** : activer le hook « Password verification attempt » (Supabase → Auth → Hooks) ; reconnecter Google dans Paramètres (cocher Drive) puis tester Documents sur de vrais fichiers ; tester l'interface salarié sur un vrai compte.
+- **À décider** : ordre des villages (onglet « Villages » du fichier Excel) · zones collées à Brumath (changer la zone dans `zones_rues` si demandé) · Lucas rentre-t-il à Vendenheim · alerte « ordre manuel plus long que le calculé » · Mistral gratuit vs Claude Haiku pour la lecture des photos · ~20 fiches clients « particuliers » jetables (fusionner / désactiver) · 1 client à 60 j à repasser à 30 j · correctif global `text-[var(--fs-*)]` · chauffeur : supprimer ses photos dans l'heure ? · Planning : changer chauffeur / jour détache la course de sa tournée.
+- **Chantiers ouverts** : Pennylane U6 (mentions légales ; manque la part du gazole %), U7 charges, U8 ménage · Dépenses véhicule étape 2 (attend le « go ») · Dashboard : compter les colis de messagerie · Devis D4 (expiration, relance > 7 j) · Refonte par onglet : Système (Paramètres, Admins) fait ; **Flotte arrêtée après Véhicules (décision du 29/10)** — non fait : Carburant HT + conso, Entretiens HT, coût 12 mois (carburant aussi dans Finance › Justificatifs : arbitrer si reprise) ; reste les `<select>` natifs → `ListeDeroulante`.
+- Plans de référence : `mca-spec/UNIFORMISATION-PENNYLANE.md`, `PLAN-ESPACE-SALARIE.md`, `DECISIONS-2026-10-22.md`, `AUDIT-2026-10-01.md`.
 
 ## 13. Revue onglet par onglet (méthode validée le 30/09/2026)
 - Un onglet à la fois : critique mobile + PC (bon / pas bon / à ajouter) → validation → PR +
@@ -460,3 +470,4 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
   (`from('deliveries')`, `functions.invoke('pennylane-invoice')`) ni le SQL : pour ça,
   `CARTE-INTERCONNEXIONS.md` + grep restent la règle (§ 7). `graphify-out/` n'est pas versionné.
 - Specs onglets : `mca-spec/tabs/` · intégrations : `mca-spec/integrations/` · revue : `mca-spec/revue/`.
+- **Économie de tokens (29/10/2026)** : ce fichier reste sous ~25 Ko (relu à chaque session). Tout détail d'historique va dans `mca-spec/HISTORIQUE.md`, jamais ici. Ne lire que les fichiers de l'étape ; sous-agent seulement pour une lecture lourde isolée.
