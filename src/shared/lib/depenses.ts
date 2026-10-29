@@ -23,30 +23,8 @@ export const LIBELLE_MOYEN: Record<MoyenPaiement, string> = {
   personnel: 'De ma poche (note de frais)',
 }
 
-/** Cartes de la société (une dépense « Carte de la société » dit laquelle). La valeur est stockée dans `receipts_inbox.carte`. */
-export const CARTES_SOCIETE: Array<{ valeur: string; libelle: string }> = [
-  { valeur: 'qonto_4103', libelle: 'QONTO : *4103' },
-  { valeur: 'pennylane_4393', libelle: 'PENNYLANE : *4393' },
-  { valeur: 'pennylane_5115', libelle: 'PENNYLANE : *5115' },
-  { valeur: 'pennylane_8784', libelle: 'PENNYLANE : *8784' },
-  { valeur: 'pennylane_8685', libelle: 'PENNYLANE : *8685' },
-]
-
-/** Cartes carburant (même principe, stocké dans `receipts_inbox.carte`). */
-export const CARTES_CARBURANT: Array<{ valeur: string; libelle: string }> = [
-  { valeur: 'edenred_9156', libelle: 'EDENRED : *9156' },
-]
-
-/** Cartes proposées pour un moyen de paiement ; vide = pas de carte à choisir. */
-export function cartesDuMoyen(moyen: string | null | undefined): Array<{ valeur: string; libelle: string }> {
-  if (moyen === 'carte_societe') return CARTES_SOCIETE
-  if (moyen === 'carte_carburant') return CARTES_CARBURANT
-  return []
-}
-
-export function libelleCarte(c: string | null | undefined): string {
-  return [...CARTES_SOCIETE, ...CARTES_CARBURANT].find(x => x.valeur === c)?.libelle ?? ''
-}
+/** Ce moyen de paiement demande de choisir une carte (liste gérée dans Système › Cartes bancaires, `shared/lib/cartesBancaires`). */
+export const moyenAvecCarte = (moyen: string | null | undefined): boolean => moyen === 'carte_societe' || moyen === 'carte_carburant'
 
 /** Carte carburant : suivi informatif par mois et par véhicule, jamais envoyé à Pennylane (facture mensuelle de la carte). */
 export const estCarburant = (moyen: string | null | undefined): boolean => moyen === 'carte_carburant'
@@ -91,7 +69,7 @@ export function manquesDepense(s: SaisieDepense): string[] {
   if (Number.isNaN(cts)) m.push('Montant invalide (ex. 12,50)')
   else if (s.moyen === 'personnel' && cts == null) m.push('Montant (note de frais)')
   if (!s.moyen) m.push('Payé avec quoi ?')
-  if (cartesDuMoyen(s.moyen).length > 0 && !s.carte) m.push('Quelle carte ?')
+  if (moyenAvecCarte(s.moyen) && !s.carte) m.push('Quelle carte ?')
   if (estCarburant(s.moyen) && !s.vehicule) m.push('Quel véhicule ?')
   if (!s.note.trim()) m.push('Note')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s.date)) m.push('Date de la dépense')
@@ -131,7 +109,7 @@ export function manquesValidation(t: {
   if (!t.date_depense) m.push('Date')
   if (!t.categorie) m.push('Catégorie')
   if (!t.moyen_paiement) m.push('Moyen de paiement')
-  if (cartesDuMoyen(t.moyen_paiement).length > 0 && !t.carte) m.push('Carte')
+  if (moyenAvecCarte(t.moyen_paiement) && !t.carte) m.push('Carte')
   if (!t.supplier_id) m.push('Fournisseur')
   return m
 }

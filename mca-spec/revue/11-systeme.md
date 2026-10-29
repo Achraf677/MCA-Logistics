@@ -4,6 +4,8 @@
 - Paramètres : fiche de la société, réglages Finance / Flotte, compte Google, lecture des photos, apparence et compte de l'utilisateur.
 - Administrateurs (président seulement) : comptes du bureau et droits par ressource.
 
+- Onglet Cartes bancaires (ajouté le 29/10/2026 par le chantier Justificatifs, `features/cartes`) : hors de ce chantier, voir CLAUDE.md § 12.
+
 ## 2 Qui voit quoi
 - Onglet Paramètres : droit `systeme.parametres` (vue). Modifier la société : président OU `systeme.parametres` en modification (policy `companies_update_perm`). Sans ce droit : champs et bouton grisés, message « Lecture seule ».
 - Onglet Administrateurs : président seulement ; Edge `admin-users` / `admin-permissions` refusent tout autre compte.

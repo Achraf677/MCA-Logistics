@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cartesDuMoyen, libelleCarte, montantSaisiEnCts, manquesDepense, totalARembourser, libelleCategorie, manquesValidation } from './depenses'
+import { moyenAvecCarte, montantSaisiEnCts, manquesDepense, totalARembourser, libelleCategorie, manquesValidation } from './depenses'
 
 describe('dépenses', () => {
   it('montant saisi', () => {
@@ -53,11 +53,10 @@ describe('cartes', () => {
     expect(manquesDepense({ ...base, moyen: 'carte_carburant', carte: 'edenred_9156', vehicule: 'v1' })).toEqual([])
     expect(manquesDepense({ ...base, montant: '5', moyen: 'personnel' })).toEqual([])
   })
-  it('libellés et listes', () => {
-    expect(cartesDuMoyen('carte_societe')).toHaveLength(5)
-    expect(cartesDuMoyen('carte_carburant').map(c => c.libelle)).toEqual(['EDENRED : *9156'])
-    expect(cartesDuMoyen('personnel')).toEqual([])
-    expect(libelleCarte('pennylane_4393')).toBe('PENNYLANE : *4393')
+  it('moyens qui demandent une carte', () => {
+    expect(moyenAvecCarte('carte_societe')).toBe(true)
+    expect(moyenAvecCarte('carte_carburant')).toBe(true)
+    expect(moyenAvecCarte('personnel')).toBe(false)
   })
   it('validation bureau : carte manquante signalée', () => {
     const t = { montant_ttc_cts: 100, date_depense: '2026-10-12' }

@@ -6,6 +6,7 @@ import { useProfile } from '../../app/providers'
 import { Parametres } from '../../features/parametres/Parametres'
 import { Admins }     from '../../features/admins/Admins'
 import { Documents }  from '../../features/documents/Documents'
+import { CartesBancaires } from '../../features/cartes/CartesBancaires'
 
 /** Domaine SYSTÈME — Paramètres, Documents (Inbox, tri IA, bibliothèque) [+ Administrateurs si président]. */
 export function SystemeSection() {
@@ -14,6 +15,7 @@ export function SystemeSection() {
   const tabs = [
     { key: 'parametres', label: 'Paramètres', element: <Parametres />, permKey: 'systeme.parametres' },
     { key: 'documents', label: 'Documents', element: <Documents />, permKey: 'systeme.documents' },
+    { key: 'cartes', label: 'Cartes bancaires', element: <CartesBancaires />, permKey: 'systeme.parametres' },
     ...(profile?.role === 'president'
       ? [{ key: 'administrateurs', label: 'Administrateurs', element: <Admins /> }]
       : []),
