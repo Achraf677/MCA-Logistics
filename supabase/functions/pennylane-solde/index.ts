@@ -40,13 +40,12 @@ Deno.serve(async (req) => {
       cursor = rep.next_cursor;
     }
 
-    // Pennylane ne renvoie pas d'IBAN : on reconnaît le compte Swan à son nom / sa banque.
-    const texte = (c: CompteBancaire) => JSON.stringify(c).toLowerCase();
-    console.log('pennylane bank_accounts', JSON.stringify(comptes.map((c) => ({ ...c, iban: undefined }))));
+    // Pennylane ne renvoie pas d'IBAN : le compte Swan s'y appelle « Compte Pro Pennylane » (l'autre : « Compte principal » = Qonto).
+    const estSwan = (c: CompteBancaire) => (c.name ?? '').toLowerCase().includes('compte pro pennylane');
     let snapshots = 0;
     let balanceCts = 0;
     for (const c of comptes) {
-      if (!texte(c).includes('swan')) continue;
+      if (!estSwan(c)) continue;
       const cts = eurosVersCentimes(c.balance);
       if (cts === null) continue;
       const { error } = await supabase.from('treasury_snapshots').insert({
