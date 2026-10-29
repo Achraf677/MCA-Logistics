@@ -29,13 +29,11 @@
 - **Règle des fichiers .md (demandée le 19/10/2026)** : aucun blabla explicatif. Que du fait utile (règle,
   piège, décision, état). Une info = une phrase ou un tiret. Quand on touche un .md, on retire le texte
   qui n'apprend rien (historique de débogage, justification longue, redite).
-- **Règle de réponse (demandée le 18/10/2026, pour TOUTES les conversations)** : simple, que des
-  tirets, zéro phrase d'introduction ou de conclusion, mots de tous les jours (pas de jargon
-  technique sans l'expliquer). L'utilisateur ne lit pas les longs messages.
-- **Style des rapports (26/10/2026, TOUJOURS)** : pas de blabla ; rapports UNIQUEMENT en tirets, courts, mots simples ; pas de paragraphes ni de phrases d'introduction / conclusion.
-- **Réponses (rappel du 22/10/2026, toute la conversation)** : que des tirets, aucun blabla, aller vite.
-  Rapports d'agents présentés par tiret, simples mais détaillés ; l'utilisateur valide les plans par onglet
-  AVANT le code ; ensuite preview → « quoi tester » en tirets → validation → merge → onglet suivant.
+- **Règle de réponse (18/10, rappelée 22/10 et 26/10/2026 ; TOUTES les conversations, TOUJOURS)** :
+  courte, que des tirets, zéro introduction / conclusion / paragraphe, mots de tous les jours.
+  L'utilisateur ne connaît pas l'informatique : jamais de jargon, jamais de détail technique.
+  Les rapports d'agents suivent la même règle.
+- **Déroulé par onglet** : l'utilisateur valide le plan AVANT le code ; ensuite preview → « quoi tester » → validation → merge → onglet suivant.
 
 ## 2. Métier (à garder en tête sur CHAQUE écran)
 - **Express** : course unitaire retrait → livraison, souvent dans la journée, parfois urgente
@@ -85,8 +83,8 @@
 - Front : **anon key uniquement** (`src/app/providers.tsx`). **Service role : JAMAIS côté front**,
   uniquement dans les Edge (`Deno.env`).
 - **Hébergement : Cloudflare Pages fait foi** (CNAME → `mca-logistics-app.pages.dev`). Netlify
-  (« MCA LOGISTICS APP ») = mort pour le domaine, sert parfois des previews.
-- **Liens de preview (règle du 26/10/2026)** : donner à l'utilisateur UNIQUEMENT le lien « deploy » de la PR, du type `https://deploy-preview-<n°PR>--gleaming-marzipan-9f0a30.netlify.app` (commentaire du bot Netlify, ex. PR 92 → `deploy-preview-92--…`). Jamais les liens `*.pages.dev` de Cloudflare.
+  = mort, ignoré.
+- **Liens de preview (règle du 29/10/2026, remplace celle du 26/10)** : donner à l'utilisateur UNIQUEMENT le lien de preview **Cloudflare** de la PR (`*.pages.dev`, commentaire du bot Cloudflare sur la PR). **JAMAIS un lien Netlify.**
   Connexion Google sur une preview : son URL doit être dans Supabase → Auth → Redirect URLs, sinon retour vers la prod (tester par e-mail).
 - ⚠️ La preview tape la **base de PROD** : une colonne nouvelle n'existe pour elle qu'une fois la
   migration appliquée (additive = sans risque, on demande avant).
@@ -216,10 +214,13 @@ l'écran ; un relevé de messagerie non exclu apparaît comme « adresse manquan
 4. Vérifier que ce qui est noté « fait » est **mergé ET déployé** (migrations, Edge).
 5. Proposer à l'utilisateur la mise à jour du skill `mca-site` si l'architecture a bougé.
 6. Commit dédié « Mémoire : … » poussé avec le reste.
-7. **Rapport de fin de session à l'utilisateur : le plus court et le plus simple possible.**
-   Que des tirets, mots de tous les jours, 3 rubriques maximum : ce qui est fait · ce que
-   l'utilisateur doit faire (s'il y a quelque chose) · ce qu'il doit décider. Pas de liste de
-   fichiers, pas de SQL, pas de détails techniques, pas de rappel de ce qui n'a pas changé.
+7. **Rapport de fin de session (CHAQUE session, toujours court, jamais détaillé).** Que des tirets,
+   mots de tous les jours, dans CET ordre et rien d'autre :
+   - **Fait** : 2 à 5 tirets, ce qui change pour lui.
+   - **À tester** : tirets, ce qu'il doit cliquer / vérifier.
+   - **À décider** : seulement s'il y a une vraie question.
+   - **Lien de preview TOUT À LA FIN**, seul sur sa ligne (règle § 3).
+   Interdit : liste de fichiers, SQL, noms de code, explications, rappel de ce qui n'a pas changé.
    Le détail technique va dans la PR et dans ce fichier, pas dans le message.
 
 ## 11. État actuel (24/10/2026)
