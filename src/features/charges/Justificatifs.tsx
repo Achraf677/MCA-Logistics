@@ -24,7 +24,7 @@ import {
 import { FicheJustificatif, Paiement, type MajJustificatif } from './FicheJustificatif'
 import { nomsDeclarants } from './charges.queries'
 import { SuiviCarburant } from './SuiviCarburant'
-import { listerPleinsManuels, type PleinManuel } from './pleinsManuels.queries'
+import { listerPleinsManuels, membresPourPlein, type PleinManuel } from './pleinsManuels.queries'
 import {
   compteursJustificatifs, etatJustificatif, filtrerJustificatifs, jourJustif, type FiltreJustif,
 } from './justificatifs.logic'
@@ -60,6 +60,7 @@ export function Justificatifs() {
   const [loading, setLoading] = useState(true)
   const [erreur, setErreur] = useState<string | null>(null)
   const [manuels, setManuels] = useState<PleinManuel[]>([])
+  const [membres, setMembres] = useState<Array<{ id: string; full_name: string }>>([])
   const [vue, setVue] = useState<'justificatifs' | 'carburant'>('justificatifs')
   const [vehicules, setVehicules] = useState<Array<{ id: string; label: string; plate: string | null }>>([])
   const [filtre, setFiltre] = useState<FiltreJustif>('a_traiter')
@@ -88,6 +89,7 @@ export function Justificatifs() {
     setManuels(data ?? [])
   }, [])
   useEffect(() => { void chargerManuels() }, [chargerManuels])
+  useEffect(() => { void membresPourPlein().then(setMembres) }, [])
   useEffect(() => {
     supabase.from('suppliers').select('id, name').eq('active', true).order('name')
       .then(({ data }) => setFournisseurs((data ?? []) as Array<{ id: string; name: string }>))
@@ -269,7 +271,7 @@ export function Justificatifs() {
             <Button variant="secondary" onClick={() => void charger()}>Réessayer</Button>
           </div>
         ) : vue === 'carburant' ? (
-          <SuiviCarburant tickets={tickets} manuels={manuels} vehicules={vehicules} noms={noms} companyId={companyId ?? ''}
+          <SuiviCarburant tickets={tickets} manuels={manuels} vehicules={vehicules} membres={membres} noms={noms} companyId={companyId ?? ''}
             peutEcrire={peutEcrire && !!companyId} peutSupprimer={can('finance.charges', 'delete')} onOuvrir={setOuvertId} onManuelsChange={chargerManuels} />
         ) : (
           <>
