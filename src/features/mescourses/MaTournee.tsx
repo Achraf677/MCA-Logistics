@@ -370,6 +370,13 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     if (error) { toast(error.message, 'error'); onRecharger(); return }
     await calculer('suivre')
   }
+  /** Carte : « Viser » un arrêt = le passer en tête de l'ordre (il devient le prochain), le trajet suit. */
+  const viser = async (a: ArretColis) => {
+    const autres = [...(prochain ? [prochain.id] : []), ...ordreAffiche.aFaire.map(x => x.id)].filter(id => id !== a.id)
+    setPoint(null)
+    await appliquerOrdre([a.id, ...autres])
+    toast('Arrêt visé : c\'est le prochain', 'success')
+  }
   const enregistrerOrdre = (ids: string[]) => appliquerOrdre([...(prochain ? [prochain.id] : []), ...ids])
 
   // Tout ce qui reste à faire, village par village (le prochain arrêt compris).
@@ -503,6 +510,16 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
               <ul className="flex flex-col gap-2">
                 {point.arrets.map(a => {
                   const actuel = arrets.find(x => x.id === a.id) ?? a
+                  // Arrêt à faire : même barre que le point actuel (Y aller, Livré, Pause…) + « Viser ».
+                  if (!verrouillee && !actuel.statut && !actuel.en_pause_le) {
+                    return (
+                      <li key={a.id}>
+                        <BarreProchain arret={actuel} tournee={tournee} onGeste={onGeste} enCarte
+                          photos={photos.get(a.id)} onPhoto={surPhoto}
+                          onViser={actuel.id === prochain?.id ? undefined : () => viser(actuel)} />
+                      </li>
+                    )
+                  }
                   return (
                     <ArretTournee key={a.id} arret={actuel} tournee={tournee} verrouillee={verrouillee} onGeste={onGeste}
                       photos={photos.get(a.id)} onPhoto={surPhoto} />
