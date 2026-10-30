@@ -93,6 +93,23 @@ export function regrouperNoeuds(arrets: ArretAPlacer[]): Noeud[] {
     .sort((a, b) => a.rang - b.rang || (a.cle < b.cle ? -1 : 1))
 }
 
+/**
+ * Dernier arrêt TRAITÉ (livré, avisé…) : le plus récent par heure de traitement, à défaut le plus avancé dans l'ordre.
+ * « Recalculer depuis ici » repart de là : la suite de la tournée s'enchaîne sur ce qui vient d'être fait, pas sur la
+ * position (parfois lointaine ou périmée) du téléphone. Sans arrêt traité localisé : null.
+ */
+export function dernierArretTraite<T extends { statut: string | null; lat: number | null; lng: number | null; ordre: number | null; statut_le?: string | null }>(arrets: T[]): T | null {
+  const faits = arrets.filter(a => a.statut != null && a.lat != null && a.lng != null)
+  if (!faits.length) return null
+  const quand = (a: T) => (a.statut_le ? Date.parse(a.statut_le) : NaN)
+  return [...faits].sort((a, b) => {
+    const x = quand(a); const y = quand(b)
+    if (Number.isFinite(x) && Number.isFinite(y) && x !== y) return y - x
+    if (Number.isFinite(x) !== Number.isFinite(y)) return Number.isFinite(x) ? -1 : 1
+    return (b.ordre ?? -1) - (a.ordre ?? -1)
+  })[0]
+}
+
 // ── 2. Découpage des appels ORS ─────────────────────────────────────────────
 
 export interface BlocMatrice {
