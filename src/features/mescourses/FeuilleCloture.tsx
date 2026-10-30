@@ -5,7 +5,7 @@ import { PhotosSynthese } from './PhotosSynthese'
 /**
  * Clôture de la tournée (feuille qui monte du bas) : résumé, photos de la synthèse de fin de tournée
  * (appareil ou galerie, plusieurs possibles), puis « Terminer ». Les photos partent dès qu'elles sont
- * prises ; sans photo, le bouton le dit.
+ * prises ; au moins une photo est OBLIGATOIRE pour terminer (depuis le 30/10/2026).
  */
 export function FeuilleCloture({ tourneeId, companyId, resume, enCours, onTerminer, onFermer }: {
   tourneeId: string
@@ -34,11 +34,10 @@ export function FeuilleCloture({ tourneeId, companyId, resume, enCours, onTermin
         <div className="flex flex-col gap-2 p-3 rounded-[var(--r-lg)] border border-[var(--border)]">
           <p className="text-base font-semibold text-[var(--text)]">Photo de la synthèse de fin de tournée</p>
           <PhotosSynthese tourneeId={tourneeId} companyId={companyId} onNombre={setNb} />
-          {nb === 0 && <p className="text-sm text-[var(--warning)]">Pas encore de photo : prends la synthèse imprimée avant de terminer.</p>}
         </div>
-        <button type="button" disabled={enCours} onClick={onTerminer}
+        <button type="button" disabled={enCours || nb === 0} onClick={onTerminer}
           className="min-h-16 px-4 inline-flex items-center justify-center gap-2 rounded-[var(--r-lg)] text-lg font-bold bg-[var(--success)] text-black disabled:opacity-40 active:scale-[0.98]">
-          <Flag size={22} /> {nb > 0 ? `Terminer (${nb} photo${nb > 1 ? 's' : ''})` : 'Terminer sans photo'}
+          <Flag size={22} /> {nb > 0 ? `Terminer (${nb} photo${nb > 1 ? 's' : ''})` : 'Ajoute une photo pour terminer'}
         </button>
         <button type="button" onClick={onFermer} className="min-h-12 inline-flex items-center justify-center text-base text-[var(--text-muted)] underline">
           Pas maintenant

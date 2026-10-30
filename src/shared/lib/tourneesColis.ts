@@ -449,3 +449,21 @@ export function ordonnerParPage(arrets: ArretLu[], pagesLues: Array<PageLue | nu
 export function retirerPhoto(arrets: ArretLu[], photo: number): ArretLu[] {
   return arrets.filter(a => a.page !== photo).map(a => (a.page > photo ? { ...a, page: a.page - 1 } : a))
 }
+
+/** Photo de la synthèse obligatoire pour terminer une tournée à partir de cette date (30/10/2026) ; avant : ignorée. */
+export const DEBUT_SYNTHESE_OBLIGATOIRE = '2026-10-30'
+
+/**
+ * Tournées d'un salarié qui l'empêchent de scanner la feuille du jour : une tournée d'un jour PASSÉ (à partir du
+ * 30/10/2026) pas terminée, ou terminée sans photo de la synthèse. `avecPhoto` = ids des tournées qui ont au moins
+ * une photo de synthèse. Du plus ancien au plus récent. Pur.
+ */
+export function tourneesABoucler(
+  tournees: Array<{ id: string; date: string; statut: string }>, avecPhoto: Set<string>, aujourdhui: string,
+): Array<{ id: string; date: string }> {
+  return tournees
+    .filter(t => t.date >= DEBUT_SYNTHESE_OBLIGATOIRE && t.date < aujourdhui && (t.statut !== 'cloturee' || !avecPhoto.has(t.id)))
+    .map(t => ({ id: t.id, date: t.date }))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+}
+

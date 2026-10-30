@@ -10,7 +10,7 @@ import type { DocumentRow } from './documents.types'
 import { journeeDepuisArrets } from './tourneesColisRoute'
 import { dessinerZones, pointsZones, type DessinZones, type RueReferentiel, type ZoneRue } from './zonesCarte.logic'
 import {
-  arretsDepuisLecture, lignesArrets, ordreHabituel, pageDepuisLecture, statutApresGeste, type PageLue,
+  DEBUT_SYNTHESE_OBLIGATOIRE, arretsDepuisLecture, lignesArrets, ordreHabituel, tourneesABoucler, pageDepuisLecture, statutApresGeste, type PageLue,
   type ArretColis, type ArretLu, type EnteteFeuille, type StatutArretColis, type StatutTourneeColis, type TourneeColis, type TypeArretColis,
 } from './tourneesColis'
 
@@ -38,6 +38,21 @@ export async function listerTourneesColis(p: { du: string; au: string; memberId?
   if (p.memberId) q = q.eq('member_id', p.memberId)
   const { data, error } = await q.order('date', { ascending: false }).order('created_at', { ascending: true })
   return { data: (data ?? []) as unknown as TourneeColis[], error: erreurClaire(error) }
+}
+
+/**
+ * Tournées d'un salarié à boucler avant de scanner la feuille du jour : jours passés (depuis le 30/10/2026) pas terminés
+ * ou terminés sans photo de la synthèse (`tourneesABoucler`). Avant le 30/10 : jamais comptées.
+ */
+export async function tourneesABouclerDuSalarie(memberId: string, aujourdhui: string) {
+  const { data, error } = await supabase.from('tournees_colis').select('id, date, statut')
+    .eq('member_id', memberId).gte('date', DEBUT_SYNTHESE_OBLIGATOIRE).lt('date', aujourdhui)
+  if (error) return { data: [] as Array<{ id: string; date: string }>, error: erreurClaire(error) }
+  const lues = (data ?? []) as Array<{ id: string; date: string; statut: string }>
+  const photos = await photosSynthese(lues.filter(t => t.statut === 'cloturee').map(t => t.id))
+  if (photos.error) return { data: [] as Array<{ id: string; date: string }>, error: photos.error }
+  const avecPhoto = new Set(photos.data.map(d => d.entity_id).filter((x): x is string => !!x))
+  return { data: tourneesABoucler(lues, avecPhoto, aujourdhui), error: null }
 }
 
 /** Arrêts d'une ou plusieurs tournées, dans l'ordre de la feuille. */
