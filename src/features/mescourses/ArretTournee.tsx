@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
-  Check, Pencil, Store, Package, PackagePlus, House, Clock, Undo2, Minus, Pause, Play, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw,
+  Check, Pencil, Store, Package, PackagePlus, House, Clock, Undo2, Minus, Pause, Play, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw, Crosshair,
 } from 'lucide-react'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
@@ -308,12 +308,16 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
  * un appui pour l'issue la plus courante (avisé / relais fermé / rien à collecter),
  * « Autre » ouvre la fiche, « Y aller » lance la navigation.
  */
-export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
+export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto, enCarte = false, onViser }: {
   arret: ArretColis
   tournee: TourneeColis
   onGeste: (a: ArretColis) => void
   photos?: DocumentRow[]
   onPhoto?: (arretId: string, doc: DocumentRow) => void
+  /** Dans le panneau de la carte : même contenu, mais posé dans le panneau et non collé au bas de l'écran. */
+  enCarte?: boolean
+  /** Carte : « Viser » = passer cet arrêt en prochain (absent si c'est déjà le prochain). */
+  onViser?: () => void
 }) {
   const { occupe, fait, geste, pause } = useGestes(arret, tournee, onGeste)
   const validation = useValidation(geste)
@@ -324,7 +328,9 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
 
   return (
     <>
-      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t-4 bg-[var(--bg-elevated)]"
+      <div className={enCarte
+        ? 'rounded-[var(--r-lg)] border-t-4 bg-[var(--bg-elevated)]'
+        : 'fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t-4 bg-[var(--bg-elevated)]'}
         style={{ borderTopColor: COULEUR_CATEGORIE[arret.type] }}>
         <div className="mx-auto max-w-xl flex flex-col gap-2 p-3">
           <div className="flex items-center gap-3">
@@ -344,6 +350,12 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
               </a>
             )}
           </div>
+          {onViser && (
+            <button type="button" onClick={onViser}
+              className="min-h-12 px-4 inline-flex items-center justify-center gap-2 rounded-[var(--r-lg)] border-2 border-[var(--brand)] text-base font-semibold text-[var(--text)] active:scale-[0.98]">
+              <Crosshair size={20} /> Viser cet arrêt (le passer en prochain)
+            </button>
+          )}
           {validation.armee ? (
             <div className="flex gap-2">
               <button type="button" disabled={occupe} onClick={validation.confirmer}

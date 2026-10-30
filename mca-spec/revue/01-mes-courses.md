@@ -169,6 +169,8 @@ Pas bon — reste
 - Restent : guidage vocal intégré ; historique des positions (volontairement absent) ; information CNIL sur le partage
   de position.
 
+- 30/10/2026 : carte de Ma tournée interactive : toucher un point = même barre que le point actuel (Y aller, Livré, issue rapide, Pause, Autre) + « Viser cet arrêt » (passe l'arrêt en tête de l'ordre, mode manuel, trajet recalculé). Arrêts traités / en pause : ligne habituelle.
+
 ## 9. À tester après chaque PR
 - (Ma tournée) Scanner une vraie feuille (2 pages) : villages / zones trouvés, relais reconnus, tournée créée dans
   l'ordre sans rien corriger ; fermer la page juste après « Lire » puis revenir ; Brumath : « Recalculer » range les
