@@ -32,9 +32,8 @@ export function FeuilleCloture({ tourneeId, companyId, resume, enCours, onTermin
           </button>
         </div>
         <div className="flex flex-col gap-2 p-3 rounded-[var(--r-lg)] border border-[var(--border)]">
-          <p className="text-base font-semibold text-[var(--text)]">Photo de la synthèse de fin de tournée <span className="text-[var(--danger)]">(obligatoire)</span></p>
+          <p className="text-base font-semibold text-[var(--text)]">Photo de la synthèse de fin de tournée</p>
           <PhotosSynthese tourneeId={tourneeId} companyId={companyId} onNombre={setNb} />
-          {nb === 0 && <p className="text-sm text-[var(--warning)]">Il faut au moins une photo de la synthèse imprimée pour terminer (prise avec l'appareil ou choisie dans la galerie).</p>}
         </div>
         <button type="button" disabled={enCours || nb === 0} onClick={onTerminer}
           className="min-h-16 px-4 inline-flex items-center justify-center gap-2 rounded-[var(--r-lg)] text-lg font-bold bg-[var(--success)] text-black disabled:opacity-40 active:scale-[0.98]">

@@ -194,10 +194,8 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
 
       {scanBloque ? (
         <div role="alert" className="flex flex-col gap-2 p-3 rounded-[var(--r-lg)] border-2 border-[var(--danger)] bg-[var(--bg-card)]">
-          <p className="flex items-center gap-2 text-base font-bold text-[var(--text)]"><Lock size={18} /> Scan de la feuille bloqué</p>
-          <p className="text-sm text-[var(--text)]">
-            Termine d'abord ta tournée du {libelleDateCourte(aBoucler[0].date)} avec la photo de la synthèse. Tant que ce n'est pas fait, tu ne peux pas scanner la feuille de route du jour.
-          </p>
+          <p className="flex items-center gap-2 text-base font-bold text-[var(--text)]"><Lock size={18} /> Scan bloqué</p>
+          <p className="text-sm text-[var(--text)]">Termine ta tournée du {libelleDateCourte(aBoucler[0].date)} avec la photo de la synthèse.</p>
           <button type="button" className={boutonSecondaireCls} onClick={() => setDate(aBoucler[0].date)}>
             Ouvrir la tournée du {libelleDateCourte(aBoucler[0].date)}
           </button>
@@ -205,9 +203,7 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
       ) : estAujourdhui && tournee?.statut !== 'cloturee' && (
         <div className="flex items-start gap-2 p-3 rounded-[var(--r-lg)] border border-[var(--border-strong)] bg-[var(--bg-card)]">
           <Info size={18} className="mt-0.5 shrink-0 text-[var(--brand)]" />
-          <p className="text-sm text-[var(--text)]">
-            La photo de la synthèse est obligatoire pour terminer ta tournée (depuis le 30/10). Tant que ta tournée n'est pas terminée avec cette photo, tu ne pourras pas scanner la feuille de route du lendemain.
-          </p>
+          <p className="text-sm text-[var(--text)]">Photo de la synthèse obligatoire pour terminer ta tournée.</p>
         </div>
       )}
 

@@ -451,7 +451,8 @@ export function retirerPhoto(arrets: ArretLu[], photo: number): ArretLu[] {
 }
 
 /** Photo de la synthèse obligatoire pour terminer une tournée à partir de cette date (30/10/2026) ; avant : ignorée. */
-export const DEBUT_SYNTHESE_OBLIGATOIRE = '2026-10-30'
+// TEST TEMPORAIRE (preview) : '2026-10-29' ; À REMETTRE à '2026-10-30' AVANT LE MERGE.
+export const DEBUT_SYNTHESE_OBLIGATOIRE = '2026-10-29'
 
 /**
  * Tournées d'un salarié qui l'empêchent de scanner la feuille du jour : une tournée d'un jour PASSÉ (à partir du

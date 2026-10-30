@@ -3,7 +3,7 @@ import {
   zoneDeSecteur,
   familleStatut, colisRemis, compteursTournee, avancementPct, statutApresGeste, arretsDepuisLecture,
   manquesApercu, ordreHabituel, totauxApercu, modifierArretLu, lignesArrets, fusionnerEntetes, arretVide,
-  tourneesABoucler, pageDepuisLecture, pagesManquantes, pagesEnDouble, ordonnerParPage, retirerPhoto,
+  DEBUT_SYNTHESE_OBLIGATOIRE, tourneesABoucler, pageDepuisLecture, pagesManquantes, pagesEnDouble, ordonnerParPage, retirerPhoto,
   STATUT_FAIT, AUTRES_STATUTS, type ArretColis, type StatutArretColis,
 } from './tourneesColis'
 
@@ -192,28 +192,29 @@ describe('zoneDeSecteur', () => {
   })
 })
 
-describe('tourneesABoucler (photo de synthèse obligatoire dès le 30/10/2026)', () => {
+describe('tourneesABoucler (photo de synthèse obligatoire dès le jour de départ)', () => {
+  const jour = (n: number) => { const d = new Date(`${DEBUT_SYNTHESE_OBLIGATOIRE}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
   const t = (id: string, date: string, statut: string) => ({ id, date, statut })
 
   it('une tournée passée pas terminée bloque', () => {
-    expect(tourneesABoucler([t('a', '2026-10-30', 'en_cours')], new Set(), '2026-10-31')).toEqual([{ id: 'a', date: '2026-10-30' }])
+    expect(tourneesABoucler([t('a', jour(0), 'en_cours')], new Set(), jour(1))).toEqual([{ id: 'a', date: jour(0) }])
   })
 
   it('terminée sans photo bloque, terminée avec photo non', () => {
-    const l = [t('a', '2026-10-30', 'cloturee'), t('b', '2026-10-31', 'cloturee')]
-    expect(tourneesABoucler(l, new Set(['b']), '2026-11-01')).toEqual([{ id: 'a', date: '2026-10-30' }])
+    const l = [t('a', jour(0), 'cloturee'), t('b', jour(1), 'cloturee')]
+    expect(tourneesABoucler(l, new Set(['b']), jour(2))).toEqual([{ id: 'a', date: jour(0) }])
   })
 
-  it('avant le 30/10 : jamais comptée, même pas terminée', () => {
-    expect(tourneesABoucler([t('a', '2026-10-29', 'en_cours'), t('b', '2026-10-01', 'a_faire')], new Set(), '2026-10-31')).toEqual([])
+  it('avant le jour de départ : jamais comptée, même pas terminée', () => {
+    expect(tourneesABoucler([t('a', jour(-1), 'en_cours'), t('b', jour(-20), 'a_faire')], new Set(), jour(1))).toEqual([])
   })
 
   it("aujourd'hui ne bloque pas : seulement les jours passés", () => {
-    expect(tourneesABoucler([t('a', '2026-10-30', 'en_cours')], new Set(), '2026-10-30')).toEqual([])
+    expect(tourneesABoucler([t('a', jour(0), 'en_cours')], new Set(), jour(0))).toEqual([])
   })
 
   it('du plus ancien au plus récent', () => {
-    const l = [t('b', '2026-11-02', 'en_cours'), t('a', '2026-10-30', 'en_cours')]
-    expect(tourneesABoucler(l, new Set(), '2026-11-03').map(x => x.id)).toEqual(['a', 'b'])
+    const l = [t('b', jour(3), 'en_cours'), t('a', jour(0), 'en_cours')]
+    expect(tourneesABoucler(l, new Set(), jour(4)).map(x => x.id)).toEqual(['a', 'b'])
   })
 })
