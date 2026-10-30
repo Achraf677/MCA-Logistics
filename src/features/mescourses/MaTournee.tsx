@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   ChevronLeft, ChevronRight, ScanText, Trash2, ClipboardList, List, Map as IconeCarte, Undo2, LocateFixed,
-  RefreshCw, ArrowDownUp, ArrowUp, ArrowDown, ChevronsUp, MapPinOff, Search, MapPin, Radio, Flag, ChevronDown, AlertTriangle, Pause,
+  RefreshCw, ArrowDownUp, Info, Lock, ArrowUp, ArrowDown, ChevronsUp, MapPinOff, Search, MapPin, Radio, Flag, ChevronDown, AlertTriangle, Pause,
 } from 'lucide-react'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -19,7 +19,7 @@ import {
 import {
   listerTourneesColis, arretsDesTournees, supprimerTourneeColis, nomsClients, calculerItineraire,
   majArret, ecrireOrdre, trouverScan, placerArret, chercherAdresse, photosArrets, cloturerTournee, envoyerPosition,
-  effacerPosition, appliquerZones,
+  effacerPosition, appliquerZones, tourneesABouclerDuSalarie,
 } from '../../shared/lib/tourneesColis.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import type { EtatFiche, MaFiche } from './mescourses.types'
@@ -118,10 +118,19 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
   }, [fiche.clients_messagerie])
 
   const tournee = tournees.find(t => t.id === choisie) ?? null
-  const arretsTournee = useMemo(() => arrets.filter(a => a.tournee_id === choisie), [arrets, choisie])
   const auj = aujourdhui()
   const estAujourdhui = date === auj
 
+  // Tournées des jours passés pas terminées / sans photo de synthèse (depuis le 30/10/2026) : pas de nouveau scan avant.
+  const [aBoucler, setABoucler] = useState<Array<{ id: string; date: string }>>([])
+  useEffect(() => {
+    let annule = false
+    tourneesABouclerDuSalarie(fiche.id, auj).then(({ data }) => { if (!annule) setABoucler(data) })
+    return () => { annule = true }
+  }, [fiche.id, auj, date, tournees])
+  const scanBloque = aBoucler.length > 0
+
+  const arretsTournee = useMemo(() => arrets.filter(a => a.tournee_id === choisie), [arrets, choisie])
   const majArrets = (maj: ArretColis[]) => {
     const par = new Map(maj.map(a => [a.id, a]))
     setArrets(prev => prev.map(a => par.get(a.id) ?? a))
@@ -183,6 +192,25 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
 
       {erreur && <MessageErreur>{erreur}</MessageErreur>}
 
+      {scanBloque ? (
+        <div role="alert" className="flex flex-col gap-2 p-3 rounded-[var(--r-lg)] border-2 border-[var(--danger)] bg-[var(--bg-card)]">
+          <p className="flex items-center gap-2 text-base font-bold text-[var(--text)]"><Lock size={18} /> Scan de la feuille bloqué</p>
+          <p className="text-sm text-[var(--text)]">
+            Termine d'abord ta tournée du {libelleDateCourte(aBoucler[0].date)} avec la photo de la synthèse. Tant que ce n'est pas fait, tu ne peux pas scanner la feuille de route du jour.
+          </p>
+          <button type="button" className={boutonSecondaireCls} onClick={() => setDate(aBoucler[0].date)}>
+            Ouvrir la tournée du {libelleDateCourte(aBoucler[0].date)}
+          </button>
+        </div>
+      ) : estAujourdhui && tournee?.statut !== 'cloturee' && (
+        <div className="flex items-start gap-2 p-3 rounded-[var(--r-lg)] border border-[var(--border-strong)] bg-[var(--bg-card)]">
+          <Info size={18} className="mt-0.5 shrink-0 text-[var(--brand)]" />
+          <p className="text-sm text-[var(--text)]">
+            La photo de la synthèse est obligatoire pour terminer ta tournée (depuis le 30/10). Tant que ta tournée n'est pas terminée avec cette photo, tu ne pourras pas scanner la feuille de route du lendemain.
+          </p>
+        </div>
+      )}
+
       {scan && companyId ? (
         <Carte>
           <h2 className="text-base font-semibold text-[var(--text)]">Scanner ma feuille de route</h2>
@@ -197,7 +225,7 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
         <Carte>
           <EmptyState icon={<ClipboardList size={28} />} title="Pas de tournée ce jour"
             description="Photographie ta feuille de route (une photo par page) : le site en fait la liste de tes arrêts." />
-          {estAujourdhui && (
+          {estAujourdhui && !scanBloque && (
             <button type="button" className={boutonPrimaireCls} onClick={() => setScan(true)}>
               <ScanText size={18} /> Scanner ma feuille de route
             </button>
@@ -220,7 +248,7 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
             onGeste={surGeste} onArrets={majArrets} onTournee={majTournee} onRecharger={() => recharger(tournee.id)}
             onOuvrirJournee={onOuvrirJournee} />
           <div className="flex flex-wrap gap-2">
-            {estAujourdhui && (
+            {estAujourdhui && !scanBloque && (
               <button type="button" className={`${boutonSecondaireCls} flex-1`} onClick={() => setScan(true)}>
                 <ScanText size={16} /> Scanner une autre feuille
               </button>

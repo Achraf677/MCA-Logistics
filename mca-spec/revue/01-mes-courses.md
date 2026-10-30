@@ -173,6 +173,8 @@ Pas bon — reste
 
 - 30/10/2026 : « Depuis ici » (recalcul des restants) repart du dernier arrêt traité, plus du GPS du téléphone.
 
+- 30/10/2026 : photo de la synthèse OBLIGATOIRE pour terminer ; scan de la feuille du jour bloqué tant qu'une tournée passée (depuis le 30/10) n'est pas terminée avec photo ; message d'information le jour même.
+
 ## 9. À tester après chaque PR
 - (Ma tournée) Scanner une vraie feuille (2 pages) : villages / zones trouvés, relais reconnus, tournée créée dans
   l'ordre sans rien corriger ; fermer la page juste après « Lire » puis revenir ; Brumath : « Recalculer » range les

@@ -3,7 +3,7 @@ import {
   zoneDeSecteur,
   familleStatut, colisRemis, compteursTournee, avancementPct, statutApresGeste, arretsDepuisLecture,
   manquesApercu, ordreHabituel, totauxApercu, modifierArretLu, lignesArrets, fusionnerEntetes, arretVide,
-  pageDepuisLecture, pagesManquantes, pagesEnDouble, ordonnerParPage, retirerPhoto,
+  tourneesABoucler, pageDepuisLecture, pagesManquantes, pagesEnDouble, ordonnerParPage, retirerPhoto,
   STATUT_FAIT, AUTRES_STATUTS, type ArretColis, type StatutArretColis,
 } from './tourneesColis'
 
@@ -189,5 +189,31 @@ describe('zoneDeSecteur', () => {
     expect(zoneDeSecteur('(HC) 610 - KRIEGSHEIM')).toBeNull()
     expect(zoneDeSecteur('(HC) 0 - District inconnu')).toBeNull()
     expect(zoneDeSecteur(null)).toBeNull()
+  })
+})
+
+describe('tourneesABoucler (photo de synthèse obligatoire dès le 30/10/2026)', () => {
+  const t = (id: string, date: string, statut: string) => ({ id, date, statut })
+
+  it('une tournée passée pas terminée bloque', () => {
+    expect(tourneesABoucler([t('a', '2026-10-30', 'en_cours')], new Set(), '2026-10-31')).toEqual([{ id: 'a', date: '2026-10-30' }])
+  })
+
+  it('terminée sans photo bloque, terminée avec photo non', () => {
+    const l = [t('a', '2026-10-30', 'cloturee'), t('b', '2026-10-31', 'cloturee')]
+    expect(tourneesABoucler(l, new Set(['b']), '2026-11-01')).toEqual([{ id: 'a', date: '2026-10-30' }])
+  })
+
+  it('avant le 30/10 : jamais comptée, même pas terminée', () => {
+    expect(tourneesABoucler([t('a', '2026-10-29', 'en_cours'), t('b', '2026-10-01', 'a_faire')], new Set(), '2026-10-31')).toEqual([])
+  })
+
+  it("aujourd'hui ne bloque pas : seulement les jours passés", () => {
+    expect(tourneesABoucler([t('a', '2026-10-30', 'en_cours')], new Set(), '2026-10-30')).toEqual([])
+  })
+
+  it('du plus ancien au plus récent', () => {
+    const l = [t('b', '2026-11-02', 'en_cours'), t('a', '2026-10-30', 'en_cours')]
+    expect(tourneesABoucler(l, new Set(), '2026-11-03').map(x => x.id)).toEqual(['a', 'b'])
   })
 })
