@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   regrouperNoeuds, blocsMatrice, troncons, resoudre, coutParcours, passages, matricesVolOiseau,
   completerMatrices, ordonnerZones, rangZone, matriceCouts, noeudsDansOrdre, passagesDepuisEtapes, polirParFenetres, penaliserChangementsVillage, penaliserOrdreZones, encoderPolyligne, decoderPolyligne, distanceM, type ArretAPlacer,
-  cleRue, penaliserChangementsRue, rangerNumeros, ordonnerTournee, cleVillage, PENALITE_CHANGEMENT_VILLAGE, type Matrices,
+  cleRue, dernierArretTraite, penaliserChangementsRue, rangerNumeros, ordonnerTournee, cleVillage, PENALITE_CHANGEMENT_VILLAGE, type Matrices,
 } from './tourneeRoute.ts';
 
 const arret = (id: string, lat: number | null, lng: number | null, numero: string | null = null, rang = 1): ArretAPlacer =>
@@ -488,5 +488,24 @@ describe('villages : communes déléguées et pénalité douce', () => {
       const zones = ordre.map(i => rangZone(communeDe(i)))
       expect([...zones].sort((a, b) => a! - b!)).toEqual(zones)
     }
+  })
+})
+
+describe('dernierArretTraite (recalcul depuis ici)', () => {
+  const a = (id: string, statut: string | null, ordre: number | null, statut_le: string | null = null) =>
+    ({ id, statut, ordre, statut_le, lat: 48.7, lng: 7.7 })
+
+  it('prend le plus récemment traité, pas le plus avancé dans l\'ordre', () => {
+    const r = dernierArretTraite([a('1', 'livre', 1, '2026-10-30T08:10:00Z'), a('2', 'livre', 2, '2026-10-30T08:05:00Z'), a('3', null, 3)])
+    expect(r?.id).toBe('1')
+  })
+
+  it('sans heure : le plus avancé dans l\'ordre', () => {
+    expect(dernierArretTraite([a('1', 'livre', 1), a('2', 'livre', 2), a('3', null, 3)])?.id).toBe('2')
+  })
+
+  it('ignore les arrêts non traités ou sans position ; null si aucun', () => {
+    expect(dernierArretTraite([a('1', null, 1)])).toBeNull()
+    expect(dernierArretTraite([{ ...a('1', 'livre', 1), lat: null }])).toBeNull()
   })
 })
