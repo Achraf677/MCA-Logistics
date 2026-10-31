@@ -3,13 +3,20 @@ import { soldePennylane } from './tresorerie.logic'
 
 
 describe('soldePennylane', () => {
-  it('somme les comptes de la dernière synchro seulement', () => {
+  it('deux synchros rapprochées du même compte ne comptent qu\'une fois', () => {
     const rows = [
-      { balance_cts: 1000, fetched_at: '2026-10-29T10:00:30Z' },
-      { balance_cts: 500, fetched_at: '2026-10-29T10:00:00Z' },
-      { balance_cts: 9999, fetched_at: '2026-10-28T10:00:00Z' },
+      { balance_cts: 15805, fetched_at: '2026-10-29T18:51:56Z', iban: null },
+      { balance_cts: 15805, fetched_at: '2026-10-29T18:51:51Z', iban: null },
     ]
-    expect(soldePennylane(rows)).toBe(1500)
+    expect(soldePennylane(rows)).toBe(15805)
+  })
+  it('garde le dernier solde de chaque compte et additionne les comptes', () => {
+    const rows = [
+      { balance_cts: 1000, fetched_at: '2026-10-29T10:00:30Z', iban: 'pennylane:1' },
+      { balance_cts: 700, fetched_at: '2026-10-29T10:00:30Z', iban: 'pennylane:2' },
+      { balance_cts: 9999, fetched_at: '2026-10-28T10:00:00Z', iban: 'pennylane:1' },
+    ]
+    expect(soldePennylane(rows)).toBe(1700)
     expect(soldePennylane([])).toBeNull()
   })
 })
