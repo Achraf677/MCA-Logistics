@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
-  Check, Pencil, Store, Package, PackagePlus, House, Clock, Undo2, Minus, Pause, Play, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw, Crosshair, PackageCheck,
+  Check, Pencil, Store, PackagePlus, House, Clock, Undo2, Minus, Pause, Play, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw, Crosshair, PackageCheck,
 } from 'lucide-react'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
@@ -13,7 +13,8 @@ import { lireAppNavigation } from '../../shared/lib/prefChauffeur'
 import { statutsProposes, libelleAdresse, patchStatut, familleStatut, issueRapide, peutTransformer } from './tourneeColis.logic'
 import { champCls } from './EspaceCommun'
 import { HorairesRelais } from './HorairesRelais'
-import { SelecteurColis } from './SelecteurColis'
+import { SelecteurColis } from '../../shared/ui/SelecteurColis'
+import { PastilleColis } from '../../shared/ui/PastilleColis'
 import { useModifierAdresse, useTransformerCollecte } from './AdresseContexte'
 import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 
@@ -108,18 +109,7 @@ function useValidation(geste: (s: StatutArretColis | null) => Promise<boolean>) 
 }
 
 /** Nombre de colis de l'arrêt, bien visible : un arrêt à plusieurs colis saute aux yeux. */
-export function PastilleColis({ n, grand = false }: { n: number; grand?: boolean }) {
-  const plusieurs = n > 1
-  return (
-    <span className={`shrink-0 inline-flex items-center justify-center gap-1.5 rounded-full font-bold tabular-nums leading-none ${
-      grand ? 'px-3.5 py-1.5 text-2xl' : 'px-3 py-1 text-xl'} ${
-      plusieurs ? 'bg-[var(--brand)] text-white shadow-sm' : 'bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-[var(--text)]'}`}
-      aria-label={`${n} colis`}>
-      <Package size={grand ? 20 : 16} aria-hidden /> {n}
-      <span className={`font-semibold opacity-80 ${grand ? 'text-base' : 'text-sm'}`}>colis</span>
-    </span>
-  )
-}
+export { PastilleColis }
 
 /**
  * Confirmation d'un arrêt à plusieurs colis : une case par colis, toutes cochées ; on décoche ceux

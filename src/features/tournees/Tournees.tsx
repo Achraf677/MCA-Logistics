@@ -16,6 +16,7 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Field } from '../../shared/ui/Field'
 import { FeuilleAdresse } from '../../shared/ui/FeuilleAdresse'
+import { FeuilleCollecte } from '../../shared/ui/FeuilleCollecte'
 import { ScanFeuilleRoute } from '../../shared/ui/ScanFeuilleRoute'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
@@ -83,6 +84,7 @@ export function Tournees() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [onglet, setOnglet] = useState<OngletDetail>('arrets')
   const [adresseEdit, setAdresseEdit] = useState<ArretColis | null>(null)
+  const [collecteSur, setCollecteSur] = useState<ArretColis | null>(null)
   const [adresseAjout, setAdresseAjout] = useState(false)
   const [aRecalculerListe, setARecalculerListe] = useState(false)
   const [calcul, setCalcul] = useState<string | null>(null)
@@ -437,7 +439,7 @@ export function Tournees() {
             {onglet === 'arrets' && (
               <ListeTourneeColis tournee={detail.t} arrets={detail.arrets} peutModifier={peutScanner}
                 aRecalculer={aRecalculerListe} calcul={calcul === detail.t.id}
-                onModifier={setAdresseEdit} onAjouter={() => setAdresseAjout(true)}
+                onModifier={setAdresseEdit} onCollecte={setCollecteSur} onAjouter={() => setAdresseAjout(true)}
                 onRecalculer={async () => { await calculer(detail.t); setARecalculerListe(false) }} />
             )}
             {onglet === 'feuille' && (
@@ -451,6 +453,11 @@ export function Tournees() {
           </div>
         )}
       </Drawer>
+
+      {collecteSur && (
+        <FeuilleCollecte arret={collecteSur}
+          onFait={() => { setARecalculerListe(true); void recharger() }} onFermer={() => setCollecteSur(null)} />
+      )}
 
       {(adresseEdit || adresseAjout) && (() => {
         const l = lignes.find(x => x.t.id === (adresseEdit?.tournee_id ?? detailId))

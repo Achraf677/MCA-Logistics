@@ -3,7 +3,7 @@ import {
   arretsDansOrdre, prochainDansOrdre, sectionsListe, arretsAPlacer, deplacer, ordreInverse, ordreManuel, libelleDuree, libelleDistance,
   bandeauOrdre, heurePassage, pointsCarte, couperTrace, doitEnvoyerPosition, ilYA, positionAncienne,
   journeeDepuisArrets, nonTraites, modeOrdre, sansCalcul, idsOrdreHabituel, avancementParCategorie,
-  arretsEnPause, estEnPause, inclureEnPause, grouperEnSuite, infosGroupes, contourGroupe, tracerParGroupe,
+  arretsEnPause, estEnPause, inclureEnPause, grouperEnSuite, infosGroupes, contourGroupe, tracerParGroupe, restantsAvantCloture,
 } from './tourneesColisRoute'
 import type { ArretColis, TrajetTournee } from './tourneesColis'
 
@@ -229,5 +229,16 @@ describe('groupes village / zone', () => {
     expect(t.map(x => x.cle)).toEqual(['x', 'y'])
     expect(t[0].points[0]).toEqual(ligne[0])
     expect(t[1].points[t[1].points.length - 1]).toEqual(ligne[20])
+  })
+})
+
+describe('restantsAvantCloture', () => {
+  it('tout traité : rien ne reste', () => {
+    expect(restantsAvantCloture([a({ id: '1', statut: 'livre' }), a({ id: '2', statut: 'avise' })])).toEqual({ restants: 0, enPause: 0 })
+  })
+
+  it('un arrêt en pause bloque comme un arrêt non traité', () => {
+    const r = restantsAvantCloture([a({ id: '1', statut: 'livre' }), a({ id: '2', statut: null }), a({ id: '3', statut: null, en_pause_le: '2026-10-31T08:00:00Z' })])
+    expect(r).toEqual({ restants: 2, enPause: 1 })
   })
 })

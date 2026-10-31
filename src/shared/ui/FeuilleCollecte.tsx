@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Check, PackageCheck, PackagePlus, X } from 'lucide-react'
-import { useToast } from '../../shared/ui/useToast'
-import type { ArretColis } from '../../shared/lib/tourneesColis'
-import { changerTypeArret, eclaterArret } from '../../shared/lib/tourneesColis.queries'
-import { colisCollecteDefaut, libelleAdresse, resultatCollecte } from './tourneeColis.logic'
-import { PastilleColis } from './ArretTournee'
+import { useToast } from './useToast'
+import { colisCollecteDefaut, resultatCollecte, type ArretColis } from '../lib/tourneesColis'
+import { changerTypeArret, eclaterArret } from '../lib/tourneesColis.queries'
+import { PastilleColis } from './PastilleColis'
 import { SelecteurColis } from './SelecteurColis'
+
+const libelleAdresse = (a: Pick<ArretColis, 'numero' | 'rue'>) => (a.numero ? `${a.numero} ${a.rue}` : a.rue)
 
 const GROS = 'min-h-16 px-4 inline-flex items-center justify-center gap-2 rounded-[var(--r-lg)] text-lg font-bold disabled:opacity-40 active:scale-[0.98]'
 

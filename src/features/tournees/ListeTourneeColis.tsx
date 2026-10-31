@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Pencil, Plus, Route } from 'lucide-react'
+import { PackageCheck, PackagePlus, Pencil, Plus, Route } from 'lucide-react'
 import { BarreRecherche } from '../../shared/ui/BarreRecherche'
 import { Badge } from '../../shared/ui/Badge'
 import { Button } from '../../shared/ui/Button'
@@ -17,13 +17,14 @@ const adresse = (a: ArretColis) => (a.numero ? `${a.numero} ${a.rue}` : a.rue)
  * Liste des arrêts d'une tournée de colis, côté bureau : on repère les adresses à corriger
  * (non traitées, en attente, en retour) en les comparant à la feuille de route, puis on les corrige.
  */
-export function ListeTourneeColis({ tournee, arrets, peutModifier, aRecalculer, calcul, onModifier, onAjouter, onRecalculer }: {
+export function ListeTourneeColis({ tournee, arrets, peutModifier, aRecalculer, calcul, onModifier, onCollecte, onAjouter, onRecalculer }: {
   tournee: TourneeColis
   arrets: ArretColis[]
   peutModifier: boolean
   aRecalculer: boolean
   calcul: boolean
   onModifier: (a: ArretColis) => void
+  onCollecte: (a: ArretColis) => void
   onAjouter: () => void
   onRecalculer: () => void
 }) {
@@ -90,6 +91,14 @@ export function ListeTourneeColis({ tournee, arrets, peutModifier, aRecalculer, 
                   {a.note && <span className="italic">« {a.note} »</span>}
                 </p>
               </div>
+              {modifiable && !a.statut && (
+                <button type="button" onClick={() => onCollecte(a)}
+                  aria-label={a.type === 'col' ? 'Remettre en colis normal' : a.quantite > 1 ? 'Collecte / éclater' : 'Transformer en collecte'}
+                  title={a.type === 'col' ? 'Remettre en colis normal' : a.quantite > 1 ? 'Collecte / éclater' : 'Transformer en collecte'}
+                  className="size-10 shrink-0 inline-flex items-center justify-center rounded-[var(--r-md)] border border-[var(--border)] text-[var(--text-muted)]">
+                  {a.type === 'col' ? <PackageCheck size={16} /> : <PackagePlus size={16} />}
+                </button>
+              )}
               {modifiable && (
                 <button type="button" onClick={() => onModifier(a)} aria-label="Corriger l'adresse" title="Corriger l'adresse"
                   className="size-10 shrink-0 inline-flex items-center justify-center rounded-[var(--r-md)] border border-[var(--border)] text-[var(--text-muted)]">

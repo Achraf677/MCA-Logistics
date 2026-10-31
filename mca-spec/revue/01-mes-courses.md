@@ -177,6 +177,8 @@ Pas bon — reste
 
 - 31/10/2026 : collectes — bouton « Transformer en collecte / Collecte, éclater » (ligne + fiche d'un arrêt non traité), « Remettre en colis normal » ; l'historique des adresses préremplit la lecture des feuilles suivantes.
 
+- 31/10/2026 : clôture impossible tant qu'il reste un arrêt non traité (pause comprise) ou sans photo de synthèse ; collecte / éclater aussi côté bureau.
+
 ## 9. À tester après chaque PR
 - (Ma tournée) Scanner une vraie feuille (2 pages) : villages / zones trouvés, relais reconnus, tournée créée dans
   l'ordre sans rien corriger ; fermer la page juste après « Lire » puis revenir ; Brumath : « Recalculer » range les

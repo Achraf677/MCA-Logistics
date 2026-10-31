@@ -1,11 +1,11 @@
 // Ma tournée (salarié) — PUR, testé. Les règles partagées avec le bureau (familles, compteurs,
 // statuts par type) vivent dans `shared/lib/tourneesColis.ts` ; ici, ce qui sert à l'écran.
 import {
-  AUTRES_STATUTS, STATUT_FAIT, compteursTournee, familleStatut,
+  AUTRES_STATUTS, STATUT_FAIT, colisCollecteDefaut, compteursTournee, familleStatut, resultatCollecte,
   type ArretColis, type CompteursTournee, type FamilleStatut, type StatutArretColis, type TypeArretColis,
 } from '../../shared/lib/tourneesColis'
 
-export { compteursTournee, familleStatut }
+export { compteursTournee, familleStatut, colisCollecteDefaut, resultatCollecte }
 export type { CompteursTournee, FamilleStatut }
 
 /** Statuts proposés pour un arrêt : le geste « fait » d'abord, puis les autres issues. */
@@ -47,17 +47,6 @@ export function issueRapide(type: TypeArretColis): StatutArretColis {
 /** Un arrêt pas encore traité, domicile ou collecte, peut changer de type ou être éclaté. */
 export function peutTransformer(a: Pick<ArretColis, 'type' | 'statut'>): boolean {
   return !a.statut && (a.type === 'c' || a.type === 'col')
-}
-
-/** Colis côté collecte proposés au départ : 1, ou tout l'arrêt s'il n'y a qu'un colis. */
-export function colisCollecteDefaut(quantite: number): number {
-  return quantite <= 1 ? quantite : 1
-}
-
-/** Ce que produit le choix « k colis en collecte » sur un arrêt de n colis. */
-export function resultatCollecte(quantite: number, k: number): { mode: 'tout' | 'eclate'; collecte: number; normal: number } {
-  const c = Math.min(Math.max(1, Math.round(k) || 1), Math.max(1, quantite))
-  return c >= quantite ? { mode: 'tout', collecte: quantite, normal: 0 } : { mode: 'eclate', collecte: c, normal: quantite - c }
 }
 
 /**
