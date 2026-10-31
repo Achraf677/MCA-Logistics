@@ -14,7 +14,7 @@ import { toLocalISO } from '../../shared/lib/dates'
 import { LIBELLE_STATUT_ARRET, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
 import {
   arretsAPlacer, bandeauOrdre, deplacer, doitEnvoyerPosition, grouperEnSuite, libelleDistance, modeOrdre,
-  arretsDansOrdre, nonTraites, ordreInverse, ordreManuel, arretsEnPause, inclureEnPause, infosGroupes, libelleGroupe, cleGroupe, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
+  arretsDansOrdre, restantsAvantCloture, ordreInverse, ordreManuel, arretsEnPause, inclureEnPause, infosGroupes, libelleGroupe, cleGroupe, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
 } from '../../shared/lib/tourneesColisRoute'
 import {
   listerTourneesColis, arretsDesTournees, supprimerTourneeColis, nomsClients, calculerItineraire,
@@ -30,7 +30,7 @@ import { ArretTournee, ArretEnPauseCompact, BarreProchain, FicheArret } from './
 import { RechercheAdresse } from './RechercheAdresse'
 import { FeuilleAdresse } from '../../shared/ui/FeuilleAdresse'
 import { ContexteAdresse, ContexteCollecte } from './AdresseContexte'
-import { FeuilleCollecte } from './FeuilleCollecte'
+import { FeuilleCollecte } from '../../shared/ui/FeuilleCollecte'
 import { FeuilleCloture } from './FeuilleCloture'
 import { PhotosSynthese } from './PhotosSynthese'
 import { Carte, MessageErreur, GardeFiche, champCls, boutonPrimaireCls, boutonSecondaireCls } from './EspaceCommun'
@@ -453,6 +453,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   })
 
   const terminer = async () => {
+    if (restantsAvantCloture(arrets).restants > 0) { toast('Il reste des arrêts à traiter', 'error'); return }
     setClotureEnCours(true)
     const { data, error } = await cloturerTournee(tournee.id)
     if (error || !data) { setClotureEnCours(false); toast(error?.message ?? 'Clôture impossible', 'error'); return }
@@ -463,10 +464,8 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     toast('Tournée terminée', 'success')
   }
 
-  const nt = nonTraites(arrets)
-  const messageCloture = `${c.colisLivres} colis livrés · ${c.colisAttente} en attente · ${c.colisRetour} en retour.`
-    + (nt ? ` Attention : ${nt} arrêt${nt > 1 ? 's' : ''} pas encore traité${nt > 1 ? 's' : ''}${enPause.length ? ` dont ${enPause.length} en pause` : ''} (compté${nt > 1 ? 's' : ''} en litige).` : '')
-    + ' Ensuite, plus rien n’est modifiable (le bureau peut rouvrir).'
+  const { restants, enPause: nbPause } = restantsAvantCloture(arrets)
+  const messageCloture = `${c.colisLivres} colis livrés · ${c.colisAttente} en attente · ${c.colisRetour} en retour. Ensuite, plus rien n’est modifiable (le bureau peut rouvrir).`
 
   return (
     <ContexteAdresse.Provider value={verrouillee ? null : setAdresseAModifier}>
@@ -623,7 +622,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         </Carte>
       ) : (
         <button type="button" onClick={() => setCloture(true)} className={`${boutonPrimaireCls} min-h-14 text-base`}>
-          <Flag size={20} /> Terminer ma tournée
+          <Flag size={20} /> Terminer ma tournée{restants > 0 ? ` (reste ${restants})` : ''}
         </button>
       )}
 
@@ -639,7 +638,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         message="Ton ordre est remplacé par le meilleur ordre calculé, village par village (zone par zone à Brumath)."
         confirmLabel="Recalculer" onConfirm={() => { setConfirmerReset(false); calculer('tout') }} onCancel={() => setConfirmerReset(false)} />
       {cloture && (
-        <FeuilleCloture tourneeId={tournee.id} companyId={societe} resume={messageCloture} enCours={clotureEnCours}
+        <FeuilleCloture tourneeId={tournee.id} companyId={societe} resume={messageCloture} restants={restants} enPause={nbPause} enCours={clotureEnCours}
           onTerminer={terminer} onFermer={() => setCloture(false)} />
       )}
       {ficheRecherche && (() => {

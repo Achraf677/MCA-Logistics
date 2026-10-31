@@ -467,3 +467,13 @@ export function tourneesABoucler(
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
 }
 
+/** Colis côté collecte proposés au départ : 1, ou tout l'arrêt s'il n'y a qu'un colis. */
+export function colisCollecteDefaut(quantite: number): number {
+  return quantite <= 1 ? quantite : 1
+}
+
+/** Ce que produit le choix « k colis en collecte » sur un arrêt de n colis. */
+export function resultatCollecte(quantite: number, k: number): { mode: 'tout' | 'eclate'; collecte: number; normal: number } {
+  const c = Math.min(Math.max(1, Math.round(k) || 1), Math.max(1, quantite))
+  return c >= quantite ? { mode: 'tout', collecte: quantite, normal: 0 } : { mode: 'eclate', collecte: c, normal: quantite - c }
+}
