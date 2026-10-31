@@ -335,6 +335,23 @@ export async function majArret(
   return { data: ligne, error: null }
 }
 
+/** Passe un arrêt en collecte (ou le remet en colis normal) ; l'adresse est notée dans l'historique. */
+export async function changerTypeArret(arretId: string, type: 'c' | 'col'): Promise<{ data: ArretColis | null; error: Error | null }> {
+  const { data, error } = await supabase.from('tournees_colis_arrets').update({ type }).eq('id', arretId).select(COLS_ARRET)
+  if (error) return { data: null, error: erreurClaire(error) }
+  const ligne = (data ?? [])[0] as unknown as ArretColis | undefined
+  if (!ligne) return { data: null, error: new Error(REFUS) }
+  void supabase.rpc('noter_adresse_arret', { p_arret: arretId, p_action: type === 'col' ? 'collecte' : 'normal' })
+  return { data: ligne, error: null }
+}
+
+/** Sépare un arrêt de plusieurs colis en 1 collecte + le reste en colis normal (total conservé). Renvoie les deux arrêts. */
+export async function eclaterArret(arretId: string, colisCollecte: number): Promise<{ data: ArretColis[]; error: Error | null }> {
+  const { data, error } = await supabase.rpc('eclater_arret', { p_arret: arretId, p_colis_collecte: colisCollecte })
+  if (error) return { data: [], error: erreurClaire(error) }
+  return { data: (data ?? []) as unknown as ArretColis[], error: null }
+}
+
 /** Retire une tournée et ses arrêts (scan raté). */
 export async function supprimerTourneeColis(id: string): Promise<{ error: Error | null }> {
   const { data, error } = await supabase.from('tournees_colis').delete().eq('id', id).select('id')

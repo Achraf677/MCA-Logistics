@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
-  Check, Pencil, Store, Package, PackagePlus, House, Clock, Undo2, Minus, Pause, Play, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw, Crosshair,
+  Check, Pencil, Store, Package, PackagePlus, House, Clock, Undo2, Minus, Pause, Play, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw, Crosshair, PackageCheck,
 } from 'lucide-react'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
@@ -10,11 +10,11 @@ import { majArret, ajouterPhotoArret, urlPhotoArret } from '../../shared/lib/tou
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { lienNavigation } from '../../shared/lib/navigation'
 import { lireAppNavigation } from '../../shared/lib/prefChauffeur'
-import { statutsProposes, libelleAdresse, patchStatut, familleStatut, issueRapide } from './tourneeColis.logic'
+import { statutsProposes, libelleAdresse, patchStatut, familleStatut, issueRapide, peutTransformer } from './tourneeColis.logic'
 import { champCls } from './EspaceCommun'
 import { HorairesRelais } from './HorairesRelais'
 import { SelecteurColis } from './SelecteurColis'
-import { useModifierAdresse } from './AdresseContexte'
+import { useModifierAdresse, useTransformerCollecte } from './AdresseContexte'
 import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 
 type FamilleArret = 'livre' | 'attente' | 'retour' | 'neutre'
@@ -180,6 +180,7 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
   const { companyId } = useProfile()
   const { occupe, fait, ecrire, geste, pause } = useGestes(arret, tournee, onGeste)
   const modifierAdresse = useModifierAdresse()
+  const transformer = useTransformerCollecte()
   const { autres } = statutsProposes(arret.type)
   const [remis, setRemis] = useState(arret.colis_remis ?? arret.quantite)
   const [note, setNote] = useState(arret.note ?? '')
@@ -240,6 +241,14 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
               Remis {remis} sur {arret.quantite}
             </button>
           </div>
+        )}
+
+        {transformer && peutTransformer(arret) && (
+          <button type="button" onClick={() => { onFermer(); transformer(arret) }}
+            className={`${MOYEN} border-[var(--border)] text-[var(--text)]`}>
+            {arret.type === 'col' ? <><PackageCheck size={20} /> Remettre en colis normal</>
+              : <><PackagePlus size={20} /> {arret.quantite > 1 ? 'Collecte / éclater' : 'Transformer en collecte'}</>}
+          </button>
         )}
 
         {!arret.statut && (
@@ -412,6 +421,7 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
   const [fiche, setFiche] = useState(false)
   const [confirmer, setConfirmer] = useState(false)
   const modifierAdresse = useModifierAdresse()
+  const transformer = useTransformerCollecte()
   const { occupe, fait, geste, pause } = useGestes(arret, tournee, onGeste)
   const validation = useValidation(geste)
   const enPause = !arret.statut && !!arret.en_pause_le
@@ -456,6 +466,14 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
           {arret.note && <span className="inline-flex items-center gap-1"><MessageSquare size={13} /> {arret.note}</span>}
         </span>
       </button>
+      {!verrouillee && transformer && peutTransformer(arret) && (
+        <button type="button" onClick={() => transformer(arret)}
+          aria-label={arret.type === 'col' ? 'Remettre en colis normal' : 'Transformer en collecte'}
+          title={arret.type === 'col' ? 'Remettre en colis normal' : 'Transformer en collecte'}
+          className="w-9 shrink-0 self-center h-11 inline-flex items-center justify-center rounded-[var(--r-md)] text-[var(--text-muted)] active:scale-[0.95]">
+          {arret.type === 'col' ? <PackageCheck size={16} /> : <PackagePlus size={16} />}
+        </button>
+      )}
       {!verrouillee && !arret.statut && modifierAdresse && (
         <button type="button" onClick={() => modifierAdresse(arret)} aria-label="Modifier l'adresse" title="Modifier l'adresse"
           className="w-9 shrink-0 self-center h-11 inline-flex items-center justify-center rounded-[var(--r-md)] text-[var(--text-muted)] active:scale-[0.95]">
