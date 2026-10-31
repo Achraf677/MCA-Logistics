@@ -169,6 +169,16 @@ Pas bon — reste
 - Restent : guidage vocal intégré ; historique des positions (volontairement absent) ; information CNIL sur le partage
   de position.
 
+- 30/10/2026 : carte de Ma tournée interactive : toucher un point = même barre que le point actuel (Y aller, Livré, issue rapide, Pause, Autre) + « Viser cet arrêt » (passe l'arrêt en tête de l'ordre, mode manuel, trajet recalculé). Arrêts traités / en pause : ligne habituelle.
+
+- 30/10/2026 : « Depuis ici » (recalcul des restants) repart du dernier arrêt traité, plus du GPS du téléphone.
+
+- 30/10/2026 : photo de la synthèse OBLIGATOIRE pour terminer ; scan de la feuille du jour bloqué tant qu'une tournée passée (depuis le 30/10) n'est pas terminée avec photo ; message d'information le jour même.
+
+- 31/10/2026 : collectes — bouton « Transformer en collecte / Collecte, éclater » (ligne + fiche d'un arrêt non traité), « Remettre en colis normal » ; l'historique des adresses préremplit la lecture des feuilles suivantes.
+
+- 31/10/2026 : clôture impossible tant qu'il reste un arrêt non traité (pause comprise) ou sans photo de synthèse ; collecte / éclater aussi côté bureau.
+
 ## 9. À tester après chaque PR
 - (Ma tournée) Scanner une vraie feuille (2 pages) : villages / zones trouvés, relais reconnus, tournée créée dans
   l'ordre sans rien corriger ; fermer la page juste après « Lire » puis revenir ; Brumath : « Recalculer » range les

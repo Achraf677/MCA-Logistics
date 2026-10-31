@@ -3,7 +3,7 @@ import {
   zoneDeSecteur,
   familleStatut, colisRemis, compteursTournee, avancementPct, statutApresGeste, arretsDepuisLecture,
   manquesApercu, ordreHabituel, totauxApercu, modifierArretLu, lignesArrets, fusionnerEntetes, arretVide,
-  pageDepuisLecture, pagesManquantes, pagesEnDouble, ordonnerParPage, retirerPhoto,
+  DEBUT_SYNTHESE_OBLIGATOIRE, tourneesABoucler, pageDepuisLecture, pagesManquantes, pagesEnDouble, ordonnerParPage, retirerPhoto,
   STATUT_FAIT, AUTRES_STATUTS, type ArretColis, type StatutArretColis,
 } from './tourneesColis'
 
@@ -189,5 +189,32 @@ describe('zoneDeSecteur', () => {
     expect(zoneDeSecteur('(HC) 610 - KRIEGSHEIM')).toBeNull()
     expect(zoneDeSecteur('(HC) 0 - District inconnu')).toBeNull()
     expect(zoneDeSecteur(null)).toBeNull()
+  })
+})
+
+describe('tourneesABoucler (photo de synthèse obligatoire dès le jour de départ)', () => {
+  const jour = (n: number) => { const d = new Date(`${DEBUT_SYNTHESE_OBLIGATOIRE}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+  const t = (id: string, date: string, statut: string) => ({ id, date, statut })
+
+  it('une tournée passée pas terminée bloque', () => {
+    expect(tourneesABoucler([t('a', jour(0), 'en_cours')], new Set(), jour(1))).toEqual([{ id: 'a', date: jour(0) }])
+  })
+
+  it('terminée sans photo bloque, terminée avec photo non', () => {
+    const l = [t('a', jour(0), 'cloturee'), t('b', jour(1), 'cloturee')]
+    expect(tourneesABoucler(l, new Set(['b']), jour(2))).toEqual([{ id: 'a', date: jour(0) }])
+  })
+
+  it('avant le jour de départ : jamais comptée, même pas terminée', () => {
+    expect(tourneesABoucler([t('a', jour(-1), 'en_cours'), t('b', jour(-20), 'a_faire')], new Set(), jour(1))).toEqual([])
+  })
+
+  it("aujourd'hui ne bloque pas : seulement les jours passés", () => {
+    expect(tourneesABoucler([t('a', jour(0), 'en_cours')], new Set(), jour(0))).toEqual([])
+  })
+
+  it('du plus ancien au plus récent', () => {
+    const l = [t('b', jour(3), 'en_cours'), t('a', jour(0), 'en_cours')]
+    expect(tourneesABoucler(l, new Set(), jour(4)).map(x => x.id)).toEqual(['a', 'b'])
   })
 })

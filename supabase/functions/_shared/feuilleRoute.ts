@@ -9,7 +9,9 @@
 //   - colonnes lues par ligne : Rue | Nb Colis | Nb PGEO | N° | CRBT/taxes ;
 //   - case « N° » recopiée telle quelle : numéros séparés par des virgules, « 5(2) » = 2 colis
 //     au n° 5 (petits chiffres en exposant), « RC13(21) » = point relais, 21 colis,
-//     « [C]11 » = COLLECTE (numéro en clair dans un carré noir), « ? » = chiffre illisible.
+//     « [C]11 » = COLLECTE (numéro en clair dans un carré noir), « ? » = chiffre illisible ;
+//   - en plus, la vision liste à part les numéros vus en carré noir (`collectes`) : un numéro
+//     listé là est une collecte même si le « [C] » a été oublié dans la case.
 //
 // Le découpage en arrêts (un par numéro) se fait ICI, en code : un modèle qui découpe lui-même
 // invente plus facilement un numéro ou en saute un. Auto-contrôle par ligne : somme des colis
@@ -28,6 +30,8 @@ export interface LigneFeuille {
   nb_colis: number | null
   nb_pgeo: number | null
   numeros: string | null
+  /** Numéros vus en carré noir (collectes), listés à part par la vision. */
+  collectes: string[]
   crbt: string | null
 }
 
@@ -90,6 +94,12 @@ function entier(v: unknown, max = 999): number | null {
   return n
 }
 
+/** Numéros listés par la vision (tableau ou texte « 10, 28A ») → liste propre. */
+function listeNumeros(v: unknown): string[] {
+  const brut = Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,;]/) : []
+  return brut.map(x => texte(x, 12)).filter((x): x is string => !!x).slice(0, 40)
+}
+
 const CLES_TEXTE = ['date', 'societe', 'vehicule', 'imei', 'circuit', 'operateur', 'depart', 'remettant', 'adresse_remettant', 'livreur'] as const
 const CLES_NOMBRE = ['nb_colis', 'nb_pgeo'] as const
 
@@ -127,6 +137,7 @@ export function nettoyerLecture(brut: unknown): LectureFeuille {
       nb_colis: entier(l.nb_colis),
       nb_pgeo: entier(l.nb_pgeo),
       numeros: texte(l.numeros, 400),
+      collectes: listeNumeros(l.collectes),
       crbt: texte(l.crbt, 60),
     }))
   return { entete, page: lirePage(b.page), lignes }
@@ -144,6 +155,14 @@ export interface NumeroLu {
 }
 
 /**
+ * Façons dont la vision écrit une collecte : « [C]11 », « (C)11 », « [COL]11 », « C]11 » ou « [C11 » (crochet perdu),
+ * « COL 11 », ou le carré noir recopié tel quel (■ ▪ █…). Une lettre C collée derrière un numéro (« 12C ») n'en est pas une.
+ */
+const MARQUE = '\\[\\s*c(?:ol(?:lecte)?)?\\s*\\]|\\(\\s*c\\s*\\)|\\{\\s*c\\s*\\}|[■▪◼◾█▮⬛]|\\bc\\s*\\](?=\\s*\\d)|\\[\\s*c(?=\\s*\\d)|^\\s*col(?:lecte)?\\.?\\s*(?=\\d)'
+const MARQUE_COLLECTE = new RegExp(MARQUE, 'i')
+const MARQUE_COLLECTE_G = new RegExp(MARQUE, 'gi')
+
+/**
  * « 5(2), RC13(21), [C]11 » → 3 numéros. Case vide → un seul « numéro » null (la rue).
  * Un « RC » ou « [C] » seul (sans numéro) reste un arrêt sans numéro, de ce type.
  */
@@ -156,7 +175,7 @@ export function decouperNumeros(case_: string | null | undefined): NumeroLu[] {
     let t = morceau.trim()
     if (!t) continue
     let type: TypeArret = 'c'
-    if (/\[\s*c\s*\]/i.test(t)) { type = 'col'; t = t.replace(/\[\s*c\s*\]/gi, ' ') }
+    if (MARQUE_COLLECTE.test(t)) { type = 'col'; t = t.replace(MARQUE_COLLECTE_G, ' ') }
     if (/^\s*rc(?=[\s\d.(?]|$)\.?/i.test(t)) { if (type === 'c') type = 'rc'; t = t.replace(/^\s*rc\.?/i, ' ') }
     let quantite: number | null = null
     const q = t.match(/\(\s*(\d{1,3})\s*\)/)
@@ -183,6 +202,15 @@ export function separerCommune(commune: string | null, cp: string | null = null)
   }
   c = c.replace(/[-–,]+\s*$/, '').replace(/^\s*[-–,]+/, '').replace(/\s+/g, ' ').trim()
   return { commune: c ? c.toUpperCase() : null, cp: code }
+}
+
+const normNumero = (n: string | null | undefined) => (n ?? '').toUpperCase().replace(/\s+/g, '')
+
+/** Un numéro listé dans `collectes` est une collecte, même si son « [C] » manque dans la case N°. Pur (modifie `numeros`). */
+export function marquerCollectes(numeros: NumeroLu[], collectes: string[] | undefined): void {
+  const liste = new Set((collectes ?? []).map(c => normNumero(decouperNumeros(c)[0]?.numero ?? c)).filter(Boolean))
+  if (!liste.size) return
+  for (const n of numeros) if (n.type === 'c' && n.numero && liste.has(normNumero(n.numero))) n.type = 'col'
 }
 
 // ── Lignes → arrêts ─────────────────────────────────────────────────────────
@@ -242,6 +270,7 @@ export function lignesEnArrets(lignes: LigneFeuille[]): ArretFeuille[] {
     if (!l.rue && !l.numeros) continue
     const numeros = decouperNumeros(l.numeros)
     const vide = !(l.numeros ?? '').trim()
+    marquerCollectes(numeros, l.collectes)
     if (!vide) corrigerQuantites(l, numeros)
     // Moins de numéros ET moins de colis que la feuille n'en annonce : des numéros n'ont pas été
     // lus. On ajoute d'office une ligne « n° illisible » avec les colis manquants (le livreur

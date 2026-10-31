@@ -348,9 +348,15 @@ export function journeeDepuisArrets(arrets: ArretColis[]): ColisJournee {
   return { colis_domicile: dom, colis_relais: rel, colis_litige: lit, litige_raison }
 }
 
-/** Ce qu'il reste avant de clôturer : arrêts non traités (avertissement, jamais bloquant). */
+/** Arrêts non traités (pas de statut). */
 export function nonTraites(arrets: ArretColis[]): number {
   return arrets.filter(a => !a.statut).length
+}
+
+/** Avant de clôturer, tout doit être traité : arrêts restants, dont ceux en pause (une pause n'est pas un résultat). */
+export function restantsAvantCloture(arrets: ArretColis[]): { restants: number; enPause: number } {
+  const r = arrets.filter(a => !a.statut)
+  return { restants: r.length, enPause: r.filter(a => !!a.en_pause_le).length }
 }
 
 // ── Catégories (code couleur + avancement) ──────────────────────────────────

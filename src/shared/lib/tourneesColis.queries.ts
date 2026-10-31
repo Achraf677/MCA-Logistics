@@ -10,7 +10,7 @@ import type { DocumentRow } from './documents.types'
 import { journeeDepuisArrets } from './tourneesColisRoute'
 import { dessinerZones, pointsZones, type DessinZones, type RueReferentiel, type ZoneRue } from './zonesCarte.logic'
 import {
-  arretsDepuisLecture, lignesArrets, ordreHabituel, pageDepuisLecture, statutApresGeste, type PageLue,
+  DEBUT_SYNTHESE_OBLIGATOIRE, arretsDepuisLecture, lignesArrets, ordreHabituel, tourneesABoucler, pageDepuisLecture, statutApresGeste, type PageLue,
   type ArretColis, type ArretLu, type EnteteFeuille, type StatutArretColis, type StatutTourneeColis, type TourneeColis, type TypeArretColis,
 } from './tourneesColis'
 
@@ -40,12 +40,56 @@ export async function listerTourneesColis(p: { du: string; au: string; memberId?
   return { data: (data ?? []) as unknown as TourneeColis[], error: erreurClaire(error) }
 }
 
+/**
+ * Tournées d'un salarié à boucler avant de scanner la feuille du jour : jours passés (depuis le 30/10/2026) pas terminés
+ * ou terminés sans photo de la synthèse (`tourneesABoucler`). Avant le 30/10 : jamais comptées.
+ */
+export async function tourneesABouclerDuSalarie(memberId: string, aujourdhui: string) {
+  const { data, error } = await supabase.from('tournees_colis').select('id, date, statut')
+    .eq('member_id', memberId).gte('date', DEBUT_SYNTHESE_OBLIGATOIRE).lt('date', aujourdhui)
+  if (error) return { data: [] as Array<{ id: string; date: string }>, error: erreurClaire(error) }
+  const lues = (data ?? []) as Array<{ id: string; date: string; statut: string }>
+  const photos = await photosSynthese(lues.filter(t => t.statut === 'cloturee').map(t => t.id))
+  if (photos.error) return { data: [] as Array<{ id: string; date: string }>, error: photos.error }
+  const avecPhoto = new Set(photos.data.map(d => d.entity_id).filter((x): x is string => !!x))
+  return { data: tourneesABoucler(lues, avecPhoto, aujourdhui), error: null }
+}
+
 /** Arrêts d'une ou plusieurs tournées, dans l'ordre de la feuille. */
 export async function arretsDesTournees(ids: string[]) {
   if (ids.length === 0) return { data: [] as ArretColis[], error: null }
   const { data, error } = await supabase.from('tournees_colis_arrets').select(COLS_ARRET)
     .in('tournee_id', ids).order('rang', { ascending: true })
   return { data: (data ?? []) as unknown as ArretColis[], error: erreurClaire(error) }
+}
+
+const PAQUET = 40
+
+async function enPaquets<T>(ids: string[], lire: (p: string[]) => Promise<{ data: T[]; error: Error | null }>) {
+  const out: T[] = []
+  for (let i = 0; i < ids.length; i += PAQUET) {
+    const r = await lire(ids.slice(i, i + PAQUET))
+    if (r.error) return { data: out, error: r.error }
+    out.push(...r.data)
+  }
+  return { data: out, error: null }
+}
+
+/** Tournées d'une période + leurs arrêts, photos de synthèse et photos de preuve (suivi détaillé, bureau). */
+export async function chargerSuiviColis(du: string, au: string) {
+  const t = await listerTourneesColis({ du, au })
+  if (t.error) return { error: t.error, tournees: [], arrets: [], syntheses: new Set<string>(), photos: new Map<string, DocumentRow[]>() }
+  const ids = t.data.map(x => x.id)
+  const a = await enPaquets(ids, arretsDesTournees)
+  const s = await enPaquets(ids, photosSynthese)
+  const traites = a.data.filter(x => x.statut).map(x => x.id)
+  const p = await enPaquets(traites, photosArrets)
+  const photos = new Map<string, DocumentRow[]>()
+  for (const d of p.data) if (d.entity_id) photos.set(d.entity_id, [...(photos.get(d.entity_id) ?? []), d])
+  return {
+    error: a.error ?? s.error ?? p.error, tournees: t.data, arrets: a.data,
+    syntheses: new Set(s.data.map(d => d.entity_id).filter((x): x is string => !!x)), photos,
+  }
 }
 
 /** Salariés pour qui le bureau peut scanner (fiches actives) + leurs clients de messagerie. */
@@ -318,6 +362,23 @@ export async function majArret(
     await supabase.from('tournees_colis').update({ statut: 'en_cours' }).eq('id', arret.tournee_id).eq('statut', 'a_faire')
   }
   return { data: ligne, error: null }
+}
+
+/** Passe un arrêt en collecte (ou le remet en colis normal) ; l'adresse est notée dans l'historique. */
+export async function changerTypeArret(arretId: string, type: 'c' | 'col'): Promise<{ data: ArretColis | null; error: Error | null }> {
+  const { data, error } = await supabase.from('tournees_colis_arrets').update({ type }).eq('id', arretId).select(COLS_ARRET)
+  if (error) return { data: null, error: erreurClaire(error) }
+  const ligne = (data ?? [])[0] as unknown as ArretColis | undefined
+  if (!ligne) return { data: null, error: new Error(REFUS) }
+  void supabase.rpc('noter_adresse_arret', { p_arret: arretId, p_action: type === 'col' ? 'collecte' : 'normal' })
+  return { data: ligne, error: null }
+}
+
+/** Sépare un arrêt de plusieurs colis en 1 collecte + le reste en colis normal (total conservé). Renvoie les deux arrêts. */
+export async function eclaterArret(arretId: string, colisCollecte: number): Promise<{ data: ArretColis[]; error: Error | null }> {
+  const { data, error } = await supabase.rpc('eclater_arret', { p_arret: arretId, p_colis_collecte: colisCollecte })
+  if (error) return { data: [], error: erreurClaire(error) }
+  return { data: (data ?? []) as unknown as ArretColis[], error: null }
 }
 
 /** Retire une tournée et ses arrêts (scan raté). */

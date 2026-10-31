@@ -18,6 +18,8 @@ export interface FuelLog {
   liters: number
   price_per_liter_milli: number
   total_cts: number
+  /** Montant HT du plein (tout en HT dans l'onglet). Repli : TTC − TVA. */
+  total_ht_cts: number | null
   fuel_type: FuelType | null
   mileage_km: number | null
   station: string | null
@@ -37,8 +39,8 @@ export interface FuelLogRow extends FuelLog {
   charges: { id: string; label: string; montant_ttc_cts: number | null; receipt_url: string | null; pennylane_id: string | null } | null
 }
 
-// charge_id et tva_cts sont optionnels
-export type FuelLogInsert = Omit<FuelLog, 'id' | 'created_at' | 'updated_at' | 'tva_cts' | 'charge_id'> & { tva_cts?: number | null; charge_id?: string | null }
+// charge_id, tva_cts et total_ht_cts sont optionnels
+export type FuelLogInsert = Omit<FuelLog, 'id' | 'created_at' | 'updated_at' | 'tva_cts' | 'charge_id' | 'total_ht_cts'> & { tva_cts?: number | null; charge_id?: string | null; total_ht_cts?: number | null }
 export type FuelLogUpdate = Partial<Omit<FuelLog, 'id' | 'company_id' | 'created_at'>>
 
 export interface FuelFilters {

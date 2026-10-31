@@ -29,7 +29,7 @@ import { geocode } from '../_shared/geocode.ts'
 import { IGN_ITINERAIRE, IGN_RESSOURCE } from '../_shared/ign.ts'
 import {
   ARRET_S, IGN_MAX_POINTS, blocsMatrice, completerMatrices, decoderPolyligne, distanceParcours, encoderPolyligne,
-  noeudsDansOrdre, ordonnerTournee, passages, passagesDepuisEtapes, regrouperNoeuds, troncons, type Matrices, type Point,
+  dernierArretTraite, noeudsDansOrdre, ordonnerTournee, passages, passagesDepuisEtapes, regrouperNoeuds, troncons, type Matrices, type Point,
 } from '../_shared/tourneeRoute.ts'
 
 // Adresse officielle depuis le 28/04/2026 (l'ancienne api.openrouteservice.org n'a plus que 10 % du quota
@@ -39,7 +39,7 @@ const PARALLELE_ECRITURES = 10
 
 interface Arret {
   id: string; rang: number; numero: string | null; lat: number | null; lng: number | null
-  statut: string | null; ordre: number | null; commune: string | null; zone: string | null; rue: string | null
+  statut: string | null; statut_le: string | null; ordre: number | null; commune: string | null; zone: string | null; rue: string | null
 }
 
 function pointValide(p: unknown): p is Point {
@@ -162,7 +162,7 @@ Deno.serve(async (req: Request) => {
   if (t.statut === 'cloturee') return jsonResponse({ ok: false, error: 'Tournée clôturée : rien à recalculer.' }, 409)
 
   const { data: lus, error: eA } = await db.from('tournees_colis_arrets')
-    .select('id, rang, numero, lat, lng, statut, ordre, commune, zone, rue').eq('tournee_id', tourneeId).order('rang')
+    .select('id, rang, numero, lat, lng, statut, statut_le, ordre, commune, zone, rue').eq('tournee_id', tourneeId).order('rang')
   if (eA) return jsonResponse({ ok: false, error: eA.message }, 400)
   const arrets = (lus ?? []) as Arret[]
 
@@ -172,11 +172,14 @@ Deno.serve(async (req: Request) => {
   // Recalculé à chaque fois (un réglage changé s'applique tout de suite) ; noté sur la tournée.
   let depart: Point | null = null
   let departSource = 'position'
+  // 'restants' : on repart du dernier arrêt TRAITÉ (la suite s'enchaîne sur ce qui vient d'être fait), pas du GPS du
+  // téléphone, parfois loin ou périmé : l'ordre des restants ne partait plus du bon endroit. Sans arrêt traité : le GPS.
   const dernierTraite = mode === 'suivre'
     ? [...arrets].filter(a => a.statut != null && a.lat != null && a.lng != null)
         .sort((a, b) => (b.ordre ?? -1) - (a.ordre ?? -1))[0]
-    : undefined
-  if (pointValide(body.depart)) depart = { lat: body.depart.lat, lng: body.depart.lng }
+    : mode === 'restants' ? dernierArretTraite(arrets) ?? undefined : undefined
+  if (mode === 'restants' && dernierTraite) { depart = { lat: dernierTraite.lat!, lng: dernierTraite.lng! }; departSource = 'position' }
+  else if (pointValide(body.depart)) depart = { lat: body.depart.lat, lng: body.depart.lng }
   else if (dernierTraite) { depart = { lat: dernierTraite.lat!, lng: dernierTraite.lng! }; departSource = 'position' }
   else {
     const { data: soc } = await db.from('companies')

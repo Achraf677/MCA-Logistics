@@ -18,8 +18,10 @@ import type { MaintenanceRow } from './entretiens.types'
  * un récap qui ignorerait les filtres afficherait des totaux sans rapport avec
  * la liste juste en dessous, et on ne saurait plus lequel croire.
  */
-export function RecapEntretiens({ rows, ventilationParCharge }: {
+export function RecapEntretiens({ rows, ventilationParCharge, mode = 'ht' }: {
   rows: MaintenanceRow[]
+  /** Montants en HT ou en TTC (choix de l'écran). */
+  mode?: 'ht' | 'ttc'
   /** Ventilations des factures liées, déjà chargées par l'écran. */
   ventilationParCharge: Map<string, VentilationEntretien[]>
 }) {
@@ -27,10 +29,10 @@ export function RecapEntretiens({ rows, ventilationParCharge }: {
   const [ouvert, setOuvert] = useState(false)
 
   const parCategorie = useMemo(
-    () => recapParCategorie(rows, ventilationParCharge),
-    [rows, ventilationParCharge],
+    () => recapParCategorie(rows, ventilationParCharge, mode),
+    [rows, ventilationParCharge, mode],
   )
-  const parVehicule = useMemo(() => recapParVehicule(rows), [rows])
+  const parVehicule = useMemo(() => recapParVehicule(rows, mode), [rows, mode])
 
   if (rows.length === 0) return null
 

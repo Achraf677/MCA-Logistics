@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import {
-  Check, Pencil, Store, Package, PackagePlus, House, Clock, Undo2, Minus, Pause, Play, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw,
+  Check, Pencil, Store, PackagePlus, House, Clock, Undo2, Minus, Pause, Play, MessageSquare, Navigation, Camera, GripVertical, X, RotateCcw, Crosshair, PackageCheck,
 } from 'lucide-react'
 import { useToast } from '../../shared/ui/useToast'
 import { useProfile } from '../../app/providers'
@@ -10,11 +10,12 @@ import { majArret, ajouterPhotoArret, urlPhotoArret } from '../../shared/lib/tou
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import { lienNavigation } from '../../shared/lib/navigation'
 import { lireAppNavigation } from '../../shared/lib/prefChauffeur'
-import { statutsProposes, libelleAdresse, patchStatut, familleStatut, issueRapide } from './tourneeColis.logic'
+import { statutsProposes, libelleAdresse, patchStatut, familleStatut, issueRapide, peutTransformer } from './tourneeColis.logic'
 import { champCls } from './EspaceCommun'
 import { HorairesRelais } from './HorairesRelais'
-import { SelecteurColis } from './SelecteurColis'
-import { useModifierAdresse } from './AdresseContexte'
+import { SelecteurColis } from '../../shared/ui/SelecteurColis'
+import { PastilleColis } from '../../shared/ui/PastilleColis'
+import { useModifierAdresse, useTransformerCollecte } from './AdresseContexte'
 import { ouvrirDocument } from '../../shared/ui/VisionneuseDocument'
 
 type FamilleArret = 'livre' | 'attente' | 'retour' | 'neutre'
@@ -108,18 +109,7 @@ function useValidation(geste: (s: StatutArretColis | null) => Promise<boolean>) 
 }
 
 /** Nombre de colis de l'arrêt, bien visible : un arrêt à plusieurs colis saute aux yeux. */
-export function PastilleColis({ n, grand = false }: { n: number; grand?: boolean }) {
-  const plusieurs = n > 1
-  return (
-    <span className={`shrink-0 inline-flex items-center justify-center gap-1.5 rounded-full font-bold tabular-nums leading-none ${
-      grand ? 'px-3.5 py-1.5 text-2xl' : 'px-3 py-1 text-xl'} ${
-      plusieurs ? 'bg-[var(--brand)] text-white shadow-sm' : 'bg-[var(--bg-elevated)] border border-[var(--border-strong)] text-[var(--text)]'}`}
-      aria-label={`${n} colis`}>
-      <Package size={grand ? 20 : 16} aria-hidden /> {n}
-      <span className={`font-semibold opacity-80 ${grand ? 'text-base' : 'text-sm'}`}>colis</span>
-    </span>
-  )
-}
+export { PastilleColis }
 
 /**
  * Confirmation d'un arrêt à plusieurs colis : une case par colis, toutes cochées ; on décoche ceux
@@ -180,6 +170,7 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
   const { companyId } = useProfile()
   const { occupe, fait, ecrire, geste, pause } = useGestes(arret, tournee, onGeste)
   const modifierAdresse = useModifierAdresse()
+  const transformer = useTransformerCollecte()
   const { autres } = statutsProposes(arret.type)
   const [remis, setRemis] = useState(arret.colis_remis ?? arret.quantite)
   const [note, setNote] = useState(arret.note ?? '')
@@ -240,6 +231,14 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
               Remis {remis} sur {arret.quantite}
             </button>
           </div>
+        )}
+
+        {transformer && peutTransformer(arret) && (
+          <button type="button" onClick={() => { onFermer(); transformer(arret) }}
+            className={`${MOYEN} border-[var(--border)] text-[var(--text)]`}>
+            {arret.type === 'col' ? <><PackageCheck size={20} /> Remettre en colis normal</>
+              : <><PackagePlus size={20} /> {arret.quantite > 1 ? 'Collecte / éclater' : 'Transformer en collecte'}</>}
+          </button>
         )}
 
         {!arret.statut && (
@@ -308,12 +307,16 @@ export function FicheArret({ arret, tournee, onGeste, photos = [], onPhoto, onFe
  * un appui pour l'issue la plus courante (avisé / relais fermé / rien à collecter),
  * « Autre » ouvre la fiche, « Y aller » lance la navigation.
  */
-export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
+export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto, enCarte = false, onViser }: {
   arret: ArretColis
   tournee: TourneeColis
   onGeste: (a: ArretColis) => void
   photos?: DocumentRow[]
   onPhoto?: (arretId: string, doc: DocumentRow) => void
+  /** Dans le panneau de la carte : même contenu, mais posé dans le panneau et non collé au bas de l'écran. */
+  enCarte?: boolean
+  /** Carte : « Viser » = passer cet arrêt en prochain (absent si c'est déjà le prochain). */
+  onViser?: () => void
 }) {
   const { occupe, fait, geste, pause } = useGestes(arret, tournee, onGeste)
   const validation = useValidation(geste)
@@ -324,7 +327,9 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
 
   return (
     <>
-      <div className="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t-4 bg-[var(--bg-elevated)]"
+      <div className={enCarte
+        ? 'rounded-[var(--r-lg)] border-t-4 bg-[var(--bg-elevated)]'
+        : 'fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-30 border-t-4 bg-[var(--bg-elevated)]'}
         style={{ borderTopColor: COULEUR_CATEGORIE[arret.type] }}>
         <div className="mx-auto max-w-xl flex flex-col gap-2 p-3">
           <div className="flex items-center gap-3">
@@ -344,6 +349,12 @@ export function BarreProchain({ arret, tournee, onGeste, photos, onPhoto }: {
               </a>
             )}
           </div>
+          {onViser && (
+            <button type="button" onClick={onViser}
+              className="min-h-12 px-4 inline-flex items-center justify-center gap-2 rounded-[var(--r-lg)] border-2 border-[var(--brand)] text-base font-semibold text-[var(--text)] active:scale-[0.98]">
+              <Crosshair size={20} /> Viser cet arrêt (le passer en prochain)
+            </button>
+          )}
           {validation.armee ? (
             <div className="flex gap-2">
               <button type="button" disabled={occupe} onClick={validation.confirmer}
@@ -400,6 +411,7 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
   const [fiche, setFiche] = useState(false)
   const [confirmer, setConfirmer] = useState(false)
   const modifierAdresse = useModifierAdresse()
+  const transformer = useTransformerCollecte()
   const { occupe, fait, geste, pause } = useGestes(arret, tournee, onGeste)
   const validation = useValidation(geste)
   const enPause = !arret.statut && !!arret.en_pause_le
@@ -444,6 +456,14 @@ export function ArretTournee({ arret, tournee, verrouillee, onGeste, photos = []
           {arret.note && <span className="inline-flex items-center gap-1"><MessageSquare size={13} /> {arret.note}</span>}
         </span>
       </button>
+      {!verrouillee && transformer && peutTransformer(arret) && (
+        <button type="button" onClick={() => transformer(arret)}
+          aria-label={arret.type === 'col' ? 'Remettre en colis normal' : 'Transformer en collecte'}
+          title={arret.type === 'col' ? 'Remettre en colis normal' : 'Transformer en collecte'}
+          className="w-9 shrink-0 self-center h-11 inline-flex items-center justify-center rounded-[var(--r-md)] text-[var(--text-muted)] active:scale-[0.95]">
+          {arret.type === 'col' ? <PackageCheck size={16} /> : <PackagePlus size={16} />}
+        </button>
+      )}
       {!verrouillee && !arret.statut && modifierAdresse && (
         <button type="button" onClick={() => modifierAdresse(arret)} aria-label="Modifier l'adresse" title="Modifier l'adresse"
           className="w-9 shrink-0 self-center h-11 inline-flex items-center justify-center rounded-[var(--r-md)] text-[var(--text-muted)] active:scale-[0.95]">

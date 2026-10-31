@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   ChevronLeft, ChevronRight, ScanText, Trash2, ClipboardList, List, Map as IconeCarte, Undo2, LocateFixed,
-  RefreshCw, ArrowDownUp, ArrowUp, ArrowDown, ChevronsUp, MapPinOff, Search, MapPin, Radio, Flag, ChevronDown, AlertTriangle, Pause,
+  RefreshCw, ArrowDownUp, Info, Lock, ArrowUp, ArrowDown, ChevronsUp, MapPinOff, Search, MapPin, Radio, Flag, ChevronDown, AlertTriangle, Pause,
 } from 'lucide-react'
 import { BoutonIcone } from '../../shared/ui/BoutonIcone'
 import { ConfirmDialog } from '../../shared/ui/ConfirmDialog'
@@ -14,22 +14,23 @@ import { toLocalISO } from '../../shared/lib/dates'
 import { LIBELLE_STATUT_ARRET, type ArretColis, type TourneeColis } from '../../shared/lib/tourneesColis'
 import {
   arretsAPlacer, bandeauOrdre, deplacer, doitEnvoyerPosition, grouperEnSuite, libelleDistance, modeOrdre,
-  arretsDansOrdre, nonTraites, ordreInverse, ordreManuel, arretsEnPause, inclureEnPause, infosGroupes, libelleGroupe, cleGroupe, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
+  arretsDansOrdre, restantsAvantCloture, ordreInverse, ordreManuel, arretsEnPause, inclureEnPause, infosGroupes, libelleGroupe, cleGroupe, prochainDansOrdre, sansCalcul, sectionsListe, type PointCarte,
 } from '../../shared/lib/tourneesColisRoute'
 import {
   listerTourneesColis, arretsDesTournees, supprimerTourneeColis, nomsClients, calculerItineraire,
   majArret, ecrireOrdre, trouverScan, placerArret, chercherAdresse, photosArrets, cloturerTournee, envoyerPosition,
-  effacerPosition, appliquerZones,
+  effacerPosition, appliquerZones, tourneesABouclerDuSalarie,
 } from '../../shared/lib/tourneesColis.queries'
 import type { DocumentRow } from '../../shared/lib/documents.types'
 import type { EtatFiche, MaFiche } from './mescourses.types'
 import { decalerJour, borneAujourdhui } from './espace.logic'
 import { libelleDateCourte } from './mescourses.logic'
-import { compteursTournee, libelleAdresse, libelleCompteurs } from './tourneeColis.logic'
+import { appliquerEclatement, compteursTournee, libelleAdresse, libelleCompteurs } from './tourneeColis.logic'
 import { ArretTournee, ArretEnPauseCompact, BarreProchain, FicheArret } from './ArretTournee'
 import { RechercheAdresse } from './RechercheAdresse'
 import { FeuilleAdresse } from '../../shared/ui/FeuilleAdresse'
-import { ContexteAdresse } from './AdresseContexte'
+import { ContexteAdresse, ContexteCollecte } from './AdresseContexte'
+import { FeuilleCollecte } from '../../shared/ui/FeuilleCollecte'
 import { FeuilleCloture } from './FeuilleCloture'
 import { PhotosSynthese } from './PhotosSynthese'
 import { Carte, MessageErreur, GardeFiche, champCls, boutonPrimaireCls, boutonSecondaireCls } from './EspaceCommun'
@@ -118,14 +119,24 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
   }, [fiche.clients_messagerie])
 
   const tournee = tournees.find(t => t.id === choisie) ?? null
-  const arretsTournee = useMemo(() => arrets.filter(a => a.tournee_id === choisie), [arrets, choisie])
   const auj = aujourdhui()
   const estAujourdhui = date === auj
 
+  // Tournées des jours passés pas terminées / sans photo de synthèse (depuis le 30/10/2026) : pas de nouveau scan avant.
+  const [aBoucler, setABoucler] = useState<Array<{ id: string; date: string }>>([])
+  useEffect(() => {
+    let annule = false
+    tourneesABouclerDuSalarie(fiche.id, auj).then(({ data }) => { if (!annule) setABoucler(data) })
+    return () => { annule = true }
+  }, [fiche.id, auj, date, tournees])
+  const scanBloque = aBoucler.length > 0
+
+  const arretsTournee = useMemo(() => arrets.filter(a => a.tournee_id === choisie), [arrets, choisie])
   const majArrets = (maj: ArretColis[]) => {
     const par = new Map(maj.map(a => [a.id, a]))
     setArrets(prev => prev.map(a => par.get(a.id) ?? a))
   }
+  const fusionner = (maj: ArretColis[]) => setArrets(prev => appliquerEclatement(prev, maj))
   const majTournee = (t: Partial<TourneeColis> & { id: string }) =>
     setTournees(prev => prev.map(x => (x.id === t.id ? { ...x, ...t } : x)))
 
@@ -183,6 +194,21 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
 
       {erreur && <MessageErreur>{erreur}</MessageErreur>}
 
+      {scanBloque ? (
+        <div role="alert" className="flex flex-col gap-2 p-3 rounded-[var(--r-lg)] border-2 border-[var(--danger)] bg-[var(--bg-card)]">
+          <p className="flex items-center gap-2 text-base font-bold text-[var(--text)]"><Lock size={18} /> Scan bloqué</p>
+          <p className="text-sm text-[var(--text)]">Termine ta tournée du {libelleDateCourte(aBoucler[0].date)} avec la photo de la synthèse.</p>
+          <button type="button" className={boutonSecondaireCls} onClick={() => setDate(aBoucler[0].date)}>
+            Ouvrir la tournée du {libelleDateCourte(aBoucler[0].date)}
+          </button>
+        </div>
+      ) : estAujourdhui && tournee?.statut !== 'cloturee' && (
+        <div className="flex items-start gap-2 p-3 rounded-[var(--r-lg)] border border-[var(--border-strong)] bg-[var(--bg-card)]">
+          <Info size={18} className="mt-0.5 shrink-0 text-[var(--brand)]" />
+          <p className="text-sm text-[var(--text)]">Photo de la synthèse obligatoire pour terminer ta tournée.</p>
+        </div>
+      )}
+
       {scan && companyId ? (
         <Carte>
           <h2 className="text-base font-semibold text-[var(--text)]">Scanner ma feuille de route</h2>
@@ -197,7 +223,7 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
         <Carte>
           <EmptyState icon={<ClipboardList size={28} />} title="Pas de tournée ce jour"
             description="Photographie ta feuille de route (une photo par page) : le site en fait la liste de tes arrêts." />
-          {estAujourdhui && (
+          {estAujourdhui && !scanBloque && (
             <button type="button" className={boutonPrimaireCls} onClick={() => setScan(true)}>
               <ScanText size={18} /> Scanner ma feuille de route
             </button>
@@ -217,10 +243,10 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
             </div>
           )}
           <VueTournee key={tournee.id} tournee={tournee} arrets={arretsTournee} fiche={fiche} estAujourdhui={estAujourdhui}
-            onGeste={surGeste} onArrets={majArrets} onTournee={majTournee} onRecharger={() => recharger(tournee.id)}
+            onGeste={surGeste} onArrets={majArrets} onFusion={fusionner} onTournee={majTournee} onRecharger={() => recharger(tournee.id)}
             onOuvrirJournee={onOuvrirJournee} />
           <div className="flex flex-wrap gap-2">
-            {estAujourdhui && (
+            {estAujourdhui && !scanBloque && (
               <button type="button" className={`${boutonSecondaireCls} flex-1`} onClick={() => setScan(true)}>
                 <ScanText size={16} /> Scanner une autre feuille
               </button>
@@ -256,13 +282,15 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
 
 // ── Une tournée ─────────────────────────────────────────────────────────────
 
-function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, onTournee, onRecharger, onOuvrirJournee }: {
+function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, onFusion, onTournee, onRecharger, onOuvrirJournee }: {
   tournee: TourneeColis
   arrets: ArretColis[]
   fiche: MaFiche
   estAujourdhui: boolean
   onGeste: (a: ArretColis) => void
   onArrets: (a: ArretColis[]) => void
+  /** Arrêts modifiés ou ajoutés (collecte, éclatement) : fusionnés dans la liste sans rechargement. */
+  onFusion: (a: ArretColis[]) => void
   onTournee: (t: Partial<TourneeColis> & { id: string }) => void
   onRecharger: () => void
   onOuvrirJournee?: () => void
@@ -336,6 +364,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   // ── Recherche d'adresse : fiche d'un arrêt trouvé, ajout / correction d'une adresse ──
   const [ficheRecherche, setFicheRecherche] = useState<string | null>(null)
   const [adresseAModifier, setAdresseAModifier] = useState<ArretColis | null>(null)
+  const [collecteSur, setCollecteSur] = useState<ArretColis | null>(null)
   /** Une adresse ajoutée ou corrigée change l'itinéraire : on le recalcule (l'ordre manuel est gardé, seul le trajet suit). */
   const apresAdresse = (ajout: boolean) => {
     toast(ajout ? 'Adresse ajoutée à la tournée' : 'Adresse corrigée', 'success')
@@ -369,6 +398,13 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     const { error } = await ecrireOrdre(tournee.id, tous, arrets.map(a => a.id), 'manuel')
     if (error) { toast(error.message, 'error'); onRecharger(); return }
     await calculer('suivre')
+  }
+  /** Carte : « Viser » un arrêt = le passer en tête de l'ordre (il devient le prochain), le trajet suit. */
+  const viser = async (a: ArretColis) => {
+    const autres = [...(prochain ? [prochain.id] : []), ...ordreAffiche.aFaire.map(x => x.id)].filter(id => id !== a.id)
+    setPoint(null)
+    await appliquerOrdre([a.id, ...autres])
+    toast('Arrêt visé : c\'est le prochain', 'success')
   }
   const enregistrerOrdre = (ids: string[]) => appliquerOrdre([...(prochain ? [prochain.id] : []), ...ids])
 
@@ -417,6 +453,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   })
 
   const terminer = async () => {
+    if (restantsAvantCloture(arrets).restants > 0) { toast('Il reste des arrêts à traiter', 'error'); return }
     setClotureEnCours(true)
     const { data, error } = await cloturerTournee(tournee.id)
     if (error || !data) { setClotureEnCours(false); toast(error?.message ?? 'Clôture impossible', 'error'); return }
@@ -427,13 +464,12 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
     toast('Tournée terminée', 'success')
   }
 
-  const nt = nonTraites(arrets)
-  const messageCloture = `${c.colisLivres} colis livrés · ${c.colisAttente} en attente · ${c.colisRetour} en retour.`
-    + (nt ? ` Attention : ${nt} arrêt${nt > 1 ? 's' : ''} pas encore traité${nt > 1 ? 's' : ''}${enPause.length ? ` dont ${enPause.length} en pause` : ''} (compté${nt > 1 ? 's' : ''} en litige).` : '')
-    + ' Ensuite, plus rien n’est modifiable (le bureau peut rouvrir).'
+  const { restants, enPause: nbPause } = restantsAvantCloture(arrets)
+  const messageCloture = `${c.colisLivres} colis livrés · ${c.colisAttente} en attente · ${c.colisRetour} en retour. Ensuite, plus rien n’est modifiable (le bureau peut rouvrir).`
 
   return (
     <ContexteAdresse.Provider value={verrouillee ? null : setAdresseAModifier}>
+    <ContexteCollecte.Provider value={verrouillee ? null : setCollecteSur}>
       {/* Bandeau du haut, collé pendant le défilement : avancement, puis tous les gestes avec leur nom. */}
       <div className="sticky top-0 z-10 flex flex-col gap-2 py-2 bg-[var(--bg)] border-b border-[var(--border)]">
         <RechercheAdresse tournee={tournee} arrets={arrets} verrouillee={verrouillee}
@@ -503,6 +539,16 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
               <ul className="flex flex-col gap-2">
                 {point.arrets.map(a => {
                   const actuel = arrets.find(x => x.id === a.id) ?? a
+                  // Arrêt à faire : même barre que le point actuel (Y aller, Livré, Pause…) + « Viser ».
+                  if (!verrouillee && !actuel.statut && !actuel.en_pause_le) {
+                    return (
+                      <li key={a.id}>
+                        <BarreProchain arret={actuel} tournee={tournee} onGeste={onGeste} enCarte
+                          photos={photos.get(a.id)} onPhoto={surPhoto}
+                          onViser={actuel.id === prochain?.id ? undefined : () => viser(actuel)} />
+                      </li>
+                    )
+                  }
                   return (
                     <ArretTournee key={a.id} arret={actuel} tournee={tournee} verrouillee={verrouillee} onGeste={onGeste}
                       photos={photos.get(a.id)} onPhoto={surPhoto} />
@@ -576,7 +622,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         </Carte>
       ) : (
         <button type="button" onClick={() => setCloture(true)} className={`${boutonPrimaireCls} min-h-14 text-base`}>
-          <Flag size={20} /> Terminer ma tournée
+          <Flag size={20} /> Terminer ma tournée{restants > 0 ? ` (reste ${restants})` : ''}
         </button>
       )}
 
@@ -592,7 +638,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         message="Ton ordre est remplacé par le meilleur ordre calculé, village par village (zone par zone à Brumath)."
         confirmLabel="Recalculer" onConfirm={() => { setConfirmerReset(false); calculer('tout') }} onCancel={() => setConfirmerReset(false)} />
       {cloture && (
-        <FeuilleCloture tourneeId={tournee.id} companyId={societe} resume={messageCloture} enCours={clotureEnCours}
+        <FeuilleCloture tourneeId={tournee.id} companyId={societe} resume={messageCloture} restants={restants} enPause={nbPause} enCours={clotureEnCours}
           onTerminer={terminer} onFermer={() => setCloture(false)} />
       )}
       {ficheRecherche && (() => {
@@ -603,6 +649,11 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         <FeuilleAdresse tournee={tournee} arrets={arrets} arret={adresseAModifier} onFermer={() => setAdresseAModifier(null)}
           onFait={a => { setAdresseAModifier(null); onArrets([a]); apresAdresse(false) }} />
       )}
+      {collecteSur && !verrouillee && (
+        <FeuilleCollecte arret={arrets.find(a => a.id === collecteSur.id) ?? collecteSur}
+          onFait={maj => { onFusion(maj); setPoint(null) }} onFermer={() => setCollecteSur(null)} />
+      )}
+    </ContexteCollecte.Provider>
     </ContexteAdresse.Provider>
   )
 }

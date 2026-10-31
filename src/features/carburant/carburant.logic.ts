@@ -91,19 +91,43 @@ export function formatPricePerLiter(milli: number): string {
   }) + ' €/L'
 }
 
+/** HT d'un plein : la valeur enregistrée, sinon TTC − TVA (lignes anciennes). */
+export function htDuPlein(r: Pick<FuelLogRow, 'total_ht_cts' | 'total_cts' | 'tva_cts'>): number {
+  return r.total_ht_cts ?? r.total_cts - (r.tva_cts ?? 0)
+}
+
+/** Prix au litre HT en millièmes d'euro (même unité que `price_per_liter_milli`), 0 si pas de litres. */
+export function prixLitreHtMilli(r: Pick<FuelLogRow, 'total_ht_cts' | 'total_cts' | 'tva_cts' | 'liters'>): number {
+  return r.liters > 0 ? Math.round(htDuPlein(r) * 10 / r.liters) : 0
+}
+
+/** Montant d'un plein dans le mode choisi (HT, ou TTC tel que payé). */
+export function montantPlein(r: Pick<FuelLogRow, 'total_ht_cts' | 'total_cts' | 'tva_cts'>, mode: 'ht' | 'ttc'): number {
+  return mode === 'ttc' ? r.total_cts : htDuPlein(r)
+}
+
+/** Prix au litre dans le mode choisi, en millièmes d'euro (0 si pas de litres). */
+export function prixLitreMilli(r: Pick<FuelLogRow, 'total_ht_cts' | 'total_cts' | 'tva_cts' | 'liters'>, mode: 'ht' | 'ttc'): number {
+  return r.liters > 0 ? Math.round(montantPlein(r, mode) * 10 / r.liters) : 0
+}
+
 /**
- * KPIs de la liste. Le TOTAL couvre tout (carburants + liquides : c'est ce que
+ * KPIs de la liste (HT et TTC : l'écran choisit). Le TOTAL couvre tout (carburants + liquides : c'est ce que
  * coûte le véhicule). Les LITRES et le PRIX MOYEN AU LITRE, eux, ne portent que
  * sur les carburants : 10 L d'AdBlue à 1,49 €/L feraient mentir le prix moyen
  * du gazole et la consommation.
  */
 export function kpiSummary(rows: FuelLogRow[], produits: ProduitVehicule[] = []) {
-  const totalCts = rows.reduce((s, r) => s + r.total_cts, 0)
+  const totalHtCts = rows.reduce((s, r) => s + htDuPlein(r), 0)
+  const totalTtcCts = rows.reduce((s, r) => s + r.total_cts, 0)
   const carburants = rows.filter(r => !estLiquide(r.fuel_type, produits))
   const totalLiters = carburants.reduce((s, r) => s + r.liters, 0)
-  // Moyenne pondérée en millièmes → reste en millièmes pour formatPricePerLiter
+  // Moyenne pondérée HT, en millièmes d'euro → formatPricePerLiter
   const avgPricePerLiter = totalLiters > 0
-    ? carburants.reduce((s, r) => s + r.price_per_liter_milli * r.liters, 0) / totalLiters
+    ? carburants.filter(r => r.liters > 0).reduce((s, r) => s + htDuPlein(r), 0) * 10 / totalLiters
     : 0
-  return { totalCts, totalLiters, avgPricePerLiter, nb: rows.length }
+  const avgPricePerLiterTtc = totalLiters > 0
+    ? carburants.filter(r => r.liters > 0).reduce((s, r) => s + r.total_cts, 0) * 10 / totalLiters
+    : 0
+  return { totalHtCts, totalTtcCts, totalLiters, avgPricePerLiter, avgPricePerLiterTtc, nb: rows.length }
 }

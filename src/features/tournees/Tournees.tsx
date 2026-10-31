@@ -16,6 +16,7 @@ import { Drawer } from '../../shared/ui/Drawer'
 import { EmptyState } from '../../shared/ui/EmptyState'
 import { Field } from '../../shared/ui/Field'
 import { FeuilleAdresse } from '../../shared/ui/FeuilleAdresse'
+import { FeuilleCollecte } from '../../shared/ui/FeuilleCollecte'
 import { ScanFeuilleRoute } from '../../shared/ui/ScanFeuilleRoute'
 import { Skeleton } from '../../shared/ui/Skeleton'
 import { useToast } from '../../shared/ui/useToast'
@@ -31,6 +32,7 @@ import {
 } from '../../shared/lib/tourneesColis.queries'
 import { ilYA, libelleDistance, modeOrdre, positionAncienne, prochainDansOrdre } from '../../shared/lib/tourneesColisRoute'
 import { ListeTourneeColis } from './ListeTourneeColis'
+import { SuiviColis } from './SuiviColis'
 import { colorForIndex } from './tours.palette'
 import {
   construireLignes, csvTournees, dateDepuisParam, decalerJour, filtrerTournees, resumeTournees,
@@ -61,6 +63,7 @@ export function Tournees() {
   const [params] = useSearchParams()
   const [date, setDate] = useState(() => dateDepuisParam(params.get('date')) ?? toLocalISO(new Date()))
   const estAujourdhui = date === toLocalISO(new Date())
+  const [vue, setVue] = useState<'tournees' | 'suivi'>('tournees')
 
   const [tournees, setTournees] = useState<TourneeColis[]>([])
   const [arrets, setArrets] = useState<ArretColis[]>([])
@@ -81,6 +84,7 @@ export function Tournees() {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [onglet, setOnglet] = useState<OngletDetail>('arrets')
   const [adresseEdit, setAdresseEdit] = useState<ArretColis | null>(null)
+  const [collecteSur, setCollecteSur] = useState<ArretColis | null>(null)
   const [adresseAjout, setAdresseAjout] = useState(false)
   const [aRecalculerListe, setARecalculerListe] = useState(false)
   const [calcul, setCalcul] = useState<string | null>(null)
@@ -250,8 +254,21 @@ export function Tournees() {
 
   const tuile = (f: FiltreTournees) => ({ actif: filtre === f, onClick: () => setFiltre(cur => (cur === f ? 'toutes' : f)) })
 
+  const bascule = (
+    <div className="inline-flex self-start rounded-[var(--r-md)] border border-[var(--border)] overflow-hidden" role="tablist" aria-label="Vue">
+      {([['tournees', 'Tournées'], ['suivi', 'Suivi des colis']] as const).map(([v, l]) => (
+        <button key={v} type="button" role="tab" aria-selected={vue === v} onClick={() => setVue(v)}
+          className={`min-h-9 px-4 text-sm ${vue === v ? 'bg-[var(--bg-elevated)] text-[var(--text)] font-semibold' : 'text-[var(--text-muted)]'}`}>{l}</button>
+      ))}
+    </div>
+  )
+  if (vue === 'suivi') {
+    return <div className="flex flex-col gap-3 pb-6">{bascule}<SuiviColis dateInitiale={date} /></div>
+  }
+
   return (
     <div className="flex flex-col gap-3 pb-6">
+      {bascule}
       {/* Barre : jour · actions */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
@@ -422,7 +439,7 @@ export function Tournees() {
             {onglet === 'arrets' && (
               <ListeTourneeColis tournee={detail.t} arrets={detail.arrets} peutModifier={peutScanner}
                 aRecalculer={aRecalculerListe} calcul={calcul === detail.t.id}
-                onModifier={setAdresseEdit} onAjouter={() => setAdresseAjout(true)}
+                onModifier={setAdresseEdit} onCollecte={setCollecteSur} onAjouter={() => setAdresseAjout(true)}
                 onRecalculer={async () => { await calculer(detail.t); setARecalculerListe(false) }} />
             )}
             {onglet === 'feuille' && (
@@ -436,6 +453,11 @@ export function Tournees() {
           </div>
         )}
       </Drawer>
+
+      {collecteSur && (
+        <FeuilleCollecte arret={collecteSur}
+          onFait={() => { setARecalculerListe(true); void recharger() }} onFermer={() => setCollecteSur(null)} />
+      )}
 
       {(adresseEdit || adresseAjout) && (() => {
         const l = lignes.find(x => x.t.id === (adresseEdit?.tournee_id ?? detailId))

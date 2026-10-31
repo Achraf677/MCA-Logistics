@@ -10,7 +10,12 @@ export interface Maintenance {
   type: MaintenanceType | null
   description: string | null
   mileage_km: number | null
+  /** TTC (écrit pour les anciens lecteurs) ; le HT est la valeur de référence de l'onglet. */
   cost_cts: number | null
+  cost_ht_cts: number | null
+  tva_cts: number | null
+  /** Date à laquelle le HT a été vérifié par le président ; null = à vérifier. */
+  ht_verifie_le: string | null
   supplier_id: string | null
   next_due_date: string | null
   next_due_km: number | null
