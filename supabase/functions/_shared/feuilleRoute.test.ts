@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
-  controlerLigne, decouperNumeros, lignesEnArrets, lirePage, nettoyerLecture, separerCommune, type LigneFeuille,
+  controlerLigne, decouperNumeros, lignesEnArrets, lirePage, marquerCollectes, nettoyerLecture, separerCommune, type LigneFeuille,
 } from './feuilleRoute.ts';
 import { choisirResultat, communeBan } from './geocodeArret.ts';
 
 const ligne = (p: Partial<LigneFeuille>): LigneFeuille => ({
   commune_bandeau: null, secteur: '(HC) 610 - KRIEGSHEIM', rue: 'RUE DES VOSGES', nb_colis: null, nb_pgeo: null,
-  numeros: null, crbt: null, ...p,
+  numeros: null, collectes: [], crbt: null, ...p,
 });
 
 describe('decouperNumeros', () => {
@@ -125,7 +125,7 @@ describe('nettoyerLecture', () => {
     expect(r.page).toEqual({ numero: 1, total: 3 });
     expect(r.lignes).toEqual([{
       commune_bandeau: '67170 KRIEGSHEIM', secteur: '(HC) 610 - KRIEGSHEIM', rue: 'Rue A', nb_colis: null, nb_pgeo: 1,
-      numeros: '12', crbt: null,
+      numeros: '12', collectes: [], crbt: null,
     }]);
   });
   it('réponse vide ou absurde → aucune ligne', () => {
@@ -242,5 +242,54 @@ describe('tournée de Brumath', () => {
     expect(a.find(x => x.numero === '28A')).toMatchObject({ type: 'col', quantite: 1 })
     expect(a.find(x => x.numero === '4')).toMatchObject({ type: 'rc', quantite: 22 })
     expect(a.filter(x => x.a_verifier)).toEqual([])
+  })
+})
+
+describe('détection des collectes', () => {
+  const col = (t: string) => decouperNumeros(t).map(n => [n.numero, n.type])
+
+  it.each([
+    ['[C]11', '11'], ['[c] 11', '11'], ['(C)11', '11'], ['[COL]11', '11'], ['[Collecte] 11', '11'],
+    ['C]11', '11'], ['[C11', '11'], ['COL 11', '11'], ['■11', '11'], ['█ 11', '11'], ['{C}11', '11'],
+  ])('« %s » = collecte n° %s', (texte, numero) => {
+    expect(col(texte)).toEqual([[numero, 'col']])
+  })
+
+  it('une lettre C collée au numéro n\'est pas une collecte', () => {
+    expect(col('12C, 5C')).toEqual([['12C', 'c'], ['5C', 'c']])
+  })
+
+  it('un seul carré noir noyé dans la liste', () => {
+    expect(col('2, 4, [C]6, 8, 10')).toEqual([['2', 'c'], ['4', 'c'], ['6', 'col'], ['8', 'c'], ['10', 'c']])
+  })
+
+  it('collecte avec exposant et même adresse deux fois', () => {
+    expect(decouperNumeros('[C]10(2), 6, [C]6')).toEqual([
+      { numero: '10', quantite: 2, type: 'col', illisible: false },
+      { numero: '6', quantite: null, type: 'c', illisible: false },
+      { numero: '6', quantite: null, type: 'col', illisible: false },
+    ])
+  })
+
+  it('numéro listé à part dans « collectes » → collecte, même sans [C] dans la case', () => {
+    const arrets = lignesEnArrets([ligne({ commune_bandeau: '67170 KRIEGSHEIM', nb_colis: 3, nb_pgeo: 3, numeros: '2, 6, 8', collectes: ['6'] })])
+    expect(arrets.map(a => [a.numero, a.type])).toEqual([['2', 'c'], ['6', 'col'], ['8', 'c']])
+  })
+
+  it('« collectes » lues avec accents de format et lettres', () => {
+    const n = decouperNumeros('28A, 5')
+    marquerCollectes(n, ['28 a', '[C]99'])
+    expect(n.map(x => x.type)).toEqual(['col', 'c'])
+  })
+
+  it('ne touche ni relais ni numéros absents', () => {
+    const n = decouperNumeros('RC13(21), 4')
+    marquerCollectes(n, ['13', '9'])
+    expect(n.map(x => x.type)).toEqual(['rc', 'c'])
+  })
+
+  it('nettoyerLecture : « collectes » en liste ou en texte', () => {
+    const brut = { lignes: [{ rue: 'A', numeros: '1', collectes: ['1', ' 3 '] }, { rue: 'B', numeros: '2', collectes: '2, 4' }, { rue: 'C', numeros: '3' }] }
+    expect(nettoyerLecture(brut).lignes.map(l => l.collectes)).toEqual([['1', '3'], ['2', '4'], []])
   })
 })

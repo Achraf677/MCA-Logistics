@@ -43,3 +43,39 @@ export function patchStatut(a: Pick<ArretColis, 'quantite'>, statut: StatutArret
 export function issueRapide(type: TypeArretColis): StatutArretColis {
   return type === 'rc' ? 'rc_ferme' : type === 'col' ? 'col_rien' : 'avise'
 }
+
+/** Un arrêt pas encore traité, domicile ou collecte, peut changer de type ou être éclaté. */
+export function peutTransformer(a: Pick<ArretColis, 'type' | 'statut'>): boolean {
+  return !a.statut && (a.type === 'c' || a.type === 'col')
+}
+
+/** Colis côté collecte proposés au départ : 1, ou tout l'arrêt s'il n'y a qu'un colis. */
+export function colisCollecteDefaut(quantite: number): number {
+  return quantite <= 1 ? quantite : 1
+}
+
+/** Ce que produit le choix « k colis en collecte » sur un arrêt de n colis. */
+export function resultatCollecte(quantite: number, k: number): { mode: 'tout' | 'eclate'; collecte: number; normal: number } {
+  const c = Math.min(Math.max(1, Math.round(k) || 1), Math.max(1, quantite))
+  return c >= quantite ? { mode: 'tout', collecte: quantite, normal: 0 } : { mode: 'eclate', collecte: c, normal: quantite - c }
+}
+
+/**
+ * Liste d'arrêts après un éclatement : l'arrêt d'origine mis à jour, le nouveau juste derrière lui dans la feuille,
+ * les rangs suivants décalés d'un cran (comme `eclater_arret` en base). Autres tournées intactes. Pur.
+ */
+export function appliquerEclatement(arrets: ArretColis[], maj: ArretColis[]): ArretColis[] {
+  const par = new Map(maj.map(a => [a.id, a]))
+  const nouveaux = maj.filter(a => !arrets.some(x => x.id === a.id))
+  if (nouveaux.length === 0) return arrets.map(a => par.get(a.id) ?? a)
+  const t = nouveaux[0].tournee_id
+  const rang = nouveaux[0].rang
+  const decales = arrets.map(a => {
+    const m = par.get(a.id)
+    if (m) return m
+    return a.tournee_id === t && a.rang >= rang ? { ...a, rang: a.rang + 1 } : a
+  })
+  const origine = decales.findIndex(a => a.tournee_id === t && a.rang === rang - 1)
+  const i = origine >= 0 ? origine + 1 : decales.length
+  return [...decales.slice(0, i), ...nouveaux, ...decales.slice(i)]
+}

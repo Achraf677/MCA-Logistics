@@ -17,7 +17,7 @@
 // `battement` a plus de 90 s ; une exécution déjà vivante (battement < 60 s) n'est pas doublée.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
-import { ErreurLecture, chargerReferentiel, indexer, lirePage } from '../_shared/lireFeuilleCore.ts'
+import { ErreurLecture, chargerHistorique, chargerReferentiel, indexer, indexerHistorique, lirePage } from '../_shared/lireFeuilleCore.ts'
 
 // deno-lint-ignore no-explicit-any
 type Service = any
@@ -29,6 +29,7 @@ async function battre(service: Service, scanId: string) {
 async function traiter(service: Service, apiKey: string, scanId: string, companyId: string, seulement: number[] | null) {
   try {
     const ref = indexer(await chargerReferentiel(service, companyId))
+    const hist = indexerHistorique(await chargerHistorique(service, companyId))
     const { data: liste } = await service.from('scans_feuille_route_pages')
       .select('numero, etat').eq('scan_id', scanId).order('numero')
     const aLire = ((liste ?? []) as Array<{ numero: number; etat: string }>)
@@ -48,7 +49,7 @@ async function traiter(service: Service, apiKey: string, scanId: string, company
       try {
         if (!cur?.image) throw new ErreurLecture('Photo introuvable : reprends-la.', 422)
         const lue = await lirePage({
-          apiKey, image: cur.image as string, communePrecedente: (prec?.commune_fin as string | null) ?? null, ref,
+          apiKey, image: cur.image as string, communePrecedente: (prec?.commune_fin as string | null) ?? null, ref, hist,
         })
         const fin = [...lue.arrets].reverse().find(a => a.commune)?.commune ?? (prec?.commune_fin as string | null) ?? null
         await service.from('scans_feuille_route_pages').update({

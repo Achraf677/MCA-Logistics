@@ -175,6 +175,8 @@ Pas bon — reste
 
 - 30/10/2026 : photo de la synthèse OBLIGATOIRE pour terminer ; scan de la feuille du jour bloqué tant qu'une tournée passée (depuis le 30/10) n'est pas terminée avec photo ; message d'information le jour même.
 
+- 31/10/2026 : collectes — bouton « Transformer en collecte / Collecte, éclater » (ligne + fiche d'un arrêt non traité), « Remettre en colis normal » ; l'historique des adresses préremplit la lecture des feuilles suivantes.
+
 ## 9. À tester après chaque PR
 - (Ma tournée) Scanner une vraie feuille (2 pages) : villages / zones trouvés, relais reconnus, tournée créée dans
   l'ordre sans rien corriger ; fermer la page juste après « Lire » puis revenir ; Brumath : « Recalculer » range les

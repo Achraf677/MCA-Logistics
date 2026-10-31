@@ -32,7 +32,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { jsonResponse, optionsResponse } from '../_shared/cors.ts'
 import { exigerPermission } from '../_shared/auth.ts'
-import { ErreurLecture, TAILLE_MAX, chargerReferentiel, indexer, lirePage } from '../_shared/lireFeuilleCore.ts'
+import { ErreurLecture, TAILLE_MAX, chargerHistorique, chargerReferentiel, indexer, indexerHistorique, lirePage } from '../_shared/lireFeuilleCore.ts'
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return optionsResponse()
@@ -75,8 +75,9 @@ Deno.serve(async (req: Request) => {
 
   const precedente = typeof body.commune_precedente === 'string' ? body.commune_precedente : null
   const ref = indexer(companyId ? await chargerReferentiel(service, companyId) : [])
+  const hist = indexerHistorique(companyId ? await chargerHistorique(service, companyId) : [])
   try {
-    const lue = await lirePage({ apiKey, image, communePrecedente: precedente, ref })
+    const lue = await lirePage({ apiKey, image, communePrecedente: precedente, ref, hist })
     return jsonResponse({ ok: true, entete: lue.entete, page: lue.page, arrets: lue.arrets })
   } catch (e) {
     if (e instanceof ErreurLecture) return jsonResponse({ ok: false, error: e.message }, e.status)

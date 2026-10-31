@@ -25,11 +25,12 @@ import type { DocumentRow } from '../../shared/lib/documents.types'
 import type { EtatFiche, MaFiche } from './mescourses.types'
 import { decalerJour, borneAujourdhui } from './espace.logic'
 import { libelleDateCourte } from './mescourses.logic'
-import { compteursTournee, libelleAdresse, libelleCompteurs } from './tourneeColis.logic'
+import { appliquerEclatement, compteursTournee, libelleAdresse, libelleCompteurs } from './tourneeColis.logic'
 import { ArretTournee, ArretEnPauseCompact, BarreProchain, FicheArret } from './ArretTournee'
 import { RechercheAdresse } from './RechercheAdresse'
 import { FeuilleAdresse } from '../../shared/ui/FeuilleAdresse'
-import { ContexteAdresse } from './AdresseContexte'
+import { ContexteAdresse, ContexteCollecte } from './AdresseContexte'
+import { FeuilleCollecte } from './FeuilleCollecte'
 import { FeuilleCloture } from './FeuilleCloture'
 import { PhotosSynthese } from './PhotosSynthese'
 import { Carte, MessageErreur, GardeFiche, champCls, boutonPrimaireCls, boutonSecondaireCls } from './EspaceCommun'
@@ -135,6 +136,7 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
     const par = new Map(maj.map(a => [a.id, a]))
     setArrets(prev => prev.map(a => par.get(a.id) ?? a))
   }
+  const fusionner = (maj: ArretColis[]) => setArrets(prev => appliquerEclatement(prev, maj))
   const majTournee = (t: Partial<TourneeColis> & { id: string }) =>
     setTournees(prev => prev.map(x => (x.id === t.id ? { ...x, ...t } : x)))
 
@@ -241,7 +243,7 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
             </div>
           )}
           <VueTournee key={tournee.id} tournee={tournee} arrets={arretsTournee} fiche={fiche} estAujourdhui={estAujourdhui}
-            onGeste={surGeste} onArrets={majArrets} onTournee={majTournee} onRecharger={() => recharger(tournee.id)}
+            onGeste={surGeste} onArrets={majArrets} onFusion={fusionner} onTournee={majTournee} onRecharger={() => recharger(tournee.id)}
             onOuvrirJournee={onOuvrirJournee} />
           <div className="flex flex-wrap gap-2">
             {estAujourdhui && !scanBloque && (
@@ -280,13 +282,15 @@ function MaTourneeFiche({ fiche, onOuvrirJournee }: { fiche: MaFiche; onOuvrirJo
 
 // ── Une tournée ─────────────────────────────────────────────────────────────
 
-function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, onTournee, onRecharger, onOuvrirJournee }: {
+function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, onFusion, onTournee, onRecharger, onOuvrirJournee }: {
   tournee: TourneeColis
   arrets: ArretColis[]
   fiche: MaFiche
   estAujourdhui: boolean
   onGeste: (a: ArretColis) => void
   onArrets: (a: ArretColis[]) => void
+  /** Arrêts modifiés ou ajoutés (collecte, éclatement) : fusionnés dans la liste sans rechargement. */
+  onFusion: (a: ArretColis[]) => void
   onTournee: (t: Partial<TourneeColis> & { id: string }) => void
   onRecharger: () => void
   onOuvrirJournee?: () => void
@@ -360,6 +364,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
   // ── Recherche d'adresse : fiche d'un arrêt trouvé, ajout / correction d'une adresse ──
   const [ficheRecherche, setFicheRecherche] = useState<string | null>(null)
   const [adresseAModifier, setAdresseAModifier] = useState<ArretColis | null>(null)
+  const [collecteSur, setCollecteSur] = useState<ArretColis | null>(null)
   /** Une adresse ajoutée ou corrigée change l'itinéraire : on le recalcule (l'ordre manuel est gardé, seul le trajet suit). */
   const apresAdresse = (ajout: boolean) => {
     toast(ajout ? 'Adresse ajoutée à la tournée' : 'Adresse corrigée', 'success')
@@ -465,6 +470,7 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
 
   return (
     <ContexteAdresse.Provider value={verrouillee ? null : setAdresseAModifier}>
+    <ContexteCollecte.Provider value={verrouillee ? null : setCollecteSur}>
       {/* Bandeau du haut, collé pendant le défilement : avancement, puis tous les gestes avec leur nom. */}
       <div className="sticky top-0 z-10 flex flex-col gap-2 py-2 bg-[var(--bg)] border-b border-[var(--border)]">
         <RechercheAdresse tournee={tournee} arrets={arrets} verrouillee={verrouillee}
@@ -644,6 +650,11 @@ function VueTournee({ tournee, arrets, fiche, estAujourdhui, onGeste, onArrets, 
         <FeuilleAdresse tournee={tournee} arrets={arrets} arret={adresseAModifier} onFermer={() => setAdresseAModifier(null)}
           onFait={a => { setAdresseAModifier(null); onArrets([a]); apresAdresse(false) }} />
       )}
+      {collecteSur && !verrouillee && (
+        <FeuilleCollecte arret={arrets.find(a => a.id === collecteSur.id) ?? collecteSur}
+          onFait={maj => { onFusion(maj); setPoint(null) }} onFermer={() => setCollecteSur(null)} />
+      )}
+    </ContexteCollecte.Provider>
     </ContexteAdresse.Provider>
   )
 }

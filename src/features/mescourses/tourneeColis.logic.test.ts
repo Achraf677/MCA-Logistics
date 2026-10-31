@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   statutsProposes, issueRapide, libelleAdresse, libelleCompteurs, lireColisRemis,
-  patchStatut, compteursTournee,
+  patchStatut, compteursTournee, peutTransformer, colisCollecteDefaut, resultatCollecte, appliquerEclatement,
 } from './tourneeColis.logic'
 import type { ArretColis } from '../../shared/lib/tourneesColis'
 
@@ -49,5 +49,42 @@ describe('issue rapide (un appui après « fait »)', () => {
     expect(issueRapide('c')).toBe('avise')
     expect(issueRapide('rc')).toBe('rc_ferme')
     expect(issueRapide('col')).toBe('col_rien')
+  })
+})
+
+describe('collecte : transformer / éclater', () => {
+  it('seuls les arrêts non traités, domicile ou collecte, se transforment', () => {
+    expect(peutTransformer({ type: 'c', statut: null })).toBe(true)
+    expect(peutTransformer({ type: 'col', statut: null })).toBe(true)
+    expect(peutTransformer({ type: 'rc', statut: null })).toBe(false)
+    expect(peutTransformer({ type: 'c', statut: 'livre' })).toBe(false)
+  })
+
+  it('1 colis : tout en collecte ; plusieurs : 1 par défaut', () => {
+    expect(colisCollecteDefaut(1)).toBe(1)
+    expect(colisCollecteDefaut(4)).toBe(1)
+  })
+
+  it('résultat du choix : total conservé', () => {
+    expect(resultatCollecte(1, 1)).toEqual({ mode: 'tout', collecte: 1, normal: 0 })
+    expect(resultatCollecte(3, 1)).toEqual({ mode: 'eclate', collecte: 1, normal: 2 })
+    expect(resultatCollecte(3, 3)).toEqual({ mode: 'tout', collecte: 3, normal: 0 })
+    expect(resultatCollecte(3, 9)).toEqual({ mode: 'tout', collecte: 3, normal: 0 })
+    expect(resultatCollecte(3, 0)).toEqual({ mode: 'eclate', collecte: 1, normal: 2 })
+  })
+
+  it('éclatement : nouvel arrêt juste derrière, rangs suivants décalés, autre tournée intacte', () => {
+    const base = [a({ id: '1', rang: 1, quantite: 3 }), a({ id: '2', rang: 2 }), a({ id: '3', rang: 3 }), a({ id: 'z', tournee_id: 'autre', rang: 2 })]
+    const maj = [a({ id: '1', rang: 1, quantite: 2 }), a({ id: 'n', rang: 2, quantite: 1, type: 'col' })]
+    const r = appliquerEclatement(base, maj)
+    const ordre = r.filter(x => x.tournee_id === base[0].tournee_id).map(x => [x.id, x.rang])
+    expect(ordre).toEqual([['1', 1], ['n', 2], ['2', 3], ['3', 4]])
+    expect(r.find(x => x.id === 'z')?.rang).toBe(2)
+    expect(r.filter(x => x.tournee_id === base[0].tournee_id).reduce((s, x) => s + x.quantite, 0)).toBe(2 + 1 + 1 + 1)
+  })
+
+  it('simple mise à jour sans nouvel arrêt : remplace', () => {
+    const r = appliquerEclatement([a({ id: '1' })], [a({ id: '1', type: 'col' })])
+    expect(r[0].type).toBe('col')
   })
 })

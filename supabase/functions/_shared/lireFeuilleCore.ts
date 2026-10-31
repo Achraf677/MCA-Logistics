@@ -6,6 +6,7 @@ import { ExternalApiError } from './http.ts'
 import { cpDeCommune, forcerBrumath, lignesEnArrets, nettoyerLecture, type ArretFeuille } from './feuilleRoute.ts'
 import { geocoderArret, type PointArret } from './geocodeArret.ts'
 import { appliquerReferentiel, indexer, type RueRef } from './referentiel.ts'
+import { appliquerHistorique, indexerHistorique, type LigneHistorique } from './historiqueAdresses.ts'
 
 /** ~2 Mo de base64 : une page compressée en pèse ~180 Ko ; au-delà, refus net. */
 export const TAILLE_MAX = 2_000_000
@@ -34,6 +35,9 @@ RÈGLES, pour CHAQUE ligne du tableau, de haut en bas (une entrée de "lignes" p
   - cellule vide = "" ; chiffre illisible = « ? » à sa place (ex. « 1? »).
 - « RC » (deux petites lettres collées devant le numéro) = point relais : « RC141(6) » = relais n° 141, 6 colis ; « RC4(4) » = relais n° 4, 4 colis ; « RC4A(4) » = relais n° 4A, 4 colis. Ne transforme jamais « RC4A » en « 85A » ni « RC4 » en « 4 ».
 - COLLECTE = un numéro ENCADRÉ / surligné en NOIR avec le numéro de l'adresse écrit à l'intérieur (blanc sur fond noir), même s'il est seul au milieu d'une liste (« 6, [C]10, 25 », « [C]28A », « [C]1, 6, 12 ») : note-le « [C] » devant son numéro. Un numéro seulement en GRAS (« 41E », « 19B ») n'est PAS une collecte.
+  Regarde CHAQUE numéro de CHAQUE case N° : un seul carré noir noyé dans une longue liste est facile à rater, c'est pourtant le plus fréquent. Un carré noir peut aussi porter un petit exposant : « [C]10(2) ».
+  Une même adresse peut apparaître DEUX fois dans la case : une fois en clair (colis à livrer) et une fois dans un carré noir (collecte) : « 6, [C]6 ». Recopie les deux, ne supprime jamais le doublon.
+  En plus de la case N°, liste dans "collectes" les numéros que tu as vus en carré noir sur cette ligne (sans le « [C] », ex. ["10", "28A"]) ; [] s'il n'y en a aucun. En cas de doute entre carré noir et simple gras, ne note PAS de collecte.
 - RELAIS = « RC » + numéro + nombre de colis du relais entre parenthèses : « RC141(8) » = relais n° 141, 8 colis ; « RC4(22) » = relais n° 4, 22 colis.
 - Une lettre collée au numéro (3A, 5B, 14B, 19B, 41E, 1B) est une LETTRE : « 3A » n'est pas « 34 », « 1B » n'est pas « 18 ».
 - Un petit « (2) » après un numéro est le nombre de colis de ce numéro, pas un autre numéro : « 2(2) » = n° 2, 2 colis.
@@ -56,7 +60,7 @@ Ignore les totaux et tout ce qui est hors du tableau et de l'en-tête.
 Réponds UNIQUEMENT en JSON :
 {"entete": {"date": …, "societe": …, "vehicule": …, "imei": …, "circuit": …, "operateur": …, "depart": …, "remettant": …, "adresse_remettant": …, "nb_colis": …, "nb_pgeo": …, "livreur": …} | null,
  "page": "<x/y>" | null,
- "lignes": [{"commune_bandeau": <texte|null>, "secteur": <texte|null>, "rue": <texte|null>, "nb_colis": <entier|null>, "nb_pgeo": <entier|null>, "numeros": <texte>, "crbt": <texte|null>}]}`
+ "lignes": [{"commune_bandeau": <texte|null>, "secteur": <texte|null>, "rue": <texte|null>, "nb_colis": <entier|null>, "nb_pgeo": <entier|null>, "numeros": <texte>, "collectes": [<numéro en carré noir>…], "crbt": <texte|null>}]}`
 
 /** Référentiel de la société (rues, numéros, ordre habituel, relais), par paquets de 1 000. */
 // deno-lint-ignore no-explicit-any
@@ -68,6 +72,20 @@ export async function chargerReferentiel(service: any, companyId: string): Promi
       .eq('company_id', companyId).order('id').range(de, de + 999)
     if (error) { console.warn('feuille de route : référentiel', error.message); return out }
     out.push(...((data ?? []) as RueRef[]))
+    if (!data || data.length < 1000) return out
+  }
+}
+
+/** Historique des adresses de la société (collectes, éclatements corrigés par les livreurs). */
+// deno-lint-ignore no-explicit-any
+export async function chargerHistorique(service: any, companyId: string): Promise<LigneHistorique[]> {
+  const out: LigneHistorique[] = []
+  for (let de = 0; ; de += 1000) {
+    const { data, error } = await service.from('adresses_historique')
+      .select('commune, rue, numero, collecte, normal, eclate, eclate_collecte')
+      .eq('company_id', companyId).order('id').range(de, de + 999)
+    if (error) { console.warn('feuille de route : historique', error.message); return out }
+    out.push(...((data ?? []) as LigneHistorique[]))
     if (!data || data.length < 1000) return out
   }
 }
@@ -109,6 +127,7 @@ export async function lirePage(p: {
   image: string
   communePrecedente: string | null
   ref: ReturnType<typeof indexer>
+  hist?: ReturnType<typeof indexerHistorique>
 }): Promise<PageLue> {
   let brut: unknown
   try {
@@ -126,9 +145,10 @@ export async function lirePage(p: {
     )
   }
   const lecture = nettoyerLecture(brut)
-  const arrets = appliquerReferentiel(lignesEnArrets(forcerBrumath(lecture.lignes)), p.ref, p.communePrecedente)
+  const lus = appliquerReferentiel(lignesEnArrets(forcerBrumath(lecture.lignes)), p.ref, p.communePrecedente)
     // Commune retrouvée sans bandeau (page suivante, secteur) : son code postal est complété.
     .map(a => (a.cp ? a : { ...a, cp: cpDeCommune(a.commune) }))
+  const arrets = p.hist ? appliquerHistorique(lus, p.hist) : lus
   // Seuls les arrêts que le référentiel ne place pas partent au géocodage BAN.
   const aGeocoder = arrets.filter(a => a.lat == null)
   const trouves = await geocoderTous(aGeocoder)
@@ -150,4 +170,4 @@ export async function lirePage(p: {
   }
 }
 
-export { indexer }
+export { indexer, indexerHistorique }
