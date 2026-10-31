@@ -63,6 +63,35 @@ export async function arretsDesTournees(ids: string[]) {
   return { data: (data ?? []) as unknown as ArretColis[], error: erreurClaire(error) }
 }
 
+const PAQUET = 40
+
+async function enPaquets<T>(ids: string[], lire: (p: string[]) => Promise<{ data: T[]; error: Error | null }>) {
+  const out: T[] = []
+  for (let i = 0; i < ids.length; i += PAQUET) {
+    const r = await lire(ids.slice(i, i + PAQUET))
+    if (r.error) return { data: out, error: r.error }
+    out.push(...r.data)
+  }
+  return { data: out, error: null }
+}
+
+/** Tournées d'une période + leurs arrêts, photos de synthèse et photos de preuve (suivi détaillé, bureau). */
+export async function chargerSuiviColis(du: string, au: string) {
+  const t = await listerTourneesColis({ du, au })
+  if (t.error) return { error: t.error, tournees: [], arrets: [], syntheses: new Set<string>(), photos: new Map<string, DocumentRow[]>() }
+  const ids = t.data.map(x => x.id)
+  const a = await enPaquets(ids, arretsDesTournees)
+  const s = await enPaquets(ids, photosSynthese)
+  const traites = a.data.filter(x => x.statut).map(x => x.id)
+  const p = await enPaquets(traites, photosArrets)
+  const photos = new Map<string, DocumentRow[]>()
+  for (const d of p.data) if (d.entity_id) photos.set(d.entity_id, [...(photos.get(d.entity_id) ?? []), d])
+  return {
+    error: a.error ?? s.error ?? p.error, tournees: t.data, arrets: a.data,
+    syntheses: new Set(s.data.map(d => d.entity_id).filter((x): x is string => !!x)), photos,
+  }
+}
+
 /** Salariés pour qui le bureau peut scanner (fiches actives) + leurs clients de messagerie. */
 export async function membresPourTournee() {
   const { data, error } = await supabase.from('team_members')

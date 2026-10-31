@@ -48,3 +48,10 @@
 - 28/10/2026 : panne IGN réparée (ressource `bdtopo-valhalla`, `_shared/ign.ts`) ; ordre enregistré même sans tracé ; solveur `ordonnerTournee` : rues d'un seul tenant, numéros rangés. À tester : « Recalculer » la tournée Brumath du jour → zones 1 → 7, une rue faite d'une traite, numéros qui se suivent.
 - 28/10/2026 : la carte dessine les limites réelles des zones de Brumath (frontières + étiquettes Z1 → Z7) au lieu d'un contour autour des arrêts. À tester : ouvrir la carte d'une tournée de Brumath → zones coloriées, traits noirs aux frontières, bouton calques pour les cacher.
 - 28/10/2026 : villages — communes déléguées regroupées, pénalité de changement de village 2 000 m hors Brumath. À tester : « Recalculer » une tournée à plusieurs villages → chaque village d'un bloc (ou coupé seulement pour éviter un gros détour).
+
+## Suivi des colis (31/10/2026)
+- Bascule « Tournées / Suivi des colis » en haut de l'onglet. Période (du / au, Aujourd'hui, 7 jours, Ce mois), salarié, village, recherche, tuiles filtres (livrés, avisés, retours, collectes, non traités, à contrôler).
+- Regroupement village (zones de Brumath à part) / tournée / jour : totaux, % livré, premier → dernier passage, durée ; détail par arrêt (heure, statut, colis remis, écart avec le passage précédent, photo, note).
+- « À contrôler » : traités sans heure, livrés en partie, collectes et colis non traités après clôture, tournée terminée sans photo de synthèse. « Passages par heure ». Export CSV.
+- Lecture seule. Fichiers : `tournees/SuiviColis.tsx`, `tournees/suivi.logic.ts` (+ tests), `chargerSuiviColis`.
+
